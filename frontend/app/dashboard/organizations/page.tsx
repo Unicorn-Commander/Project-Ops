@@ -1,0 +1,414 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  getOrganizations,
+  getOrganizationStats,
+  type Organization,
+  type OrganizationFilters,
+  type OrganizationStats,
+  getOrganizationTypeBadgeColor,
+  getOrganizationTypeLabel,
+} from '@/lib/organizations-api';
+import { Building2, Users, Briefcase, User, Plus, Search, Filter, MoreVertical, Edit, Trash2, Network } from 'lucide-react';
+import { CreateOrganizationModal } from '@/components/modals/create-organization-modal';
+import { EditOrganizationModal } from '@/components/modals/edit-organization-modal';
+
+export default function OrganizationsPage() {
+  const router = useRouter();
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [stats, setStats] = useState<OrganizationStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState<OrganizationFilters>({
+    search: '',
+    type: undefined,
+    isActive: true,
+  });
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
+  const [selectedOrg, setSelectedOrg] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadData();
+  }, [filters]);
+
+  async function loadData() {
+    setLoading(true);
+    try {
+      const [orgsData, statsData] = await Promise.all([
+        getOrganizations(filters),
+        getOrganizationStats(),
+      ]);
+      setOrganizations(orgsData);
+      setStats(statsData);
+    } catch (error) {
+      console.error('Failed to load organizations:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleSearch(e: React.ChangeEvent<HTMLInputElement>) {
+    setFilters({ ...filters, search: e.target.value });
+  }
+
+  function handleTypeFilter(type: 'CPA_FIRM' | 'BUSINESS' | 'INDIVIDUAL' | undefined) {
+    setFilters({ ...filters, type });
+  }
+
+  function handleActiveFilter(isActive: boolean | undefined) {
+    setFilters({ ...filters, isActive });
+  }
+
+  function handleRowClick(org: Organization) {
+    router.push(`/dashboard/organizations/${org.id}`);
+  }
+
+  function handleEdit(org: Organization, e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditingOrg(org);
+  }
+
+  function handleDelete(org: Organization, e: React.MouseEvent) {
+    e.stopPropagation();
+    if (confirm(`Are you sure you want to delete ${org.name}?`)) {
+      // TODO: Implement delete
+      console.log('Delete org:', org.id);
+    }
+  }
+
+  function handleViewHierarchy(org: Organization, e: React.MouseEvent) {
+    e.stopPropagation();
+    router.push(`/dashboard/organizations/${org.id}?tab=hierarchy`);
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-text-dark">Organizations</h1>
+          <p className="text-text-light mt-1">Manage CPA firms, businesses, and individual clients</p>
+        </div>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors"
+        >
+          <Plus className="h-5 w-5" />
+          New Organization
+        </button>
+      </div>
+
+      {/* Statistics Cards */}
+      {stats && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-text-light">Total Organizations</p>
+                <p className="text-3xl font-bold text-text-dark mt-1">{stats.total}</p>
+              </div>
+              <div className="p-3 bg-primary/10 rounded-lg">
+                <Building2 className="h-6 w-6 text-primary" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-text-light">Active</p>
+                <p className="text-3xl font-bold text-text-dark mt-1">{stats.active}</p>
+              </div>
+              <div className="p-3 bg-green-100 rounded-lg">
+                <Building2 className="h-6 w-6 text-green-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-text-light">CPA Firms</p>
+                <p className="text-3xl font-bold text-text-dark mt-1">{stats.byType.cpaFirm}</p>
+              </div>
+              <div className="p-3 bg-primary/10 rounded-lg">
+                <Briefcase className="h-6 w-6 text-primary" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-text-light">Businesses</p>
+                <p className="text-3xl font-bold text-text-dark mt-1">{stats.byType.business}</p>
+              </div>
+              <div className="p-3 bg-green-100 rounded-lg">
+                <Building2 className="h-6 w-6 text-green-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-text-light">Individuals</p>
+                <p className="text-3xl font-bold text-text-dark mt-1">{stats.byType.individual}</p>
+              </div>
+              <div className="p-3 bg-accent/10 rounded-lg">
+                <User className="h-6 w-6 text-accent" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="bg-white p-4 rounded-lg border border-border-color shadow-sm">
+        <div className="flex flex-col lg:flex-row gap-4">
+          {/* Search */}
+          <div className="flex-1">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-text-light" />
+              <input
+                type="text"
+                placeholder="Search by name, tax ID, or industry..."
+                value={filters.search}
+                onChange={handleSearch}
+                className="w-full pl-10 pr-4 py-2 border border-border-color rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+          </div>
+
+          {/* Type Filter */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleTypeFilter(undefined)}
+              className={`px-4 py-2 rounded-lg border transition-colors ${
+                filters.type === undefined
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-white text-text-dark border-border-color hover:bg-gray-50'
+              }`}
+            >
+              All Types
+            </button>
+            <button
+              onClick={() => handleTypeFilter('CPA_FIRM')}
+              className={`px-4 py-2 rounded-lg border transition-colors ${
+                filters.type === 'CPA_FIRM'
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-white text-text-dark border-border-color hover:bg-gray-50'
+              }`}
+            >
+              CPA Firms
+            </button>
+            <button
+              onClick={() => handleTypeFilter('BUSINESS')}
+              className={`px-4 py-2 rounded-lg border transition-colors ${
+                filters.type === 'BUSINESS'
+                  ? 'bg-green-600 text-white border-green-600'
+                  : 'bg-white text-text-dark border-border-color hover:bg-gray-50'
+              }`}
+            >
+              Businesses
+            </button>
+            <button
+              onClick={() => handleTypeFilter('INDIVIDUAL')}
+              className={`px-4 py-2 rounded-lg border transition-colors ${
+                filters.type === 'INDIVIDUAL'
+                  ? 'bg-accent text-white border-accent'
+                  : 'bg-white text-text-dark border-border-color hover:bg-gray-50'
+              }`}
+            >
+              Individuals
+            </button>
+          </div>
+
+          {/* Active Filter */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleActiveFilter(undefined)}
+              className={`px-4 py-2 rounded-lg border transition-colors ${
+                filters.isActive === undefined
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-white text-text-dark border-border-color hover:bg-gray-50'
+              }`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => handleActiveFilter(true)}
+              className={`px-4 py-2 rounded-lg border transition-colors ${
+                filters.isActive === true
+                  ? 'bg-green-600 text-white border-green-600'
+                  : 'bg-white text-text-dark border-border-color hover:bg-gray-50'
+              }`}
+            >
+              Active
+            </button>
+            <button
+              onClick={() => handleActiveFilter(false)}
+              className={`px-4 py-2 rounded-lg border transition-colors ${
+                filters.isActive === false
+                  ? 'bg-red-600 text-white border-red-600'
+                  : 'bg-white text-text-dark border-border-color hover:bg-gray-50'
+              }`}
+            >
+              Inactive
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Organizations Table */}
+      <div className="bg-white rounded-lg border border-border-color shadow-sm overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b border-border-color">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-text-light uppercase tracking-wider">
+                Organization
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-text-light uppercase tracking-wider">
+                Type
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-text-light uppercase tracking-wider">
+                Industry
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-text-light uppercase tracking-wider">
+                Contacts
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-text-light uppercase tracking-wider">
+                Projects
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-text-light uppercase tracking-wider">
+                Status
+              </th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-text-light uppercase tracking-wider">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border-color">
+            {loading ? (
+              <tr>
+                <td colSpan={7} className="px-6 py-8 text-center text-text-light">
+                  Loading organizations...
+                </td>
+              </tr>
+            ) : organizations.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-6 py-8 text-center text-text-light">
+                  No organizations found. Create your first organization to get started.
+                </td>
+              </tr>
+            ) : (
+              organizations.map((org) => (
+                <tr
+                  key={org.id}
+                  onClick={() => handleRowClick(org)}
+                  className="hover:bg-gray-50 cursor-pointer transition-colors"
+                >
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-primary/10 rounded-lg">
+                        <Building2 className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-text-dark">{org.name}</div>
+                        {org.parentOrg && (
+                          <div className="text-sm text-text-light">
+                            Parent: {org.parentOrg.name}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getOrganizationTypeBadgeColor(org.type)}`}>
+                      {getOrganizationTypeLabel(org.type)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-text-dark">
+                    {org.industry || 'N/A'}
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2 text-sm text-text-dark">
+                      <Users className="h-4 w-4 text-text-light" />
+                      {org._count?.contacts || 0}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2 text-sm text-text-dark">
+                      <Briefcase className="h-4 w-4 text-text-light" />
+                      {org._count?.projects || 0}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                      org.isActive
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {org.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={(e) => handleViewHierarchy(org, e)}
+                        className="p-2 text-text-light hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                        title="View Hierarchy"
+                      >
+                        <Network className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={(e) => handleEdit(org, e)}
+                        className="p-2 text-text-light hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                        title="Edit"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={(e) => handleDelete(org, e)}
+                        className="p-2 text-text-light hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Modals */}
+      {showCreateModal && (
+        <CreateOrganizationModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onSuccess={() => {
+            setShowCreateModal(false);
+            loadData();
+          }}
+        />
+      )}
+
+      {editingOrg && (
+        <EditOrganizationModal
+          isOpen={!!editingOrg}
+          organization={editingOrg}
+          onClose={() => setEditingOrg(null)}
+          onSuccess={() => {
+            setEditingOrg(null);
+            loadData();
+          }}
+        />
+      )}
+    </div>
+  );
+}

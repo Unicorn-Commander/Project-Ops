@@ -1,0 +1,621 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useToast } from "@/components/ui/use-toast";
+import { Textarea } from "@/components/ui/textarea";
+import api from "@/lib/api";
+import { getContacts, type Contact } from "@/lib/contacts-api";
+import { Search, Plus } from "lucide-react";
+
+interface Project {
+  id: string;
+  projectNumber: string;
+  title: string;
+  description: string;
+  clientId?: string | null;
+  clientName: string;
+  clientEmail: string;
+  clientPhone: string;
+  status: string;
+  priority: string;
+  dueDate: string | null;
+  assignedToId: string | null;
+  invoiceNumber?: string | null;
+  billingAmount?: number | null;
+  amountPaid?: number | null;
+  paymentStatus?: string | null;
+  billingDate?: string | null;
+  paymentDueDate?: string | null;
+  paymentReceivedDate?: string | null;
+  billingNotes?: string | null;
+}
+
+interface EditProjectModalProps {
+  projectData: Project | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+const PROJECT_STATUSES = [
+  { value: "NEW", label: "New" },
+  { value: "IN_PROGRESS", label: "In Progress" },
+  { value: "UNDER_REVIEW", label: "Under Review" },
+  { value: "COMPLETED", label: "Completed" },
+  { value: "ARCHIVED", label: "Archived" },
+];
+
+const PRIORITIES = [
+  { value: "LOW", label: "Low" },
+  { value: "MEDIUM", label: "Medium" },
+  { value: "HIGH", label: "High" },
+  { value: "URGENT", label: "Urgent" },
+];
+
+const PAYMENT_STATUSES = [
+  { value: "UNPAID", label: "Unpaid" },
+  { value: "PARTIALLY_PAID", label: "Partially Paid" },
+  { value: "PAID", label: "Paid" },
+  { value: "OVERDUE", label: "Overdue" },
+  { value: "CANCELLED", label: "Cancelled" },
+];
+
+export function EditProjectModal({
+  projectData,
+  isOpen,
+  onClose,
+  onSuccess,
+}: EditProjectModalProps) {
+  const [formData, setFormData] = useState({
+    clientId: "",
+    title: "",
+    description: "",
+    clientName: "",
+    clientEmail: "",
+    clientPhone: "",
+    status: "NEW",
+    priority: "MEDIUM",
+    dueDate: "",
+    invoiceNumber: "",
+    billingAmount: null as number | null,
+    amountPaid: null as number | null,
+    paymentStatus: "UNPAID",
+    billingDate: "",
+    paymentDueDate: "",
+    paymentReceivedDate: "",
+    billingNotes: "",
+  });
+  const [loading, setLoading] = useState(false);
+  const [clients, setClients] = useState<Contact[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showClientSelector, setShowClientSelector] = useState(false);
+  const { toast } = useToast();
+
+  // Fetch clients
+  useEffect(() => {
+    const fetchClients = async () => {
+      try {
+        const response = await getContacts({ take: 100, isActive: true });
+        setClients(response.data);
+      } catch (error) {
+        // Silent error - clients optional
+      }
+    };
+    if (isOpen) {
+      fetchClients();
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (projectData) {
+      setFormData({
+        clientId: projectData.clientId || "",
+        title: projectData.title,
+        description: projectData.description,
+        clientName: projectData.clientName,
+        clientEmail: projectData.clientEmail,
+        clientPhone: projectData.clientPhone,
+        status: projectData.status,
+        priority: projectData.priority,
+        dueDate: projectData.dueDate
+          ? new Date(projectData.dueDate).toISOString().split("T")[0]
+          : "",
+        invoiceNumber: projectData.invoiceNumber || "",
+        billingAmount: projectData.billingAmount || null,
+        amountPaid: projectData.amountPaid || null,
+        paymentStatus: projectData.paymentStatus || "UNPAID",
+        billingDate: projectData.billingDate
+          ? new Date(projectData.billingDate).toISOString().split("T")[0]
+          : "",
+        paymentDueDate: projectData.paymentDueDate
+          ? new Date(projectData.paymentDueDate).toISOString().split("T")[0]
+          : "",
+        paymentReceivedDate: projectData.paymentReceivedDate
+          ? new Date(projectData.paymentReceivedDate).toISOString().split("T")[0]
+          : "",
+        billingNotes: projectData.billingNotes || "",
+      });
+    }
+  }, [projectData]);
+
+  // Handle client selection
+  const handleClientSelect = (selectedClientId: string) => {
+    const selectedClient = clients.find((c) => c.id === selectedClientId);
+    if (selectedClient) {
+      setFormData({
+        ...formData,
+        clientId: selectedClient.id,
+        clientName: `${selectedClient.firstName} ${selectedClient.lastName}`,
+        clientEmail: selectedClient.email || "",
+        clientPhone: selectedClient.phone || "",
+      });
+      setShowClientSelector(false);
+    }
+  };
+
+  // Filter clients
+  const filteredClients = clients.filter((client) =>
+    `${client.firstName} ${client.lastName} ${client.email} ${client.company || ""}`
+      .toLowerCase()
+      .includes(searchTerm.toLowerCase())
+  );
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!projectData) return;
+
+    // Validation
+    if (!formData.title.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Title is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.clientEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a valid email address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate amount paid does not exceed billing amount
+    if (formData.amountPaid && formData.billingAmount && formData.amountPaid > formData.billingAmount) {
+      toast({
+        title: "Validation Error",
+        description: "Amount paid cannot exceed billing amount",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const payload = {
+        ...formData,
+        dueDate: formData.dueDate || null,
+      };
+
+      await api.patch(`/projects/${projectData.id}`, payload);
+
+      toast({
+        title: "Success",
+        description: "Project updated successfully",
+      });
+      onSuccess();
+      onClose();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description:
+          error.response?.data?.message || "Failed to update project",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Project</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Title */}
+          <div>
+            <Label htmlFor="title">Project Title</Label>
+            <Input
+              id="title"
+              value={formData.title}
+              onChange={(e) =>
+                setFormData({ ...formData, title: e.target.value })
+              }
+              placeholder="e.g., 2024 Tax Return Filing"
+              required
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <Label htmlFor="description">Description</Label>
+            <textarea
+              id="description"
+              value={formData.description}
+              onChange={(e) =>
+                setFormData({ ...formData, description: e.target.value })
+              }
+              className="w-full min-h-[100px] px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+              placeholder="Case details..."
+            />
+          </div>
+
+          {/* Client Selector */}
+          <div>
+            <Label>Client Selection</Label>
+            {!formData.clientId ? (
+              <div className="space-y-3 mt-2">
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setShowClientSelector(!showClientSelector)}
+                  >
+                    <Search className="mr-2 h-4 w-4" />
+                    Select Existing Client
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowClientSelector(false)}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Manual Entry
+                  </Button>
+                </div>
+
+                {showClientSelector && (
+                  <div className="border rounded-lg p-3 bg-muted/50">
+                    <div className="mb-2">
+                      <Input
+                        placeholder="Search clients..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="max-h-40 overflow-y-auto space-y-1">
+                      {filteredClients.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-3">
+                          No clients found
+                        </p>
+                      ) : (
+                        filteredClients.map((client) => (
+                          <button
+                            key={client.id}
+                            type="button"
+                            className="w-full text-left p-2 rounded hover:bg-background border text-sm transition-colors"
+                            onClick={() => handleClientSelect(client.id)}
+                          >
+                            <div className="font-medium">
+                              {client.firstName} {client.lastName}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {client.email}
+                              {client.company && ` • ${client.company}`}
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center justify-between p-2 border rounded-lg bg-primary/5 mt-2">
+                <div>
+                  <div className="text-sm font-medium">
+                    Linked: {formData.clientName}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {formData.clientEmail}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setFormData({
+                      ...formData,
+                      clientId: "",
+                    });
+                  }}
+                >
+                  Change
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Client Info */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="clientName">Client Name</Label>
+              <Input
+                id="clientName"
+                value={formData.clientName}
+                onChange={(e) =>
+                  setFormData({ ...formData, clientName: e.target.value })
+                }
+                placeholder="John Doe"
+                required
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="clientEmail">Client Email</Label>
+              <Input
+                id="clientEmail"
+                type="email"
+                value={formData.clientEmail}
+                onChange={(e) =>
+                  setFormData({ ...formData, clientEmail: e.target.value })
+                }
+                placeholder="john@example.com"
+                required
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="clientPhone">Client Phone</Label>
+              <Input
+                id="clientPhone"
+                type="tel"
+                value={formData.clientPhone}
+                onChange={(e) =>
+                  setFormData({ ...formData, clientPhone: e.target.value })
+                }
+                placeholder="+1 (555) 000-0000"
+              />
+            </div>
+          </div>
+
+          {/* Status, Priority */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="status">Status</Label>
+              <Select
+                value={formData.status}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, status: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PROJECT_STATUSES.map((status) => (
+                    <SelectItem key={status.value} value={status.value}>
+                      {status.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="priority">Priority</Label>
+              <Select
+                value={formData.priority}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, priority: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRIORITIES.map((priority) => (
+                    <SelectItem key={priority.value} value={priority.value}>
+                      {priority.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+          </div>
+
+          {/* Due Date */}
+          <div>
+            <Label htmlFor="dueDate">Due Date (Optional)</Label>
+            <Input
+              id="dueDate"
+              type="date"
+              value={formData.dueDate}
+              onChange={(e) =>
+                setFormData({ ...formData, dueDate: e.target.value })
+              }
+            />
+          </div>
+
+          {/* Billing & Invoicing Section */}
+          <div className="pt-4 border-t">
+            <h3 className="text-lg font-semibold mb-4">Billing & Invoicing</h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Invoice Number */}
+              <div>
+                <Label htmlFor="invoiceNumber">Invoice Number</Label>
+                <Input
+                  id="invoiceNumber"
+                  value={formData.invoiceNumber}
+                  onChange={(e) =>
+                    setFormData({ ...formData, invoiceNumber: e.target.value })
+                  }
+                  placeholder="INV-2025-001"
+                />
+              </div>
+
+              {/* Payment Status */}
+              <div>
+                <Label htmlFor="paymentStatus">Payment Status</Label>
+                <Select
+                  value={formData.paymentStatus}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, paymentStatus: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_STATUSES.map((status) => (
+                      <SelectItem key={status.value} value={status.value}>
+                        {status.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Billing Amount */}
+              <div>
+                <Label htmlFor="billingAmount">Billing Amount</Label>
+                <Input
+                  id="billingAmount"
+                  type="number"
+                  step="0.01"
+                  value={formData.billingAmount ?? ""}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      billingAmount: e.target.value ? Number(e.target.value) : null
+                    })
+                  }
+                  placeholder="2500.00"
+                />
+              </div>
+
+              {/* Amount Paid */}
+              <div>
+                <Label htmlFor="amountPaid">Amount Paid</Label>
+                <Input
+                  id="amountPaid"
+                  type="number"
+                  step="0.01"
+                  value={formData.amountPaid ?? ""}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      amountPaid: e.target.value ? Number(e.target.value) : null
+                    })
+                  }
+                  placeholder="0.00"
+                />
+              </div>
+
+              {/* Billing Date */}
+              <div>
+                <Label htmlFor="billingDate">Billing Date</Label>
+                <Input
+                  id="billingDate"
+                  type="date"
+                  value={formData.billingDate}
+                  onChange={(e) =>
+                    setFormData({ ...formData, billingDate: e.target.value })
+                  }
+                />
+              </div>
+
+              {/* Payment Due Date */}
+              <div>
+                <Label htmlFor="paymentDueDate">Payment Due Date</Label>
+                <Input
+                  id="paymentDueDate"
+                  type="date"
+                  value={formData.paymentDueDate}
+                  onChange={(e) =>
+                    setFormData({ ...formData, paymentDueDate: e.target.value })
+                  }
+                />
+              </div>
+
+              {/* Payment Received Date */}
+              <div>
+                <Label htmlFor="paymentReceivedDate">Payment Received Date</Label>
+                <Input
+                  id="paymentReceivedDate"
+                  type="date"
+                  value={formData.paymentReceivedDate}
+                  onChange={(e) =>
+                    setFormData({ ...formData, paymentReceivedDate: e.target.value })
+                  }
+                />
+              </div>
+
+              {/* Billing Notes */}
+              <div className="md:col-span-2">
+                <Label htmlFor="billingNotes">Billing Notes</Label>
+                <Textarea
+                  id="billingNotes"
+                  value={formData.billingNotes}
+                  onChange={(e) =>
+                    setFormData({ ...formData, billingNotes: e.target.value })
+                  }
+                  placeholder="Payment via check #1234, partial payment arrangements, etc..."
+                  rows={3}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              className="bg-primary hover:bg-primary/90"
+              disabled={loading}
+            >
+              {loading ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

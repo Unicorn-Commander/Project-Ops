@@ -1,0 +1,498 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  STAFF
+  CLIENT
+}
+
+enum ProjectStatus {
+  NEW
+  IN_PROGRESS
+  UNDER_REVIEW
+  COMPLETED
+  ARCHIVED
+}
+
+enum ProjectPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum DocumentStatus {
+  PENDING
+  UPLOADED
+  PROCESSING
+  VERIFIED
+  REJECTED
+}
+
+enum AuditAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  EXPORT
+  IMPORT
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  WAITING_FOR_CLIENT
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskType {
+  TASK
+  MILESTONE
+  DELIVERABLE
+  REVIEW
+  MEETING
+  RESEARCH
+  OTHER
+}
+
+enum OrgType {
+  AGENCY      // An agency or service firm
+  BUSINESS    // A business client with multiple contacts
+  INDIVIDUAL  // Individual client
+  PARTNER     // Partner organization
+}
+
+enum ContactMethod {
+  EMAIL
+  PHONE
+  SMS
+  PORTAL
+}
+
+// ============================================================
+// CORE MODELS
+// ============================================================
+
+model User {
+  id                  String        @id @default(uuid())
+  email               String        @unique
+  username            String        @unique
+  firstName           String
+  lastName            String
+  role                UserRole      @default(CLIENT)
+  keycloakId          String?       @unique
+  isActive            Boolean       @default(true)
+  lastLoginAt         DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  password            String?
+  forcePasswordChange Boolean?      @default(false)
+
+  // Relations - Projects
+  assignedProjects    Project[]     @relation("ProjectAssignee")
+  createdProjects     Project[]     @relation("ProjectCreator")
+
+  // Relations - Contacts
+  createdContacts     Contact[]     @relation("ContactCreator")
+  contactProfile      Contact?      @relation("ContactPortalUser")
+
+  // Relations - Organizations
+  organizationsCreated Organization[] @relation("OrganizationCreator")
+
+  // Relations - Organization Contacts
+  orgContactsCreated  OrganizationContact[] @relation("OrgContactCreator")
+  orgContact          OrganizationContact?  @relation("OrgContactUser")
+
+  // Relations - Activity
+  comments            Comment[]
+  documents           Document[]
+  taskComments        TaskComment[] @relation("TaskCommentAuthor")
+  assignedTasks       Task[]        @relation("TaskAssignee")
+  createdTasks        Task[]        @relation("TaskCreator")
+  auditLogs           AuditLog[]
+
+  @@index([email])
+  @@index([keycloakId])
+  @@index([role])
+  @@map("users")
+}
+
+// ============================================================
+// ORGANIZATION HIERARCHY
+// ============================================================
+
+model Organization {
+  id              String   @id @default(uuid())
+  name            String
+  type            OrgType
+  taxId           String?  // EIN or identifier
+
+  // Business information
+  industry        String?
+  website         String?
+  annualRevenue   Decimal? @db.Decimal(15, 2)
+  employeeCount   Int?
+
+  // Address
+  address         String?
+  city            String?
+  state           String?
+  zipCode         String?
+  country         String?  @default("USA")
+
+  // Hierarchy (self-referential for multi-level structure)
+  parentOrgId     String?
+  parentOrg       Organization?  @relation("OrgHierarchy", fields: [parentOrgId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  childOrgs       Organization[] @relation("OrgHierarchy")
+
+  // Primary Contact
+  primaryContactId String?  @unique
+  primaryContact   Contact? @relation("OrganizationPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
+
+  // Portal & Access
+  portalAccessEnabled Boolean @default(false)
+  isActive        Boolean @default(true)
+
+  // Metadata
+  notes           String? @db.Text
+  metadata        Json?
+
+  // Relationships
+  organizationContacts OrganizationContact[]
+  contacts        Contact[]  @relation("OrganizationContacts")
+  projects        Project[]
+
+  // Audit
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdById     String
+  createdBy       User     @relation("OrganizationCreator", fields: [createdById], references: [id])
+
+  @@index([type])
+  @@index([parentOrgId])
+  @@index([isActive])
+  @@index([createdById])
+  @@index([name])
+  @@index([taxId])
+  @@map("organizations")
+}
+
+model OrganizationContact {
+  id              String   @id @default(uuid())
+
+  // Personal information
+  firstName       String
+  lastName        String
+  email           String   @unique
+  phone           String?
+  mobilePhone     String?
+  title           String?
+  department      String?
+
+  // Organization link
+  organizationId  String?
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Portal access (optional - not all contacts need login)
+  userId          String?  @unique
+  user            User?    @relation("OrgContactUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  // Contact preferences
+  isPrimaryContact Boolean  @default(false)
+  portalAccessEnabled Boolean @default(false)
+  preferredContactMethod ContactMethod? @default(EMAIL)
+  notificationsEnabled Boolean @default(true)
+
+  // Metadata
+  notes           String?  @db.Text
+  metadata        Json?
+
+  // Audit
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdById     String
+  createdBy       User     @relation("OrgContactCreator", fields: [createdById], references: [id])
+
+  @@index([email])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([isPrimaryContact])
+  @@index([lastName])
+  @@map("organization_contacts")
+}
+
+model Contact {
+  id                  String    @id @default(uuid())
+  firstName           String
+  lastName            String
+  email               String    @unique
+  phone               String?
+  company             String?
+  address             String?
+  city                String?
+  state               String?
+  zipCode             String?
+  taxId               String?
+  notes               String?
+  isActive            Boolean   @default(true)
+
+  // Organization link
+  organizationId      String?
+  organization        Organization? @relation("OrganizationContacts", fields: [organizationId], references: [id], onDelete: SetNull)
+  primaryOrgOf        Organization? @relation("OrganizationPrimaryContact")
+
+  // Portal access
+  userId              String?   @unique
+  portalAccessEnabled Boolean   @default(false)
+  invitationSentAt    DateTime?
+  invitationToken     String?   @unique
+
+  // Relationships
+  projects            Project[]
+
+  // Audit
+  createdById         String
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  createdBy           User      @relation("ContactCreator", fields: [createdById], references: [id])
+  user                User?     @relation("ContactPortalUser", fields: [userId], references: [id])
+
+  @@index([email])
+  @@index([lastName])
+  @@index([company])
+  @@index([organizationId])
+  @@index([createdById])
+  @@map("contacts")
+}
+
+model Project {
+  id                  String           @id @default(uuid())
+  projectNumber       String           @unique
+  title               String
+  description         String?
+  status              ProjectStatus    @default(NEW)
+  priority            ProjectPriority  @default(MEDIUM)
+  category            String?
+  tags                Json?
+
+  // Contact information
+  clientName          String
+  clientEmail         String?
+  clientPhone         String?
+  contactId           String?
+
+  // Organization link
+  organizationId      String?
+  organization        Organization? @relation(fields: [organizationId], references: [id])
+
+  // Timeline
+  dueDate             DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  // Assignment
+  createdById         String
+  assignedToId        String?
+
+  // Billing & Invoicing
+  invoiceNumber       String?
+  billingAmount       Decimal?      @db.Decimal(10, 2)
+  amountPaid          Decimal?      @default(0.00) @db.Decimal(10, 2)
+  paymentStatus       PaymentStatus? @default(UNPAID)
+  billingDate         DateTime?
+  paymentDueDate      DateTime?
+  paymentReceivedDate DateTime?
+  billingNotes        String?
+
+  // Metadata
+  metadata            Json?
+
+  // Relations
+  contact             Contact?      @relation(fields: [contactId], references: [id])
+  assignedTo          User?         @relation("ProjectAssignee", fields: [assignedToId], references: [id])
+  createdBy           User          @relation("ProjectCreator", fields: [createdById], references: [id])
+  comments            Comment[]
+  documents           Document[]
+  tasks               Task[]
+  auditLogs           AuditLog[]
+
+  @@index([projectNumber])
+  @@index([status])
+  @@index([priority])
+  @@index([contactId])
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([assignedToId])
+  @@index([dueDate])
+  @@index([paymentStatus])
+  @@index([billingDate])
+  @@map("projects")
+}
+
+model Document {
+  id           String         @id @default(uuid())
+  projectId    String?
+  uploadedById String
+  fileName     String
+  fileSize     Int
+  mimeType     String
+  s3Key        String         @unique
+  s3Bucket     String
+  status       DocumentStatus @default(PENDING)
+  description  String?
+  tags         String[]
+  metadata     Json?
+  uploadedAt   DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  project      Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploadedBy   User           @relation(fields: [uploadedById], references: [id])
+
+  @@index([projectId])
+  @@index([uploadedById])
+  @@index([status])
+  @@index([s3Key])
+  @@map("documents")
+}
+
+model Comment {
+  id         String   @id @default(uuid())
+  projectId  String
+  authorId   String
+  content    String
+  isInternal Boolean  @default(false)
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  author     User     @relation(fields: [authorId], references: [id])
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([authorId])
+  @@index([createdAt])
+  @@map("comments")
+}
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  userId     String?
+  projectId  String?
+  action     AuditAction
+  resource   String
+  resourceId String?
+  details    Json?
+  ipAddress  String?
+  userAgent  String?
+  timestamp  DateTime    @default(now())
+  project    Project?    @relation(fields: [projectId], references: [id])
+  user       User?       @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([action])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+model SystemConfig {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       Json
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_config")
+}
+
+model EmailConfig {
+  id           String   @id @default(uuid())
+  provider     String?
+  smtpHost     String
+  smtpPort     Int      @default(587)
+  smtpSecure   Boolean  @default(false)
+  smtpUser     String
+  smtpPassword String
+  fromName     String
+  fromEmail    String
+  isEnabled    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("email_config")
+}
+
+model Task {
+  id           String        @id @default(uuid())
+  projectId    String
+  title        String
+  description  String?
+  type         TaskType      @default(OTHER)
+  status       TaskStatus    @default(PENDING)
+  priority     TaskPriority  @default(MEDIUM)
+  dueDate      DateTime?
+  completedAt  DateTime?
+  createdById  String
+  assignedToId String?
+  metadata     Json?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  comments     TaskComment[]
+  assignedTo   User?         @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy    User          @relation("TaskCreator", fields: [createdById], references: [id])
+
+  @@index([projectId])
+  @@index([status])
+  @@index([assignedToId])
+  @@index([dueDate])
+  @@index([createdById])
+  @@index([priority])
+  @@map("tasks")
+}
+
+model TaskComment {
+  id        String   @id @default(uuid())
+  taskId    String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  author    User     @relation("TaskCommentAuthor", fields: [authorId], references: [id])
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([authorId])
+  @@map("task_comments")
+}

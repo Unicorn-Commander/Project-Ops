@@ -1,0 +1,239 @@
+networks:
+  project-ops-network:
+    driver: bridge
+  web:
+    external: true
+  unicorn-network:
+    external: true
+  uchub-network:
+    external: true
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+
+services:
+  # PostgreSQL 17 - Primary Database
+  project-ops-postgres:
+    image: postgres:17-alpine
+    container_name: project-ops-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-project_ops}
+      POSTGRES_USER: ${POSTGRES_USER:-project_ops_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../database/init:/docker-entrypoint-initdb.d:ro
+      - ../database/backups:/backups
+    ports:
+      - "5435:5432"
+    networks:
+      - project-ops-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-project_ops_admin} -d ${POSTGRES_DB:-project_ops}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command: >
+      postgres
+      -c max_connections=200
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c work_mem=2621kB
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
+      -c log_statement=mod
+      -c log_duration=on
+      -c log_line_prefix='%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+    labels:
+      - "com.projectops.service=database"
+      - "com.projectops.environment=${ENVIRONMENT:-production}"
+
+  # Redis 7 - Cache & Session Store
+  project-ops-redis:
+    image: redis:7-alpine
+    container_name: project-ops-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6382:6379"
+    networks:
+      - project-ops-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "com.projectops.service=cache"
+
+  # MinIO - Object Storage
+  project-ops-minio:
+    image: minio/minio:latest
+    container_name: project-ops-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_DOMAIN: storage.projectops.unicorncommander.ai
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9202:9000"
+      - "9203:9001"
+    networks:
+      - project-ops-network
+      - web
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.projectops-minio-api.rule=Host(`storage.projectops.unicorncommander.ai`)"
+      - "traefik.http.routers.projectops-minio-api.entrypoints=websecure"
+      - "traefik.http.routers.projectops-minio-api.tls=true"
+      - "traefik.http.routers.projectops-minio-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.projectops-minio-api.service=projectops-minio-api"
+      - "traefik.http.services.projectops-minio-api.loadbalancer.server.port=9000"
+      - "traefik.http.routers.projectops-minio-console.rule=Host(`console.storage.projectops.unicorncommander.ai`)"
+      - "traefik.http.routers.projectops-minio-console.entrypoints=websecure"
+      - "traefik.http.routers.projectops-minio-console.tls=true"
+      - "traefik.http.routers.projectops-minio-console.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.projectops-minio-console.service=projectops-minio-console"
+      - "traefik.http.services.projectops-minio-console.loadbalancer.server.port=9001"
+
+  # NestJS Backend API
+  project-ops-backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+      target: ${BUILD_TARGET:-production}
+    container_name: project-ops-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3201
+      DATABASE_URL: postgresql://project_ops_admin:${POSTGRES_PASSWORD}@project-ops-postgres:5432/project_ops?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@project-ops-redis:6379
+      KEYCLOAK_URL: http://uchub-keycloak:8080
+      KEYCLOAK_REALM: uchub
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-project-ops}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
+      MINIO_ENDPOINT: project-ops-minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: false
+      MINIO_ACCESS_KEY: ${MINIO_APP_USER:-projectops}
+      MINIO_SECRET_KEY: ${MINIO_APP_PASSWORD}
+      MINIO_PUBLIC_ENDPOINT: storage.projectops.unicorncommander.ai
+      MINIO_PUBLIC_PORT: 443
+      MINIO_PUBLIC_USE_SSL: true
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-3600}
+      CORS_ORIGIN: https://projectops.unicorncommander.ai
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      ENABLE_SWAGGER: ${ENABLE_SWAGGER:-true}
+    ports:
+      - "3201:3201"
+    networks:
+      - project-ops-network
+      - web
+      - unicorn-network
+      - uchub-network
+    depends_on:
+      project-ops-postgres:
+        condition: service_healthy
+      project-ops-redis:
+        condition: service_healthy
+      project-ops-minio:
+        condition: service_healthy
+    volumes:
+      - ../../backend/logs:/app/logs
+      - ../../backend/uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3201/api/v1/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1);})"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.projectops-backend.rule=Host(`api.projectops.unicorncommander.ai`)"
+      - "traefik.http.routers.projectops-backend.entrypoints=websecure"
+      - "traefik.http.routers.projectops-backend.tls=true"
+      - "traefik.http.routers.projectops-backend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.projectops-backend.loadbalancer.server.port=3201"
+      - "traefik.http.middlewares.projectops-cors.headers.accesscontrolallowmethods=GET,OPTIONS,PUT,POST,DELETE,PATCH"
+      - "traefik.http.middlewares.projectops-cors.headers.accesscontrolalloworiginlist=https://projectops.unicorncommander.ai"
+      - "traefik.http.middlewares.projectops-cors.headers.accesscontrolmaxage=100"
+      - "traefik.http.middlewares.projectops-cors.headers.addvaryheader=true"
+
+  # Next.js Frontend
+  project-ops-frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+      target: ${BUILD_TARGET:-production}
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.projectops.unicorncommander.ai/api/v1}
+        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-https://auth.unicorncommander.ai}
+        NEXT_PUBLIC_KEYCLOAK_REALM: uchub
+        NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: project-ops
+    container_name: project-ops-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3200
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.projectops.unicorncommander.ai/api/v1}
+      NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-https://auth.unicorncommander.ai}
+      NEXT_PUBLIC_KEYCLOAK_REALM: uchub
+      NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: project-ops
+      NEXT_TELEMETRY_DISABLED: 1
+    ports:
+      - "3200:3200"
+    networks:
+      - project-ops-network
+      - web
+    depends_on:
+      - project-ops-backend
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3200', (r) => {process.exit(r.statusCode === 200 ? 0 : 1);})"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.projectops-frontend.rule=Host(`projectops.unicorncommander.ai`)"
+      - "traefik.http.routers.projectops-frontend.entrypoints=websecure"
+      - "traefik.http.routers.projectops-frontend.tls=true"
+      - "traefik.http.routers.projectops-frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.projectops-frontend.loadbalancer.server.port=3200"
