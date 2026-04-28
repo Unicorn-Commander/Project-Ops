@@ -208,14 +208,6 @@ export default function ProjectDetailsPage() {
               </div>
             </div>
           )}
-            <div className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-[#A5A6AA]" />
-              <div>
-                <p className="text-sm font-medium text-[#10172B]">
-                </p>
-              </div>
-            </div>
-          )}
         </div>
       </Card>
 

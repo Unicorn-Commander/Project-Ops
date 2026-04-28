@@ -97,13 +97,13 @@ export function TopOrganizationsWidget() {
               </div>
               <div className="ml-4">
                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                  org.type === 'CPA_FIRM'
+                  org.type === 'AGENCY'
                     ? 'bg-primary/10 text-primary'
                     : org.type === 'BUSINESS'
                     ? 'bg-green-100 text-green-800'
                     : 'bg-orange-100 text-orange-800'
                 }`}>
-                  {org.type === 'CPA_FIRM' ? 'CPA Firm' : org.type === 'BUSINESS' ? 'Business' : 'Individual'}
+                  {org.type === 'AGENCY' ? 'Agency' : org.type === 'BUSINESS' ? 'Business' : 'Individual'}
                 </span>
               </div>
             </div>

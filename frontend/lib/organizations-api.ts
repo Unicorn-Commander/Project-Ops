@@ -4,7 +4,7 @@ import api from './api';
 export interface Organization {
   id: string;
   name: string;
-  type: 'CPA_FIRM' | 'BUSINESS' | 'INDIVIDUAL';
+  type: 'AGENCY' | 'BUSINESS' | 'INDIVIDUAL';
   taxId?: string;
   industry?: string;
   website?: string;
@@ -50,7 +50,7 @@ export interface Contact {
 
 export interface OrganizationFilters {
   search?: string;
-  type?: 'CPA_FIRM' | 'BUSINESS' | 'INDIVIDUAL';
+  type?: 'AGENCY' | 'BUSINESS' | 'INDIVIDUAL';
   isActive?: boolean;
   industry?: string;
   page?: number;
@@ -70,9 +70,10 @@ export interface OrganizationStats {
   total: number;
   active: number;
   byType: {
-    cpaFirm: number;
+    agency: number;
     business: number;
     individual: number;
+    partner: number;
   };
   withPortalAccess: number;
   totalContacts: number;
@@ -80,7 +81,7 @@ export interface OrganizationStats {
 
 export interface CreateOrganizationDto {
   name: string;
-  type: 'CPA_FIRM' | 'BUSINESS' | 'INDIVIDUAL';
+  type: 'AGENCY' | 'BUSINESS' | 'INDIVIDUAL' | 'PARTNER';
   taxId?: string;
   industry?: string;
   website?: string;
@@ -216,7 +217,7 @@ export async function setPrimaryContact(id: string) {
 // Utility functions
 export function getOrganizationTypeBadgeColor(type: Organization['type']): string {
   switch (type) {
-    case 'CPA_FIRM':
+    case 'AGENCY':
       return 'bg-primary text-white';
     case 'BUSINESS':
       return 'bg-green-600 text-white';
@@ -229,8 +230,8 @@ export function getOrganizationTypeBadgeColor(type: Organization['type']): strin
 
 export function getOrganizationTypeLabel(type: Organization['type']): string {
   switch (type) {
-    case 'CPA_FIRM':
-      return 'CPA Firm';
+    case 'AGENCY':
+      return 'Agency';
     case 'BUSINESS':
       return 'Business';
     case 'INDIVIDUAL':

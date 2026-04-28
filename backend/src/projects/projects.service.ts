@@ -302,18 +302,6 @@ export class ProjectsService {
     const sequence = (count + 1).toString().padStart(6, '0');
     return `PROJ-${year}-${sequence}`;
   }
-    const year = new Date().getFullYear();
-    const count = await this.prisma.project.count({
-      where: {
-        createdAt: {
-          gte: new Date(`${year}-01-01`),
-        },
-      },
-    });
-
-    const sequence = (count + 1).toString().padStart(6, '0');
-    return `PROJ-${year}-${sequence}`;
-  }
 
   async getStatsByStatus(user: User): Promise<any> {
     const where = this.buildRoleBasedWhere(user);

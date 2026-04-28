@@ -26,7 +26,7 @@ const US_STATES = [
 export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOrganizationModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedType, setSelectedType] = useState<'CPA_FIRM' | 'BUSINESS' | 'INDIVIDUAL'>('BUSINESS');
+  const [selectedType, setSelectedType] = useState<'AGENCY' | 'BUSINESS' | 'INDIVIDUAL'>('BUSINESS');
   const [parentOrganizations, setParentOrganizations] = useState<Organization[]>([]);
   const [formData, setFormData] = useState<CreateOrganizationDto>({
     name: '',
@@ -51,14 +51,14 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
 
   async function loadParentOrganizations() {
     try {
-      const orgs = await getOrganizations({ type: 'CPA_FIRM', isActive: true });
+      const orgs = await getOrganizations({ type: 'AGENCY', isActive: true });
       setParentOrganizations(orgs);
     } catch (error) {
       console.error('Failed to load parent organizations:', error);
     }
   }
 
-  function handleTypeChange(type: 'CPA_FIRM' | 'BUSINESS' | 'INDIVIDUAL') {
+  function handleTypeChange(type: 'AGENCY' | 'BUSINESS' | 'INDIVIDUAL') {
     setSelectedType(type);
     setFormData({ ...formData, type });
   }
@@ -158,17 +158,17 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
             <div className="grid grid-cols-3 gap-4">
               <button
                 type="button"
-                onClick={() => handleTypeChange('CPA_FIRM')}
+                onClick={() => handleTypeChange('AGENCY')}
                 className={`p-6 rounded-lg border-2 transition-all ${
-                  selectedType === 'CPA_FIRM'
+                  selectedType === 'AGENCY'
                     ? 'border-primary bg-primary/5'
                     : 'border-border-color hover:border-gray-400'
                 }`}
               >
                 <Building2 className={`h-8 w-8 mx-auto mb-2 ${
-                  selectedType === 'CPA_FIRM' ? 'text-primary' : 'text-gray-400'
+                  selectedType === 'AGENCY' ? 'text-primary' : 'text-gray-400'
                 }`} />
-                <p className="font-semibold text-text-dark">CPA Firm</p>
+                <p className="font-semibold text-text-dark">Agency</p>
                 <p className="text-xs text-text-light mt-1">Your firm or parent organization</p>
               </button>
 
@@ -334,7 +334,7 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
           </div>
 
           {/* Hierarchy */}
-          {selectedType !== 'CPA_FIRM' && parentOrganizations.length > 0 && (
+          {selectedType !== 'AGENCY' && parentOrganizations.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-text-dark mb-2">
                 Parent Organization (Optional)

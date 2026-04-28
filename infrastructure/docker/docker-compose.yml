@@ -3,10 +3,6 @@ networks:
     driver: bridge
   web:
     external: true
-  unicorn-network:
-    external: true
-  uchub-network:
-    external: true
 
 volumes:
   postgres_data:
@@ -100,7 +96,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      MINIO_DOMAIN: storage.projectops.unicorncommander.ai
+      MINIO_DOMAIN: ${STORAGE_DOMAIN}
     volumes:
       - minio_data:/data
     ports:
@@ -118,13 +114,13 @@ services:
       start_period: 30s
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.projectops-minio-api.rule=Host(`storage.projectops.unicorncommander.ai`)"
+      - "traefik.http.routers.projectops-minio-api.rule=Host(`${STORAGE_DOMAIN}`)"
       - "traefik.http.routers.projectops-minio-api.entrypoints=websecure"
       - "traefik.http.routers.projectops-minio-api.tls=true"
       - "traefik.http.routers.projectops-minio-api.tls.certresolver=letsencrypt"
       - "traefik.http.routers.projectops-minio-api.service=projectops-minio-api"
       - "traefik.http.services.projectops-minio-api.loadbalancer.server.port=9000"
-      - "traefik.http.routers.projectops-minio-console.rule=Host(`console.storage.projectops.unicorncommander.ai`)"
+      - "traefik.http.routers.projectops-minio-console.rule=Host(`${STORAGE_CONSOLE_DOMAIN}`)"
       - "traefik.http.routers.projectops-minio-console.entrypoints=websecure"
       - "traefik.http.routers.projectops-minio-console.tls=true"
       - "traefik.http.routers.projectops-minio-console.tls.certresolver=letsencrypt"
@@ -142,23 +138,25 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3201
-      DATABASE_URL: postgresql://project_ops_admin:${POSTGRES_PASSWORD}@project-ops-postgres:5432/project_ops?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-project_ops_admin}:${POSTGRES_PASSWORD}@project-ops-postgres:5432/${POSTGRES_DB:-project_ops}?schema=public
       REDIS_URL: redis://:${REDIS_PASSWORD}@project-ops-redis:6379
-      KEYCLOAK_URL: http://uchub-keycloak:8080
-      KEYCLOAK_REALM: uchub
+      KEYCLOAK_URL: ${KEYCLOAK_URL:-https://auth.unicorncommander.ai}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-uchub}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-project-ops}
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
+      KEYCLOAK_REDIRECT_URI: https://${API_DOMAIN}/api/v1/auth/keycloak/callback
       MINIO_ENDPOINT: project-ops-minio
       MINIO_PORT: 9000
-      MINIO_USE_SSL: false
+      MINIO_USE_SSL: "false"
       MINIO_ACCESS_KEY: ${MINIO_APP_USER:-projectops}
       MINIO_SECRET_KEY: ${MINIO_APP_PASSWORD}
-      MINIO_PUBLIC_ENDPOINT: storage.projectops.unicorncommander.ai
+      MINIO_PUBLIC_ENDPOINT: ${STORAGE_DOMAIN}
       MINIO_PUBLIC_PORT: 443
-      MINIO_PUBLIC_USE_SSL: true
+      MINIO_PUBLIC_USE_SSL: "true"
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-3600}
-      CORS_ORIGIN: https://projectops.unicorncommander.ai
+      CORS_ORIGIN: https://${DOMAIN}
+      FRONTEND_URL: https://${DOMAIN}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       ENABLE_SWAGGER: ${ENABLE_SWAGGER:-true}
     ports:
@@ -166,8 +164,6 @@ services:
     networks:
       - project-ops-network
       - web
-      - unicorn-network
-      - uchub-network
     depends_on:
       project-ops-postgres:
         condition: service_healthy
@@ -186,13 +182,13 @@ services:
       start_period: 45s
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.projectops-backend.rule=Host(`api.projectops.unicorncommander.ai`)"
+      - "traefik.http.routers.projectops-backend.rule=Host(`${API_DOMAIN}`)"
       - "traefik.http.routers.projectops-backend.entrypoints=websecure"
       - "traefik.http.routers.projectops-backend.tls=true"
       - "traefik.http.routers.projectops-backend.tls.certresolver=letsencrypt"
       - "traefik.http.services.projectops-backend.loadbalancer.server.port=3201"
       - "traefik.http.middlewares.projectops-cors.headers.accesscontrolallowmethods=GET,OPTIONS,PUT,POST,DELETE,PATCH"
-      - "traefik.http.middlewares.projectops-cors.headers.accesscontrolalloworiginlist=https://projectops.unicorncommander.ai"
+      - "traefik.http.middlewares.projectops-cors.headers.accesscontrolalloworiginlist=https://${DOMAIN}"
       - "traefik.http.middlewares.projectops-cors.headers.accesscontrolmaxage=100"
       - "traefik.http.middlewares.projectops-cors.headers.addvaryheader=true"
 
@@ -203,19 +199,19 @@ services:
       dockerfile: Dockerfile
       target: ${BUILD_TARGET:-production}
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.projectops.unicorncommander.ai/api/v1}
+        NEXT_PUBLIC_API_URL: https://${API_DOMAIN}/api/v1
         NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-https://auth.unicorncommander.ai}
-        NEXT_PUBLIC_KEYCLOAK_REALM: uchub
-        NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: project-ops
+        NEXT_PUBLIC_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-uchub}
+        NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-project-ops}
     container_name: project-ops-frontend
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3200
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.projectops.unicorncommander.ai/api/v1}
+      NEXT_PUBLIC_API_URL: https://${API_DOMAIN}/api/v1
       NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-https://auth.unicorncommander.ai}
-      NEXT_PUBLIC_KEYCLOAK_REALM: uchub
-      NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: project-ops
+      NEXT_PUBLIC_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-uchub}
+      NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-project-ops}
       NEXT_TELEMETRY_DISABLED: 1
     ports:
       - "3200:3200"
@@ -232,7 +228,7 @@ services:
       start_period: 30s
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.projectops-frontend.rule=Host(`projectops.unicorncommander.ai`)"
+      - "traefik.http.routers.projectops-frontend.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.projectops-frontend.entrypoints=websecure"
       - "traefik.http.routers.projectops-frontend.tls=true"
       - "traefik.http.routers.projectops-frontend.tls.certresolver=letsencrypt"

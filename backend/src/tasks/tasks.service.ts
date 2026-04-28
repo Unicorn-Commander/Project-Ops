@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { CreateTaskCommentDto } from './dto/create-task-comment.dto';
@@ -9,7 +11,11 @@ import { TaskStatus, TaskPriority, UserRole } from '@prisma/client';
 export class TasksService {
   private readonly logger = new Logger(TasksService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private emailService: EmailService,
+    private configService: ConfigService,
+  ) {}
 
   /**
    * Create a new task
@@ -342,10 +348,41 @@ export class TasksService {
 
     this.logger.log(`Task ${id} assigned to user ${assignedToId}`);
 
-    // TODO: Send email notification to assignee
-    // if (this.emailService) {
-    //   await this.emailService.sendTaskAssignedNotification(updatedTask);
-    // }
+    if (updatedTask.assignedTo?.email) {
+      const frontendUrl = this.configService.get<string>(
+        'FRONTEND_URL',
+        'https://projectops.magicunicorn.dev',
+      );
+      const taskUrl = `${frontendUrl}/dashboard/projects/${updatedTask.projectId}?task=${updatedTask.id}`;
+      const assignedByName = updatedTask.createdBy
+        ? `${updatedTask.createdBy.firstName} ${updatedTask.createdBy.lastName}`.trim()
+        : 'Project Ops';
+      const dueDate = updatedTask.dueDate
+        ? new Date(updatedTask.dueDate).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          })
+        : null;
+
+      this.emailService
+        .sendTaskAssignedEmail(
+          updatedTask.assignedTo.email,
+          `${updatedTask.assignedTo.firstName} ${updatedTask.assignedTo.lastName}`.trim() ||
+            updatedTask.assignedTo.email,
+          updatedTask.title,
+          updatedTask.project.projectNumber,
+          updatedTask.project.title,
+          assignedByName,
+          dueDate,
+          taskUrl,
+        )
+        .catch((err) =>
+          this.logger.warn(
+            `Failed to send task-assigned email for task ${id}: ${err.message}`,
+          ),
+        );
+    }
 
     return updatedTask;
   }

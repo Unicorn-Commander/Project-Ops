@@ -39,7 +39,7 @@ const statusTextColors = {
   ARCHIVED: 'text-gray-800',
 };
 
-export function KanbanColumn({ status, title, cases, color }: KanbanColumnProps) {
+export function KanbanColumn({ status, title, projects, color }: KanbanColumnProps) {
   return (
     <div className="flex-shrink-0 w-80">
       <div className={`rounded-t-lg p-3 border-b-2 ${statusColors[status as keyof typeof statusColors]}`}>

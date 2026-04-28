@@ -110,7 +110,7 @@ export class OrganizationsService {
             select: {
               childOrgs: true,
               contacts: true,
-              cases: true,
+              projects: true,
             },
           },
           createdBy: {
@@ -171,7 +171,7 @@ export class OrganizationsService {
         _count: {
           select: {
             contacts: true,
-            cases: true,
+            projects: true,
             childOrgs: true,
           },
         },
@@ -284,7 +284,7 @@ export class OrganizationsService {
           select: {
             childOrgs: true,
             contacts: true,
-            cases: true,
+            projects: true,
           },
         },
       },
@@ -400,14 +400,28 @@ export class OrganizationsService {
       }),
     ]);
 
+    const byType = organizationsByType.reduce(
+      (acc, item) => {
+        const key = item.type.toLowerCase() as 'agency' | 'business' | 'individual' | 'partner';
+        acc[key] = item._count;
+        return acc;
+      },
+      { agency: 0, business: 0, individual: 0, partner: 0 } as Record<
+        'agency' | 'business' | 'individual' | 'partner',
+        number
+      >,
+    );
+
+    const totalContacts = await this.prisma.contact.count({
+      where: { organizationId: { not: null } },
+    });
+
     return {
-      totalOrganizations,
-      activeOrganizations,
-      organizationsByType: organizationsByType.map(item => ({
-        type: item.type,
-        count: item._count,
-      })),
+      total: totalOrganizations,
+      active: activeOrganizations,
+      byType,
       withPortalAccess,
+      totalContacts,
     };
   }
 

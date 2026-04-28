@@ -6,6 +6,7 @@ import {
   getOrganization,
   getOrganizationProjects,
   getContacts,
+  inviteContactToPortal,
   type Organization,
   type Contact as OrganizationContact,
   getOrganizationTypeBadgeColor,
@@ -34,7 +35,6 @@ import {
 } from 'lucide-react';
 import { EditOrganizationModal } from '@/components/modals/edit-organization-modal';
 import { CreateContactModal } from '@/components/modals/create-contact-modal';
-// import { EditContactModal } from '@/components/modals/edit-contact-modal'; // TODO: Create EditOrganizationContactModal
 import { HierarchyTree } from '@/components/organizations/hierarchy-tree';
 
 export default function OrganizationProfilePage() {
@@ -80,9 +80,22 @@ export default function OrganizationProfilePage() {
     setEditingContact(contact);
   }
 
-  function handleInviteToPortal(contact: OrganizationContact) {
-    // TODO: Implement invite to portal
-    console.log('Invite to portal:', contact.id);
+  async function handleInviteToPortal(contact: OrganizationContact) {
+    if (!contact.email) {
+      alert('This contact has no email address. Add one before sending an invite.');
+      return;
+    }
+    try {
+      await inviteContactToPortal(contact.id);
+      alert(`Portal invitation sent to ${contact.email}.`);
+      await loadData();
+    } catch (err: any) {
+      console.error('Failed to invite contact:', err);
+      const message =
+        err?.response?.data?.message ||
+        'Failed to send portal invitation. Please try again.';
+      alert(message);
+    }
   }
 
   if (loading || !organization) {
@@ -100,8 +113,8 @@ export default function OrganizationProfilePage() {
   const otherContacts = contacts.filter(c => !c.isPrimaryContact);
 
   // Calculate billing summary
-  const totalBilled = cases.reduce((sum, c) => sum + (c.billingAmount || 0), 0);
-  const totalPaid = cases.reduce((sum, c) => sum + (c.amountPaid || 0), 0);
+  const totalBilled = projects.reduce((sum: number, p: any) => sum + (p.billingAmount || 0), 0);
+  const totalPaid = projects.reduce((sum: number, p: any) => sum + (p.amountPaid || 0), 0);
   const outstanding = totalBilled - totalPaid;
 
   return (
@@ -526,7 +539,7 @@ export default function OrganizationProfilePage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <h2 className="text-xl font-semibold text-text-dark">Projects ({projects.length})</h2>
-              {organization.type === 'CPA_FIRM' && (
+              {organization.type === 'AGENCY' && (
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -559,10 +572,10 @@ export default function OrganizationProfilePage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-color">
-                {cases.length === 0 ? (
+                {projects.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-6 py-8 text-center text-text-light">
-                      No cases found for this organization.
+                      No projects found for this organization.
                     </td>
                   </tr>
                 ) : (
@@ -643,18 +656,6 @@ export default function OrganizationProfilePage() {
         />
       )}
 
-      {/* TODO: Create EditOrganizationContactModal for editing organization contacts */}
-      {/* {editingContact && (
-        <EditContactModal
-          isOpen={!!editingContact}
-          contact={editingContact}
-          onClose={() => setEditingContact(null)}
-          onSuccess={() => {
-            setEditingContact(null);
-            loadData();
-          }}
-        />
-      )} */}
     </div>
   );
 }

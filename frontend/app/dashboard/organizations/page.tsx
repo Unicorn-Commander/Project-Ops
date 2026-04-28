@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   getOrganizations,
   getOrganizationStats,
+  deleteOrganization,
   type Organization,
   type OrganizationFilters,
   type OrganizationStats,
@@ -53,7 +54,7 @@ export default function OrganizationsPage() {
     setFilters({ ...filters, search: e.target.value });
   }
 
-  function handleTypeFilter(type: 'CPA_FIRM' | 'BUSINESS' | 'INDIVIDUAL' | undefined) {
+  function handleTypeFilter(type: 'AGENCY' | 'BUSINESS' | 'INDIVIDUAL' | undefined) {
     setFilters({ ...filters, type });
   }
 
@@ -70,11 +71,17 @@ export default function OrganizationsPage() {
     setEditingOrg(org);
   }
 
-  function handleDelete(org: Organization, e: React.MouseEvent) {
+  async function handleDelete(org: Organization, e: React.MouseEvent) {
     e.stopPropagation();
-    if (confirm(`Are you sure you want to delete ${org.name}?`)) {
-      // TODO: Implement delete
-      console.log('Delete org:', org.id);
+    if (!confirm(`Delete ${org.name}? This will deactivate the organization (soft delete).`)) {
+      return;
+    }
+    try {
+      await deleteOrganization(org.id);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to delete organization:', err);
+      alert('Failed to delete organization. Please try again.');
     }
   }
 
@@ -130,8 +137,8 @@ export default function OrganizationsPage() {
           <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-text-light">CPA Firms</p>
-                <p className="text-3xl font-bold text-text-dark mt-1">{stats.byType.cpaFirm}</p>
+                <p className="text-sm text-text-light">Agencies</p>
+                <p className="text-3xl font-bold text-text-dark mt-1">{stats.byType.agency}</p>
               </div>
               <div className="p-3 bg-primary/10 rounded-lg">
                 <Briefcase className="h-6 w-6 text-primary" />
@@ -195,14 +202,14 @@ export default function OrganizationsPage() {
               All Types
             </button>
             <button
-              onClick={() => handleTypeFilter('CPA_FIRM')}
+              onClick={() => handleTypeFilter('AGENCY')}
               className={`px-4 py-2 rounded-lg border transition-colors ${
-                filters.type === 'CPA_FIRM'
+                filters.type === 'AGENCY'
                   ? 'bg-primary text-white border-primary'
                   : 'bg-white text-text-dark border-border-color hover:bg-gray-50'
               }`}
             >
-              CPA Firms
+              Agencies
             </button>
             <button
               onClick={() => handleTypeFilter('BUSINESS')}

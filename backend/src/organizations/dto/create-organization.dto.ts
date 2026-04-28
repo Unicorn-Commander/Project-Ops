@@ -4,12 +4,12 @@ import { OrgType } from '@prisma/client';
 import { Type } from 'class-transformer';
 
 export class CreateOrganizationDto {
-  @ApiProperty({ example: 'ABC Tax Services' })
+  @ApiProperty({ example: 'Acme Corp' })
   @IsString()
   @IsNotEmpty()
   name: string;
 
-  @ApiProperty({ enum: OrgType, example: OrgType.CPA_FIRM })
+  @ApiProperty({ enum: OrgType, example: OrgType.BUSINESS })
   @IsEnum(OrgType)
   type: OrgType;
 
@@ -18,7 +18,7 @@ export class CreateOrganizationDto {
   @IsOptional()
   parentOrgId?: string;
 
-  @ApiProperty({ example: '12-3456789', required: false })
+  @ApiProperty({ example: '12-3456789', required: false, description: 'EIN, tax ID, or other organization identifier' })
   @IsString()
   @IsOptional()
   taxId?: string;

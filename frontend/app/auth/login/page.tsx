@@ -88,6 +88,30 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <Button
+            asChild
+            variant="outline"
+            className="w-full"
+            disabled={isLoading}
+          >
+            <a
+              href={`${process.env.NEXT_PUBLIC_API_URL || "/api/v1"}/auth/keycloak`}
+            >
+              Sign in with Unicorn Commander
+            </a>
+          </Button>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">
+                Or for client portal accounts
+              </span>
+            </div>
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -130,9 +154,9 @@ export default function LoginPage() {
           </form>
 
           <div className="text-center text-sm">
-            Don't have an account?{" "}
+            Client portal access?{" "}
             <Link href="/auth/register" className="text-primary hover:underline">
-              Register
+              Request an invitation
             </Link>
           </div>
         </CardContent>

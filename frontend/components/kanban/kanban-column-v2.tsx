@@ -39,7 +39,7 @@ const statusTextColors = {
   ARCHIVED: 'text-gray-800',
 };
 
-export function KanbanColumn({ id, title, cases, color }: KanbanColumnProps) {
+export function KanbanColumn({ id, title, projects, color }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: id,
   });

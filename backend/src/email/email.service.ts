@@ -9,6 +9,7 @@ import { getInvitationEmailTemplate, getTestEmailTemplate } from './templates/in
 import { getPasswordResetEmailTemplate } from './templates/password-reset.template';
 import { getProjectAssignedEmailTemplate } from './templates/project-assigned.template';
 import { getTaskReminderEmailTemplate } from './templates/task-reminder.template';
+import { getTaskAssignedEmailTemplate } from './templates/task-assigned.template';
 import { getDocumentUploadEmailTemplate } from './templates/document-upload.template';
 import { getProjectStatusUpdateEmailTemplate } from './templates/project-status-update.template';
 
@@ -400,6 +401,54 @@ export class EmailService {
         success: false,
         message: `Failed to send email: ${error.message}`,
       };
+    }
+  }
+
+  /**
+   * Send task-assigned notification email
+   */
+  async sendTaskAssignedEmail(
+    email: string,
+    userName: string,
+    taskTitle: string,
+    projectNumber: string,
+    projectTitle: string,
+    assignedBy: string,
+    dueDate: string | null,
+    taskUrl: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const transporter = await this.createTransporter();
+    if (!transporter) {
+      this.logger.warn('Email not configured. Skipping task assigned email.');
+      return { success: false, message: 'Email service not configured' };
+    }
+
+    const config = await this.prisma.emailConfig.findFirst({ where: { isEnabled: true } });
+    const fromName = config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
+    const fromEmail = config?.fromEmail || this.configService.get<string>('SMTP_USER', '');
+
+    try {
+      const info = await transporter.sendMail({
+        from: `"${fromName}" <${fromEmail}>`,
+        to: email,
+        subject: `New Task: ${taskTitle}`,
+        html: getTaskAssignedEmailTemplate(
+          userName,
+          taskTitle,
+          projectNumber,
+          projectTitle,
+          assignedBy,
+          dueDate,
+          taskUrl,
+          fromName,
+        ),
+      });
+
+      this.logger.log(`Task assigned email sent to ${email}. Message ID: ${info.messageId}`);
+      return { success: true, message: `Task assigned email sent to ${email}` };
+    } catch (error) {
+      this.logger.error(`Failed to send task assigned email to ${email}`, error);
+      return { success: false, message: `Failed to send email: ${error.message}` };
     }
   }
 

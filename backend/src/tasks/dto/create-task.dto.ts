@@ -23,7 +23,7 @@ export class CreateTaskDto {
 
   @ApiProperty({
     enum: TaskType,
-    example: TaskType.DOCUMENT_REQUEST,
+    example: TaskType.TASK,
     required: false
   })
   @IsEnum(TaskType)

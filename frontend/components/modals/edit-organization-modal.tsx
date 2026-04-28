@@ -68,7 +68,7 @@ export function EditOrganizationModal({ isOpen, organization, onClose, onSuccess
 
   async function loadParentOrganizations() {
     try {
-      const orgs = await getOrganizations({ type: 'CPA_FIRM', isActive: true });
+      const orgs = await getOrganizations({ type: 'AGENCY', isActive: true });
       // Filter out the current organization and its descendants
       const filtered = orgs.filter(org => org.id !== organization.id);
       setParentOrganizations(filtered);
@@ -145,11 +145,11 @@ export function EditOrganizationModal({ isOpen, organization, onClose, onSuccess
               Organization Type
             </label>
             <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg border border-border-color">
-              {organization.type === 'CPA_FIRM' && (
+              {organization.type === 'AGENCY' && (
                 <>
                   <Building2 className="h-6 w-6 text-primary" />
                   <div>
-                    <p className="font-semibold text-text-dark">CPA Firm</p>
+                    <p className="font-semibold text-text-dark">Agency</p>
                     <p className="text-xs text-text-light">Organization type cannot be changed</p>
                   </div>
                 </>
@@ -302,7 +302,7 @@ export function EditOrganizationModal({ isOpen, organization, onClose, onSuccess
           </div>
 
           {/* Hierarchy */}
-          {organization.type !== 'CPA_FIRM' && parentOrganizations.length > 0 && (
+          {organization.type !== 'AGENCY' && parentOrganizations.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-text-dark mb-2">
                 Parent Organization

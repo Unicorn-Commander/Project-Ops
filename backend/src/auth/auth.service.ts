@@ -6,7 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { LoginDto } from './dto/login.dto';
 import { ClientSignupDto } from './dto/client-signup.dto';
-import { User } from '@prisma/client';
+import { User, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 export interface JwtPayload {
@@ -116,15 +116,15 @@ export class AuthService {
     return user;
   }
 
-  private getDefaultRoleForEmail(email: string): string {
-    if (!email) return 'CLIENT';
+  private getDefaultRoleForEmail(email: string): UserRole {
+    if (!email) return UserRole.CLIENT;
 
-    const roleMap: Record<string, string> = {
-      'aaron@magicunicorn.tech': 'ADMIN',
-      'shafenkhan@users.noreply.github.com': 'MANAGER',
+    const roleMap: Record<string, UserRole> = {
+      'aaron@magicunicorn.tech': UserRole.ADMIN,
+      'shafenkhan@users.noreply.github.com': UserRole.ADMIN,
     };
 
-    return roleMap[email.toLowerCase()] || 'CLIENT';
+    return roleMap[email.toLowerCase()] || UserRole.CLIENT;
   }
 
   async generateTokenForUser(user: User) {
