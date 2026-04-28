@@ -144,7 +144,7 @@ services:
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-uchub}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-project-ops}
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
-      KEYCLOAK_REDIRECT_URI: https://${API_DOMAIN}/api/v1/auth/keycloak/callback
+      KEYCLOAK_CALLBACK_URL: https://${API_DOMAIN}/api/v1/auth/keycloak/callback
       MINIO_ENDPOINT: project-ops-minio
       MINIO_PORT: 9000
       MINIO_USE_SSL: "false"
