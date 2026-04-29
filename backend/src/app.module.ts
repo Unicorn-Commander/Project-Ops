@@ -22,6 +22,7 @@ import { EmailModule } from './email/email.module';
 import { TasksModule } from './tasks/tasks.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { McpModule } from './mcp/mcp.module';
+import { AssistantModule } from './assistant/assistant.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { McpModule } from './mcp/mcp.module';
     TasksModule,
     OrganizationsModule,
     McpModule,
+    AssistantModule,
   ],
   providers: [
     // Enable rate limiting globally via guard

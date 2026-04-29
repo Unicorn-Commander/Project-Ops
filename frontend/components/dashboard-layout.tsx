@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/lib/store";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { AssistantPanel } from "@/components/assistant-panel";
 import {
   LayoutDashboard,
   FileText,
@@ -155,6 +156,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <Menu className="h-5 w-5" />
           </Button>
           <div className="flex-1" />
+          <AssistantPanel />
           <ThemeToggle />
         </header>
 

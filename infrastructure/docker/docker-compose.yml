@@ -159,6 +159,9 @@ services:
       FRONTEND_URL: https://${DOMAIN}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       ENABLE_SWAGGER: ${ENABLE_SWAGGER:-true}
+      BRIGADE_URL: ${BRIGADE_URL:-https://brigade.magicunicorn.dev}
+      BRIGADE_API_KEY: ${BRIGADE_API_KEY}
+      BRIGADE_AGENT_ID: ${BRIGADE_AGENT_ID:-project-ops-assistant}
     ports:
       - "3201:3201"
     networks:
