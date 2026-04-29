@@ -243,17 +243,6 @@ export function getOrganizationTypeLabel(type: Organization['type']): string {
 
 export function formatTaxId(taxId?: string): string {
   if (!taxId) return 'N/A';
-
-  // Format EIN: XX-XXXXXXX
-  if (taxId.length === 9 && !taxId.includes('-')) {
-    return `${taxId.slice(0, 2)}-${taxId.slice(2)}`;
-  }
-
-  // Format SSN: XXX-XX-XXXX
-  if (taxId.length === 9) {
-    return `***-**-${taxId.slice(-4)}`;
-  }
-
   return taxId;
 }
 

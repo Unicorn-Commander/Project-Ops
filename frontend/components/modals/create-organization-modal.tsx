@@ -77,21 +77,12 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
       return;
     }
 
-    // Tax ID validation (optional but validate format if provided)
-    if (formData.taxId) {
-      const cleanTaxId = formData.taxId.replace(/\D/g, '');
-      if (cleanTaxId.length !== 9) {
-        setError('Tax ID must be 9 digits (EIN or SSN format)');
-        return;
-      }
-    }
-
     setLoading(true);
 
     try {
       await createOrganization({
         ...formData,
-        taxId: formData.taxId ? formData.taxId.replace(/\D/g, '') : undefined,
+        taxId: formData.taxId?.trim() || undefined,
         state: formData.state?.toUpperCase(),
       });
       onSuccess();
@@ -227,13 +218,13 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-text-dark mb-2">
-                  Tax ID (EIN or SSN)
+                  Tax ID / Identifier
                 </label>
                 <input
                   type="text"
                   value={formData.taxId}
                   onChange={(e) => handleInputChange('taxId', e.target.value)}
-                  placeholder="XX-XXXXXXX"
+                  placeholder="EIN, VAT, registry number, etc."
                   className="w-full px-4 py-2 border border-border-color rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
