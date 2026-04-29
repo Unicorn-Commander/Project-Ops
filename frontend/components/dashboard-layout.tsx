@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/lib/store";
+import { ThemeToggle } from "@/components/theme-toggle";
 import {
   LayoutDashboard,
   FileText,
@@ -72,9 +74,15 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       >
         <div className="flex h-full flex-col">
           {/* Logo */}
-          <div className="flex h-16 items-center justify-between px-6 border-b">
-            <Link href="/dashboard" className="text-xl font-bold text-primary">
-              Project Ops
+          <div className="flex h-16 items-center justify-between px-4 border-b border-border/60">
+            <Link href="/dashboard" className="flex items-center gap-2.5">
+              <Image src="/logo-mark.svg" alt="" width={28} height={28} priority />
+              <div className="leading-tight">
+                <div className="text-sm font-semibold tracking-tight">Project Ops</div>
+                <div className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
+                  by Magic Unicorn
+                </div>
+              </div>
             </Link>
             <Button
               variant="ghost"
@@ -135,7 +143,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       {/* Main content */}
       <div className="lg:pl-64">
         {/* Top bar */}
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-card px-4 lg:px-6">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-border/60 bg-card/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-card/60 lg:px-6">
           <Button
             variant="ghost"
             size="sm"
@@ -145,6 +153,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <Menu className="h-5 w-5" />
           </Button>
           <div className="flex-1" />
+          <ThemeToggle />
         </header>
 
         {/* Page content */}

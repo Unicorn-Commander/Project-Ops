@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import { useAuthStore } from "@/lib/store";
 import api from "@/lib/api";
 import { logger } from "@/lib/logger";
 import { Eye, EyeOff } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -76,16 +78,37 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/50 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <Link href="/" className="text-2xl font-bold text-primary text-center mb-4">
-            Project Ops
+    <div className="relative min-h-screen flex items-center justify-center bg-background p-4">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10 opacity-70 dark:opacity-40"
+        style={{
+          background:
+            "radial-gradient(60% 50% at 50% 0%, color-mix(in oklab, var(--color-primary) 22%, transparent) 0%, transparent 70%)",
+        }}
+      />
+
+      <div className="absolute right-4 top-4">
+        <ThemeToggle />
+      </div>
+
+      <Card className="w-full max-w-md border-border/70 shadow-xl shadow-primary/5">
+        <CardHeader className="space-y-1 text-center">
+          <Link
+            href="/"
+            className="mx-auto mb-3 inline-flex flex-col items-center gap-3"
+            aria-label="Project Ops home"
+          >
+            <Image src="/logo-mark.svg" alt="" width={48} height={48} priority />
+            <div className="leading-tight">
+              <div className="text-xl font-semibold tracking-tight">Project Ops</div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                by Magic Unicorn
+              </div>
+            </div>
           </Link>
           <CardTitle className="text-2xl">Welcome back</CardTitle>
-          <CardDescription>
-            Sign in to your account to continue
-          </CardDescription>
+          <CardDescription>Sign in to continue.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Button

@@ -9,8 +9,12 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Project Ops - Professional Project Management",
-  description: "Streamline your workflow with our modern project management platform",
+  title: "Project Ops · Magic Unicorn",
+  description:
+    "Project management, client portal, and operations workspace by Magic Unicorn. Part of the Unicorn Commander suite.",
+  icons: {
+    icon: [{ url: "/logo-mark.svg", type: "image/svg+xml" }],
+  },
 };
 
 export default function RootLayout({
@@ -19,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased`}>
         <ClientProviders>
           {children}

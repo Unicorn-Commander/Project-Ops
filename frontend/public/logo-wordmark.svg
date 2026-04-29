@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 64" fill="none" aria-label="Project Ops by Magic Unicorn">
+  <defs>
+    <linearGradient id="mu-grad-w" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6b3fa0"/>
+      <stop offset="1" stop-color="#d946ef"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#mu-grad-w)"/>
+  <path d="M32 12 L36 30 L52 30 L38 39 L43 56 L32 46 L21 56 L26 39 L12 30 L28 30 Z"
+        fill="#ffffff" fill-opacity="0.96"/>
+  <circle cx="32" cy="35" r="2.5" fill="url(#mu-grad-w)"/>
+
+  <text x="80" y="36" font-family="Inter, -apple-system, sans-serif" font-size="22" font-weight="700" fill="currentColor" letter-spacing="-0.5">
+    Project Ops
+  </text>
+  <text x="80" y="54" font-family="Inter, -apple-system, sans-serif" font-size="11" font-weight="500" fill="currentColor" fill-opacity="0.55" letter-spacing="0.5">
+    BY MAGIC UNICORN
+  </text>
+</svg>
