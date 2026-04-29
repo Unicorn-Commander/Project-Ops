@@ -13,7 +13,8 @@ export const metadata: Metadata = {
   description:
     "Project management, client portal, and operations workspace by Magic Unicorn. Part of the Unicorn Commander suite.",
   icons: {
-    icon: [{ url: "/logo-mark.svg", type: "image/svg+xml" }],
+    icon: [{ url: "/projectops-mascot.png", type: "image/png" }],
+    apple: [{ url: "/projectops-mascot.png" }],
   },
 };
 

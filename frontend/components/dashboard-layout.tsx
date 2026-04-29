@@ -76,7 +76,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           {/* Logo */}
           <div className="flex h-16 items-center justify-between px-4 border-b border-border/60">
             <Link href="/dashboard" className="flex items-center gap-2.5">
-              <Image src="/logo-mark.svg" alt="" width={28} height={28} priority />
+              <span className="inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-md bg-white ring-1 ring-border">
+                <Image src="/projectops-mascot.png" alt="" width={32} height={32} priority />
+              </span>
               <div className="leading-tight">
                 <div className="text-sm font-semibold tracking-tight">Project Ops</div>
                 <div className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
