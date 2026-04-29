@@ -1,41 +1,45 @@
 #!/bin/bash
-set -e
-
-echo "=== Project Ops Deployment ==="
-echo ""
+# Deploy Project Ops to the host this script is run on.
+# Reads infrastructure/docker/.env for ${DOMAIN}, ${API_DOMAIN}, etc.
+set -euo pipefail
 
 cd "$(dirname "$0")/.."
 PROJECT_DIR=$(pwd)
 
-echo "1. Starting infrastructure..."
-cd infrastructure/docker
-docker compose up -d project-ops-postgres project-ops-redis project-ops-minio
-echo "Waiting for services to be healthy..."
-sleep 10
+if [ ! -f "$PROJECT_DIR/infrastructure/docker/.env" ]; then
+  echo "ERROR: $PROJECT_DIR/infrastructure/docker/.env is missing." >&2
+  echo "Copy .env.example and fill in real values before deploying." >&2
+  exit 1
+fi
 
-echo ""
-echo "2. Running Prisma migrations..."
-cd "$PROJECT_DIR/backend"
-npx prisma migrate deploy
+# Load DOMAIN/API_DOMAIN for the final summary
+set -a
+. "$PROJECT_DIR/infrastructure/docker/.env"
+set +a
 
+echo "=== Project Ops Deployment ==="
+echo "DOMAIN=${DOMAIN:-?}"
+echo "API_DOMAIN=${API_DOMAIN:-?}"
 echo ""
-echo "3. Seeding database..."
-npx prisma db seed
 
-echo ""
-echo "4. Starting application..."
+echo "1. Building + starting all containers..."
 cd "$PROJECT_DIR/infrastructure/docker"
-docker compose up -d --build project-ops-backend project-ops-frontend
+docker compose up -d --build
 
 echo ""
-echo "5. Checking service health..."
-sleep 15
+echo "2. Waiting for backend to become healthy..."
+for i in {1..30}; do
+  status=$(docker inspect -f '{{.State.Health.Status}}' project-ops-backend 2>/dev/null || echo missing)
+  if [ "$status" = "healthy" ]; then break; fi
+  sleep 2
+done
 docker compose ps
 
 echo ""
-echo "=== Deployment Complete ==="
-echo "Frontend: https://projectops.unicorncommander.ai"
-echo "Backend: https://api.projectops.unicorncommander.ai"
+echo "3. Applying Prisma schema (db push) ..."
+docker exec project-ops-backend npx prisma db push --skip-generate --accept-data-loss
+
 echo ""
-echo "To register in Ops-Center, run:"
-echo "  docker exec ops-center-db psql -U ops_center -d ops_center -f /tmp/ops-center-register.sql"
+echo "=== Deployment Complete ==="
+echo "Frontend: https://${DOMAIN:-?}"
+echo "API:      https://${API_DOMAIN:-?}"
