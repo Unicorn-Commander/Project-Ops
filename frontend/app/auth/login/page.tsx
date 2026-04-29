@@ -96,10 +96,17 @@ export default function LoginPage() {
         <CardHeader className="space-y-1 text-center">
           <Link
             href="/"
-            className="mx-auto mb-3 inline-flex flex-col items-center gap-3"
+            className="mx-auto mb-1 inline-flex flex-col items-center gap-2"
             aria-label="Project Ops home"
           >
-            <Image src="/logo-mark.svg" alt="" width={48} height={48} priority />
+            <Image
+              src="/projectops-mascot.png"
+              alt="Project Ops mascot"
+              width={120}
+              height={120}
+              priority
+              className="drop-shadow-md"
+            />
             <div className="leading-tight">
               <div className="text-xl font-semibold tracking-tight">Project Ops</div>
               <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
