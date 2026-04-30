@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { iconWellClass } from "@/lib/badge-styles";
 import {
   KanbanSquare,
   Users,
@@ -9,39 +10,57 @@ import {
   Bell,
   Building2,
   ShieldCheck,
+  Sparkles,
   ArrowRight,
 } from "lucide-react";
 
-const features = [
+const features: Array<{
+  icon: typeof KanbanSquare;
+  title: string;
+  body: string;
+  tone: "blue" | "amber" | "emerald" | "rose" | "violet" | "orange" | "primary";
+}> = [
   {
     icon: KanbanSquare,
     title: "Projects & tasks",
     body: "Status, priority, deadlines, milestones — and a kanban board for in-flight work.",
+    tone: "blue",
   },
   {
     icon: Users,
     title: "Roles for real teams",
     body: "Admin, manager, staff, and client. Each sees what they should — no toggles, no accidents.",
+    tone: "emerald",
   },
   {
     icon: Building2,
     title: "Client portal",
     body: "Invite a client to a private view of their projects. Share documents. Stay out of email.",
+    tone: "amber",
+  },
+  {
+    icon: Sparkles,
+    title: "AI assistant",
+    body: "Ask a Magic Unicorn–trained agent about your projects, tasks, and recent activity. Drafts updates. Breaks scopes into tasks.",
+    tone: "primary",
   },
   {
     icon: FileText,
     title: "Document workspace",
     body: "Upload files, attach to projects or tasks, share with the right people. S3-compatible storage.",
+    tone: "violet",
   },
   {
     icon: Bell,
     title: "Quiet notifications",
     body: "Email when work is assigned, status changes, or a deadline is near. Quiet otherwise.",
+    tone: "orange",
   },
   {
     icon: ShieldCheck,
     title: "SSO + audit trail",
     body: "Sign in with Unicorn Commander SSO. Every change is logged with who, when, and what.",
+    tone: "rose",
   },
 ];
 
@@ -71,16 +90,11 @@ export default function Home() {
             </a>
             <ThemeToggle />
             <Link href="/auth/login">
-              <Button variant="ghost" size="sm">
-                Sign in
-              </Button>
-            </Link>
-            <Link href="/auth/login" className="hidden sm:inline-flex">
               <Button
                 size="sm"
-                className="bg-foreground text-background hover:bg-foreground/90"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
-                Open dashboard
+                Sign in
                 <ArrowRight className="ml-1.5 h-4 w-4" />
               </Button>
             </Link>
@@ -89,8 +103,17 @@ export default function Home() {
       </header>
 
       {/* Hero */}
-      <section className="border-b border-border">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-24 md:grid-cols-12 md:gap-16 md:py-32">
+      <section className="relative overflow-hidden border-b border-border">
+        {/* Ambient brand glows — purposely subtle, won't compete with the artwork */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-32 left-1/3 h-[420px] w-[420px] rounded-full bg-primary/20 blur-[120px] dark:bg-primary/30"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-24 -right-24 h-[360px] w-[360px] rounded-full bg-accent/10 blur-[100px] dark:bg-accent/15"
+        />
+        <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-6 py-24 md:grid-cols-12 md:gap-16 md:py-32">
           <div className="md:col-span-7">
             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-foreground/70">
               Part of the Unicorn Commander suite
@@ -108,7 +131,7 @@ export default function Home() {
               <Link href="/auth/login">
                 <Button
                   size="lg"
-                  className="bg-foreground text-background hover:bg-foreground/90 px-7"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 px-7"
                 >
                   Sign in
                   <ArrowRight className="ml-1.5 h-4 w-4" />
@@ -160,10 +183,10 @@ export default function Home() {
           </div>
 
           <div className="grid gap-x-12 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
-            {features.map(({ icon: Icon, title, body }) => (
+            {features.map(({ icon: Icon, title, body, tone }) => (
               <div key={title} className="group">
-                <div className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-border bg-card text-foreground transition-colors group-hover:border-foreground/30">
-                  <Icon className="h-5 w-5" strokeWidth={1.5} />
+                <div className={`inline-flex h-10 w-10 items-center justify-center rounded-md transition-transform group-hover:scale-105 ${iconWellClass(tone)}`}>
+                  <Icon className="h-5 w-5" strokeWidth={1.75} />
                 </div>
                 <h3 className="mt-5 text-base font-semibold text-foreground">{title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-foreground/65">{body}</p>
@@ -174,7 +197,7 @@ export default function Home() {
       </section>
 
       {/* How it works */}
-      <section id="how-it-works" className="border-b border-border bg-muted/30">
+      <section id="how-it-works" className="border-b border-border bg-foreground/[0.02]">
         <div className="mx-auto max-w-6xl px-6 py-24">
           <div className="mb-16 max-w-2xl">
             <div className="text-xs font-medium uppercase tracking-wider text-foreground/55">
@@ -228,7 +251,7 @@ export default function Home() {
             <Link href="/auth/login">
               <Button
                 size="lg"
-                className="bg-foreground text-background hover:bg-foreground/90 px-7"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 px-7"
               >
                 Sign in
                 <ArrowRight className="ml-1.5 h-4 w-4" />
