@@ -300,6 +300,32 @@ export class McpService {
       }) => wrap(await tools.uploadDocument(user, args)),
     );
 
+    server.registerTool(
+      'update_billing_fields',
+      {
+        title: 'Update billing/invoicing fields on a project',
+        description:
+          "Patch a project's billing data — invoiceNumber, billingAmount, " +
+          'amountPaid, paymentStatus (UNPAID / PARTIALLY_PAID / PAID / OVERDUE / ' +
+          'CANCELLED), billingDate, paymentDueDate, paymentReceivedDate, ' +
+          'billingNotes. Only the fields you pass are updated; omitted fields ' +
+          'are left alone. CLIENT-role users cannot call this.',
+        inputSchema: {
+          id: z.string().optional(),
+          projectNumber: z.string().optional(),
+          invoiceNumber: z.string().optional(),
+          billingAmount: z.number().optional(),
+          amountPaid: z.number().optional(),
+          paymentStatus: z.string().optional(),
+          billingDate: z.string().optional(),
+          paymentDueDate: z.string().optional(),
+          paymentReceivedDate: z.string().optional(),
+          billingNotes: z.string().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.updateBillingFields(user, args)),
+    );
+
     return server;
   }
 }

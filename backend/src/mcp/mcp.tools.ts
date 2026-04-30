@@ -724,4 +724,65 @@ export class ProjectOpsTools {
       document,
     };
   }
+
+  async updateBillingFields(
+    user: User,
+    args: {
+      id?: string;
+      projectNumber?: string;
+      invoiceNumber?: string;
+      billingAmount?: number;
+      amountPaid?: number;
+      paymentStatus?: string;
+      billingDate?: string;
+      paymentDueDate?: string;
+      paymentReceivedDate?: string;
+      billingNotes?: string;
+    },
+  ) {
+    this.assertCanWrite(user);
+    if (!args.id && !args.projectNumber) {
+      throw new Error('Either id or projectNumber must be provided');
+    }
+    const found = await this.prisma.project.findFirst({
+      where: {
+        ...buildVisibilityFilter(user),
+        ...(args.id ? { id: args.id } : { projectNumber: args.projectNumber! }),
+      },
+      select: { id: true, projectNumber: true },
+    });
+    if (!found) {
+      throw new Error('Project not found or no access');
+    }
+    // Only patch fields the caller actually passed — undefined skips the
+    // column so an empty PATCH doesn't blank out fields by accident.
+    const data: Prisma.ProjectUpdateInput = {};
+    if (args.invoiceNumber !== undefined) data.invoiceNumber = args.invoiceNumber;
+    if (args.billingAmount !== undefined) data.billingAmount = args.billingAmount as any;
+    if (args.amountPaid !== undefined) data.amountPaid = args.amountPaid as any;
+    if (args.paymentStatus !== undefined) data.paymentStatus = args.paymentStatus as any;
+    if (args.billingDate !== undefined) data.billingDate = args.billingDate ? new Date(args.billingDate) : null;
+    if (args.paymentDueDate !== undefined) data.paymentDueDate = args.paymentDueDate ? new Date(args.paymentDueDate) : null;
+    if (args.paymentReceivedDate !== undefined) data.paymentReceivedDate = args.paymentReceivedDate ? new Date(args.paymentReceivedDate) : null;
+    if (args.billingNotes !== undefined) data.billingNotes = args.billingNotes;
+
+    const updated = await this.prisma.project.update({
+      where: { id: found.id },
+      data,
+      select: {
+        id: true,
+        projectNumber: true,
+        invoiceNumber: true,
+        billingAmount: true,
+        amountPaid: true,
+        paymentStatus: true,
+        billingDate: true,
+        paymentDueDate: true,
+        paymentReceivedDate: true,
+        billingNotes: true,
+      },
+    });
+    this.logger.log(`MCP update_billing_fields: user=${user.email} project=${updated.projectNumber}`);
+    return updated;
+  }
 }
