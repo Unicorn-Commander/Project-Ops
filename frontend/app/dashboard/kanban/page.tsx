@@ -182,7 +182,7 @@ function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
               <FileText className="h-3 w-3" />
               <span className="font-mono">{task.project?.projectNumber}</span>
               <span className="mx-1">·</span>
-              <span className="truncate">{task.project?.clientName}</span>
+              <span className="truncate">{task.project?.title}</span>
             </div>
           </div>
 

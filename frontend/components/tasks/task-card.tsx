@@ -126,9 +126,9 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         {/* Project Info */}
         {task.project && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <span className="font-mono">{task.project?.projectNumber}</span>
-            <span>•</span>
-            <span>{task.project.clientName}</span>
+            <span className="font-mono">{task.project.projectNumber}</span>
+            <span>·</span>
+            <span className="truncate">{task.project.title}</span>
           </div>
         )}
 
