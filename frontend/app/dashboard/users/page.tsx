@@ -11,6 +11,7 @@ import { UserPlus, Search, MoreVertical, Shield, User, Edit } from "lucide-react
 import { EditUserModal } from "@/components/modals/edit-user-modal";
 import { CreateUserModal } from "@/components/modals/create-user-modal";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Avatar } from "@/components/ui/avatar";
 
 interface User {
   id: string;
@@ -199,14 +200,12 @@ export default function UsersPage() {
               {filteredUsers.map((user) => (
                 <tr key={user.id} className="hover:bg-muted/30">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <span className="text-sm font-medium text-primary">
-                          {user.firstName[0]}
-                          {user.lastName[0]}
-                        </span>
-                      </div>
-                      <div className="ml-4">
+                    <div className="flex items-center gap-3">
+                      <Avatar
+                        name={`${user.firstName} ${user.lastName}`}
+                        size={36}
+                      />
+                      <div>
                         <div className="text-sm font-medium text-foreground">
                           {user.firstName} {user.lastName}
                         </div>

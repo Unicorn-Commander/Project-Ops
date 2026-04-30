@@ -5,6 +5,28 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] — 2026-04-30
+
+### Changed
+
+- **Toast variants** rebuilt around an inset 3px tinted left-edge stripe
+  (box-shadow inset) instead of full-card tinting. Now ships `default`,
+  `success`, `warning`, `destructive` — they read as the right severity
+  without taking over the surface. Close + action buttons stay neutral.
+- **Avatars on Users + Contacts list pages.** Both now use the shared
+  `Avatar` primitive (deterministic gradient by name) so the same person
+  shows the same colour everywhere — dashboard dropdown, kanban,
+  task cards, and now the admin lists.
+
+### Infrastructure
+
+- **Brigade ↔ Ops-Center coupling audit.** Confirmed Brigade has zero
+  runtime dependency on Ops-Center on bigboy. Dropped two vestigial env
+  vars from `docker-compose.brigade.yml` (`OPS_CENTER_USAGE_ENDPOINT`,
+  `BRIGADE_USE_OPS_CENTER_AUTH`) — neither was read by `app/`. The
+  Ops-Center → Brigade direction (anthropic-proxy fan-out) is kept; it's
+  the value-add integration the suite is designed around.
+
 ## [1.4.0] — 2026-04-30
 
 ### Added

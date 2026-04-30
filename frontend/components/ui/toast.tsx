@@ -21,14 +21,24 @@ const ToastViewport = React.forwardRef<
 ))
 ToastViewport.displayName = ToastPrimitives.Viewport.displayName
 
+// Toast surface — adds a subtle 3px tinted left-edge stripe per variant.
+// The stripe is rendered via box-shadow inset so it doesn't fight the
+// border-radius the rounded card needs. Reads as "this is a success / a
+// warning / a destructive event" without using the loud full-card-tinted
+// variant some apps default to.
 const toastVariants = cva(
-  "group pointer-events-auto relative flex w-full items-center justify-between space-x-2 overflow-hidden rounded-md border p-4 pr-6 shadow-lg transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full",
+  "group pointer-events-auto relative flex w-full items-center justify-between space-x-2 overflow-hidden rounded-md border bg-card p-4 pr-6 shadow-lg transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full",
   {
     variants: {
       variant: {
-        default: "border bg-background text-foreground",
+        default:
+          "text-foreground shadow-[inset_3px_0_0_0_var(--color-foreground)] [--shadow-tint:rgb(229_229_229_/_0.4)] dark:shadow-[inset_3px_0_0_0_rgb(63_63_70)]",
+        success:
+          "text-foreground shadow-[inset_3px_0_0_0_rgb(16_185_129)] dark:shadow-[inset_3px_0_0_0_rgb(52_211_153)]",
+        warning:
+          "text-foreground shadow-[inset_3px_0_0_0_rgb(245_158_11)] dark:shadow-[inset_3px_0_0_0_rgb(251_191_36)]",
         destructive:
-          "destructive group border-destructive bg-destructive text-destructive-foreground",
+          "destructive group text-foreground shadow-[inset_3px_0_0_0_rgb(220_38_38)] dark:shadow-[inset_3px_0_0_0_rgb(248_113_113)]",
       },
     },
     defaultVariants: {
@@ -59,7 +69,7 @@ const ToastAction = React.forwardRef<
   <ToastPrimitives.Action
     ref={ref}
     className={cn(
-      "inline-flex h-8 shrink-0 items-center justify-center rounded-md border bg-transparent px-3 text-sm font-medium transition-colors hover:bg-secondary focus:outline-none focus:ring-1 focus:ring-ring disabled:pointer-events-none disabled:opacity-50 group-[.destructive]:border-muted/40 group-[.destructive]:hover:border-destructive/30 group-[.destructive]:hover:bg-destructive group-[.destructive]:hover:text-destructive-foreground group-[.destructive]:focus:ring-destructive",
+      "inline-flex h-8 shrink-0 items-center justify-center rounded-md border bg-transparent px-3 text-sm font-medium transition-colors hover:bg-secondary focus:outline-none focus:ring-1 focus:ring-ring disabled:pointer-events-none disabled:opacity-50",
       className
     )}
     {...props}
@@ -74,7 +84,7 @@ const ToastClose = React.forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      "absolute right-1 top-1 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-none focus:ring-1 group-hover:opacity-100 group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-50 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-600",
+      "absolute right-1 top-1 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-ring group-hover:opacity-100",
       className
     )}
     toast-close=""

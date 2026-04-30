@@ -19,6 +19,7 @@ import {
 import { CreateContactModal } from "@/components/modals/create-contact-modal";
 import { EditContactModal } from "@/components/modals/edit-contact-modal";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Avatar } from "@/components/ui/avatar";
 import {
   getContacts,
   deleteContact,
@@ -261,13 +262,11 @@ export default function ContactsPage() {
                       onClick={() => handleViewContact(contact.id)}
                     >
                       <td className="px-6 py-4">
-                        <div className="flex items-center">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 ${iconWellClass("primary")}`}>
-                            <span className="font-semibold">
-                              {contact.firstName[0]}
-                              {contact.lastName[0]}
-                            </span>
-                          </div>
+                        <div className="flex items-center gap-3">
+                          <Avatar
+                            name={`${contact.firstName} ${contact.lastName}`}
+                            size={36}
+                          />
                           <div>
                             <div className="font-semibold text-foreground">
                               {contact.firstName} {contact.lastName}
