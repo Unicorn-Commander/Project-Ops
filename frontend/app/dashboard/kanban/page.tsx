@@ -13,6 +13,7 @@ import {
   useDraggable,
 } from '@dnd-kit/core';
 import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -252,13 +253,23 @@ function KanbanColumn({ id, title, tasks, onTaskClick }: KanbanColumnProps) {
 
       <div
         ref={setNodeRef}
-        className={`p-3 min-h-[calc(100vh-380px)] max-h-[calc(100vh-380px)] overflow-y-auto rounded-b-lg border-2 border-t-0 ${
-          isOver ? 'bg-muted/40 border-dashed' : 'bg-card'
-        } ${statusColors[id].split(' ')[1]}`}
+        className={`p-3 min-h-[calc(100vh-380px)] max-h-[calc(100vh-380px)] overflow-y-auto rounded-b-lg border-2 border-t-0 transition-colors ${
+          isOver
+            ? 'border-foreground/30 border-dashed bg-foreground/[0.04]'
+            : `${statusColors[id].split(' ')[1]} bg-card`
+        }`}
       >
         {tasks.length === 0 ? (
-          <div className="flex items-center justify-center h-32 text-muted-foreground/70 text-sm">
-            No tasks
+          <div
+            className={`flex h-32 flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed transition-colors ${
+              isOver
+                ? 'border-foreground/40 text-foreground'
+                : 'border-border/50 text-muted-foreground/60'
+            }`}
+          >
+            <span className="text-[11px] uppercase tracking-wider">
+              {isOver ? `Drop into ${title}` : 'Drop tasks here'}
+            </span>
           </div>
         ) : (
           tasks.map((task) => <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />)
@@ -467,8 +478,31 @@ export default function KanbanPage() {
 
   if (!mounted || loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="space-y-6">
+        <Skeleton className="h-4 w-64" />
+        <Card className="p-4 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <Skeleton key={i} className="h-9" />
+            ))}
+          </div>
+        </Card>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          {[1, 2, 3, 4].map((col) => (
+            <div key={col} className="space-y-3">
+              <Skeleton className="h-9" />
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <Card key={i} className="p-3 space-y-2">
+                    <Skeleton className="h-3 w-16" />
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-3 w-24" />
+                  </Card>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

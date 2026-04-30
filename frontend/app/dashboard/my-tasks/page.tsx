@@ -25,6 +25,7 @@ import {
 } from "@/lib/tasks-api";
 import { Plus, Filter, Search, AlertTriangle, CheckCircle, Clock } from "lucide-react";
 import { iconWellClass } from "@/lib/badge-styles";
+import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 
 export default function MyTasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -141,14 +142,26 @@ export default function MyTasksPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-muted rounded w-1/4"></div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-24 bg-muted rounded-xl"></div>
-            ))}
-          </div>
+        <Skeleton className="h-4 w-64" />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-7 w-10" />
+                </div>
+                <Skeleton className="h-10 w-10 rounded-lg" />
+              </div>
+            </Card>
+          ))}
         </div>
+        <Card className="p-6 space-y-3">
+          <Skeleton className="h-5 w-40" />
+          {[1, 2, 3].map((i) => (
+            <SkeletonText key={i} lines={2} />
+          ))}
+        </Card>
       </div>
     );
   }

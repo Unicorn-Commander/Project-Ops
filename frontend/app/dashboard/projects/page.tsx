@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/use-toast";
 import {
   AlertDialog,
@@ -184,9 +185,24 @@ export default function ProjectsPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-10 bg-muted rounded w-1/3"></div>
-          <div className="h-64 bg-muted rounded"></div>
+        <Skeleton className="h-4 w-64" />
+        <Card className="p-4">
+          <div className="flex flex-wrap gap-3">
+            <Skeleton className="h-10 flex-1 min-w-[200px]" />
+            <Skeleton className="h-10 w-40" />
+            <Skeleton className="h-10 w-40" />
+          </div>
+        </Card>
+        <div className="space-y-3">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-6 w-24 rounded-full" />
+              </div>
+              <SkeletonText lines={2} />
+            </Card>
+          ))}
         </div>
       </div>
     );

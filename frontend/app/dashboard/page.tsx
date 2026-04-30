@@ -17,6 +17,8 @@ import {
   priorityTextClass,
   iconWellClass,
 } from "@/lib/badge-styles";
+import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { format, formatDistanceToNowStrict, isPast } from "date-fns";
 import {
   FileText,
@@ -132,16 +134,34 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="animate-pulse space-y-4">
-            <div className="h-8 bg-muted rounded w-1/4"></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-32 bg-muted rounded-xl"></div>
-              ))}
-            </div>
-          </div>
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <Skeleton className="h-7 w-64" />
+          <Skeleton className="h-4 w-96" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="p-5">
+              <div className="flex items-start justify-between">
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-8 w-12" />
+                </div>
+                <Skeleton className="h-10 w-10 rounded-lg" />
+              </div>
+            </Card>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {[1, 2].map((i) => (
+            <Card key={i} className="p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-7 w-16" />
+              </div>
+              <SkeletonText lines={4} />
+            </Card>
+          ))}
         </div>
       </div>
     );
@@ -252,10 +272,12 @@ export default function DashboardPage() {
 
             <div className="space-y-3">
               {myTasks.length === 0 ? (
-                <div className="text-center py-8">
-                  <CheckSquare className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-50" />
-                  <p className="text-muted-foreground">No pending tasks</p>
-                </div>
+                <EmptyState
+                  icon={CheckSquare}
+                  iconTone="emerald"
+                  title="Inbox zero"
+                  body="No pending tasks assigned to you. Enjoy the breathing room."
+                />
               ) : (
                 myTasks.map((task) => (
                   <div
@@ -325,10 +347,18 @@ export default function DashboardPage() {
           </div>
 
           {recentProjects.length === 0 ? (
-            <div className="text-center py-10">
-              <FileText className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-40" />
-              <p className="text-sm text-muted-foreground">No projects yet — create one to get started.</p>
-            </div>
+            <EmptyState
+              icon={FileText}
+              iconTone="blue"
+              title="No projects yet"
+              body="Create one to get started. The kanban, calendar, and AI assistant kick in as soon as you do."
+              action={
+                <Button onClick={() => setIsCreateModalOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  New project
+                </Button>
+              }
+            />
           ) : (
             <div className="space-y-3">
               {recentProjects.map((projectItem) => (
