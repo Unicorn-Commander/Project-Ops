@@ -43,10 +43,10 @@ export function HierarchyTree({ organizationId }: HierarchyTreeProps) {
 
   if (loading) {
     return (
-      <div className="bg-white p-8 rounded-lg border border-border-color shadow-sm">
+      <div className="bg-card p-8 rounded-lg border border-border shadow-sm">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-          <p className="text-text-light mt-4">Loading hierarchy...</p>
+          <p className="text-muted-foreground mt-4">Loading hierarchy...</p>
         </div>
       </div>
     );
@@ -54,7 +54,7 @@ export function HierarchyTree({ organizationId }: HierarchyTreeProps) {
 
   if (error) {
     return (
-      <div className="bg-white p-8 rounded-lg border border-border-color shadow-sm">
+      <div className="bg-card p-8 rounded-lg border border-border shadow-sm">
         <div className="text-center">
           <p className="text-red-600">{error}</p>
           <button
@@ -70,14 +70,14 @@ export function HierarchyTree({ organizationId }: HierarchyTreeProps) {
 
   if (!rootOrg) {
     return (
-      <div className="bg-white p-8 rounded-lg border border-border-color shadow-sm">
-        <p className="text-center text-text-light">No organization data found.</p>
+      <div className="bg-card p-8 rounded-lg border border-border shadow-sm">
+        <p className="text-center text-muted-foreground">No organization data found.</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
+    <div className="bg-card p-6 rounded-lg border border-border shadow-sm">
       <div className="space-y-2">
         <TreeNode organization={rootOrg} level={0} />
       </div>
@@ -103,19 +103,19 @@ function TreeNode({ organization, level }: TreeNodeProps) {
     <div className="select-none">
       {/* Organization Node */}
       <div
-        className="flex items-center gap-3 p-4 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors group"
+        className="flex items-center gap-3 p-4 rounded-lg hover:bg-muted/40 cursor-pointer transition-colors group"
         style={{ marginLeft: `${level * 32}px` }}
       >
         {/* Expand/Collapse Button */}
         <button
           onClick={toggleExpand}
-          className="flex-shrink-0 p-1 hover:bg-gray-200 rounded transition-colors"
+          className="flex-shrink-0 p-1 hover:bg-muted rounded transition-colors"
         >
           {hasChildren ? (
             isExpanded ? (
-              <ChevronDown className="h-4 w-4 text-text-light" />
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
             ) : (
-              <ChevronRight className="h-4 w-4 text-text-light" />
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
             )
           ) : (
             <div className="h-4 w-4" /> // Spacer for alignment
@@ -130,12 +130,12 @@ function TreeNode({ organization, level }: TreeNodeProps) {
         {/* Organization Details */}
         <div className="flex-1 min-w-0" onClick={handleClick}>
           <div className="flex items-center gap-2 mb-1">
-            <p className="font-semibold text-text-dark truncate">{organization.name}</p>
+            <p className="font-semibold text-foreground truncate">{organization.name}</p>
             <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${getOrganizationTypeBadgeColor(organization.type)}`}>
               {getOrganizationTypeLabel(organization.type)}
             </span>
           </div>
-          <div className="flex items-center gap-4 text-xs text-text-light">
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
             <div className="flex items-center gap-1">
               <Users className="h-3 w-3" />
               <span>{organization._count?.contacts || 0} contacts</span>
@@ -157,8 +157,8 @@ function TreeNode({ organization, level }: TreeNodeProps) {
         <div className="flex-shrink-0">
           <span className={`px-2 py-1 rounded-full text-xs font-medium ${
             organization.isActive
-              ? 'bg-green-100 text-green-800'
-              : 'bg-red-100 text-red-800'
+              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+              : "bg-rose-500/15 text-rose-700 dark:text-rose-300"
           }`}>
             {organization.isActive ? 'Active' : 'Inactive'}
           </span>

@@ -68,7 +68,7 @@ export function OrganizationSelector({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-2 border border-border-color rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-left flex items-center justify-between"
+        className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-left flex items-center justify-between"
       >
         {selectedOrg ? (
           <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -76,16 +76,16 @@ export function OrganizationSelector({
               <Building2 className="h-4 w-4 text-primary" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-medium text-text-dark truncate">{selectedOrg.name}</p>
-              <p className="text-xs text-text-light">
+              <p className="font-medium text-foreground truncate">{selectedOrg.name}</p>
+              <p className="text-xs text-muted-foreground">
                 {getOrganizationTypeLabel(selectedOrg.type)}
               </p>
             </div>
           </div>
         ) : (
-          <span className="text-text-light">{placeholder}</span>
+          <span className="text-muted-foreground">{placeholder}</span>
         )}
-        <ChevronDown className={`h-4 w-4 text-text-light transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {/* Dropdown */}
@@ -98,17 +98,17 @@ export function OrganizationSelector({
           />
 
           {/* Dropdown Content */}
-          <div className="absolute z-50 w-full mt-2 bg-white border border-border-color rounded-lg shadow-lg max-h-80 overflow-hidden">
+          <div className="absolute z-50 w-full mt-2 bg-popover border border-border rounded-lg shadow-lg max-h-80 overflow-hidden">
             {/* Search */}
-            <div className="p-3 border-b border-border-color">
+            <div className="p-3 border-b border-border">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-light" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Search organizations..."
-                  className="w-full pl-10 pr-4 py-2 border border-border-color rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full pl-10 pr-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
                   autoFocus
                 />
               </div>
@@ -120,20 +120,20 @@ export function OrganizationSelector({
                 <button
                   type="button"
                   onClick={handleClear}
-                  className="w-full px-4 py-2 text-left hover:bg-gray-50 transition-colors border-b border-border-color"
+                  className="w-full px-4 py-2 text-left hover:bg-muted/40 transition-colors border-b border-border"
                 >
-                  <p className="text-sm text-text-light">Clear selection</p>
+                  <p className="text-sm text-muted-foreground">Clear selection</p>
                 </button>
               )}
 
               {loading ? (
                 <div className="p-8 text-center">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
-                  <p className="text-sm text-text-light mt-2">Loading...</p>
+                  <p className="text-sm text-muted-foreground mt-2">Loading...</p>
                 </div>
               ) : filteredOrgs.length === 0 ? (
                 <div className="p-8 text-center">
-                  <p className="text-sm text-text-light">No organizations found</p>
+                  <p className="text-sm text-muted-foreground">No organizations found</p>
                 </div>
               ) : (
                 filteredOrgs.map((org) => (
@@ -141,7 +141,7 @@ export function OrganizationSelector({
                     key={org.id}
                     type="button"
                     onClick={() => handleSelect(org.id)}
-                    className={`w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-border-color last:border-0 ${
+                    className={`w-full px-4 py-3 text-left hover:bg-muted/40 transition-colors border-b border-border last:border-0 ${
                       value === org.id ? 'bg-primary/5' : ''
                     }`}
                   >
@@ -151,12 +151,12 @@ export function OrganizationSelector({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <p className="font-medium text-text-dark truncate">{org.name}</p>
+                          <p className="font-medium text-foreground truncate">{org.name}</p>
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getOrganizationTypeBadgeColor(org.type)}`}>
                             {getOrganizationTypeLabel(org.type)}
                           </span>
                         </div>
-                        <div className="flex items-center gap-3 text-xs text-text-light">
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
                           {org.industry && <span>{org.industry}</span>}
                           {org.taxId && <span>Tax ID: {org.taxId.slice(0, 2)}-***-{org.taxId.slice(-4)}</span>}
                         </div>

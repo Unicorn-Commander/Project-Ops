@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import api from "@/lib/api";
+import { statusBadgeClass } from "@/lib/badge-styles";
 
 interface StatusUpdateProps {
   projectId: string;
@@ -19,27 +20,11 @@ interface StatusUpdateProps {
 }
 
 const PROJECT_STATUSES = [
-  { value: "NEW", label: "New", color: "bg-blue-100 text-blue-800" },
-  {
-    value: "IN_PROGRESS",
-    label: "In Progress",
-    color: "bg-yellow-100 text-yellow-800",
-  },
-  {
-    value: "UNDER_REVIEW",
-    label: "Under Review",
-    color: "bg-purple-100 text-purple-800",
-  },
-  {
-    value: "COMPLETED",
-    label: "Completed",
-    color: "bg-green-100 text-green-800",
-  },
-  {
-    value: "ARCHIVED",
-    label: "Archived",
-    color: "bg-gray-100 text-gray-800",
-  },
+  { value: "NEW",          label: "New",          color: statusBadgeClass("NEW") },
+  { value: "IN_PROGRESS",  label: "In Progress",  color: statusBadgeClass("IN_PROGRESS") },
+  { value: "UNDER_REVIEW", label: "Under Review", color: statusBadgeClass("UNDER_REVIEW") },
+  { value: "COMPLETED",    label: "Completed",    color: statusBadgeClass("COMPLETED") },
+  { value: "ARCHIVED",     label: "Archived",     color: statusBadgeClass("ARCHIVED") },
 ];
 
 export function StatusUpdate({

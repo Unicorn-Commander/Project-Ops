@@ -119,10 +119,10 @@ export function CommentItem({ comment, currentUserId, onUpdate, onDelete }: Comm
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-2">
               <div>
-                <p className="font-semibold text-gray-900">
+                <p className="font-semibold text-foreground">
                   {comment.user?.name || 'Unknown User'}
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted-foreground">
                   {getRelativeTime(comment.createdAt)}
                   {comment.updatedAt !== comment.createdAt && ' (edited)'}
                 </p>

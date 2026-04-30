@@ -76,7 +76,7 @@ export function DocumentList({ projectId }: DocumentListProps) {
   const getFileIcon = (mimeType: string) => {
     if (mimeType === 'application/pdf') return <FileText className="h-5 w-5 text-red-600" />;
     if (mimeType.startsWith('image/')) return <ImageIcon className="h-5 w-5 text-blue-600" />;
-    return <File className="h-5 w-5 text-gray-600" />;
+    return <File className="h-5 w-5 text-muted-foreground" />;
   };
 
   const formatFileSize = (bytes: number) => {
@@ -167,8 +167,8 @@ export function DocumentList({ projectId }: DocumentListProps) {
       )}
 
       {documents.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          <File className="h-12 w-12 mx-auto mb-3 text-gray-400" />
+        <div className="text-center py-8 text-muted-foreground">
+          <File className="h-12 w-12 mx-auto mb-3 text-muted-foreground/70" />
           <p>No documents uploaded yet</p>
           {canUpload() && (
             <p className="text-sm mt-2">Click the button above to upload your first document</p>
@@ -182,10 +182,10 @@ export function DocumentList({ projectId }: DocumentListProps) {
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 {getFileIcon(document.mimeType)}
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-900 truncate">
+                  <p className="font-medium text-foreground truncate">
                     {document.fileName}
                   </p>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-muted-foreground">
                     {formatFileSize(document.fileSize)} • {formatDate(document.createdAt)}
                   </p>
                 </div>

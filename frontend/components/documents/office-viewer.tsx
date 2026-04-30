@@ -54,7 +54,7 @@ export function OfficeViewer({ fileUrl, fileName }: OfficeViewerProps) {
 
   return (
     <div className="w-full h-full flex flex-col">
-      <div className="flex-1 relative bg-gray-100">
+      <div className="flex-1 relative bg-muted">
         {viewerUrl ? (
           <iframe
             src={viewerUrl}
@@ -64,13 +64,13 @@ export function OfficeViewer({ fileUrl, fileName }: OfficeViewerProps) {
           />
         ) : (
           <div className="flex items-center justify-center h-full">
-            <p className="text-gray-500">Loading document viewer...</p>
+            <p className="text-muted-foreground">Loading document viewer...</p>
           </div>
         )}
       </div>
-      <div className="p-4 border-t bg-gray-50">
+      <div className="p-4 border-t bg-muted/40">
         <div className="flex items-center justify-center gap-3">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted-foreground">
             Viewing with {viewerType === 'office' ? 'Microsoft Office Online' : 'Google Docs Viewer'}
           </p>
           <div className="flex gap-2">

@@ -102,11 +102,11 @@ export function DocumentViewerModal({
           {!isPDF && !isImage && !isOffice && !isText && (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
-                <FileText className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-                <p className="text-gray-600 mb-2 font-semibold">
+                <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground/70" />
+                <p className="text-muted-foreground mb-2 font-semibold">
                   Preview not available for this file type
                 </p>
-                <p className="text-sm text-gray-500 mb-4">
+                <p className="text-sm text-muted-foreground mb-4">
                   File type: {document.mimeType}
                 </p>
                 <Button onClick={handleDownload}>

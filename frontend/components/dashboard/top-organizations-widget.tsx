@@ -100,8 +100,8 @@ export function TopOrganizationsWidget() {
                   org.type === 'AGENCY'
                     ? 'bg-primary/10 text-primary'
                     : org.type === 'BUSINESS'
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-orange-100 text-orange-800'
+                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                    : "bg-amber-500/15 text-amber-700 dark:text-amber-300"
                 }`}>
                   {org.type === 'AGENCY' ? 'Agency' : org.type === 'BUSINESS' ? 'Business' : 'Individual'}
                 </span>
