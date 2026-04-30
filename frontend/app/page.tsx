@@ -6,13 +6,14 @@ import { iconWellClass } from "@/lib/badge-styles";
 import { KanbanShowcase } from "@/components/landing/kanban-showcase";
 import {
   KanbanSquare,
-  Users,
-  FileText,
-  Bell,
   Building2,
+  Receipt,
+  UsersRound,
+  FileText,
+  Radio,
+  MessageSquare,
   ShieldCheck,
   Sparkles,
-  MessageSquare,
   ArrowRight,
   CheckCircle2,
 } from "lucide-react";
@@ -26,44 +27,50 @@ const features: Array<{
   {
     icon: KanbanSquare,
     title: "Projects & tasks",
-    body: "Status, priority, deadlines, milestones — and a kanban board for in-flight work.",
+    body: "Status, priority, deadlines, owners — plus a kanban board so the work in flight is the work you can see.",
     tone: "blue",
   },
   {
-    icon: Users,
-    title: "Roles for real teams",
-    body: "Admin, manager, staff, and client. Each sees what they should — no toggles, no accidents.",
+    icon: UsersRound,
+    title: "Organizations & contacts",
+    body: "A real CRM under the hood. Parent/child organization hierarchy, multiple contacts per org, and per-organization project rollups.",
     tone: "emerald",
+  },
+  {
+    icon: Receipt,
+    title: "Billing & invoices",
+    body: "Track billing amount, invoice number, payment status, billing date, and amount paid right on the project — no second tool.",
+    tone: "amber",
   },
   {
     icon: Building2,
     title: "Client portal",
     body: "Invite a client to a private view of their projects. Share documents. Stay out of email.",
-    tone: "amber",
+    tone: "violet",
   },
   {
     icon: FileText,
     title: "Document workspace",
     body: "Upload files, attach to projects or tasks, share with the right people. S3-compatible storage.",
-    tone: "violet",
+    tone: "orange",
   },
   {
-    icon: Bell,
-    title: "Quiet notifications",
-    body: "Email when work is assigned, status changes, or a deadline is near. Quiet otherwise.",
-    tone: "orange",
+    icon: Radio,
+    title: "Real-time collaboration",
+    body: "WebSocket-driven updates across the team. When someone moves a card or marks a task done, every other tab catches up live.",
+    tone: "rose",
   },
   {
     icon: MessageSquare,
     title: "Activity & comments",
-    body: "Threaded comments on projects and tasks, plus a unified activity feed so anyone can catch up in a glance.",
+    body: "Threaded comments on projects and tasks plus a unified activity feed — anyone can catch up in a glance.",
     tone: "blue",
   },
   {
     icon: ShieldCheck,
     title: "SSO + audit trail",
-    body: "Sign in with Unicorn Commander SSO. Every change is logged with who, when, and what.",
-    tone: "rose",
+    body: "Sign in with Unicorn Commander SSO. Every change is logged with who, when, and what — exportable.",
+    tone: "primary",
   },
 ];
 
@@ -139,16 +146,23 @@ export default function Home() {
           </h1>
 
           <p className="mx-auto mt-7 max-w-2xl text-balance text-lg leading-relaxed text-foreground/70 md:text-xl">
-            CRM, project management, kanban, and a built-in AI agent — for teams who'd rather
-            ship than chase status updates.
+            CRM, project management, kanban, billing, and a built-in AI agent — for teams who'd
+            rather ship than chase status updates.
           </p>
 
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link href="/auth/login">
               <Button
                 size="lg"
-                className="bg-foreground text-background hover:bg-foreground/90 px-7 shadow-lg shadow-foreground/10"
+                className="bg-foreground text-background hover:bg-foreground/90 px-6 shadow-lg shadow-foreground/10"
               >
+                <Image
+                  src="/the-colonel.png"
+                  alt=""
+                  width={22}
+                  height={22}
+                  className="mr-2 h-[22px] w-[22px] shrink-0"
+                />
                 Sign in with Unicorn Commander
                 <ArrowRight className="ml-1.5 h-4 w-4" />
               </Button>
@@ -169,6 +183,10 @@ export default function Home() {
             <span className="inline-flex items-center gap-1.5">
               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
               Self-hosted, your data
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              Billing built in
             </span>
             <span className="inline-flex items-center gap-1.5">
               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
@@ -391,8 +409,15 @@ export default function Home() {
             <Link href="/auth/login">
               <Button
                 size="lg"
-                className="bg-foreground text-background hover:bg-foreground/90 px-7 shadow-lg shadow-foreground/10"
+                className="bg-foreground text-background hover:bg-foreground/90 px-6 shadow-lg shadow-foreground/10"
               >
+                <Image
+                  src="/the-colonel.png"
+                  alt=""
+                  width={22}
+                  height={22}
+                  className="mr-2 h-[22px] w-[22px] shrink-0"
+                />
                 Sign in with Unicorn Commander
                 <ArrowRight className="ml-1.5 h-4 w-4" />
               </Button>

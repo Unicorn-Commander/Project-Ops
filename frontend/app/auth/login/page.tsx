@@ -126,8 +126,16 @@ export default function LoginPage() {
           >
             <a
               href={`${process.env.NEXT_PUBLIC_API_URL || "/api/v1"}/auth/keycloak`}
+              className="flex items-center justify-center gap-2"
             >
-              Sign in with Unicorn Commander
+              <Image
+                src="/the-colonel.png"
+                alt=""
+                width={22}
+                height={22}
+                className="h-[22px] w-[22px] shrink-0"
+              />
+              <span>Sign in with Unicorn Commander</span>
             </a>
           </Button>
 
