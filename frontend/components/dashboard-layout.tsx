@@ -17,6 +17,7 @@ import { useAuthStore } from "@/lib/store";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AssistantPanel } from "@/components/assistant-panel";
 import { roleBadgeClass } from "@/lib/badge-styles";
+import { Avatar } from "@/components/ui/avatar";
 import {
   LayoutDashboard,
   FileText,
@@ -155,9 +156,17 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           {/* Navigation — grouped by section so the 9-item nav reads as
-              three short lists rather than one long one. */}
+              three short lists rather than one long one. The active item
+              gets a tinted icon-well treatment matching its group, the
+              same colour vocabulary the dashboard stat cards use. */}
           <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
-            {(["Workspace", "CRM", "Admin"] as const).map((group) =>
+            {(
+              [
+                ["Workspace", "blue"],
+                ["CRM", "emerald"],
+                ["Admin", "rose"],
+              ] as const
+            ).map(([group, tone]) =>
               groupedNav[group]?.length ? (
                 <div key={group}>
                   <div className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
@@ -169,22 +178,31 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                       const isActive =
                         pathname === item.href ||
                         (item.href !== "/dashboard" && pathname?.startsWith(item.href + "/"));
+                      const activeIconBg = {
+                        blue: "bg-blue-500/15 text-blue-600 dark:text-blue-300",
+                        emerald: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
+                        rose: "bg-rose-500/15 text-rose-600 dark:text-rose-300",
+                      }[tone];
                       return (
                         <Link
                           key={item.name}
                           href={item.href}
-                          className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                          className={`group flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm font-medium transition-colors ${
                             isActive
                               ? "bg-foreground/[0.06] text-foreground"
                               : "text-muted-foreground hover:bg-muted hover:text-foreground"
                           }`}
                           onClick={() => setSidebarOpen(false)}
                         >
-                          <Icon
-                            className={`h-[18px] w-[18px] ${
-                              isActive ? "text-foreground" : "text-muted-foreground"
+                          <span
+                            className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+                              isActive
+                                ? activeIconBg
+                                : "text-muted-foreground group-hover:text-foreground"
                             }`}
-                          />
+                          >
+                            <Icon className="h-[18px] w-[18px]" />
+                          </span>
                           {item.name}
                         </Link>
                       );
@@ -231,9 +249,17 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 className="flex items-center gap-2 px-2"
                 aria-label="User menu"
               >
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-foreground/10 text-[11px] font-semibold uppercase">
-                  {initials || <UserCircle className="h-4 w-4" />}
-                </span>
+                {user?.email || user?.firstName ? (
+                  <Avatar
+                    name={`${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim() || user?.email || "?"}
+                    initials={initials || undefined}
+                    size={28}
+                  />
+                ) : (
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-foreground/10">
+                    <UserCircle className="h-4 w-4" />
+                  </span>
+                )}
                 <span className="hidden text-sm font-medium md:inline">
                   {user?.firstName}
                 </span>

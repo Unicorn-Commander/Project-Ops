@@ -16,6 +16,8 @@ import { Building2, Users, Briefcase, User, Plus, Search, Filter, MoreVertical, 
 import { CreateOrganizationModal } from '@/components/modals/create-organization-modal';
 import { EditOrganizationModal } from '@/components/modals/edit-organization-modal';
 import { activeBadgeClass, iconWellClass } from '@/lib/badge-styles';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
 
 export default function OrganizationsPage() {
   const router = useRouter();
@@ -307,8 +309,20 @@ export default function OrganizationsPage() {
               </tr>
             ) : organizations.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
-                  No organizations found. Create your first organization to get started.
+                <td colSpan={7} className="p-0">
+                  <EmptyState
+                    icon={Building2}
+                    iconTone="emerald"
+                    title="No organizations yet"
+                    body="Add your first client organization to start tracking projects, contacts, and billing against it."
+                    action={
+                      <Button onClick={() => setShowCreateModal(true)}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        New organization
+                      </Button>
+                    }
+                    className="m-4 border-0"
+                  />
                 </td>
               </tr>
             ) : (

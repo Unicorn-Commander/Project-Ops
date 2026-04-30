@@ -14,6 +14,7 @@ import {
 } from '@dnd-kit/core';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -203,12 +204,11 @@ function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
             )}
 
             {task.assignedTo ? (
-              <div
-                className="h-6 w-6 rounded-full bg-primary text-white flex items-center justify-center text-xs"
-                title={`${task.assignedTo.firstName || ''} ${task.assignedTo.lastName || ''}`}
-              >
-                {getInitials(task.assignedTo.firstName, task.assignedTo.lastName, task.assignedTo.email)}
-              </div>
+              <Avatar
+                name={`${task.assignedTo.firstName ?? ''} ${task.assignedTo.lastName ?? ''}`.trim() || task.assignedTo.email}
+                initials={getInitials(task.assignedTo.firstName, task.assignedTo.lastName, task.assignedTo.email)}
+                size={24}
+              />
             ) : (
               <span className="text-xs text-muted-foreground/70">Unassigned</span>
             )}

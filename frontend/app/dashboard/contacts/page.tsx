@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { CreateContactModal } from "@/components/modals/create-contact-modal";
 import { EditContactModal } from "@/components/modals/edit-contact-modal";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   getContacts,
   deleteContact,
@@ -238,9 +239,18 @@ export default function ContactsPage() {
                   </tr>
                 ) : filteredContacts.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center">
-                      <Users className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-                      <p className="text-muted-foreground">No contacts found</p>
+                    <td colSpan={6} className="p-0">
+                      <EmptyState
+                        icon={Users}
+                        iconTone="violet"
+                        title={searchTerm ? "No contacts match" : "No contacts yet"}
+                        body={
+                          searchTerm
+                            ? "Try a different search term, or clear the filter."
+                            : "Add your first contact to start associating people with organizations and projects."
+                        }
+                        className="m-4 border-0"
+                      />
                     </td>
                   </tr>
                 ) : (

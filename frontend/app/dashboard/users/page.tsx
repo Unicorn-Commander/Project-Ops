@@ -10,6 +10,7 @@ import { format } from "date-fns";
 import { UserPlus, Search, MoreVertical, Shield, User, Edit } from "lucide-react";
 import { EditUserModal } from "@/components/modals/edit-user-modal";
 import { CreateUserModal } from "@/components/modals/create-user-modal";
+import { EmptyState } from "@/components/ui/empty-state";
 
 interface User {
   id: string;
@@ -269,8 +270,26 @@ export default function UsersPage() {
         </div>
 
         {filteredUsers.length === 0 && (
-          <div className="text-center py-12 text-muted-foreground">
-            No users found matching your search.
+          <div className="p-4">
+            <EmptyState
+              icon={UserPlus}
+              iconTone="rose"
+              title={searchTerm ? "No users match" : "No users yet"}
+              body={
+                searchTerm
+                  ? "Try a different search term."
+                  : "Invite teammates to give them access. Roles control what each one can see and edit."
+              }
+              action={
+                !searchTerm && (
+                  <Button onClick={() => setIsCreateModalOpen(true)}>
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Invite user
+                  </Button>
+                )
+              }
+              className="border-0"
+            />
           </div>
         )}
       </Card>

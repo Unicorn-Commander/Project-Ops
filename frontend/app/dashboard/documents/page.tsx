@@ -15,8 +15,11 @@ import {
   Image,
   FileSpreadsheet,
   Eye,
+  FolderOpen,
+  Plus,
 } from "lucide-react";
 import UploadDocumentsModal from "@/components/modals/upload-documents-modal";
+import { EmptyState } from "@/components/ui/empty-state";
 import { DocumentViewerModal } from "@/components/documents/document-viewer-modal";
 
 interface Document {
@@ -331,10 +334,26 @@ export default function DocumentsPage() {
         </div>
 
         {filteredDocuments.length === 0 && (
-          <div className="text-center py-12 text-muted-foreground">
-            {searchTerm
-              ? "No documents found matching your search."
-              : "No documents uploaded yet."}
+          <div className="p-4">
+            <EmptyState
+              icon={FolderOpen}
+              iconTone="orange"
+              title={searchTerm ? "No documents match" : "No documents yet"}
+              body={
+                searchTerm
+                  ? "Try a different search, or clear the filter."
+                  : "Upload a file to attach it to a project. S3-compatible storage with your team and clients."
+              }
+              action={
+                !searchTerm && (
+                  <Button onClick={() => setUploadModalOpen(true)}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Upload document
+                  </Button>
+                )
+              }
+              className="border-0"
+            />
           </div>
         )}
       </Card>

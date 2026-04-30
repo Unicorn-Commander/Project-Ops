@@ -282,7 +282,7 @@ export default function DashboardPage() {
                 myTasks.map((task) => (
                   <div
                     key={task.id}
-                    className="p-3 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                    className="group p-3 border rounded-lg cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-sm hover:bg-card"
                     onClick={() => handleTaskClick(task)}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -364,7 +364,7 @@ export default function DashboardPage() {
               {recentProjects.map((projectItem) => (
                 <div
                   key={projectItem.id}
-                  className="flex items-center justify-between gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                  className="group flex items-center justify-between gap-4 p-4 border rounded-lg cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md hover:bg-card"
                   onClick={() => router.push(`/dashboard/projects/${projectItem.id}`)}
                 >
                   <div className="flex-1 min-w-0">

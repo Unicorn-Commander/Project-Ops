@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Task, TaskStatus, TaskPriority, TaskType } from "@/lib/tasks-api";
 import { statusBadgeClass, priorityTextClass } from "@/lib/badge-styles";
+import { Avatar } from "@/components/ui/avatar";
 import {
   FileText,
   HelpCircle,
@@ -103,16 +104,18 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         </div>
 
         {/* Assigned To */}
-        {task.assignedTo && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <User className="h-3 w-3" />
-            <span>
-              {task.assignedTo.firstName && task.assignedTo.lastName
-                ? `${task.assignedTo.firstName} ${task.assignedTo.lastName}`
-                : task.assignedTo.email}
-            </span>
-          </div>
-        )}
+        {task.assignedTo && (() => {
+          const fullName =
+            task.assignedTo.firstName && task.assignedTo.lastName
+              ? `${task.assignedTo.firstName} ${task.assignedTo.lastName}`
+              : task.assignedTo.email;
+          return (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Avatar name={fullName} size={20} />
+              <span className="truncate">{fullName}</span>
+            </div>
+          );
+        })()}
 
         {/* Due Date */}
         {task.dueDate && (
