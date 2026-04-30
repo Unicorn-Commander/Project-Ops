@@ -45,7 +45,13 @@ export function AssistantPanel() {
       : undefined;
 
   useEffect(() => {
-    if (open && scrollRef.current) {
+    if (!open || !scrollRef.current) return;
+    if (messages.length === 0) {
+      // First-open with welcome state — scroll to top so the user sees the
+      // header copy and suggestion chips, not the bottom of the panel.
+      scrollRef.current.scrollTop = 0;
+    } else {
+      // Active chat — keep the latest message in view.
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [open, messages]);
@@ -107,16 +113,21 @@ export function AssistantPanel() {
 
   return (
     <>
-      {/* Trigger */}
-      <Button
-        variant="ghost"
-        size="icon"
+      {/* Trigger — small pill with the assistant's mascot avatar so the
+          entry point reads as "ask Project Ops" rather than a generic
+          sparkle icon. */}
+      <button
         onClick={() => setOpen(true)}
-        aria-label="Ask the assistant"
+        aria-label="Ask Project Ops Assistant"
         title="Ask the assistant"
+        className="group inline-flex items-center gap-2 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground/80 transition-colors hover:border-foreground/30 hover:text-foreground"
       >
-        <Sparkles className="h-5 w-5" />
-      </Button>
+        <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-white ring-1 ring-border">
+          <Image src="/projectops-mascot.png" alt="" width={20} height={20} />
+        </span>
+        <span className="hidden sm:inline">Ask</span>
+        <Sparkles className="h-3.5 w-3.5 text-foreground/55 transition-colors group-hover:text-foreground/80" />
+      </button>
 
       {/* Panel */}
       {open && (

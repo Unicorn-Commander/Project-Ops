@@ -1,6 +1,10 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
+// Card surface — combines a soft outer shadow (works in light mode) with
+// a 1px top inner-highlight ring rendered via a ::before pseudo (visible in
+// dark mode where black-on-black shadows disappear). The result is that
+// cards lift in both themes without any per-theme overrides per consumer.
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -8,8 +12,10 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "rounded-xl border bg-card text-card-foreground shadow",
-      className
+      "relative rounded-xl border border-border bg-card text-card-foreground shadow-sm",
+      "before:pointer-events-none before:absolute before:inset-0 before:rounded-xl",
+      "before:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] dark:before:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]",
+      className,
     )}
     {...props}
   />

@@ -50,20 +50,20 @@
   }
 
   .dark {
-    --color-background: #0b0b0d;        /* warm near-black, no purple cast */
+    --color-background: #08080a;        /* deeper near-black so cards visibly lift */
     --color-foreground: #fafafa;
-    --color-card: #15151a;              /* slightly elevated above bg */
+    --color-card: #17171c;              /* zinc-900-ish, clearly elevated above bg */
     --color-card-foreground: #fafafa;
-    --color-border: #27272a;            /* zinc-800 */
-    --color-input: #27272a;
-    --color-popover: #15151a;
+    --color-border: #2e2e33;            /* zinc-700-ish, distinct enough to read at a glance */
+    --color-input: #2e2e33;
+    --color-popover: #1a1a20;
     --color-popover-foreground: #fafafa;
     --color-primary: #fafafa;           /* foreground-on-background flip */
     --color-primary-foreground: #0b0b0d;
-    --color-secondary: #1c1c20;
+    --color-secondary: #1f1f25;
     --color-secondary-foreground: #fafafa;
-    --color-muted: #1c1c20;
-    --color-muted-foreground: #a1a1aa;
+    --color-muted: #1f1f25;
+    --color-muted-foreground: #b4b4bd;  /* brighter for legibility */
     --color-ring: #fafafa;
   }
 }
