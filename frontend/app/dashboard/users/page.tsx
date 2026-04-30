@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import api from "@/lib/api";
+import { roleBadgeClass, activeBadgeClass } from "@/lib/badge-styles";
+import { format } from "date-fns";
 import { UserPlus, Search, MoreVertical, Shield, User, Edit } from "lucide-react";
 import { EditUserModal } from "@/components/modals/edit-user-modal";
 import { CreateUserModal } from "@/components/modals/create-user-modal";
@@ -70,15 +72,7 @@ export default function UsersPage() {
     }
   };
 
-  const getRoleBadgeColor = (role: string) => {
-    const colors: Record<string, string> = {
-      ADMIN: "bg-red-100 text-red-800",
-      MANAGER: "bg-blue-100 text-blue-800",
-      STAFF: "bg-green-100 text-green-800",
-      CLIENT: "bg-gray-100 text-gray-800",
-    };
-    return colors[role] || "bg-gray-100 text-gray-800";
-  };
+  const getRoleBadgeColor = roleBadgeClass;
 
   const getRoleIcon = (role: string) => {
     return role === "ADMIN" ? (
@@ -236,18 +230,14 @@ export default function UsersPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span
-                      className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        user.isActive
-                          ? "bg-green-100 text-green-800"
-                          : "bg-red-100 text-red-800"
-                      }`}
+                      className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${activeBadgeClass(user.isActive)}`}
                     >
                       {user.isActive ? "Active" : "Inactive"}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
                     {user.lastLoginAt
-                      ? new Date(user.lastLoginAt).toLocaleDateString()
+                      ? format(new Date(user.lastLoginAt), "MMM d, yyyy")
                       : "Never"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm">

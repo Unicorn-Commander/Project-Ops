@@ -17,6 +17,12 @@ import { EditTaskModal } from "@/components/modals/edit-task-modal";
 import { getProjectTasks, Task } from "@/lib/tasks-api";
 import api from "@/lib/api";
 import {
+  statusBadgeClass,
+  priorityTextClass,
+  paymentStatusBadgeClass,
+} from "@/lib/badge-styles";
+import { format } from "date-fns";
+import {
   ArrowLeft,
   Calendar,
   User,
@@ -135,37 +141,9 @@ export default function ProjectDetailPage() {
     fetchProjectTasks();
   };
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      NEW: "bg-blue-100 text-blue-800",
-      IN_PROGRESS: "bg-yellow-100 text-yellow-800",
-      UNDER_REVIEW: "bg-purple-100 text-purple-800",
-      COMPLETED: "bg-green-100 text-green-800",
-      ARCHIVED: "bg-gray-100 text-gray-800",
-    };
-    return colors[status] || "bg-gray-100 text-gray-800";
-  };
-
-  const getPriorityColor = (priority: string) => {
-    const colors: Record<string, string> = {
-      LOW: "text-gray-600",
-      MEDIUM: "text-blue-600",
-      HIGH: "text-orange-600",
-      URGENT: "text-red-600",
-    };
-    return colors[priority] || "text-gray-600";
-  };
-
-  const getPaymentStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      UNPAID: "bg-red-100 text-red-800",
-      PARTIALLY_PAID: "bg-yellow-100 text-yellow-800",
-      PAID: "bg-green-100 text-green-800",
-      OVERDUE: "bg-red-200 text-red-900",
-      CANCELLED: "bg-gray-100 text-gray-800",
-    };
-    return colors[status] || "bg-gray-100 text-gray-800";
-  };
+  const getStatusColor = statusBadgeClass;
+  const getPriorityColor = priorityTextClass;
+  const getPaymentStatusColor = paymentStatusBadgeClass;
 
   const canEditProject = () => {
     return (
@@ -287,7 +265,7 @@ export default function ProjectDetailPage() {
                   </label>
                   <p className="text-foreground mt-1">
                     {projectData.dueDate
-                      ? new Date(projectData.dueDate).toLocaleDateString()
+                      ? format(new Date(projectData.dueDate), "MMM d, yyyy")
                       : "Not set"}
                   </p>
                 </div>
@@ -297,7 +275,7 @@ export default function ProjectDetailPage() {
                     Created
                   </label>
                   <p className="text-foreground mt-1">
-                    {new Date(projectData.createdAt).toLocaleDateString()}
+                    {format(new Date(projectData.createdAt), "MMM d, yyyy")}
                   </p>
                 </div>
               </div>
@@ -399,7 +377,7 @@ export default function ProjectDetailPage() {
                         Billing Date
                       </label>
                       <p className="text-foreground mt-1">
-                        {new Date(projectData.billingDate).toLocaleDateString()}
+                        {format(new Date(projectData.billingDate), "MMM d, yyyy")}
                       </p>
                     </div>
                   )}
@@ -410,7 +388,7 @@ export default function ProjectDetailPage() {
                         Payment Due Date
                       </label>
                       <p className="text-foreground mt-1">
-                        {new Date(projectData.paymentDueDate).toLocaleDateString()}
+                        {format(new Date(projectData.paymentDueDate), "MMM d, yyyy")}
                       </p>
                     </div>
                   )}
@@ -421,7 +399,7 @@ export default function ProjectDetailPage() {
                         Payment Received
                       </label>
                       <p className="text-foreground mt-1">
-                        {new Date(projectData.paymentReceivedDate).toLocaleDateString()}
+                        {format(new Date(projectData.paymentReceivedDate), "MMM d, yyyy")}
                       </p>
                     </div>
                   )}
@@ -533,7 +511,7 @@ export default function ProjectDetailPage() {
                 <div className="pb-4">
                   <p className="text-sm font-medium">Project Created</p>
                   <p className="text-xs text-muted-foreground">
-                    {new Date(projectData.createdAt).toLocaleString()}
+                    {format(new Date(projectData.createdAt), "MMM d, yyyy h:mm a")}
                   </p>
                 </div>
               </div>
@@ -548,7 +526,7 @@ export default function ProjectDetailPage() {
                   <div>
                     <p className="text-sm font-medium">Project Updated</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(projectData.updatedAt).toLocaleString()}
+                      {format(new Date(projectData.updatedAt), "MMM d, yyyy h:mm a")}
                     </p>
                   </div>
                 </div>

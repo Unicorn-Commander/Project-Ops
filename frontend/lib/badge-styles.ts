@@ -61,6 +61,16 @@ const PRIORITY_BADGE_TONE: Record<string, string> = {
   URGENT: "bg-rose-500/15   text-rose-700   dark:text-rose-300",
 };
 
+const ROLE_TONE: Record<string, string> = {
+  ADMIN:   "bg-rose-500/15    text-rose-700    dark:text-rose-300",
+  MANAGER: "bg-blue-500/15    text-blue-700    dark:text-blue-300",
+  STAFF:   "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  CLIENT:  "bg-zinc-500/15    text-zinc-700    dark:text-zinc-300",
+};
+
+const ACTIVE_TONE = "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
+const INACTIVE_TONE = "bg-rose-500/15 text-rose-700 dark:text-rose-300";
+
 const ICON_TONE: Record<string, string> = {
   blue:    "bg-blue-500/15    text-blue-600    dark:text-blue-300",
   amber:   "bg-amber-500/15   text-amber-600   dark:text-amber-300",
@@ -103,6 +113,21 @@ export function priorityBadgeClass(priority: string): string {
  */
 export function paymentStatusBadgeClass(status: string): string {
   return PAYMENT_STATUS_TONE[status] ?? ZINC_FALLBACK;
+}
+
+/**
+ * Pill style for UserRole values (ADMIN / MANAGER / STAFF / CLIENT).
+ */
+export function roleBadgeClass(role: string): string {
+  return ROLE_TONE[role] ?? ZINC_FALLBACK;
+}
+
+/**
+ * Pill style for boolean active/inactive states (e.g. user.isActive,
+ * organization.portalAccess). Pass the boolean directly.
+ */
+export function activeBadgeClass(isActive: boolean): string {
+  return isActive ? ACTIVE_TONE : INACTIVE_TONE;
 }
 
 /**
