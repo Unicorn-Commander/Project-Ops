@@ -138,7 +138,7 @@ export function AssistantPanel() {
             aria-hidden
           />
           <aside
-            className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-background shadow-2xl sm:max-w-lg"
+            className="fixed inset-y-0 right-0 z-50 flex h-screen w-full max-w-md flex-col border-l border-border bg-background shadow-2xl sm:max-w-lg"
             role="dialog"
             aria-label="Project Ops assistant"
           >
@@ -167,8 +167,10 @@ export function AssistantPanel() {
               </Button>
             </header>
 
-            {/* Messages */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-5">
+            {/* Messages — min-h-0 lets flex-1 actually shrink and scroll
+                when content overflows; without it the parent flex column
+                expands to fit the content instead of clipping. */}
+            <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
               {messages.length === 0 ? (
                 <div className="space-y-5">
                   <div>
