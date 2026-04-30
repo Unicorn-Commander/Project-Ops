@@ -194,20 +194,14 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Projects</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage and track projects
-          </p>
-        </div>
-        <Button
-          className="bg-primary hover:bg-primary/90"
-          onClick={() => setCreateModalOpen(true)}
-        >
+      {/* Header — title lives in the top bar; this is just the action row */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          Every project you can see, newest first.
+        </p>
+        <Button onClick={() => setCreateModalOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
-          New Project
+          New project
         </Button>
       </div>
 

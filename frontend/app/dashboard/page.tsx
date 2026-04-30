@@ -11,6 +11,7 @@ import { EditTaskModal } from "@/components/modals/edit-task-modal";
 import { TopContactsWidget } from "@/components/dashboard/top-contacts-widget";
 import api from "@/lib/api";
 import { getMyTasks, Task, TaskStatus } from "@/lib/tasks-api";
+import { useAuthStore } from "@/lib/store";
 import {
   statusBadgeClass,
   priorityTextClass,
@@ -65,6 +66,7 @@ export default function DashboardPage() {
   const [isTaskDetailsModalOpen, setIsTaskDetailsModalOpen] = useState(false);
   const [isEditTaskModalOpen, setIsEditTaskModalOpen] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuthStore();
 
   useEffect(() => {
     fetchDashboardData();
@@ -179,21 +181,20 @@ export default function DashboardPage() {
 
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Welcome back! Here's your project overview.
-          </p>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight text-foreground">
+              {user?.firstName ? `Welcome back, ${user.firstName}` : "Welcome back"}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Here's what's happening across your projects today.
+            </p>
+          </div>
+          <Button onClick={() => setIsCreateModalOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            New project
+          </Button>
         </div>
-        <Button
-          className="bg-primary hover:bg-primary/90"
-          onClick={() => setIsCreateModalOpen(true)}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          New Project
-        </Button>
-      </div>
 
       <div>
         {/* Stats Grid */}

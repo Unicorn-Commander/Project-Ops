@@ -187,20 +187,14 @@ export default function MyTasksPage() {
       />
 
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">My Tasks</h1>
-            <p className="text-muted-foreground mt-1">
-              Manage your assigned tasks and deadlines
-            </p>
-          </div>
-          <Button
-            className="bg-primary hover:bg-primary/90"
-            onClick={() => setIsCreateModalOpen(true)}
-          >
+        {/* Header — page title is in the top bar; subtitle + CTA only */}
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            Tasks assigned to you, sorted by due date.
+          </p>
+          <Button onClick={() => setIsCreateModalOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
-            New Task
+            New task
           </Button>
         </div>
 

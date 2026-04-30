@@ -107,12 +107,13 @@ const statusColors: Record<TaskStatus, string> = {
   [TaskStatus.CANCELLED]:          'bg-zinc-500/5    border-zinc-500/30',
 };
 
+// Status header text colour — dark-mode-aware tints matched to the column accents.
 const statusTextColors: Record<TaskStatus, string> = {
-  [TaskStatus.PENDING]: 'text-blue-800',
-  [TaskStatus.IN_PROGRESS]: 'text-yellow-800',
-  [TaskStatus.WAITING_FOR_CLIENT]: 'text-purple-800',
-  [TaskStatus.COMPLETED]: 'text-green-800',
-  [TaskStatus.CANCELLED]: 'text-gray-800',
+  [TaskStatus.PENDING]:            'text-blue-700    dark:text-blue-300',
+  [TaskStatus.IN_PROGRESS]:        'text-amber-700   dark:text-amber-300',
+  [TaskStatus.WAITING_FOR_CLIENT]: 'text-violet-700  dark:text-violet-300',
+  [TaskStatus.COMPLETED]:          'text-emerald-700 dark:text-emerald-300',
+  [TaskStatus.CANCELLED]:          'text-zinc-700    dark:text-zinc-300',
 };
 
 // Task Card Component
@@ -143,10 +144,10 @@ function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
     const today = new Date();
     const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
-    if (diffDays < 0) return { text: `${Math.abs(diffDays)}d overdue`, color: 'text-red-600' };
-    if (diffDays === 0) return { text: 'Due today', color: 'text-orange-600' };
-    if (diffDays <= 3) return { text: `${diffDays}d left`, color: 'text-orange-600' };
-    return { text: `${diffDays}d left`, color: 'text-gray-600' };
+    if (diffDays < 0)  return { text: `${Math.abs(diffDays)}d overdue`, color: 'text-rose-600 dark:text-rose-400' };
+    if (diffDays === 0) return { text: 'Due today',                       color: 'text-amber-600 dark:text-amber-400' };
+    if (diffDays <= 3) return { text: `${diffDays}d left`,                color: 'text-amber-600 dark:text-amber-400' };
+    return { text: `${diffDays}d left`, color: 'text-muted-foreground' };
   };
 
   const dueInfo = task.dueDate ? formatDueDate(task.dueDate) : null;
@@ -163,20 +164,20 @@ function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
       <Card
         className={`p-3 transition-all hover:shadow-md cursor-pointer ${
           isDragging || isDraggingState ? 'shadow-lg opacity-80' : ''
-        } ${isOverdue ? 'border-l-4 border-l-red-500' : ''}`}
+        } ${isOverdue ? 'border-l-4 border-l-rose-500' : ''}`}
       >
         <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing select-none">
           <div className="flex items-start justify-between gap-2 mb-2">
             <div className="flex items-center gap-2">
               <div className="text-primary">{getTypeIcon(task.type)}</div>
-              <h4 className="font-semibold text-sm text-gray-900 line-clamp-2">{task.title}</h4>
+              <h4 className="font-semibold text-sm text-foreground line-clamp-2">{task.title}</h4>
             </div>
             <Badge className={`text-xs ${getPriorityColor(task.priority)}`}>
               {task.priority}
             </Badge>
           </div>
 
-          <div className="text-xs text-gray-600 mb-2">
+          <div className="text-xs text-muted-foreground mb-2">
             <div className="flex items-center gap-1">
               <FileText className="h-3 w-3" />
               <span className="font-mono">{task.project?.projectNumber}</span>
@@ -186,7 +187,7 @@ function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
           </div>
 
           {isOverdue && (
-            <div className="flex items-center gap-1 text-xs text-red-600 font-semibold mb-2">
+            <div className="flex items-center gap-1 text-xs text-rose-600 dark:text-rose-400 font-semibold mb-2">
               <AlertTriangle className="h-3 w-3" />
               <span>OVERDUE</span>
             </div>
@@ -208,7 +209,7 @@ function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
                 {getInitials(task.assignedTo.firstName, task.assignedTo.lastName, task.assignedTo.email)}
               </div>
             ) : (
-              <span className="text-xs text-gray-400">Unassigned</span>
+              <span className="text-xs text-muted-foreground/70">Unassigned</span>
             )}
           </div>
         </div>
@@ -252,11 +253,11 @@ function KanbanColumn({ id, title, tasks, onTaskClick }: KanbanColumnProps) {
       <div
         ref={setNodeRef}
         className={`p-3 min-h-[calc(100vh-380px)] max-h-[calc(100vh-380px)] overflow-y-auto rounded-b-lg border-2 border-t-0 ${
-          isOver ? 'bg-gray-50 border-dashed' : 'bg-white'
+          isOver ? 'bg-muted/40 border-dashed' : 'bg-card'
         } ${statusColors[id].split(' ')[1]}`}
       >
         {tasks.length === 0 ? (
-          <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
+          <div className="flex items-center justify-center h-32 text-muted-foreground/70 text-sm">
             No tasks
           </div>
         ) : (
@@ -474,15 +475,14 @@ export default function KanbanPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Task Kanban Board</h1>
-          <p className="text-gray-600 mt-1">Drag and drop tasks to update their status</p>
-        </div>
+      {/* Header — title lives in the top bar; just the action row + hint */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          Drag and drop tasks to update their status.
+        </p>
         <Button onClick={() => setIsCreateModalOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Task
+          <Plus className="mr-2 h-4 w-4" />
+          New task
         </Button>
       </div>
 
@@ -492,7 +492,7 @@ export default function KanbanPage() {
           {/* Search */}
           <div className="lg:col-span-2">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground/70" />
               <Input
                 placeholder="Search tasks..."
                 value={searchQuery}
@@ -584,7 +584,7 @@ export default function KanbanPage() {
               </SelectContent>
             </Select>
 
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-muted-foreground">
               Showing {filteredTasks.length} of {tasks.filter((t) => t.status !== TaskStatus.CANCELLED).length} tasks
             </div>
           </div>
