@@ -209,7 +209,7 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="po-page-enter space-y-6">
       {/* Header — title lives in the top bar; this is just the action row */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-sm text-muted-foreground">

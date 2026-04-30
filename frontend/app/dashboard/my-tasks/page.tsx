@@ -199,7 +199,7 @@ export default function MyTasksPage() {
         task={selectedTask}
       />
 
-      <div className="space-y-6">
+      <div className="po-page-enter space-y-6">
         {/* Header — page title is in the top bar; subtitle + CTA only */}
         <div className="flex flex-wrap items-end justify-between gap-3">
           <p className="text-sm text-muted-foreground">

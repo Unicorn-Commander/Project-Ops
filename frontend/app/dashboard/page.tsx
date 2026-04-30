@@ -199,7 +199,7 @@ export default function DashboardPage() {
         task={selectedTask}
       />
 
-      <div className="space-y-6">
+      <div className="po-page-enter space-y-6">
         {/* Header */}
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>

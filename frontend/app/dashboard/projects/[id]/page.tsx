@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/use-toast";
 import { EditProjectModal } from "@/components/modals/edit-project-modal";
 import { StatusUpdate } from "@/components/project/status-update";
@@ -160,9 +161,31 @@ export default function ProjectDetailPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-10 bg-muted rounded w-1/3"></div>
-          <div className="h-64 bg-muted rounded"></div>
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-9 w-9 rounded-md" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-7 w-2/3" />
+            <Skeleton className="h-3 w-32" />
+          </div>
+          <Skeleton className="h-9 w-32" />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <Card className="p-6 space-y-3">
+              <Skeleton className="h-5 w-40" />
+              <SkeletonText lines={4} />
+            </Card>
+            <Card className="p-6 space-y-3">
+              <Skeleton className="h-5 w-32" />
+              {[1, 2, 3].map((i) => <SkeletonText key={i} lines={2} />)}
+            </Card>
+          </div>
+          <div className="space-y-6">
+            <Card className="p-6 space-y-3">
+              <Skeleton className="h-5 w-24" />
+              <SkeletonText lines={5} />
+            </Card>
+          </div>
         </div>
       </div>
     );

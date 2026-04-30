@@ -508,7 +508,7 @@ export default function KanbanPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="po-page-enter space-y-6">
       {/* Header — title lives in the top bar; just the action row + hint */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-sm text-muted-foreground">
