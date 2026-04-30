@@ -138,7 +138,7 @@ export function AssistantPanel() {
             aria-hidden
           />
           <aside
-            className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col border-l border-border bg-background shadow-2xl sm:max-w-lg"
+            className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-background shadow-2xl sm:max-w-lg"
             role="dialog"
             aria-label="Project Ops assistant"
           >
