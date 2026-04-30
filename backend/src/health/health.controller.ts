@@ -11,7 +11,11 @@ import {
 import { PrismaHealthIndicator } from './prisma.health';
 
 @ApiTags('health')
-@SkipThrottle()
+// Named throttlers ('short' + 'long') in app.module require an explicit map
+// in @nestjs/throttler v5 — bare @SkipThrottle() is a no-op against named
+// throttlers, so the docker healthcheck started 429-ing once probes plus
+// public traffic exceeded 10 req / 60s.
+@SkipThrottle({ short: true, long: true })
 @Controller('health')
 export class HealthController {
   constructor(

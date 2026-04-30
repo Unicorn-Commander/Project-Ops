@@ -45,7 +45,7 @@ export class ContactsController {
   }
 
   @Get()
-  @SkipThrottle()
+  @SkipThrottle({ short: true, long: true })
   @ApiOperation({ summary: 'Get all contacts with pagination and search' })
   @ApiQuery({ name: 'skip', required: false, type: Number })
   @ApiQuery({ name: 'take', required: false, type: Number })
@@ -70,7 +70,7 @@ export class ContactsController {
   }
 
   @Get('stats')
-  @SkipThrottle()
+  @SkipThrottle({ short: true, long: true })
   @ApiOperation({ summary: 'Get contact statistics for dashboard' })
   @ApiResponse({ status: 200, description: 'Contact statistics' })
   getStats() {
@@ -78,7 +78,7 @@ export class ContactsController {
   }
 
   @Get(':id')
-  @SkipThrottle()
+  @SkipThrottle({ short: true, long: true })
   @ApiOperation({ summary: 'Get contact by ID' })
   @ApiResponse({ status: 200, description: 'Contact details' })
   @ApiResponse({ status: 404, description: 'Contact not found' })
@@ -106,7 +106,7 @@ export class ContactsController {
   }
 
   @Get(':id/projects')
-  @SkipThrottle()
+  @SkipThrottle({ short: true, long: true })
   @ApiOperation({ summary: 'Get all projects for a contact' })
   @ApiQuery({ name: 'skip', required: false, type: Number })
   @ApiQuery({ name: 'take', required: false, type: Number })
@@ -121,7 +121,7 @@ export class ContactsController {
   }
 
   @Get(':id/billing')
-  @SkipThrottle()
+  @SkipThrottle({ short: true, long: true })
   @ApiOperation({ summary: 'Get billing summary for a contact' })
   @ApiResponse({ status: 200, description: 'Billing summary for contact' })
   @ApiResponse({ status: 404, description: 'Contact not found' })

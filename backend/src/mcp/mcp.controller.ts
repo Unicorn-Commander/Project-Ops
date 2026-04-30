@@ -26,7 +26,10 @@ import { User } from '@prisma/client';
 
 @ApiTags('mcp')
 @ApiBearerAuth()
-@SkipThrottle()
+// Brigade can issue many tool calls per minute on busy chats; bare
+// @SkipThrottle() is a no-op against the named throttlers in app.module,
+// so we have to spell them out for v5.
+@SkipThrottle({ short: true, long: true })
 @Controller('mcp')
 export class McpController {
   private readonly logger = new Logger(McpController.name);
