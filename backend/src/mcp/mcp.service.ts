@@ -147,6 +147,100 @@ export class McpService {
         wrap(await tools.addTaskComment(user, args)),
     );
 
+    // ─── Write tools ────────────────────────────────────────────────
+
+    server.registerTool(
+      'create_project',
+      {
+        title: 'Create a project',
+        description:
+          'Create a new project. Auto-assigns the next P-XXXXX number. ' +
+          'Defaults: status NEW, priority MEDIUM, assignee = caller. ' +
+          'CLIENT-role users cannot call this.',
+        inputSchema: {
+          title: z.string().min(1).max(200),
+          description: z.string().optional(),
+          clientName: z.string().min(1).max(200),
+          organizationId: z.string().optional(),
+          priority: z.string().optional(),
+          dueDate: z.string().optional(),
+          assignedToId: z.string().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.createProject(user, args)),
+    );
+
+    server.registerTool(
+      'update_project_status',
+      {
+        title: 'Update project status',
+        description:
+          'Change a project\'s status. Identify by id or projectNumber. ' +
+          'Status: NEW / IN_PROGRESS / UNDER_REVIEW / COMPLETED / ARCHIVED / ' +
+          'ON_HOLD. Setting COMPLETED also stamps completedAt.',
+        inputSchema: {
+          id: z.string().optional(),
+          projectNumber: z.string().optional(),
+          status: z.string().min(1),
+        },
+      },
+      async (args: any) => wrap(await tools.updateProjectStatus(user, args)),
+    );
+
+    server.registerTool(
+      'create_task',
+      {
+        title: 'Create a task on a project',
+        description:
+          'Create a task on a project the caller can see. Identify the project ' +
+          'by projectId or projectNumber. Defaults: type OTHER, priority MEDIUM, ' +
+          'assignee = caller. CLIENT-role users cannot call this.',
+        inputSchema: {
+          projectId: z.string().optional(),
+          projectNumber: z.string().optional(),
+          title: z.string().min(1).max(200),
+          description: z.string().optional(),
+          type: z.string().optional(),
+          priority: z.string().optional(),
+          dueDate: z.string().optional(),
+          assignedToId: z.string().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.createTask(user, args)),
+    );
+
+    server.registerTool(
+      'update_task_status',
+      {
+        title: 'Update a task status',
+        description:
+          'Change a task\'s status. Status: PENDING / IN_PROGRESS / ' +
+          'WAITING_FOR_CLIENT / COMPLETED / CANCELLED. Setting COMPLETED ' +
+          'also stamps completedAt.',
+        inputSchema: {
+          taskId: z.string().min(1),
+          status: z.string().min(1),
+        },
+      },
+      async (args: any) => wrap(await tools.updateTaskStatus(user, args)),
+    );
+
+    server.registerTool(
+      'list_project_documents',
+      {
+        title: 'List documents attached to a project',
+        description:
+          'Return the file metadata (name, size, mime, uploader, uploaded date) ' +
+          'for every document attached to a project the caller can see. Identify ' +
+          'by projectId or projectNumber.',
+        inputSchema: {
+          projectId: z.string().optional(),
+          projectNumber: z.string().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.listProjectDocuments(user, args)),
+    );
+
     return server;
   }
 }

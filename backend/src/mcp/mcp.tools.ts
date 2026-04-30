@@ -223,4 +223,204 @@ export class ProjectOpsTools {
     this.logger.log(`MCP add_task_comment: user=${user.email} task=${task.id}`);
     return comment;
   }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Write tools — schema-validated, RBAC enforced
+  // Mirrors the existing REST endpoints. Only allow ADMIN / MANAGER /
+  // STAFF to create or change state; CLIENT users are read-only.
+  // ─────────────────────────────────────────────────────────────────────
+
+  private assertCanWrite(user: User) {
+    if (user.role === UserRole.CLIENT) {
+      throw new Error("Read-only role — clients cannot create or update.");
+    }
+  }
+
+  async createProject(
+    user: User,
+    args: {
+      title: string;
+      description?: string;
+      clientName: string;
+      organizationId?: string;
+      priority?: string;
+      dueDate?: string;
+      assignedToId?: string;
+    },
+  ) {
+    this.assertCanWrite(user);
+    const last = await this.prisma.project.findFirst({
+      orderBy: { projectNumber: 'desc' },
+      select: { projectNumber: true },
+    });
+    const next =
+      last?.projectNumber?.match(/P-(\d+)/)?.[1] !== undefined
+        ? parseInt(last!.projectNumber!.match(/P-(\d+)/)![1], 10) + 1
+        : 1;
+    const projectNumber = `P-${String(next).padStart(5, '0')}`;
+    const project = await this.prisma.project.create({
+      data: {
+        projectNumber,
+        title: args.title,
+        description: args.description,
+        clientName: args.clientName,
+        organizationId: args.organizationId,
+        priority: (args.priority as any) ?? 'MEDIUM',
+        dueDate: args.dueDate ? new Date(args.dueDate) : null,
+        createdById: user.id,
+        assignedToId: args.assignedToId ?? user.id,
+      },
+      select: {
+        id: true,
+        projectNumber: true,
+        title: true,
+        status: true,
+        priority: true,
+        dueDate: true,
+      },
+    });
+    this.logger.log(`MCP create_project: user=${user.email} project=${project.projectNumber}`);
+    return project;
+  }
+
+  async updateProjectStatus(
+    user: User,
+    args: { id?: string; projectNumber?: string; status: string },
+  ) {
+    this.assertCanWrite(user);
+    if (!args.id && !args.projectNumber) {
+      throw new Error('Either id or projectNumber must be provided');
+    }
+    const found = await this.prisma.project.findFirst({
+      where: {
+        ...buildVisibilityFilter(user),
+        ...(args.id ? { id: args.id } : { projectNumber: args.projectNumber! }),
+      },
+      select: { id: true, projectNumber: true },
+    });
+    if (!found) {
+      throw new Error('Project not found or no access');
+    }
+    const updated = await this.prisma.project.update({
+      where: { id: found.id },
+      data: {
+        status: args.status as any,
+        ...(args.status === 'COMPLETED' ? { completedAt: new Date() } : {}),
+      },
+      select: { id: true, projectNumber: true, status: true, completedAt: true },
+    });
+    this.logger.log(`MCP update_project_status: user=${user.email} project=${updated.projectNumber} → ${updated.status}`);
+    return updated;
+  }
+
+  async createTask(
+    user: User,
+    args: {
+      projectId?: string;
+      projectNumber?: string;
+      title: string;
+      description?: string;
+      type?: string;
+      priority?: string;
+      dueDate?: string;
+      assignedToId?: string;
+    },
+  ) {
+    this.assertCanWrite(user);
+    if (!args.projectId && !args.projectNumber) {
+      throw new Error('Either projectId or projectNumber must be provided');
+    }
+    const project = await this.prisma.project.findFirst({
+      where: {
+        ...buildVisibilityFilter(user),
+        ...(args.projectId
+          ? { id: args.projectId }
+          : { projectNumber: args.projectNumber! }),
+      },
+      select: { id: true, projectNumber: true },
+    });
+    if (!project) {
+      throw new Error('Project not found or no access');
+    }
+    const task = await this.prisma.task.create({
+      data: {
+        projectId: project.id,
+        title: args.title,
+        description: args.description,
+        type: (args.type as any) ?? 'OTHER',
+        priority: (args.priority as any) ?? 'MEDIUM',
+        dueDate: args.dueDate ? new Date(args.dueDate) : null,
+        createdById: user.id,
+        assignedToId: args.assignedToId ?? user.id,
+      },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        priority: true,
+        dueDate: true,
+        project: { select: { projectNumber: true, title: true } },
+      },
+    });
+    this.logger.log(`MCP create_task: user=${user.email} project=${project.projectNumber} task=${task.id}`);
+    return task;
+  }
+
+  async updateTaskStatus(
+    user: User,
+    args: { taskId: string; status: string },
+  ) {
+    this.assertCanWrite(user);
+    const found = await this.prisma.task.findFirst({
+      where: {
+        id: args.taskId,
+        project: buildVisibilityFilter(user),
+      },
+      select: { id: true },
+    });
+    if (!found) {
+      throw new Error('Task not found or no access');
+    }
+    const updated = await this.prisma.task.update({
+      where: { id: found.id },
+      data: {
+        status: args.status as any,
+        ...(args.status === 'COMPLETED' ? { completedAt: new Date() } : {}),
+      },
+      select: { id: true, title: true, status: true, completedAt: true },
+    });
+    this.logger.log(`MCP update_task_status: user=${user.email} task=${updated.id} → ${updated.status}`);
+    return updated;
+  }
+
+  async listProjectDocuments(user: User, args: { projectId?: string; projectNumber?: string }) {
+    if (!args.projectId && !args.projectNumber) {
+      throw new Error('Either projectId or projectNumber must be provided');
+    }
+    const project = await this.prisma.project.findFirst({
+      where: {
+        ...buildVisibilityFilter(user),
+        ...(args.projectId ? { id: args.projectId } : { projectNumber: args.projectNumber! }),
+      },
+      select: { id: true, projectNumber: true },
+    });
+    if (!project) {
+      throw new Error('Project not found or no access');
+    }
+    const documents = await this.prisma.document.findMany({
+      where: { projectId: project.id },
+      orderBy: { uploadedAt: 'desc' },
+      select: {
+        id: true,
+        fileName: true,
+        fileSize: true,
+        mimeType: true,
+        status: true,
+        description: true,
+        uploadedAt: true,
+        uploadedBy: { select: { firstName: true, lastName: true } },
+      },
+    });
+    return { project, documents, count: documents.length };
+  }
 }
