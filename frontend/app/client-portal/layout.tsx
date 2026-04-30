@@ -68,26 +68,26 @@ export default function ClientPortalLayout({ children }: ClientPortalLayoutProps
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F9FC]">
+    <div className="min-h-screen bg-background">
       {/* Top Navigation */}
-      <header className="bg-white border-b border-[#D4DADE]">
+      <header className="bg-card border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <div className="flex items-center">
               <Link href="/client-portal/dashboard" className="flex items-center">
-                <span className="text-2xl font-bold text-[#005AF5]">
+                <span className="text-2xl font-bold text-primary">
                   Project Ops
                 </span>
-                <span className="ml-2 text-sm text-[#A5A6AA]">Client Portal</span>
+                <span className="ml-2 text-sm text-muted-foreground">Client Portal</span>
               </Link>
             </div>
 
             {/* User Info & Logout */}
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <User className="w-5 h-5 text-[#A5A6AA]" />
-                <span className="text-sm font-medium text-[#10172B]">
+                <User className="w-5 h-5 text-muted-foreground" />
+                <span className="text-sm font-medium text-foreground">
                   {user.firstName} {user.lastName}
                 </span>
               </div>
@@ -95,7 +95,7 @@ export default function ClientPortalLayout({ children }: ClientPortalLayoutProps
                 variant="ghost"
                 size="sm"
                 onClick={handleLogout}
-                className="text-[#A5A6AA] hover:text-[#10172B]"
+                className="text-muted-foreground hover:text-foreground"
               >
                 <LogOut className="w-4 h-4 mr-2" />
                 Logout
@@ -106,7 +106,7 @@ export default function ClientPortalLayout({ children }: ClientPortalLayoutProps
       </header>
 
       {/* Navigation Tabs */}
-      <div className="bg-white border-b border-[#D4DADE]">
+      <div className="bg-card border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <nav className="flex gap-6">
             {navigation.map((item) => {
@@ -121,8 +121,8 @@ export default function ClientPortalLayout({ children }: ClientPortalLayoutProps
                     flex items-center gap-2 px-3 py-4 text-sm font-medium border-b-2 transition-colors
                     ${
                       isActive
-                        ? "border-[#005AF5] text-[#005AF5]"
-                        : "border-transparent text-[#A5A6AA] hover:text-[#10172B] hover:border-[#D4DADE]"
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
                     }
                   `}
                 >

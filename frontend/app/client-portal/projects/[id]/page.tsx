@@ -17,6 +17,12 @@ import {
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import api from "@/lib/api";
+import {
+  statusBadgeClass,
+  priorityBadgeClass,
+  paymentStatusBadgeClass,
+} from "@/lib/badge-styles";
+import { format } from "date-fns";
 import Link from "next/link";
 
 interface ProjectDetails {
@@ -67,29 +73,6 @@ interface ProjectDetails {
   }>;
 }
 
-const statusColors: Record<string, string> = {
-  NEW: "bg-blue-100 text-blue-800",
-  IN_PROGRESS: "bg-yellow-100 text-yellow-800",
-  UNDER_REVIEW: "bg-purple-100 text-purple-800",
-  COMPLETED: "bg-green-100 text-green-800",
-  ARCHIVED: "bg-gray-100 text-gray-800",
-};
-
-const priorityColors: Record<string, string> = {
-  LOW: "bg-gray-100 text-gray-800",
-  MEDIUM: "bg-blue-100 text-blue-800",
-  HIGH: "bg-orange-100 text-orange-800",
-  URGENT: "bg-red-100 text-red-800",
-};
-
-const paymentStatusColors: Record<string, string> = {
-  UNPAID: "bg-red-100 text-red-800",
-  PARTIALLY_PAID: "bg-yellow-100 text-yellow-800",
-  PAID: "bg-green-100 text-green-800",
-  OVERDUE: "bg-red-100 text-red-800",
-  CANCELLED: "bg-gray-100 text-gray-800",
-};
-
 export default function ProjectDetailsPage() {
   const params = useParams();
   const router = useRouter();
@@ -122,14 +105,6 @@ export default function ProjectDetailsPage() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
-
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -139,7 +114,7 @@ export default function ProjectDetailsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-[#005AF5]" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -152,46 +127,46 @@ export default function ProjectDetailsPage() {
     <div className="space-y-6">
       {/* Back Button */}
       <Link href="/client-portal/projects">
-        <Button variant="ghost" className="text-[#005AF5] hover:text-[#004CCE]">
+        <Button variant="ghost" className="text-primary hover:text-primary/90">
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Projects
         </Button>
       </Link>
 
       {/* Project Header */}
-      <Card className="p-6 bg-white border-[#D4DADE]">
+      <Card className="p-6 bg-card border-border">
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
-            <span className="text-lg font-mono text-[#A5A6AA]">
+            <span className="text-lg font-mono text-muted-foreground">
               #{projectData.projectNumber}
             </span>
-            <Badge className={statusColors[projectData.status]}>
+            <Badge className={statusBadgeClass(projectData.status)}>
               {projectData.status.replace("_", " ")}
             </Badge>
-            <Badge className={priorityColors[projectData.priority]}>
+            <Badge className={priorityBadgeClass(projectData.priority)}>
               {projectData.priority}
             </Badge>
           </div>
-          <span className="text-sm text-[#A5A6AA]">
-            Created {formatDate(projectData.createdAt)}
+          <span className="text-sm text-muted-foreground">
+            Created {format(new Date(projectData.createdAt), "MMM d, yyyy")}
           </span>
         </div>
 
-        <h1 className="text-2xl font-bold text-[#10172B] mb-2">
+        <h1 className="text-2xl font-bold text-foreground mb-2">
           {projectData.title}
         </h1>
 
         {projectData.description && (
-          <p className="text-[#A5A6AA] mb-4">{projectData.description}</p>
+          <p className="text-muted-foreground mb-4">{projectData.description}</p>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-[#D4DADE]">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-border">
           {projectData.assignedTo && (
             <div className="flex items-center gap-2">
-              <User className="w-5 h-5 text-[#A5A6AA]" />
+              <User className="w-5 h-5 text-muted-foreground" />
               <div>
-                <p className="text-xs text-[#A5A6AA]">Assigned To</p>
-                <p className="text-sm font-medium text-[#10172B]">
+                <p className="text-xs text-muted-foreground">Assigned To</p>
+                <p className="text-sm font-medium text-foreground">
                   {projectData.assignedTo.firstName} {projectData.assignedTo.lastName}
                 </p>
               </div>
@@ -199,11 +174,11 @@ export default function ProjectDetailsPage() {
           )}
           {projectData.dueDate && (
             <div className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-[#A5A6AA]" />
+              <Calendar className="w-5 h-5 text-muted-foreground" />
               <div>
-                <p className="text-xs text-[#A5A6AA]">Due Date</p>
-                <p className="text-sm font-medium text-[#10172B]">
-                  {formatDate(projectData.dueDate)}
+                <p className="text-xs text-muted-foreground">Due Date</p>
+                <p className="text-sm font-medium text-foreground">
+                  {format(new Date(projectData.dueDate), "MMM d, yyyy")}
                 </p>
               </div>
             </div>
@@ -213,72 +188,72 @@ export default function ProjectDetailsPage() {
 
       {/* Billing Information */}
       {projectData.billingAmount && (
-        <Card className="p-6 bg-white border-[#D4DADE]">
+        <Card className="p-6 bg-card border-border">
           <div className="flex items-center gap-2 mb-4">
-            <DollarSign className="w-5 h-5 text-[#005AF5]" />
-            <h2 className="text-lg font-bold text-[#10172B]">Billing Information</h2>
+            <DollarSign className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-bold text-foreground">Billing Information</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {projectData.invoiceNumber && (
               <div>
-                <p className="text-xs text-[#A5A6AA] mb-1">Invoice Number</p>
-                <p className="text-sm font-medium text-[#10172B]">
+                <p className="text-xs text-muted-foreground mb-1">Invoice Number</p>
+                <p className="text-sm font-medium text-foreground">
                   {projectData.invoiceNumber}
                 </p>
               </div>
             )}
             <div>
-              <p className="text-xs text-[#A5A6AA] mb-1">Total Amount</p>
-              <p className="text-sm font-medium text-[#10172B]">
+              <p className="text-xs text-muted-foreground mb-1">Total Amount</p>
+              <p className="text-sm font-medium text-foreground">
                 ${projectData.billingAmount.toFixed(2)}
               </p>
             </div>
             <div>
-              <p className="text-xs text-[#A5A6AA] mb-1">Amount Paid</p>
-              <p className="text-sm font-medium text-[#10172B]">
+              <p className="text-xs text-muted-foreground mb-1">Amount Paid</p>
+              <p className="text-sm font-medium text-foreground">
                 ${(projectData.amountPaid || 0).toFixed(2)}
               </p>
             </div>
             <div>
-              <p className="text-xs text-[#A5A6AA] mb-1">Outstanding Balance</p>
-              <p className="text-sm font-medium text-[#10172B]">
+              <p className="text-xs text-muted-foreground mb-1">Outstanding Balance</p>
+              <p className="text-sm font-medium text-foreground">
                 ${(projectData.billingAmount - (projectData.amountPaid || 0)).toFixed(2)}
               </p>
             </div>
             {projectData.paymentStatus && (
               <div>
-                <p className="text-xs text-[#A5A6AA] mb-1">Payment Status</p>
-                <Badge className={paymentStatusColors[projectData.paymentStatus]}>
+                <p className="text-xs text-muted-foreground mb-1">Payment Status</p>
+                <Badge className={paymentStatusBadgeClass(projectData.paymentStatus)}>
                   {projectData.paymentStatus.replace("_", " ")}
                 </Badge>
               </div>
             )}
             {projectData.paymentDueDate && (
               <div>
-                <p className="text-xs text-[#A5A6AA] mb-1">Payment Due</p>
-                <p className="text-sm font-medium text-[#10172B]">
-                  {formatDate(projectData.paymentDueDate)}
+                <p className="text-xs text-muted-foreground mb-1">Payment Due</p>
+                <p className="text-sm font-medium text-foreground">
+                  {format(new Date(projectData.paymentDueDate), "MMM d, yyyy")}
                 </p>
               </div>
             )}
           </div>
 
           {projectData.billingNotes && (
-            <div className="mt-4 pt-4 border-t border-[#D4DADE]">
-              <p className="text-xs text-[#A5A6AA] mb-1">Notes</p>
-              <p className="text-sm text-[#10172B]">{projectData.billingNotes}</p>
+            <div className="mt-4 pt-4 border-t border-border">
+              <p className="text-xs text-muted-foreground mb-1">Notes</p>
+              <p className="text-sm text-foreground">{projectData.billingNotes}</p>
             </div>
           )}
         </Card>
       )}
 
       {/* Documents */}
-      <Card className="bg-white border-[#D4DADE]">
-        <div className="p-6 border-b border-[#D4DADE]">
+      <Card className="bg-card border-border">
+        <div className="p-6 border-b border-border">
           <div className="flex items-center gap-2">
-            <FolderOpen className="w-5 h-5 text-[#005AF5]" />
-            <h2 className="text-lg font-bold text-[#10172B]">
+            <FolderOpen className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-bold text-foreground">
               Documents ({projectData.documents.length})
             </h2>
           </div>
@@ -286,23 +261,23 @@ export default function ProjectDetailsPage() {
 
         {projectData.documents.length === 0 ? (
           <div className="p-12 text-center">
-            <FolderOpen className="w-12 h-12 text-[#D4DADE] mx-auto mb-4" />
-            <p className="text-[#A5A6AA]">No documents uploaded yet</p>
+            <FolderOpen className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">No documents uploaded yet</p>
           </div>
         ) : (
-          <div className="divide-y divide-[#D4DADE]">
+          <div className="divide-y divide-border">
             {projectData.documents.map((doc) => (
-              <div key={doc.id} className="p-4 hover:bg-[#F5F9FC]">
+              <div key={doc.id} className="p-4 hover:bg-muted/30">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    <p className="font-medium text-[#10172B]">{doc.fileName}</p>
-                    <p className="text-sm text-[#A5A6AA]">
+                    <p className="font-medium text-foreground">{doc.fileName}</p>
+                    <p className="text-sm text-muted-foreground">
                       {formatFileSize(doc.fileSize)} • Uploaded by{" "}
                       {doc.uploadedBy.firstName} {doc.uploadedBy.lastName} •{" "}
-                      {formatDate(doc.uploadedAt)}
+                      {format(new Date(doc.uploadedAt), "MMM d, yyyy")}
                     </p>
                   </div>
-                  <Badge className="bg-blue-100 text-blue-800">
+                  <Badge className={statusBadgeClass(doc.status)}>
                     {doc.status}
                   </Badge>
                 </div>
@@ -313,11 +288,11 @@ export default function ProjectDetailsPage() {
       </Card>
 
       {/* Comments */}
-      <Card className="bg-white border-[#D4DADE]">
-        <div className="p-6 border-b border-[#D4DADE]">
+      <Card className="bg-card border-border">
+        <div className="p-6 border-b border-border">
           <div className="flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-[#005AF5]" />
-            <h2 className="text-lg font-bold text-[#10172B]">
+            <MessageSquare className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-bold text-foreground">
               Comments ({projectData.comments.length})
             </h2>
           </div>
@@ -325,22 +300,22 @@ export default function ProjectDetailsPage() {
 
         {projectData.comments.length === 0 ? (
           <div className="p-12 text-center">
-            <MessageSquare className="w-12 h-12 text-[#D4DADE] mx-auto mb-4" />
-            <p className="text-[#A5A6AA]">No comments yet</p>
+            <MessageSquare className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">No comments yet</p>
           </div>
         ) : (
-          <div className="divide-y divide-[#D4DADE]">
+          <div className="divide-y divide-border">
             {projectData.comments.map((comment) => (
               <div key={comment.id} className="p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="font-medium text-[#10172B]">
+                  <span className="font-medium text-foreground">
                     {comment.author.firstName} {comment.author.lastName}
                   </span>
-                  <span className="text-sm text-[#A5A6AA]">
-                    {formatDate(comment.createdAt)}
+                  <span className="text-sm text-muted-foreground">
+                    {format(new Date(comment.createdAt), "MMM d, yyyy")}
                   </span>
                 </div>
-                <p className="text-[#10172B]">{comment.content}</p>
+                <p className="text-foreground">{comment.content}</p>
               </div>
             ))}
           </div>

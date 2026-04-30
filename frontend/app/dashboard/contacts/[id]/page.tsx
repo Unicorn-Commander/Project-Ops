@@ -15,6 +15,12 @@ import {
   type ContactBillingSummary,
 } from "@/lib/contacts-api";
 import {
+  statusBadgeClass,
+  priorityTextClass,
+  iconWellClass,
+} from "@/lib/badge-styles";
+import { format } from "date-fns";
+import {
   ArrowLeft,
   Edit,
   Mail,
@@ -94,26 +100,8 @@ export default function ContactProfilePage() {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      NEW: "bg-blue-100 text-blue-800",
-      IN_PROGRESS: "bg-yellow-100 text-yellow-800",
-      UNDER_REVIEW: "bg-purple-100 text-purple-800",
-      COMPLETED: "bg-green-100 text-green-800",
-      ARCHIVED: "bg-gray-100 text-gray-800",
-    };
-    return colors[status] || "bg-gray-100 text-gray-800";
-  };
-
-  const getPriorityColor = (priority: string) => {
-    const colors: Record<string, string> = {
-      LOW: "text-gray-600",
-      MEDIUM: "text-blue-600",
-      HIGH: "text-orange-600",
-      URGENT: "text-red-600",
-    };
-    return colors[priority] || "text-gray-600";
-  };
+  const getStatusColor = statusBadgeClass;
+  const getPriorityColor = priorityTextClass;
 
   const handleInviteToPortal = async () => {
     try {
@@ -156,21 +144,21 @@ export default function ContactProfilePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#F5F9FC] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#005AF5]"></div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     );
   }
 
   if (!contact) {
     return (
-      <div className="min-h-screen bg-[#F5F9FC] flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <AlertCircle className="w-16 h-16 text-[#A5A6AA] mx-auto mb-4" />
-          <p className="text-xl text-[#A5A6AA]">Contact not found</p>
+          <AlertCircle className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+          <p className="text-xl text-muted-foreground">Contact not found</p>
           <Button
             onClick={() => router.push("/dashboard/contacts")}
-            className="mt-4 bg-[#005AF5] hover:bg-[#004CCE]"
+            className="mt-4 bg-primary hover:bg-primary/90"
           >
             Back to Contacts
           </Button>
@@ -180,30 +168,30 @@ export default function ContactProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F9FC]">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <div className="bg-white border-b border-[#D4DADE]">
+      <div className="bg-card border-b border-border">
         <div className="container mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Button
                 variant="ghost"
                 onClick={() => router.push("/dashboard/contacts")}
-                className="text-[#A5A6AA] hover:text-[#10172B]"
+                className="text-muted-foreground hover:text-foreground"
               >
                 <ArrowLeft className="w-5 h-5" />
               </Button>
-              <div className="w-12 h-12 bg-[#005AF5] bg-opacity-10 rounded-full flex items-center justify-center">
-                <span className="text-[#005AF5] font-semibold text-lg">
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${iconWellClass("primary")}`}>
+                <span className="font-semibold text-lg">
                   {contact.firstName[0]}
                   {contact.lastName[0]}
                 </span>
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-[#10172B]">
+                <h1 className="text-2xl font-bold text-foreground">
                   {contact.firstName} {contact.lastName}
                 </h1>
-                <p className="text-sm text-[#A5A6AA] mt-1">{contact.email}</p>
+                <p className="text-sm text-muted-foreground mt-1">{contact.email}</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -211,11 +199,11 @@ export default function ContactProfilePage() {
                 onClick={handleInviteToPortal}
                 disabled={inviting}
                 variant="outline"
-                className="border-[#005AF5] text-[#005AF5] hover:bg-[#005AF5] hover:text-white"
+                className="border-primary text-primary hover:bg-primary hover:text-white"
               >
                 {inviting ? (
                   <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#005AF5] mr-2"></div>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
                     Sending...
                   </>
                 ) : (
@@ -227,7 +215,7 @@ export default function ContactProfilePage() {
               </Button>
               <Button
                 onClick={() => setEditModalOpen(true)}
-                className="bg-[#005AF5] hover:bg-[#004CCE] text-white"
+                className="bg-primary hover:bg-primary/90 text-white"
               >
                 <Edit className="w-4 h-4 mr-2" />
                 Edit Contact
@@ -244,16 +232,16 @@ export default function ContactProfilePage() {
           <div className="space-y-6">
             {/* Contact Information */}
             <Card className="p-6">
-              <h2 className="text-lg font-semibold text-[#10172B] mb-4">
+              <h2 className="text-lg font-semibold text-foreground mb-4">
                 Contact Information
               </h2>
               <div className="space-y-3">
                 {contact.email && (
                   <div className="flex items-start">
-                    <Mail className="w-5 h-5 text-[#A5A6AA] mr-3 mt-0.5" />
+                    <Mail className="w-5 h-5 text-muted-foreground mr-3 mt-0.5" />
                     <div>
-                      <p className="text-sm text-[#A5A6AA]">Email</p>
-                      <p className="text-sm font-medium text-[#10172B]">
+                      <p className="text-sm text-muted-foreground">Email</p>
+                      <p className="text-sm font-medium text-foreground">
                         {contact.email}
                       </p>
                     </div>
@@ -261,10 +249,10 @@ export default function ContactProfilePage() {
                 )}
                 {contact.phone && (
                   <div className="flex items-start">
-                    <Phone className="w-5 h-5 text-[#A5A6AA] mr-3 mt-0.5" />
+                    <Phone className="w-5 h-5 text-muted-foreground mr-3 mt-0.5" />
                     <div>
-                      <p className="text-sm text-[#A5A6AA]">Phone</p>
-                      <p className="text-sm font-medium text-[#10172B]">
+                      <p className="text-sm text-muted-foreground">Phone</p>
+                      <p className="text-sm font-medium text-foreground">
                         {contact.phone}
                       </p>
                     </div>
@@ -272,10 +260,10 @@ export default function ContactProfilePage() {
                 )}
                 {contact.company && (
                   <div className="flex items-start">
-                    <Building2 className="w-5 h-5 text-[#A5A6AA] mr-3 mt-0.5" />
+                    <Building2 className="w-5 h-5 text-muted-foreground mr-3 mt-0.5" />
                     <div>
-                      <p className="text-sm text-[#A5A6AA]">Company</p>
-                      <p className="text-sm font-medium text-[#10172B]">
+                      <p className="text-sm text-muted-foreground">Company</p>
+                      <p className="text-sm font-medium text-foreground">
                         {contact.company}
                       </p>
                     </div>
@@ -283,10 +271,10 @@ export default function ContactProfilePage() {
                 )}
                 {(contact.address || contact.city || contact.state) && (
                   <div className="flex items-start">
-                    <MapPin className="w-5 h-5 text-[#A5A6AA] mr-3 mt-0.5" />
+                    <MapPin className="w-5 h-5 text-muted-foreground mr-3 mt-0.5" />
                     <div>
-                      <p className="text-sm text-[#A5A6AA]">Address</p>
-                      <p className="text-sm font-medium text-[#10172B]">
+                      <p className="text-sm text-muted-foreground">Address</p>
+                      <p className="text-sm font-medium text-foreground">
                         {contact.address && <>{contact.address}<br /></>}
                         {contact.city && contact.state
                           ? `${contact.city}, ${contact.state} ${contact.zipCode || ""}`
@@ -297,10 +285,10 @@ export default function ContactProfilePage() {
                 )}
                 {contact.taxId && (
                   <div className="flex items-start">
-                    <CreditCard className="w-5 h-5 text-[#A5A6AA] mr-3 mt-0.5" />
+                    <CreditCard className="w-5 h-5 text-muted-foreground mr-3 mt-0.5" />
                     <div>
-                      <p className="text-sm text-[#A5A6AA]">Tax ID</p>
-                      <p className="text-sm font-medium text-[#10172B]">
+                      <p className="text-sm text-muted-foreground">Tax ID</p>
+                      <p className="text-sm font-medium text-foreground">
                         {contact.taxId}
                       </p>
                     </div>
@@ -312,40 +300,40 @@ export default function ContactProfilePage() {
             {/* Billing Summary */}
             {billing && (
               <Card className="p-6">
-                <h2 className="text-lg font-semibold text-[#10172B] mb-4">
+                <h2 className="text-lg font-semibold text-foreground mb-4">
                   Billing Summary
                 </h2>
                 <div className="space-y-4">
                   <div>
-                    <p className="text-sm text-[#A5A6AA]">Total Billed</p>
-                    <p className="text-2xl font-bold text-[#10172B]">
+                    <p className="text-sm text-muted-foreground">Total Billed</p>
+                    <p className="text-2xl font-bold text-foreground">
                       ${billing.totalBilled.toLocaleString("en-US", {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
                     </p>
                   </div>
-                  <div className="flex items-center justify-between py-2 border-t border-[#D4DADE]">
-                    <span className="text-sm text-[#A5A6AA]">Total Paid</span>
-                    <span className="text-sm font-semibold text-green-600">
+                  <div className="flex items-center justify-between py-2 border-t border-border">
+                    <span className="text-sm text-muted-foreground">Total Paid</span>
+                    <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
                       ${billing.totalPaid.toLocaleString("en-US", {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between py-2 border-t border-[#D4DADE]">
-                    <span className="text-sm text-[#A5A6AA]">Outstanding</span>
-                    <span className={`text-sm font-semibold ${billing.outstanding > 0 ? "text-red-600" : "text-green-600"}`}>
+                  <div className="flex items-center justify-between py-2 border-t border-border">
+                    <span className="text-sm text-muted-foreground">Outstanding</span>
+                    <span className={`text-sm font-semibold ${billing.outstanding > 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
                       ${billing.outstanding.toLocaleString("en-US", {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between py-2 border-t border-[#D4DADE]">
-                    <span className="text-sm text-[#A5A6AA]">Total Projects</span>
-                    <span className="text-sm font-semibold text-[#10172B]">
+                  <div className="flex items-center justify-between py-2 border-t border-border">
+                    <span className="text-sm text-muted-foreground">Total Projects</span>
+                    <span className="text-sm font-semibold text-foreground">
                       {billing.projectsCount}
                     </span>
                   </div>
@@ -356,10 +344,10 @@ export default function ContactProfilePage() {
             {/* Notes */}
             {contact.notes && (
               <Card className="p-6">
-                <h2 className="text-lg font-semibold text-[#10172B] mb-4">
+                <h2 className="text-lg font-semibold text-foreground mb-4">
                   Notes
                 </h2>
-                <p className="text-sm text-[#10172B] whitespace-pre-wrap">
+                <p className="text-sm text-foreground whitespace-pre-wrap">
                   {contact.notes}
                 </p>
               </Card>
@@ -370,12 +358,12 @@ export default function ContactProfilePage() {
           <div className="lg:col-span-2">
             <Card className="p-6">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold text-[#10172B]">
+                <h2 className="text-lg font-semibold text-foreground">
                   Projects ({projects.length})
                 </h2>
                 <Button
                   onClick={() => router.push(`/dashboard/projects?contactId=${contactId}`)}
-                  className="bg-[#005AF5] hover:bg-[#004CCE] text-white"
+                  className="bg-primary hover:bg-primary/90 text-white"
                   size="sm"
                 >
                   View All Projects
@@ -384,21 +372,21 @@ export default function ContactProfilePage() {
 
               {projects.length === 0 ? (
                 <div className="text-center py-12">
-                  <FileText className="w-12 h-12 text-[#A5A6AA] mx-auto mb-3" />
-                  <p className="text-[#A5A6AA]">No projects found for this contact</p>
+                  <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-muted-foreground">No projects found for this contact</p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {projects.map((project_) => (
                     <div
                       key={project_.id}
-                      className="border border-[#D4DADE] rounded-lg p-4 hover:bg-[#F5F9FC] transition-colors cursor-pointer"
+                      className="border border-border rounded-lg p-4 hover:bg-muted/30 transition-colors cursor-pointer"
                       onClick={() => router.push(`/dashboard/projects/${project_.id}`)}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
-                            <span className="text-sm font-mono text-[#A5A6AA]">
+                            <span className="text-sm font-mono text-muted-foreground">
                               {project_.projectNumber}
                             </span>
                             <span
@@ -416,16 +404,16 @@ export default function ContactProfilePage() {
                               {project_.priority}
                             </span>
                           </div>
-                          <h3 className="font-semibold text-[#10172B] mb-1">
+                          <h3 className="font-semibold text-foreground mb-1">
                             {project_.title}
                           </h3>
                           {project_.assignedTo && (
-                            <p className="text-sm text-[#A5A6AA]">
+                            <p className="text-sm text-muted-foreground">
                               Assigned to: {project_.assignedTo.firstName}{" "}
                               {project_.assignedTo.lastName}
                             </p>
                           )}
-                          <div className="flex items-center gap-4 mt-2 text-xs text-[#A5A6AA]">
+                          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                             {project_._count && (
                               <>
                                 <span>
@@ -435,7 +423,7 @@ export default function ContactProfilePage() {
                               </>
                             )}
                             <span>
-                              Created {new Date(project_.createdAt).toLocaleDateString()}
+                              Created {format(new Date(project_.createdAt), "MMM d, yyyy")}
                             </span>
                           </div>
                         </div>
@@ -446,7 +434,7 @@ export default function ContactProfilePage() {
                             e.stopPropagation();
                             router.push(`/dashboard/projects/${project_.id}`);
                           }}
-                          className="text-[#005AF5] hover:text-[#004CCE]"
+                          className="text-primary hover:text-primary/90"
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
@@ -462,30 +450,30 @@ export default function ContactProfilePage() {
 
       {/* Invitation Modal */}
       {inviteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <Card className="w-full max-w-md bg-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <Card className="w-full max-w-md bg-card">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-[#10172B]">
+                <h2 className="text-xl font-bold text-foreground">
                   Portal Invitation Created
                 </h2>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setInviteModalOpen(false)}
-                  className="text-[#A5A6AA] hover:text-[#10172B]"
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   <X className="w-5 h-5" />
                 </Button>
               </div>
 
-              <p className="text-sm text-[#A5A6AA] mb-4">
+              <p className="text-sm text-muted-foreground mb-4">
                 Share this invitation URL with your contact to grant them access to
                 the portal:
               </p>
 
-              <div className="bg-[#F5F9FC] border border-[#D4DADE] rounded-lg p-3 mb-4">
-                <p className="text-sm text-[#10172B] break-all font-mono">
+              <div className="bg-muted/50 border border-border rounded-lg p-3 mb-4">
+                <p className="text-sm text-foreground break-all font-mono">
                   {invitationUrl}
                 </p>
               </div>
@@ -495,8 +483,8 @@ export default function ContactProfilePage() {
                   onClick={handleCopyInvitation}
                   className={`flex-1 ${
                     copied
-                      ? "bg-green-500 hover:bg-green-600"
-                      : "bg-[#005AF5] hover:bg-[#004CCE]"
+                      ? "bg-emerald-500 hover:bg-emerald-600"
+                      : "bg-primary hover:bg-primary/90"
                   } text-white`}
                 >
                   {copied ? (
@@ -520,8 +508,8 @@ export default function ContactProfilePage() {
                 </Button>
               </div>
 
-              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <p className="text-xs text-yellow-800">
+              <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                <p className="text-xs text-amber-700 dark:text-amber-300">
                   <strong>Note:</strong> This invitation link can only be used once.
                   The contact will use it to create their portal account.
                 </p>

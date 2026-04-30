@@ -269,7 +269,7 @@ export function CreateUserModal({
                     </span>
                     {formData.role === role.value && (
                       <div className="h-4 w-4 rounded-full bg-primary flex items-center justify-center">
-                        <div className="h-2 w-2 rounded-full bg-white" />
+                        <div className="h-2 w-2 rounded-full bg-primary-foreground" />
                       </div>
                     )}
                   </div>

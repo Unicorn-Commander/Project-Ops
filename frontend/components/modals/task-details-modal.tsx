@@ -46,6 +46,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import api from "@/lib/api";
+import { statusBadgeClass, priorityBadgeClass } from "@/lib/badge-styles";
+import { format } from "date-fns";
 
 interface TaskDetailsModalProps {
   isOpen: boolean;
@@ -244,26 +246,8 @@ export function TaskDetailsModal({
 
   const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== TaskStatus.COMPLETED;
 
-  const getStatusColor = (status: TaskStatus) => {
-    const colors: Record<TaskStatus, string> = {
-      [TaskStatus.PENDING]: "bg-blue-100 text-blue-800 border-blue-200",
-      [TaskStatus.IN_PROGRESS]: "bg-yellow-100 text-yellow-800 border-yellow-200",
-      [TaskStatus.WAITING_FOR_CLIENT]: "bg-purple-100 text-purple-800 border-purple-200",
-      [TaskStatus.COMPLETED]: "bg-green-100 text-green-800 border-green-200",
-      [TaskStatus.CANCELLED]: "bg-gray-100 text-gray-800 border-gray-200",
-    };
-    return colors[status];
-  };
-
-  const getPriorityColor = (priority: TaskPriority) => {
-    const colors: Record<TaskPriority, string> = {
-      [TaskPriority.LOW]: "bg-gray-100 text-gray-800",
-      [TaskPriority.MEDIUM]: "bg-blue-100 text-blue-800",
-      [TaskPriority.HIGH]: "bg-orange-100 text-orange-800",
-      [TaskPriority.URGENT]: "bg-red-100 text-red-800",
-    };
-    return colors[priority];
-  };
+  const getStatusColor = (status: TaskStatus) => statusBadgeClass(status);
+  const getPriorityColor = (priority: TaskPriority) => priorityBadgeClass(priority);
 
   const getTypeIcon = (type: TaskType) => {
     const icons: Record<TaskType, React.ReactElement> = {
@@ -323,7 +307,7 @@ export function TaskDetailsModal({
 
         {/* Overdue Warning */}
         {isOverdue && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-800">
+          <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-lg flex items-center gap-2 text-rose-700 dark:text-rose-300">
             <AlertTriangle className="h-5 w-5" />
             <span className="font-semibold">This task is overdue!</span>
           </div>
@@ -411,13 +395,8 @@ export function TaskDetailsModal({
                 <Calendar className="h-4 w-4" />
                 DUE DATE
               </h3>
-              <p className={`text-foreground ${isOverdue ? 'text-red-600 font-semibold' : ''}`}>
-                {new Date(task.dueDate).toLocaleDateString('en-US', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                })}
+              <p className={`text-foreground ${isOverdue ? 'text-rose-600 dark:text-rose-400 font-semibold' : ''}`}>
+                {format(new Date(task.dueDate), "EEEE, MMMM d, yyyy")}
               </p>
             </div>
           )}
@@ -442,11 +421,7 @@ export function TaskDetailsModal({
               CREATED
             </h3>
             <p className="text-foreground">
-              {new Date(task.createdAt).toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-              })}
+              {format(new Date(task.createdAt), "MMMM d, yyyy")}
             </p>
           </div>
 
@@ -458,11 +433,7 @@ export function TaskDetailsModal({
                 COMPLETED
               </h3>
               <p className="text-foreground">
-                {new Date(task.completedAt).toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                })}
+                {format(new Date(task.completedAt), "MMMM d, yyyy")}
               </p>
             </div>
           )}
@@ -566,7 +537,7 @@ export function TaskDetailsModal({
                           : comment.user?.email || "Unknown User"}
                       </span>
                       <span className="text-sm text-muted-foreground ml-2">
-                        {new Date(comment.createdAt).toLocaleString()}
+                        {format(new Date(comment.createdAt), "MMM d, yyyy h:mm a")}
                       </span>
                     </div>
                   </div>

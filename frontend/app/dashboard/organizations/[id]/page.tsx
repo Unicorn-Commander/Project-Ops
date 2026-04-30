@@ -36,6 +36,8 @@ import {
 import { EditOrganizationModal } from '@/components/modals/edit-organization-modal';
 import { CreateContactModal } from '@/components/modals/create-contact-modal';
 import { HierarchyTree } from '@/components/organizations/hierarchy-tree';
+import { activeBadgeClass, statusBadgeClass, paymentStatusBadgeClass, iconWellClass } from '@/lib/badge-styles';
+import { format } from 'date-fns';
 
 export default function OrganizationProfilePage() {
   const params = useParams();
@@ -103,7 +105,7 @@ export default function OrganizationProfilePage() {
       <div className="p-6">
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <p className="text-text-light mt-4">Loading organization...</p>
+          <p className="text-muted-foreground mt-4">Loading organization...</p>
         </div>
       </div>
     );
@@ -122,23 +124,21 @@ export default function OrganizationProfilePage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
-          <div className="p-4 bg-primary/10 rounded-xl">
-            <Building2 className="h-8 w-8 text-primary" />
+          <div className={`p-4 rounded-xl ${iconWellClass("primary")}`}>
+            <Building2 className="h-8 w-8" />
           </div>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold text-text-dark">{organization.name}</h1>
+              <h1 className="text-3xl font-bold text-foreground">{organization.name}</h1>
               <span className={`px-3 py-1 rounded-full text-xs font-medium ${getOrganizationTypeBadgeColor(organization.type)}`}>
                 {getOrganizationTypeLabel(organization.type)}
               </span>
-              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                organization.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-              }`}>
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${activeBadgeClass(organization.isActive)}`}>
                 {organization.isActive ? 'Active' : 'Inactive'}
               </span>
             </div>
             {organization.parentOrg && (
-              <div className="flex items-center gap-2 text-sm text-text-light mt-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
                 <span>Parent Organization:</span>
                 <button
                   onClick={() => router.push(`/dashboard/organizations/${organization.parentOrg!.id}`)}
@@ -161,7 +161,7 @@ export default function OrganizationProfilePage() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-border-color">
+      <div className="border-b border-border">
         <div className="flex gap-6">
           {['overview', 'contacts', 'projects', 'hierarchy'].map((tab) => (
             <button
@@ -170,7 +170,7 @@ export default function OrganizationProfilePage() {
               className={`pb-3 px-1 border-b-2 transition-colors ${
                 activeTab === tab
                   ? 'border-primary text-primary font-medium'
-                  : 'border-transparent text-text-light hover:text-text-dark'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -185,20 +185,20 @@ export default function OrganizationProfilePage() {
           {/* Left Column - Organization Info */}
           <div className="lg:col-span-2 space-y-6">
             {/* Basic Information */}
-            <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
-              <h2 className="text-xl font-semibold text-text-dark mb-4">Organization Information</h2>
+            <div className="bg-card p-6 rounded-lg border border-border shadow-sm">
+              <h2 className="text-xl font-semibold text-foreground mb-4">Organization Information</h2>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm text-text-light">Tax ID</label>
-                  <p className="text-text-dark font-medium mt-1">{formatTaxId(organization.taxId)}</p>
+                  <label className="text-sm text-muted-foreground">Tax ID</label>
+                  <p className="text-foreground font-medium mt-1">{formatTaxId(organization.taxId)}</p>
                 </div>
                 <div>
-                  <label className="text-sm text-text-light">Industry</label>
-                  <p className="text-text-dark font-medium mt-1">{organization.industry || 'N/A'}</p>
+                  <label className="text-sm text-muted-foreground">Industry</label>
+                  <p className="text-foreground font-medium mt-1">{organization.industry || 'N/A'}</p>
                 </div>
                 {organization.website && (
                   <div className="col-span-2">
-                    <label className="text-sm text-text-light">Website</label>
+                    <label className="text-sm text-muted-foreground">Website</label>
                     <a
                       href={organization.website}
                       target="_blank"
@@ -212,16 +212,16 @@ export default function OrganizationProfilePage() {
                   </div>
                 )}
                 <div className="col-span-2">
-                  <label className="text-sm text-text-light">Address</label>
+                  <label className="text-sm text-muted-foreground">Address</label>
                   <div className="flex items-start gap-2 mt-1">
-                    <MapPin className="h-4 w-4 text-text-light mt-0.5" />
-                    <p className="text-text-dark">{formatAddress(organization)}</p>
+                    <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                    <p className="text-foreground">{formatAddress(organization)}</p>
                   </div>
                 </div>
                 {organization.notes && (
                   <div className="col-span-2">
-                    <label className="text-sm text-text-light">Notes</label>
-                    <p className="text-text-dark mt-1 whitespace-pre-wrap">{organization.notes}</p>
+                    <label className="text-sm text-muted-foreground">Notes</label>
+                    <p className="text-foreground mt-1 whitespace-pre-wrap">{organization.notes}</p>
                   </div>
                 )}
               </div>
@@ -229,63 +229,63 @@ export default function OrganizationProfilePage() {
 
             {/* Quick Stats */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
+              <div className="bg-card p-6 rounded-lg border border-border shadow-sm">
                 <div className="flex items-center gap-3">
                   <Users className="h-8 w-8 text-primary" />
                   <div>
-                    <p className="text-2xl font-bold text-text-dark">{organization._count?.contacts || 0}</p>
-                    <p className="text-sm text-text-light">Contacts</p>
+                    <p className="text-2xl font-bold text-foreground">{organization._count?.contacts || 0}</p>
+                    <p className="text-sm text-muted-foreground">Contacts</p>
                   </div>
                 </div>
               </div>
-              <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
+              <div className="bg-card p-6 rounded-lg border border-border shadow-sm">
                 <div className="flex items-center gap-3">
-                  <Users className="h-8 w-8 text-purple-600" />
+                  <Users className="h-8 w-8 text-violet-600 dark:text-violet-400" />
                   <div>
-                    <p className="text-2xl font-bold text-text-dark">{organization._count?.contacts || 0}</p>
-                    <p className="text-sm text-text-light">Contacts</p>
+                    <p className="text-2xl font-bold text-foreground">{organization._count?.contacts || 0}</p>
+                    <p className="text-sm text-muted-foreground">Contacts</p>
                   </div>
                 </div>
               </div>
-              <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
+              <div className="bg-card p-6 rounded-lg border border-border shadow-sm">
                 <div className="flex items-center gap-3">
-                  <Briefcase className="h-8 w-8 text-green-600" />
+                  <Briefcase className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
                   <div>
-                    <p className="text-2xl font-bold text-text-dark">{organization._count?.projects || 0}</p>
-                    <p className="text-sm text-text-light">Projects</p>
+                    <p className="text-2xl font-bold text-foreground">{organization._count?.projects || 0}</p>
+                    <p className="text-sm text-muted-foreground">Projects</p>
                   </div>
                 </div>
               </div>
-              <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
+              <div className="bg-card p-6 rounded-lg border border-border shadow-sm">
                 <div className="flex items-center gap-3">
                   <Building2 className="h-8 w-8 text-accent" />
                   <div>
-                    <p className="text-2xl font-bold text-text-dark">{organization._count?.childOrgs || 0}</p>
-                    <p className="text-sm text-text-light">Sub-Orgs</p>
+                    <p className="text-2xl font-bold text-foreground">{organization._count?.childOrgs || 0}</p>
+                    <p className="text-sm text-muted-foreground">Sub-Orgs</p>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Billing Summary */}
-            <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
-              <h2 className="text-xl font-semibold text-text-dark mb-4">Billing Summary</h2>
+            <div className="bg-card p-6 rounded-lg border border-border shadow-sm">
+              <h2 className="text-xl font-semibold text-foreground mb-4">Billing Summary</h2>
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="text-sm text-text-light">Total Billed</label>
-                  <p className="text-2xl font-bold text-text-dark mt-1">
+                  <label className="text-sm text-muted-foreground">Total Billed</label>
+                  <p className="text-2xl font-bold text-foreground mt-1">
                     ${totalBilled.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </p>
                 </div>
                 <div>
-                  <label className="text-sm text-text-light">Total Paid</label>
-                  <p className="text-2xl font-bold text-green-600 mt-1">
+                  <label className="text-sm text-muted-foreground">Total Paid</label>
+                  <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
                     ${totalPaid.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </p>
                 </div>
                 <div>
-                  <label className="text-sm text-text-light">Outstanding</label>
-                  <p className="text-2xl font-bold text-red-600 mt-1">
+                  <label className="text-sm text-muted-foreground">Outstanding</label>
+                  <p className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-1">
                     ${outstanding.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </p>
                 </div>
@@ -296,35 +296,35 @@ export default function OrganizationProfilePage() {
           {/* Right Column - Primary Contact */}
           <div className="space-y-6">
             {primaryContact ? (
-              <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
+              <div className="bg-card p-6 rounded-lg border border-border shadow-sm">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-semibold text-text-dark">Primary Contact</h2>
+                  <h2 className="text-xl font-semibold text-foreground">Primary Contact</h2>
                   <Star className="h-5 w-5 text-yellow-500 fill-yellow-500" />
                 </div>
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
-                    <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold">
+                    <div className={`h-12 w-12 rounded-full flex items-center justify-center font-semibold ${iconWellClass("primary")}`}>
                       {getContactInitials(primaryContact)}
                     </div>
                     <div>
-                      <p className="font-semibold text-text-dark">
+                      <p className="font-semibold text-foreground">
                         {primaryContact.firstName} {primaryContact.lastName}
                       </p>
                       {primaryContact.title && (
-                        <p className="text-sm text-text-light">{primaryContact.title}</p>
+                        <p className="text-sm text-muted-foreground">{primaryContact.title}</p>
                       )}
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-sm">
-                      <Mail className="h-4 w-4 text-text-light" />
+                      <Mail className="h-4 w-4 text-muted-foreground" />
                       <a href={`mailto:${primaryContact.email}`} className="text-primary hover:underline">
                         {primaryContact.email}
                       </a>
                     </div>
                     {primaryContact.phone && (
                       <div className="flex items-center gap-2 text-sm">
-                        <Phone className="h-4 w-4 text-text-light" />
+                        <Phone className="h-4 w-4 text-muted-foreground" />
                         <a href={`tel:${primaryContact.phone}`} className="text-primary hover:underline">
                           {primaryContact.phone}
                         </a>
@@ -332,8 +332,8 @@ export default function OrganizationProfilePage() {
                     )}
                   </div>
                   {primaryContact.portalAccessEnabled ? (
-                    <div className="px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
-                      <p className="text-sm text-green-800">Portal Access Enabled</p>
+                    <div className="px-3 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                      <p className="text-sm text-emerald-700 dark:text-emerald-300">Portal Access Enabled</p>
                     </div>
                   ) : (
                     <button
@@ -347,9 +347,9 @@ export default function OrganizationProfilePage() {
                 </div>
               </div>
             ) : (
-              <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
-                <h2 className="text-xl font-semibold text-text-dark mb-4">Primary Contact</h2>
-                <p className="text-text-light text-center py-4">No primary contact set</p>
+              <div className="bg-card p-6 rounded-lg border border-border shadow-sm">
+                <h2 className="text-xl font-semibold text-foreground mb-4">Primary Contact</h2>
+                <p className="text-muted-foreground text-center py-4">No primary contact set</p>
                 <button
                   onClick={() => setShowCreateContactModal(true)}
                   className="w-full px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors"
@@ -361,16 +361,12 @@ export default function OrganizationProfilePage() {
             )}
 
             {/* Portal Access Status */}
-            <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
-              <h2 className="text-xl font-semibold text-text-dark mb-4">Portal Settings</h2>
+            <div className="bg-card p-6 rounded-lg border border-border shadow-sm">
+              <h2 className="text-xl font-semibold text-foreground mb-4">Portal Settings</h2>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-text-light">Portal Access</span>
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    organization.portalAccessEnabled
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-gray-100 text-gray-800'
-                  }`}>
+                  <span className="text-sm text-muted-foreground">Portal Access</span>
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${activeBadgeClass(organization.portalAccessEnabled)}`}>
                     {organization.portalAccessEnabled ? 'Enabled' : 'Disabled'}
                   </span>
                 </div>
@@ -386,7 +382,7 @@ export default function OrganizationProfilePage() {
           {/* Portal Contacts Section */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-text-dark">Portal Contacts ({contacts.length})</h2>
+              <h2 className="text-xl font-semibold text-foreground">Portal Contacts ({contacts.length})</h2>
               <button
                 onClick={() => setShowCreateContactModal(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors"
@@ -400,19 +396,19 @@ export default function OrganizationProfilePage() {
               {contacts.map((contact) => (
                 <div
                   key={contact.id}
-                  className="bg-white p-6 rounded-lg border border-border-color shadow-sm hover:shadow-md transition-shadow"
+                  className="bg-card p-6 rounded-lg border border-border shadow-sm hover:shadow-md transition-shadow"
                 >
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-sm">
+                      <div className={`h-10 w-10 rounded-full flex items-center justify-center font-semibold text-sm ${iconWellClass("primary")}`}>
                         {getContactInitials(contact)}
                       </div>
                       <div>
-                        <p className="font-semibold text-text-dark">
+                        <p className="font-semibold text-foreground">
                           {contact.firstName} {contact.lastName}
                         </p>
                         {contact.title && (
-                          <p className="text-xs text-text-light">{contact.title}</p>
+                          <p className="text-xs text-muted-foreground">{contact.title}</p>
                         )}
                       </div>
                     </div>
@@ -423,14 +419,14 @@ export default function OrganizationProfilePage() {
 
                   <div className="space-y-2 mb-4">
                     <div className="flex items-center gap-2 text-sm">
-                      <Mail className="h-3 w-3 text-text-light" />
+                      <Mail className="h-3 w-3 text-muted-foreground" />
                       <a href={`mailto:${contact.email}`} className="text-primary hover:underline truncate">
                         {contact.email}
                       </a>
                     </div>
                     {contact.phone && (
                       <div className="flex items-center gap-2 text-sm">
-                        <Phone className="h-3 w-3 text-text-light" />
+                        <Phone className="h-3 w-3 text-muted-foreground" />
                         <a href={`tel:${contact.phone}`} className="text-primary hover:underline">
                           {contact.phone}
                         </a>
@@ -441,7 +437,7 @@ export default function OrganizationProfilePage() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleEditContact(contact)}
-                      className="flex-1 px-3 py-1.5 bg-gray-100 text-text-dark rounded-lg hover:bg-gray-200 transition-colors text-sm"
+                      className="flex-1 px-3 py-1.5 bg-muted text-foreground rounded-lg hover:bg-muted/70 transition-colors text-sm"
                     >
                       Edit
                     </button>
@@ -460,8 +456,8 @@ export default function OrganizationProfilePage() {
           </div>
 
           {/* Contacts Section */}
-          <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
-            <h2 className="text-xl font-semibold text-text-dark mb-4">
+          <div className="bg-card p-6 rounded-lg border border-border shadow-sm">
+            <h2 className="text-xl font-semibold text-foreground mb-4">
               Linked Contacts ({organization.contacts?.length || 0})
             </h2>
             {organization.contacts && organization.contacts.length > 0 ? (
@@ -469,35 +465,35 @@ export default function OrganizationProfilePage() {
                 {organization.contacts.map((contact: any) => (
                   <div
                     key={contact.id}
-                    className="p-4 border border-border-color rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                    className="p-4 border border-border rounded-lg hover:bg-muted/30 cursor-pointer transition-colors"
                     onClick={() => router.push(`/dashboard/contacts/${contact.id}`)}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <p className="font-semibold text-text-dark">
+                          <p className="font-semibold text-foreground">
                             {contact.firstName} {contact.lastName}
                           </p>
                           {organization.primaryContactId === contact.id && (
-                            <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
+                            <span className={`px-2 py-0.5 text-xs rounded-full ${statusBadgeClass("NEW")}`}>
                               Primary Contact
                             </span>
                           )}
                         </div>
                         <div className="flex items-center gap-4 mt-1">
-                          <div className="flex items-center gap-1 text-sm text-text-light">
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
                             <Mail className="h-3 w-3" />
                             <span>{contact.email}</span>
                           </div>
                           {contact.phone && (
-                            <div className="flex items-center gap-1 text-sm text-text-light">
+                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
                               <Phone className="h-3 w-3" />
                               <span>{contact.phone}</span>
                             </div>
                           )}
                         </div>
                         {contact.company && (
-                          <p className="text-sm text-text-light mt-1">
+                          <p className="text-sm text-muted-foreground mt-1">
                             <Building2 className="h-3 w-3 inline mr-1" />
                             {contact.company}
                           </p>
@@ -505,25 +501,21 @@ export default function OrganizationProfilePage() {
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="text-right">
-                          <p className="text-sm font-medium text-text-dark">
+                          <p className="text-sm font-medium text-foreground">
                             {contact._count?.projects || 0} {contact._count?.projects === 1 ? 'project' : 'projects'}
                           </p>
                         </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          contact.isActive
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-600'
-                        }`}>
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${activeBadgeClass(contact.isActive)}`}>
                           {contact.isActive ? 'Active' : 'Inactive'}
                         </span>
-                        <ChevronRight className="h-5 w-5 text-text-light" />
+                        <ChevronRight className="h-5 w-5 text-muted-foreground" />
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-12 text-text-light">
+              <div className="text-center py-12 text-muted-foreground">
                 <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
                 <p className="text-lg font-medium mb-1">No contacts linked to this organization</p>
                 <p className="text-sm">Contacts will appear here when they are assigned to this organization</p>
@@ -538,16 +530,16 @@ export default function OrganizationProfilePage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <h2 className="text-xl font-semibold text-text-dark">Projects ({projects.length})</h2>
+              <h2 className="text-xl font-semibold text-foreground">Projects ({projects.length})</h2>
               {organization.type === 'AGENCY' && (
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     checked={includeChildProjects}
                     onChange={(e) => setIncludeChildProjects(e.target.checked)}
-                    className="rounded border-border-color text-primary focus:ring-primary"
+                    className="rounded border-border text-primary focus:ring-primary"
                   />
-                  <span className="text-text-light">Include child organizations</span>
+                  <span className="text-muted-foreground">Include child organizations</span>
                 </label>
               )}
             </div>
@@ -560,49 +552,43 @@ export default function OrganizationProfilePage() {
             </button>
           </div>
 
-          <div className="bg-white rounded-lg border border-border-color shadow-sm overflow-hidden">
+          <div className="bg-card rounded-lg border border-border shadow-sm overflow-hidden">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b border-border-color">
+              <thead className="bg-muted/50 border-b border-border">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-text-light uppercase">Case Title</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-text-light uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-text-light uppercase">Amount</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-text-light uppercase">Payment Status</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-text-light uppercase">Actions</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Case Title</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Amount</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Payment Status</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border-color">
+              <tbody className="divide-y divide-border">
                 {projects.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-text-light">
+                    <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
                       No projects found for this organization.
                     </td>
                   </tr>
                 ) : (
                   projects.map((projectItem) => (
-                    <tr key={projectItem.id} className="hover:bg-gray-50 cursor-pointer">
+                    <tr key={projectItem.id} className="hover:bg-muted/30 cursor-pointer">
                       <td className="px-6 py-4">
-                        <p className="font-medium text-text-dark">{projectItem.title}</p>
-                        <p className="text-sm text-text-light">{projectItem.projectNumber}</p>
+                        <p className="font-medium text-foreground">{projectItem.title}</p>
+                        <p className="text-sm text-muted-foreground">{projectItem.projectNumber}</p>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusBadgeClass(projectItem.status)}`}>
                           {projectItem.status}
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-text-dark">
+                        <p className="text-foreground">
                           ${(projectItem.billingAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </p>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          projectItem.paymentStatus === 'PAID'
-                            ? 'bg-green-100 text-green-800'
-                            : projectItem.paymentStatus === 'PARTIAL'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}>
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${paymentStatusBadgeClass(projectItem.paymentStatus || 'UNPAID')}`}>
                           {projectItem.paymentStatus || 'UNPAID'}
                         </span>
                       </td>
@@ -626,7 +612,7 @@ export default function OrganizationProfilePage() {
       {/* Hierarchy Tab */}
       {activeTab === 'hierarchy' && (
         <div className="space-y-4">
-          <h2 className="text-xl font-semibold text-text-dark">Organization Hierarchy</h2>
+          <h2 className="text-xl font-semibold text-foreground">Organization Hierarchy</h2>
           <HierarchyTree organizationId={orgId} />
         </div>
       )}

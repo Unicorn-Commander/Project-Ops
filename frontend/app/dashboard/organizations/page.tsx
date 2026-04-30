@@ -15,6 +15,7 @@ import {
 import { Building2, Users, Briefcase, User, Plus, Search, Filter, MoreVertical, Edit, Trash2, Network } from 'lucide-react';
 import { CreateOrganizationModal } from '@/components/modals/create-organization-modal';
 import { EditOrganizationModal } from '@/components/modals/edit-organization-modal';
+import { activeBadgeClass, iconWellClass } from '@/lib/badge-styles';
 
 export default function OrganizationsPage() {
   const router = useRouter();
@@ -95,8 +96,8 @@ export default function OrganizationsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-text-dark">Organizations</h1>
-          <p className="text-text-light mt-1">Manage CPA firms, businesses, and individual clients</p>
+          <h1 className="text-3xl font-bold text-foreground">Organizations</h1>
+          <p className="text-muted-foreground mt-1">Manage CPA firms, businesses, and individual clients</p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
@@ -110,62 +111,62 @@ export default function OrganizationsPage() {
       {/* Statistics Cards */}
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
+          <div className="bg-card p-6 rounded-lg border border-border shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-text-light">Total Organizations</p>
-                <p className="text-3xl font-bold text-text-dark mt-1">{stats.total}</p>
+                <p className="text-sm text-muted-foreground">Total Organizations</p>
+                <p className="text-3xl font-bold text-foreground mt-1">{stats.total}</p>
               </div>
-              <div className="p-3 bg-primary/10 rounded-lg">
-                <Building2 className="h-6 w-6 text-primary" />
+              <div className={`p-3 rounded-lg ${iconWellClass("primary")}`}>
+                <Building2 className="h-6 w-6" />
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
+          <div className="bg-card p-6 rounded-lg border border-border shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-text-light">Active</p>
-                <p className="text-3xl font-bold text-text-dark mt-1">{stats.active}</p>
+                <p className="text-sm text-muted-foreground">Active</p>
+                <p className="text-3xl font-bold text-foreground mt-1">{stats.active}</p>
               </div>
-              <div className="p-3 bg-green-100 rounded-lg">
-                <Building2 className="h-6 w-6 text-green-600" />
+              <div className={`p-3 rounded-lg ${iconWellClass("emerald")}`}>
+                <Building2 className="h-6 w-6" />
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
+          <div className="bg-card p-6 rounded-lg border border-border shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-text-light">Agencies</p>
-                <p className="text-3xl font-bold text-text-dark mt-1">{stats.byType.agency}</p>
+                <p className="text-sm text-muted-foreground">Agencies</p>
+                <p className="text-3xl font-bold text-foreground mt-1">{stats.byType.agency}</p>
               </div>
-              <div className="p-3 bg-primary/10 rounded-lg">
-                <Briefcase className="h-6 w-6 text-primary" />
+              <div className={`p-3 rounded-lg ${iconWellClass("primary")}`}>
+                <Briefcase className="h-6 w-6" />
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
+          <div className="bg-card p-6 rounded-lg border border-border shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-text-light">Businesses</p>
-                <p className="text-3xl font-bold text-text-dark mt-1">{stats.byType.business}</p>
+                <p className="text-sm text-muted-foreground">Businesses</p>
+                <p className="text-3xl font-bold text-foreground mt-1">{stats.byType.business}</p>
               </div>
-              <div className="p-3 bg-green-100 rounded-lg">
-                <Building2 className="h-6 w-6 text-green-600" />
+              <div className={`p-3 rounded-lg ${iconWellClass("emerald")}`}>
+                <Building2 className="h-6 w-6" />
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-lg border border-border-color shadow-sm">
+          <div className="bg-card p-6 rounded-lg border border-border shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-text-light">Individuals</p>
-                <p className="text-3xl font-bold text-text-dark mt-1">{stats.byType.individual}</p>
+                <p className="text-sm text-muted-foreground">Individuals</p>
+                <p className="text-3xl font-bold text-foreground mt-1">{stats.byType.individual}</p>
               </div>
-              <div className="p-3 bg-accent/10 rounded-lg">
-                <User className="h-6 w-6 text-accent" />
+              <div className={`p-3 rounded-lg ${iconWellClass("violet")}`}>
+                <User className="h-6 w-6" />
               </div>
             </div>
           </div>
@@ -173,18 +174,18 @@ export default function OrganizationsPage() {
       )}
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-lg border border-border-color shadow-sm">
+      <div className="bg-card p-4 rounded-lg border border-border shadow-sm">
         <div className="flex flex-col lg:flex-row gap-4">
           {/* Search */}
           <div className="flex-1">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-text-light" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
               <input
                 type="text"
                 placeholder="Search by name, tax ID, or industry..."
                 value={filters.search}
                 onChange={handleSearch}
-                className="w-full pl-10 pr-4 py-2 border border-border-color rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full pl-10 pr-4 py-2 border border-border bg-background rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
           </div>
@@ -196,7 +197,7 @@ export default function OrganizationsPage() {
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 filters.type === undefined
                   ? 'bg-primary text-white border-primary'
-                  : 'bg-white text-text-dark border-border-color hover:bg-gray-50'
+                  : 'bg-card text-foreground border-border hover:bg-muted/50'
               }`}
             >
               All Types
@@ -206,7 +207,7 @@ export default function OrganizationsPage() {
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 filters.type === 'AGENCY'
                   ? 'bg-primary text-white border-primary'
-                  : 'bg-white text-text-dark border-border-color hover:bg-gray-50'
+                  : 'bg-card text-foreground border-border hover:bg-muted/50'
               }`}
             >
               Agencies
@@ -216,7 +217,7 @@ export default function OrganizationsPage() {
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 filters.type === 'BUSINESS'
                   ? 'bg-green-600 text-white border-green-600'
-                  : 'bg-white text-text-dark border-border-color hover:bg-gray-50'
+                  : 'bg-card text-foreground border-border hover:bg-muted/50'
               }`}
             >
               Businesses
@@ -226,7 +227,7 @@ export default function OrganizationsPage() {
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 filters.type === 'INDIVIDUAL'
                   ? 'bg-accent text-white border-accent'
-                  : 'bg-white text-text-dark border-border-color hover:bg-gray-50'
+                  : 'bg-card text-foreground border-border hover:bg-muted/50'
               }`}
             >
               Individuals
@@ -240,7 +241,7 @@ export default function OrganizationsPage() {
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 filters.isActive === undefined
                   ? 'bg-primary text-white border-primary'
-                  : 'bg-white text-text-dark border-border-color hover:bg-gray-50'
+                  : 'bg-card text-foreground border-border hover:bg-muted/50'
               }`}
             >
               All
@@ -250,7 +251,7 @@ export default function OrganizationsPage() {
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 filters.isActive === true
                   ? 'bg-green-600 text-white border-green-600'
-                  : 'bg-white text-text-dark border-border-color hover:bg-gray-50'
+                  : 'bg-card text-foreground border-border hover:bg-muted/50'
               }`}
             >
               Active
@@ -260,7 +261,7 @@ export default function OrganizationsPage() {
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 filters.isActive === false
                   ? 'bg-red-600 text-white border-red-600'
-                  : 'bg-white text-text-dark border-border-color hover:bg-gray-50'
+                  : 'bg-card text-foreground border-border hover:bg-muted/50'
               }`}
             >
               Inactive
@@ -270,43 +271,43 @@ export default function OrganizationsPage() {
       </div>
 
       {/* Organizations Table */}
-      <div className="bg-white rounded-lg border border-border-color shadow-sm overflow-hidden">
+      <div className="bg-card rounded-lg border border-border shadow-sm overflow-hidden">
         <table className="w-full">
-          <thead className="bg-gray-50 border-b border-border-color">
+          <thead className="bg-muted/50 border-b border-border">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-text-light uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Organization
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-text-light uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Type
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-text-light uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Industry
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-text-light uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Contacts
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-text-light uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Projects
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-text-light uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-text-light uppercase tracking-wider">
+              <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border-color">
+          <tbody className="divide-y divide-border">
             {loading ? (
               <tr>
-                <td colSpan={7} className="px-6 py-8 text-center text-text-light">
+                <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
                   Loading organizations...
                 </td>
               </tr>
             ) : organizations.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-6 py-8 text-center text-text-light">
+                <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
                   No organizations found. Create your first organization to get started.
                 </td>
               </tr>
@@ -315,17 +316,17 @@ export default function OrganizationsPage() {
                 <tr
                   key={org.id}
                   onClick={() => handleRowClick(org)}
-                  className="hover:bg-gray-50 cursor-pointer transition-colors"
+                  className="hover:bg-muted/30 cursor-pointer transition-colors"
                 >
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-primary/10 rounded-lg">
-                        <Building2 className="h-5 w-5 text-primary" />
+                      <div className={`p-2 rounded-lg ${iconWellClass("primary")}`}>
+                        <Building2 className="h-5 w-5" />
                       </div>
                       <div>
-                        <div className="font-medium text-text-dark">{org.name}</div>
+                        <div className="font-medium text-foreground">{org.name}</div>
                         {org.parentOrg && (
-                          <div className="text-sm text-text-light">
+                          <div className="text-sm text-muted-foreground">
                             Parent: {org.parentOrg.name}
                           </div>
                         )}
@@ -337,27 +338,23 @@ export default function OrganizationsPage() {
                       {getOrganizationTypeLabel(org.type)}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm text-text-dark">
+                  <td className="px-6 py-4 text-sm text-foreground">
                     {org.industry || 'N/A'}
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 text-sm text-text-dark">
-                      <Users className="h-4 w-4 text-text-light" />
+                    <div className="flex items-center gap-2 text-sm text-foreground">
+                      <Users className="h-4 w-4 text-muted-foreground" />
                       {org._count?.contacts || 0}
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 text-sm text-text-dark">
-                      <Briefcase className="h-4 w-4 text-text-light" />
+                    <div className="flex items-center gap-2 text-sm text-foreground">
+                      <Briefcase className="h-4 w-4 text-muted-foreground" />
                       {org._count?.projects || 0}
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      org.isActive
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${activeBadgeClass(org.isActive)}`}>
                       {org.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </td>
@@ -365,21 +362,21 @@ export default function OrganizationsPage() {
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={(e) => handleViewHierarchy(org, e)}
-                        className="p-2 text-text-light hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                        className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
                         title="View Hierarchy"
                       >
                         <Network className="h-4 w-4" />
                       </button>
                       <button
                         onClick={(e) => handleEdit(org, e)}
-                        className="p-2 text-text-light hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                        className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
                         title="Edit"
                       >
                         <Edit className="h-4 w-4" />
                       </button>
                       <button
                         onClick={(e) => handleDelete(org, e)}
-                        className="p-2 text-text-light hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        className="p-2 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg transition-colors"
                         title="Delete"
                       >
                         <Trash2 className="h-4 w-4" />

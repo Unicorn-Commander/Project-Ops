@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Loader2, FolderOpen, FileText, Search, Calendar } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import api from "@/lib/api";
+import { iconWellClass } from "@/lib/badge-styles";
+import { format } from "date-fns";
 import Link from "next/link";
 
 interface Document {
@@ -29,11 +31,11 @@ interface Document {
 }
 
 const documentStatusColors: Record<string, string> = {
-  PENDING: "bg-yellow-100 text-yellow-800",
-  UPLOADED: "bg-blue-100 text-blue-800",
-  PROCESSING: "bg-purple-100 text-purple-800",
-  VERIFIED: "bg-green-100 text-green-800",
-  REJECTED: "bg-red-100 text-red-800",
+  PENDING:    "bg-amber-500/15   text-amber-700   dark:text-amber-300",
+  UPLOADED:   "bg-blue-500/15    text-blue-700    dark:text-blue-300",
+  PROCESSING: "bg-violet-500/15  text-violet-700  dark:text-violet-300",
+  VERIFIED:   "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  REJECTED:   "bg-rose-500/15    text-rose-700    dark:text-rose-300",
 };
 
 export default function ClientDocumentsPage() {
@@ -60,16 +62,6 @@ export default function ClientDocumentsPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
   };
 
   const formatFileSize = (bytes: number) => {
@@ -118,7 +110,7 @@ export default function ClientDocumentsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-[#005AF5]" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -127,29 +119,29 @@ export default function ClientDocumentsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-[#10172B]">Documents</h1>
-        <p className="text-[#A5A6AA] mt-1">
+        <h1 className="text-3xl font-bold text-foreground">Documents</h1>
+        <p className="text-muted-foreground mt-1">
           View and download your tax documents
         </p>
       </div>
 
       {/* Summary Card */}
-      <Card className="p-6 bg-white border-[#D4DADE]">
+      <Card className="p-6 bg-card border-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-[#005AF5] bg-opacity-10 rounded-lg flex items-center justify-center">
-              <FolderOpen className="w-6 h-6 text-[#005AF5]" />
+            <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${iconWellClass("primary")}`}>
+              <FolderOpen className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-3xl font-bold text-[#10172B]">
+              <p className="text-3xl font-bold text-foreground">
                 {documents.length}
               </p>
-              <p className="text-sm text-[#A5A6AA]">Total Documents</p>
+              <p className="text-sm text-muted-foreground">Total Documents</p>
             </div>
           </div>
           <div className="text-right">
-            <p className="text-sm text-[#A5A6AA]">Across</p>
-            <p className="text-lg font-semibold text-[#10172B]">
+            <p className="text-sm text-muted-foreground">Across</p>
+            <p className="text-lg font-semibold text-foreground">
               {Object.keys(documentsByProject).length} Projects
             </p>
           </div>
@@ -158,44 +150,44 @@ export default function ClientDocumentsPage() {
 
       {/* Search */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#A5A6AA]" />
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
         <Input
           type="text"
           placeholder="Search documents by name, description, or project..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10 border-[#D4DADE] focus:border-[#005AF5] focus:ring-[#005AF5]"
+          className="pl-10"
         />
       </div>
 
       {/* Documents Grouped by Project */}
       {Object.keys(documentsByProject).length === 0 ? (
-        <Card className="p-12 text-center bg-white border-[#D4DADE]">
-          <FolderOpen className="w-12 h-12 text-[#D4DADE] mx-auto mb-4" />
-          <p className="text-[#A5A6AA]">
+        <Card className="p-12 text-center bg-card border-border">
+          <FolderOpen className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-muted-foreground">
             {searchTerm ? "No documents found matching your search" : "No documents yet"}
           </p>
         </Card>
       ) : (
         <div className="space-y-6">
           {Object.entries(documentsByProject).map(([projectId, { project: projectData, documents: projectDocs }]) => (
-            <Card key={projectId} className="bg-white border-[#D4DADE]">
+            <Card key={projectId} className="bg-card border-border">
               {/* Project Header */}
               <Link href={`/client-portal/projects/${projectId}`}>
-                <div className="p-4 border-b border-[#D4DADE] hover:bg-[#F5F9FC] cursor-pointer">
+                <div className="p-4 border-b border-border hover:bg-muted/30 cursor-pointer">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <FileText className="w-5 h-5 text-[#005AF5]" />
+                      <FileText className="w-5 h-5 text-primary" />
                       <div>
-                        <p className="font-semibold text-[#10172B]">
+                        <p className="font-semibold text-foreground">
                           {projectData.title}
                         </p>
-                        <p className="text-sm text-[#A5A6AA]">
+                        <p className="text-sm text-muted-foreground">
                           Project #{projectData.projectNumber}
                         </p>
                       </div>
                     </div>
-                    <Badge className="bg-blue-100 text-blue-800">
+                    <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-300">
                       {projectDocs.length} {projectDocs.length === 1 ? "document" : "documents"}
                     </Badge>
                   </div>
@@ -203,27 +195,27 @@ export default function ClientDocumentsPage() {
               </Link>
 
               {/* Documents List */}
-              <div className="divide-y divide-[#D4DADE]">
+              <div className="divide-y divide-border">
                 {projectDocs.map((doc) => (
-                  <div key={doc.id} className="p-4 hover:bg-[#F5F9FC]">
+                  <div key={doc.id} className="p-4 hover:bg-muted/30">
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-3 flex-1">
                         <span className="text-2xl">{getFileIcon(doc.mimeType)}</span>
                         <div className="flex-1">
-                          <p className="font-medium text-[#10172B]">
+                          <p className="font-medium text-foreground">
                             {doc.fileName}
                           </p>
                           {doc.description && (
-                            <p className="text-sm text-[#A5A6AA] mt-1">
+                            <p className="text-sm text-muted-foreground mt-1">
                               {doc.description}
                             </p>
                           )}
-                          <div className="flex items-center gap-3 mt-2 text-sm text-[#A5A6AA]">
+                          <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
                             <span>{formatFileSize(doc.fileSize)}</span>
                             <span>•</span>
                             <div className="flex items-center gap-1">
                               <Calendar className="w-4 h-4" />
-                              {formatDate(doc.uploadedAt)}
+                              {format(new Date(doc.uploadedAt), "MMM d, yyyy h:mm a")}
                             </div>
                             <span>•</span>
                             <span>

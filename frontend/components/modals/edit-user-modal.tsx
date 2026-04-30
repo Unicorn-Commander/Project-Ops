@@ -257,7 +257,7 @@ export function EditUserModal({
                     </span>
                     {formData.role === role.value && (
                       <div className="h-4 w-4 rounded-full bg-primary flex items-center justify-center">
-                        <div className="h-2 w-2 rounded-full bg-white" />
+                        <div className="h-2 w-2 rounded-full bg-primary-foreground" />
                       </div>
                     )}
                   </div>
@@ -322,7 +322,7 @@ export function EditUserModal({
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground/80"
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>

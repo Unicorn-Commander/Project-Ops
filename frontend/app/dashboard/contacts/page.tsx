@@ -23,6 +23,7 @@ import {
   deleteContact,
   type Contact,
 } from "@/lib/contacts-api";
+import { activeBadgeClass, iconWellClass } from "@/lib/badge-styles";
 import {
   Search,
   Plus,
@@ -121,25 +122,25 @@ export default function ContactsPage() {
   const filteredContacts = contacts;
 
   return (
-    <div className="min-h-screen bg-[#F5F9FC]">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <div className="bg-white border-b border-[#D4DADE]">
+      <div className="bg-card border-b border-border">
         <div className="container mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-[#005AF5] rounded-lg flex items-center justify-center">
+              <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
                 <Users className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-[#10172B]">Contacts</h1>
-                <p className="text-sm text-[#A5A6AA] mt-1">
+                <h1 className="text-2xl font-bold text-foreground">Contacts</h1>
+                <p className="text-sm text-muted-foreground mt-1">
                   Manage your contacts and information
                 </p>
               </div>
             </div>
             <Button
               onClick={() => setCreateModalOpen(true)}
-              className="bg-[#005AF5] hover:bg-[#004CCE] text-white px-6 py-3"
+              className="bg-primary hover:bg-primary/90 text-white px-6 py-3"
             >
               <Plus className="w-4 h-4 mr-2" />
               New Contact
@@ -154,12 +155,12 @@ export default function ContactsPage() {
         <Card className="mb-6 p-6">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#A5A6AA] w-5 h-5" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
               <Input
                 placeholder="Search by name, email, or company..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 py-6 border-[#D4DADE] focus:border-[#005AF5] focus:ring-[#005AF5]"
+                className="pl-10 py-6"
               />
             </div>
             <div className="flex gap-2">
@@ -168,7 +169,7 @@ export default function ContactsPage() {
                 onClick={() => setFilterActive(true)}
                 className={
                   filterActive === true
-                    ? "bg-[#005AF5] hover:bg-[#004CCE]"
+                    ? "bg-primary hover:bg-primary/90"
                     : ""
                 }
               >
@@ -179,7 +180,7 @@ export default function ContactsPage() {
                 onClick={() => setFilterActive(false)}
                 className={
                   filterActive === false
-                    ? "bg-[#005AF5] hover:bg-[#004CCE]"
+                    ? "bg-primary hover:bg-primary/90"
                     : ""
                 }
               >
@@ -190,7 +191,7 @@ export default function ContactsPage() {
                 onClick={() => setFilterActive(undefined)}
                 className={
                   filterActive === undefined
-                    ? "bg-[#005AF5] hover:bg-[#004CCE]"
+                    ? "bg-primary hover:bg-primary/90"
                     : ""
                 }
               >
@@ -204,64 +205,64 @@ export default function ContactsPage() {
         <Card>
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-[#F5F9FC] border-b border-[#D4DADE]">
+              <thead className="bg-muted/50 border-b border-border">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-[#10172B] uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
                     Contact
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-[#10172B] uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
                     Contact Info
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-[#10172B] uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
                     Company
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-[#10172B] uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
                     Projects
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-[#10172B] uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-semibold text-[#10172B] uppercase tracking-wider">
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-foreground uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-[#D4DADE]">
+              <tbody className="bg-card divide-y divide-border">
                 {loading ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center">
                       <div className="flex items-center justify-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#005AF5]"></div>
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                       </div>
                     </td>
                   </tr>
                 ) : filteredContacts.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center">
-                      <Users className="w-12 h-12 text-[#A5A6AA] mx-auto mb-3" />
-                      <p className="text-[#A5A6AA]">No contacts found</p>
+                      <Users className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                      <p className="text-muted-foreground">No contacts found</p>
                     </td>
                   </tr>
                 ) : (
                   filteredContacts.map((contact) => (
                     <tr
                       key={contact.id}
-                      className="hover:bg-[#F5F9FC] transition-colors cursor-pointer"
+                      className="hover:bg-muted/30 transition-colors cursor-pointer"
                       onClick={() => handleViewContact(contact.id)}
                     >
                       <td className="px-6 py-4">
                         <div className="flex items-center">
-                          <div className="w-10 h-10 bg-[#005AF5] bg-opacity-10 rounded-full flex items-center justify-center mr-3">
-                            <span className="text-[#005AF5] font-semibold">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 ${iconWellClass("primary")}`}>
+                            <span className="font-semibold">
                               {contact.firstName[0]}
                               {contact.lastName[0]}
                             </span>
                           </div>
                           <div>
-                            <div className="font-semibold text-[#10172B]">
+                            <div className="font-semibold text-foreground">
                               {contact.firstName} {contact.lastName}
                             </div>
-                            <div className="text-sm text-[#A5A6AA]">
+                            <div className="text-sm text-muted-foreground">
                               {contact.email}
                             </div>
                           </div>
@@ -270,14 +271,14 @@ export default function ContactsPage() {
                       <td className="px-6 py-4">
                         <div className="space-y-1">
                           {contact.email && (
-                            <div className="flex items-center text-sm text-[#10172B]">
-                              <Mail className="w-4 h-4 mr-2 text-[#A5A6AA]" />
+                            <div className="flex items-center text-sm text-foreground">
+                              <Mail className="w-4 h-4 mr-2 text-muted-foreground" />
                               {contact.email}
                             </div>
                           )}
                           {contact.phone && (
-                            <div className="flex items-center text-sm text-[#10172B]">
-                              <Phone className="w-4 h-4 mr-2 text-[#A5A6AA]" />
+                            <div className="flex items-center text-sm text-foreground">
+                              <Phone className="w-4 h-4 mr-2 text-muted-foreground" />
                               {contact.phone}
                             </div>
                           )}
@@ -285,40 +286,34 @@ export default function ContactsPage() {
                       </td>
                       <td className="px-6 py-4">
                         {contact.organization ? (
-                          <div className="flex items-center text-sm text-[#10172B]">
-                            <Building2 className="w-4 h-4 mr-2 text-[#A5A6AA]" />
+                          <div className="flex items-center text-sm text-foreground">
+                            <Building2 className="w-4 h-4 mr-2 text-muted-foreground" />
                             {contact.organization.name}
-                            <span className="ml-2 text-xs text-[#A5A6AA]">
+                            <span className="ml-2 text-xs text-muted-foreground">
                               ({contact.organization.type})
                             </span>
                           </div>
                         ) : contact.company ? (
-                          <div className="flex items-center text-sm text-[#10172B]">
-                            <Building2 className="w-4 h-4 mr-2 text-[#A5A6AA]" />
+                          <div className="flex items-center text-sm text-foreground">
+                            <Building2 className="w-4 h-4 mr-2 text-muted-foreground" />
                             {contact.company}
                           </div>
                         ) : (
-                          <span className="text-sm text-[#A5A6AA]">—</span>
+                          <span className="text-sm text-muted-foreground">—</span>
                         )}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center">
-                          <FileText className="w-4 h-4 mr-2 text-[#A5A6AA]" />
-                          <span className="text-sm font-medium text-[#10172B]">
+                          <FileText className="w-4 h-4 mr-2 text-muted-foreground" />
+                          <span className="text-sm font-medium text-foreground">
                             {contact._count?.projects || 0}
                           </span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        {contact.isActive ? (
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            Active
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                            Inactive
-                          </span>
-                        )}
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${activeBadgeClass(contact.isActive)}`}>
+                          {contact.isActive ? "Active" : "Inactive"}
+                        </span>
                       </td>
                       <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-2">
@@ -326,7 +321,7 @@ export default function ContactsPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleViewContact(contact.id)}
-                            className="text-[#005AF5] hover:text-[#004CCE] hover:bg-[#005AF5] hover:bg-opacity-10"
+                            className="text-primary hover:text-primary/90 hover:bg-primary/10"
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
@@ -337,7 +332,7 @@ export default function ContactsPage() {
                               e.stopPropagation();
                               handleEditClick(contact);
                             }}
-                            className="text-[#005AF5] hover:text-[#004CCE] hover:bg-[#005AF5] hover:bg-opacity-10"
+                            className="text-primary hover:text-primary/90 hover:bg-primary/10"
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
@@ -348,7 +343,7 @@ export default function ContactsPage() {
                               e.stopPropagation();
                               handleDeleteClick(contact);
                             }}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            className="text-rose-600 hover:text-rose-700 hover:bg-rose-500/10"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -363,8 +358,8 @@ export default function ContactsPage() {
 
           {/* Pagination */}
           {!loading && total > take && (
-            <div className="px-6 py-4 border-t border-[#D4DADE] flex items-center justify-between">
-              <div className="text-sm text-[#A5A6AA]">
+            <div className="px-6 py-4 border-t border-border flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
                 Showing {skip + 1} to {Math.min(skip + take, total)} of {total}{" "}
                 contacts
               </div>
@@ -428,7 +423,7 @@ export default function ContactsPage() {
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               disabled={deleting}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive/90"
             >
               {deleting ? "Deleting..." : "Delete"}
             </AlertDialogAction>

@@ -121,14 +121,14 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-card rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-border-color sticky top-0 bg-white rounded-t-xl">
-          <h2 className="text-2xl font-bold text-text-dark">Create Organization</h2>
+        <div className="flex items-center justify-between p-6 border-b border-border sticky top-0 bg-card rounded-t-xl">
+          <h2 className="text-2xl font-bold text-foreground">Create Organization</h2>
           <button
             onClick={handleClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-muted/50 rounded-lg transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
@@ -136,14 +136,14 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {error && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-800">{error}</p>
+            <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-lg">
+              <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p>
             </div>
           )}
 
           {/* Organization Type Selection */}
           <div>
-            <label className="block text-sm font-medium text-text-dark mb-3">
+            <label className="block text-sm font-medium text-foreground mb-3">
               Organization Type <span className="text-red-500">*</span>
             </label>
             <div className="grid grid-cols-3 gap-4">
@@ -153,14 +153,14 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
                 className={`p-6 rounded-lg border-2 transition-all ${
                   selectedType === 'AGENCY'
                     ? 'border-primary bg-primary/5'
-                    : 'border-border-color hover:border-gray-400'
+                    : 'border-border hover:border-foreground/40'
                 }`}
               >
                 <Building2 className={`h-8 w-8 mx-auto mb-2 ${
-                  selectedType === 'AGENCY' ? 'text-primary' : 'text-gray-400'
+                  selectedType === 'AGENCY' ? 'text-primary' : 'text-muted-foreground'
                 }`} />
-                <p className="font-semibold text-text-dark">Agency</p>
-                <p className="text-xs text-text-light mt-1">Your firm or parent organization</p>
+                <p className="font-semibold text-foreground">Agency</p>
+                <p className="text-xs text-muted-foreground mt-1">Your firm or parent organization</p>
               </button>
 
               <button
@@ -168,15 +168,15 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
                 onClick={() => handleTypeChange('BUSINESS')}
                 className={`p-6 rounded-lg border-2 transition-all ${
                   selectedType === 'BUSINESS'
-                    ? 'border-green-600 bg-green-50'
-                    : 'border-border-color hover:border-gray-400'
+                    ? 'border-green-600 bg-green-500/10'
+                    : 'border-border hover:border-foreground/40'
                 }`}
               >
                 <Briefcase className={`h-8 w-8 mx-auto mb-2 ${
-                  selectedType === 'BUSINESS' ? 'text-green-600' : 'text-gray-400'
+                  selectedType === 'BUSINESS' ? 'text-green-600' : 'text-muted-foreground'
                 }`} />
-                <p className="font-semibold text-text-dark">Business</p>
-                <p className="text-xs text-text-light mt-1">Corporate or LLC client</p>
+                <p className="font-semibold text-foreground">Business</p>
+                <p className="text-xs text-muted-foreground mt-1">Corporate or LLC client</p>
               </button>
 
               <button
@@ -185,24 +185,24 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
                 className={`p-6 rounded-lg border-2 transition-all ${
                   selectedType === 'INDIVIDUAL'
                     ? 'border-accent bg-accent/5'
-                    : 'border-border-color hover:border-gray-400'
+                    : 'border-border hover:border-foreground/40'
                 }`}
               >
                 <UserIcon className={`h-8 w-8 mx-auto mb-2 ${
-                  selectedType === 'INDIVIDUAL' ? 'text-accent' : 'text-gray-400'
+                  selectedType === 'INDIVIDUAL' ? 'text-accent' : 'text-muted-foreground'
                 }`} />
-                <p className="font-semibold text-text-dark">Individual</p>
-                <p className="text-xs text-text-light mt-1">Individual taxpayer</p>
+                <p className="font-semibold text-foreground">Individual</p>
+                <p className="text-xs text-muted-foreground mt-1">Individual taxpayer</p>
               </button>
             </div>
           </div>
 
           {/* Basic Information */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-text-dark">Basic Information</h3>
+            <h3 className="text-lg font-semibold text-foreground">Basic Information</h3>
 
             <div>
-              <label className="block text-sm font-medium text-text-dark mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 {selectedType === 'INDIVIDUAL' ? 'Full Name' : 'Organization Name'} <span className="text-red-500">*</span>
               </label>
               <input
@@ -210,14 +210,14 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
                 value={formData.name}
                 onChange={(e) => handleInputChange('name', e.target.value)}
                 placeholder={selectedType === 'INDIVIDUAL' ? 'John Doe' : 'Acme Corporation'}
-                className="w-full px-4 py-2 border border-border-color rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full px-4 py-2 border border-border bg-background text-foreground rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 required
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-text-dark mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Tax ID / Identifier
                 </label>
                 <input
@@ -225,13 +225,13 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
                   value={formData.taxId}
                   onChange={(e) => handleInputChange('taxId', e.target.value)}
                   placeholder="EIN, VAT, registry number, etc."
-                  className="w-full px-4 py-2 border border-border-color rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full px-4 py-2 border border-border bg-background text-foreground rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
 
               {selectedType === 'BUSINESS' && (
                 <div>
-                  <label className="block text-sm font-medium text-text-dark mb-2">
+                  <label className="block text-sm font-medium text-foreground mb-2">
                     Industry
                   </label>
                   <input
@@ -239,14 +239,14 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
                     value={formData.industry}
                     onChange={(e) => handleInputChange('industry', e.target.value)}
                     placeholder="Healthcare, Technology, etc."
-                    className="w-full px-4 py-2 border border-border-color rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full px-4 py-2 border border-border bg-background text-foreground rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
               )}
 
               {selectedType !== 'INDIVIDUAL' && (
                 <div className={selectedType === 'BUSINESS' ? 'col-span-2' : ''}>
-                  <label className="block text-sm font-medium text-text-dark mb-2">
+                  <label className="block text-sm font-medium text-foreground mb-2">
                     Website
                   </label>
                   <input
@@ -254,7 +254,7 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
                     value={formData.website}
                     onChange={(e) => handleInputChange('website', e.target.value)}
                     placeholder="https://example.com"
-                    className="w-full px-4 py-2 border border-border-color rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full px-4 py-2 border border-border bg-background text-foreground rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
               )}
@@ -263,10 +263,10 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
 
           {/* Address */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-text-dark">Address (Optional)</h3>
+            <h3 className="text-lg font-semibold text-foreground">Address (Optional)</h3>
 
             <div>
-              <label className="block text-sm font-medium text-text-dark mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 Street Address
               </label>
               <input
@@ -274,13 +274,13 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
                 value={formData.address}
                 onChange={(e) => handleInputChange('address', e.target.value)}
                 placeholder="123 Main Street"
-                className="w-full px-4 py-2 border border-border-color rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full px-4 py-2 border border-border bg-background text-foreground rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
 
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-text-dark mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   City
                 </label>
                 <input
@@ -288,18 +288,18 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
                   value={formData.city}
                   onChange={(e) => handleInputChange('city', e.target.value)}
                   placeholder="New York"
-                  className="w-full px-4 py-2 border border-border-color rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full px-4 py-2 border border-border bg-background text-foreground rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-text-dark mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   State
                 </label>
                 <select
                   value={formData.state}
                   onChange={(e) => handleInputChange('state', e.target.value)}
-                  className="w-full px-4 py-2 border border-border-color rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full px-4 py-2 border border-border bg-background text-foreground rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">Select State</option>
                   {US_STATES.map(state => (
@@ -309,7 +309,7 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-text-dark mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Zip Code
                 </label>
                 <input
@@ -318,7 +318,7 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
                   onChange={(e) => handleInputChange('zipCode', e.target.value)}
                   placeholder="10001"
                   maxLength={10}
-                  className="w-full px-4 py-2 border border-border-color rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full px-4 py-2 border border-border bg-background text-foreground rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
             </div>
@@ -327,13 +327,13 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
           {/* Hierarchy */}
           {selectedType !== 'AGENCY' && parentOrganizations.length > 0 && (
             <div>
-              <label className="block text-sm font-medium text-text-dark mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 Parent Organization (Optional)
               </label>
               <select
                 value={formData.parentOrgId || ''}
                 onChange={(e) => handleInputChange('parentOrgId', e.target.value || undefined)}
-                className="w-full px-4 py-2 border border-border-color rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full px-4 py-2 border border-border bg-background text-foreground rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="">None (Independent)</option>
                 {parentOrganizations.map(org => (
@@ -342,7 +342,7 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-text-light mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Link this organization to a parent CPA firm
               </p>
             </div>
@@ -355,18 +355,18 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
                 type="checkbox"
                 checked={formData.portalAccessEnabled}
                 onChange={(e) => handleInputChange('portalAccessEnabled', e.target.checked)}
-                className="rounded border-border-color text-primary focus:ring-primary"
+                className="rounded border-border text-primary focus:ring-primary"
               />
-              <span className="text-sm font-medium text-text-dark">Enable Portal Access</span>
+              <span className="text-sm font-medium text-foreground">Enable Portal Access</span>
             </label>
-            <p className="text-xs text-text-light mt-1 ml-6">
+            <p className="text-xs text-muted-foreground mt-1 ml-6">
               Allow this organization to access the client portal
             </p>
           </div>
 
           {/* Notes */}
           <div>
-            <label className="block text-sm font-medium text-text-dark mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Notes
             </label>
             <textarea
@@ -374,16 +374,16 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
               onChange={(e) => handleInputChange('notes', e.target.value)}
               rows={3}
               placeholder="Additional information about this organization..."
-              className="w-full px-4 py-2 border border-border-color rounded-lg focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+              className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary resize-none"
             />
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-border-color">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
             <button
               type="button"
               onClick={handleClose}
-              className="px-6 py-2 border border-border-color text-text-dark rounded-lg hover:bg-gray-50 transition-colors"
+              className="px-6 py-2 border border-border text-foreground rounded-lg hover:bg-muted/50 transition-colors"
             >
               Cancel
             </button>

@@ -149,17 +149,17 @@ export function CreateContactModal({
   if (!modalOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-      <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-white">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-card">
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-[#D4DADE] px-6 py-4 flex items-center justify-between z-10">
-          <h2 className="text-xl font-bold text-[#10172B]">Create New Client</h2>
+        <div className="sticky top-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between z-10">
+          <h2 className="text-xl font-bold text-foreground">Create New Client</h2>
           <Button
             variant="ghost"
             size="sm"
             onClick={handleClose}
             disabled={loading}
-            className="text-[#A5A6AA] hover:text-[#10172B]"
+            className="text-muted-foreground hover:text-foreground"
           >
             <X className="w-5 h-5" />
           </Button>
@@ -169,7 +169,7 @@ export function CreateContactModal({
         <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
           {/* Personal Information */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-[#10172B]">
+            <h3 className="text-lg font-semibold text-foreground">
               Personal Information
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -181,7 +181,7 @@ export function CreateContactModal({
                   id="firstName"
                   {...register("firstName")}
                   placeholder="John"
-                  className="border-[#D4DADE] focus:border-[#005AF5] focus:ring-[#005AF5]"
+                  className=""
                 />
                 {errors.firstName && (
                   <p className="text-sm text-red-600">{errors.firstName.message}</p>
@@ -196,7 +196,7 @@ export function CreateContactModal({
                   id="lastName"
                   {...register("lastName")}
                   placeholder="Doe"
-                  className="border-[#D4DADE] focus:border-[#005AF5] focus:ring-[#005AF5]"
+                  className=""
                 />
                 {errors.lastName && (
                   <p className="text-sm text-red-600">{errors.lastName.message}</p>
@@ -207,7 +207,7 @@ export function CreateContactModal({
 
           {/* Contact Information */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-[#10172B]">
+            <h3 className="text-lg font-semibold text-foreground">
               Contact Information
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -220,7 +220,7 @@ export function CreateContactModal({
                   type="email"
                   {...register("email")}
                   placeholder="john.doe@example.com"
-                  className="border-[#D4DADE] focus:border-[#005AF5] focus:ring-[#005AF5]"
+                  className=""
                 />
                 {errors.email && (
                   <p className="text-sm text-red-600">{errors.email.message}</p>
@@ -235,7 +235,7 @@ export function CreateContactModal({
                   onChange={handlePhoneChange}
                   placeholder="(555) 123-4567"
                   maxLength={14}
-                  className="border-[#D4DADE] focus:border-[#005AF5] focus:ring-[#005AF5]"
+                  className=""
                 />
                 {errors.phone && (
                   <p className="text-sm text-red-600">{errors.phone.message}</p>
@@ -246,7 +246,7 @@ export function CreateContactModal({
 
           {/* Business Information */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-[#10172B]">
+            <h3 className="text-lg font-semibold text-foreground">
               Business Information
             </h3>
             <div className="space-y-2">
@@ -255,7 +255,7 @@ export function CreateContactModal({
                 id="company"
                 {...register("company")}
                 placeholder="Acme Corporation"
-                className="border-[#D4DADE] focus:border-[#005AF5] focus:ring-[#005AF5]"
+                className=""
               />
               {errors.company && (
                 <p className="text-sm text-red-600">{errors.company.message}</p>
@@ -265,7 +265,7 @@ export function CreateContactModal({
             <div className="space-y-2">
               <Label htmlFor="organization">Organization (Optional)</Label>
               <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
-                <SelectTrigger className="border-[#D4DADE] focus:border-[#005AF5] focus:ring-[#005AF5]">
+                <SelectTrigger className="">
                   <SelectValue placeholder="Select organization..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -277,7 +277,7 @@ export function CreateContactModal({
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-[#A5A6AA]">
+              <p className="text-xs text-muted-foreground">
                 Link this contact to an organization for better management
               </p>
             </div>
@@ -288,7 +288,7 @@ export function CreateContactModal({
                 id="taxId"
                 {...register("taxId")}
                 placeholder="12-3456789"
-                className="border-[#D4DADE] focus:border-[#005AF5] focus:ring-[#005AF5]"
+                className=""
               />
               {errors.taxId && (
                 <p className="text-sm text-red-600">{errors.taxId.message}</p>
@@ -298,14 +298,14 @@ export function CreateContactModal({
 
           {/* Address */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-[#10172B]">Address</h3>
+            <h3 className="text-lg font-semibold text-foreground">Address</h3>
             <div className="space-y-2">
               <Label htmlFor="address">Street Address</Label>
               <Input
                 id="address"
                 {...register("address")}
                 placeholder="123 Main St, Suite 100"
-                className="border-[#D4DADE] focus:border-[#005AF5] focus:ring-[#005AF5]"
+                className=""
               />
               {errors.address && (
                 <p className="text-sm text-red-600">{errors.address.message}</p>
@@ -319,7 +319,7 @@ export function CreateContactModal({
                   id="city"
                   {...register("city")}
                   placeholder="New York"
-                  className="border-[#D4DADE] focus:border-[#005AF5] focus:ring-[#005AF5]"
+                  className=""
                 />
                 {errors.city && (
                   <p className="text-sm text-red-600">{errors.city.message}</p>
@@ -334,7 +334,7 @@ export function CreateContactModal({
                   onChange={handleStateChange}
                   placeholder="NY"
                   maxLength={2}
-                  className="border-[#D4DADE] focus:border-[#005AF5] focus:ring-[#005AF5] uppercase"
+                  className="uppercase"
                 />
                 {errors.state && (
                   <p className="text-sm text-red-600">{errors.state.message}</p>
@@ -347,7 +347,7 @@ export function CreateContactModal({
                   id="zipCode"
                   {...register("zipCode")}
                   placeholder="10001"
-                  className="border-[#D4DADE] focus:border-[#005AF5] focus:ring-[#005AF5]"
+                  className=""
                 />
                 {errors.zipCode && (
                   <p className="text-sm text-red-600">{errors.zipCode.message}</p>
@@ -358,7 +358,7 @@ export function CreateContactModal({
 
           {/* Notes */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-[#10172B]">Notes</h3>
+            <h3 className="text-lg font-semibold text-foreground">Notes</h3>
             <div className="space-y-2">
               <Label htmlFor="notes">Contact Notes</Label>
               <Textarea
@@ -366,7 +366,7 @@ export function CreateContactModal({
                 {...register("notes")}
                 placeholder="Any additional information about the contact..."
                 rows={4}
-                className="border-[#D4DADE] focus:border-[#005AF5] focus:ring-[#005AF5]"
+                className=""
               />
               {errors.notes && (
                 <p className="text-sm text-red-600">{errors.notes.message}</p>
@@ -375,7 +375,7 @@ export function CreateContactModal({
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-[#D4DADE]">
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <Button
               type="button"
               variant="outline"
@@ -387,7 +387,7 @@ export function CreateContactModal({
             <Button
               type="submit"
               disabled={loading}
-              className="bg-[#005AF5] hover:bg-[#004CCE] text-white"
+              className="bg-primary hover:bg-primary/90 text-white"
             >
               {loading ? (
                 <>

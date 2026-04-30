@@ -56,10 +56,10 @@ const TASK_TYPES = [
 ];
 
 const PRIORITY_LEVELS = [
-  { value: TaskPriority.LOW, label: "Low", color: "text-gray-600" },
-  { value: TaskPriority.MEDIUM, label: "Medium", color: "text-blue-600" },
-  { value: TaskPriority.HIGH, label: "High", color: "text-orange-600" },
-  { value: TaskPriority.URGENT, label: "Urgent", color: "text-red-600" },
+  { value: TaskPriority.LOW, label: "Low", color: "text-zinc-500 dark:text-zinc-400" },
+  { value: TaskPriority.MEDIUM, label: "Medium", color: "text-blue-600 dark:text-blue-400" },
+  { value: TaskPriority.HIGH, label: "High", color: "text-orange-600 dark:text-orange-400" },
+  { value: TaskPriority.URGENT, label: "Urgent", color: "text-rose-600 dark:text-rose-400" },
 ];
 
 export function CreateTaskModal({

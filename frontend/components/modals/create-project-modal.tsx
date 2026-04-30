@@ -33,10 +33,10 @@ const PROJECT_TYPES = [
 
 // Priority levels with colors
 const PRIORITY_LEVELS = [
-  { value: "LOW", label: "Low", color: "text-gray-600" },
-  { value: "MEDIUM", label: "Medium", color: "text-blue-600" },
-  { value: "HIGH", label: "High", color: "text-orange-600" },
-  { value: "URGENT", label: "Urgent", color: "text-red-600" },
+  { value: "LOW", label: "Low", color: "text-zinc-500 dark:text-zinc-400" },
+  { value: "MEDIUM", label: "Medium", color: "text-blue-600 dark:text-blue-400" },
+  { value: "HIGH", label: "High", color: "text-orange-600 dark:text-orange-400" },
+  { value: "URGENT", label: "Urgent", color: "text-rose-600 dark:text-rose-400" },
 ];
 
 // Zod validation schema
