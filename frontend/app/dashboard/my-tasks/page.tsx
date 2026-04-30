@@ -24,6 +24,7 @@ import {
   TaskPriority,
 } from "@/lib/tasks-api";
 import { Plus, Filter, Search, AlertTriangle, CheckCircle, Clock } from "lucide-react";
+import { iconWellClass } from "@/lib/badge-styles";
 
 export default function MyTasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -214,8 +215,8 @@ export default function MyTasksPage() {
                   {taskCounts.pending}
                 </p>
               </div>
-              <div className="h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                <Clock className="h-5 w-5 text-blue-600" />
+              <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${iconWellClass("blue")}`}>
+                <Clock className="h-5 w-5" />
               </div>
             </div>
           </Card>
@@ -229,8 +230,8 @@ export default function MyTasksPage() {
                   {taskCounts.inProgress}
                 </p>
               </div>
-              <div className="h-10 w-10 bg-yellow-100 rounded-lg flex items-center justify-center">
-                <Clock className="h-5 w-5 text-yellow-600" />
+              <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${iconWellClass("amber")}`}>
+                <Clock className="h-5 w-5" />
               </div>
             </div>
           </Card>
@@ -244,23 +245,23 @@ export default function MyTasksPage() {
                   {taskCounts.completed}
                 </p>
               </div>
-              <div className="h-10 w-10 bg-green-100 rounded-lg flex items-center justify-center">
-                <CheckCircle className="h-5 w-5 text-green-600" />
+              <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${iconWellClass("emerald")}`}>
+                <CheckCircle className="h-5 w-5" />
               </div>
             </div>
           </Card>
 
           {/* Overdue */}
-          <Card className="p-4 hover:shadow-md transition-shadow border-red-200">
+          <Card className="p-4 hover:shadow-md transition-shadow border-rose-500/40 dark:border-rose-500/30">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Overdue</p>
-                <p className="text-2xl font-bold text-red-600 mt-1">
+                <p className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-1">
                   {taskCounts.overdue}
                 </p>
               </div>
-              <div className="h-10 w-10 bg-red-100 rounded-lg flex items-center justify-center">
-                <AlertTriangle className="h-5 w-5 text-red-600" />
+              <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${iconWellClass("rose")}`}>
+                <AlertTriangle className="h-5 w-5" />
               </div>
             </div>
           </Card>
@@ -268,14 +269,14 @@ export default function MyTasksPage() {
 
         {/* Overdue Tasks Alert */}
         {overdueTasks.length > 0 && (
-          <Card className="p-4 bg-red-50 border-red-200">
+          <Card className="p-4 bg-rose-500/10 border-rose-500/40 dark:border-rose-500/30">
             <div className="flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+              <AlertTriangle className="h-5 w-5 text-rose-600 dark:text-rose-400 mt-0.5" />
               <div className="flex-1">
-                <h3 className="font-semibold text-red-900">
+                <h3 className="font-semibold text-rose-700 dark:text-rose-200">
                   You have {overdueTasks.length} overdue task{overdueTasks.length !== 1 ? 's' : ''}
                 </h3>
-                <p className="text-sm text-red-700 mt-1">
+                <p className="text-sm text-rose-700/80 dark:text-rose-300/80 mt-1">
                   These tasks are past their due date and require immediate attention.
                 </p>
               </div>

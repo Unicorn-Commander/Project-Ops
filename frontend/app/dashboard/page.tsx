@@ -12,6 +12,12 @@ import { TopContactsWidget } from "@/components/dashboard/top-contacts-widget";
 import api from "@/lib/api";
 import { getMyTasks, Task, TaskStatus } from "@/lib/tasks-api";
 import {
+  statusBadgeClass,
+  priorityTextClass,
+  iconWellClass,
+} from "@/lib/badge-styles";
+import { format, formatDistanceToNowStrict, isPast } from "date-fns";
+import {
   FileText,
   Users,
   Clock,
@@ -111,25 +117,15 @@ export default function DashboardPage() {
     fetchDashboardData();
   };
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      NEW: "bg-blue-100 text-blue-800",
-      IN_PROGRESS: "bg-yellow-100 text-yellow-800",
-      UNDER_REVIEW: "bg-purple-100 text-purple-800",
-      COMPLETED: "bg-green-100 text-green-800",
-      ARCHIVED: "bg-gray-100 text-gray-800",
-    };
-    return colors[status] || "bg-gray-100 text-gray-800";
-  };
+  // Status pill / priority text colours come from lib/badge-styles so the
+  // same treatment applies everywhere and renders correctly in both themes.
+  const getStatusColor = statusBadgeClass;
+  const getPriorityColor = priorityTextClass;
 
-  const getPriorityColor = (priority: string) => {
-    const colors: Record<string, string> = {
-      LOW: "text-gray-600",
-      MEDIUM: "text-blue-600",
-      HIGH: "text-orange-600",
-      URGENT: "text-red-600",
-    };
-    return colors[priority] || "text-gray-600";
+  const formatDueDate = (iso: string) => {
+    const d = new Date(iso);
+    if (isPast(d)) return `overdue · ${format(d, "MMM d")}`;
+    return `${formatDistanceToNowStrict(d, { addSuffix: true })} · ${format(d, "MMM d")}`;
   };
 
   if (loading) {
@@ -213,8 +209,8 @@ export default function DashboardPage() {
                   {stats.totalProjects}
                 </p>
               </div>
-              <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <FileText className="h-6 w-6 text-primary" />
+              <div className={`h-12 w-12 rounded-lg flex items-center justify-center ${iconWellClass("primary")}`}>
+                <FileText className="h-6 w-6" />
               </div>
             </div>
           </Card>
@@ -230,8 +226,8 @@ export default function DashboardPage() {
                   {stats.activeProjects}
                 </p>
               </div>
-              <div className="h-12 w-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-                <Clock className="h-6 w-6 text-yellow-600" />
+              <div className={`h-12 w-12 rounded-lg flex items-center justify-center ${iconWellClass("amber")}`}>
+                <Clock className="h-6 w-6" />
               </div>
             </div>
           </Card>
@@ -247,8 +243,8 @@ export default function DashboardPage() {
                   {stats.completedProjects}
                 </p>
               </div>
-              <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <CheckCircle2 className="h-6 w-6 text-green-600" />
+              <div className={`h-12 w-12 rounded-lg flex items-center justify-center ${iconWellClass("emerald")}`}>
+                <CheckCircle2 className="h-6 w-6" />
               </div>
             </div>
           </Card>
@@ -264,14 +260,14 @@ export default function DashboardPage() {
                   {stats.upcomingDeadlines}
                 </p>
               </div>
-              <div className="h-12 w-12 bg-red-100 rounded-lg flex items-center justify-center">
-                <AlertCircle className="h-6 w-6 text-red-600" />
+              <div className={`h-12 w-12 rounded-lg flex items-center justify-center ${iconWellClass("rose")}`}>
+                <AlertCircle className="h-6 w-6" />
               </div>
             </div>
           </Card>
         </div>
 
-        {/* My Tasks, Top Clients & Recent Projects Grid */}
+        {/* My Tasks + Top Contacts on top row; Recent Projects spans full width below */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* My Tasks */}
           <Card className="p-6">
@@ -319,17 +315,12 @@ export default function DashboardPage() {
                         )}
                       </div>
                       <div className="flex flex-col items-end gap-1">
-                        <span className={`text-xs font-semibold ${
-                          task.priority === 'URGENT' ? 'text-red-600' :
-                          task.priority === 'HIGH' ? 'text-orange-600' :
-                          task.priority === 'MEDIUM' ? 'text-blue-600' :
-                          'text-gray-600'
-                        }`}>
+                        <span className={`text-xs font-semibold ${getPriorityColor(task.priority)}`}>
                           {task.priority}
                         </span>
                         {task.dueDate && (
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(task.dueDate).toLocaleDateString()}
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            {formatDueDate(task.dueDate)}
                           </span>
                         )}
                       </div>
@@ -353,76 +344,80 @@ export default function DashboardPage() {
 
           {/* Top Contacts Widget */}
           <TopContactsWidget />
+        </div>
 
-          {/* Recent Projects */}
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-foreground">Recent Projects</h2>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => router.push("/dashboard/projects")}
-              >
-                View All
-              </Button>
+        {/* Recent Projects — full width below */}
+        <Card className="p-6 mt-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold text-foreground">Recent Projects</h2>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push("/dashboard/projects")}
+            >
+              View All
+            </Button>
+          </div>
+
+          {recentProjects.length === 0 ? (
+            <div className="text-center py-10">
+              <FileText className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-40" />
+              <p className="text-sm text-muted-foreground">No projects yet — create one to get started.</p>
             </div>
-
-          <div className="space-y-4">
-            {recentProjects.map((projectItem) => (
-              <div
-                key={projectItem.id}
-                className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className="font-mono text-sm text-muted-foreground">
-                      {projectItem.projectNumber}
-                    </span>
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
-                        projectItem.status
-                      )}`}
-                    >
-                      {projectItem.status.replace("_", " ")}
-                    </span>
-                  </div>
-                  <h3 className="font-semibold text-foreground mb-1">
-                    {projectItem.title}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    Client: {projectItem.clientName}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-6">
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Priority
-                    </p>
-                    <p
-                      className={`text-sm font-semibold ${getPriorityColor(
-                        projectItem.priority
-                      )}`}
-                    >
-                      {projectItem.priority}
+          ) : (
+            <div className="space-y-3">
+              {recentProjects.map((projectItem) => (
+                <div
+                  key={projectItem.id}
+                  className="flex items-center justify-between gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                  onClick={() => router.push(`/dashboard/projects/${projectItem.id}`)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-1.5">
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {projectItem.projectNumber}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${getStatusColor(
+                          projectItem.status
+                        )}`}
+                      >
+                        {projectItem.status.replace("_", " ")}
+                      </span>
+                    </div>
+                    <h3 className="font-semibold text-foreground truncate">
+                      {projectItem.title}
+                    </h3>
+                    <p className="text-sm text-muted-foreground truncate">
+                      {projectItem.clientName}
                     </p>
                   </div>
-                  {projectItem.dueDate && (
+
+                  <div className="flex items-center gap-6 shrink-0">
                     <div className="text-right">
-                      <p className="text-sm font-medium text-muted-foreground">
-                        Due Date
+                      <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                        Priority
                       </p>
-                      <p className="text-sm font-semibold text-foreground">
-                        {new Date(projectItem.dueDate).toLocaleDateString()}
+                      <p className={`text-sm font-semibold ${getPriorityColor(projectItem.priority)}`}>
+                        {projectItem.priority}
                       </p>
                     </div>
-                  )}
+                    {projectItem.dueDate && (
+                      <div className="text-right">
+                        <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                          Due
+                        </p>
+                        <p className="text-sm font-semibold text-foreground tabular-nums">
+                          {format(new Date(projectItem.dueDate), "MMM d, yyyy")}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </Card>
-        </div>
       </div>
     </div>
     </>

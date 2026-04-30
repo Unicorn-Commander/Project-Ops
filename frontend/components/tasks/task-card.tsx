@@ -3,6 +3,7 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Task, TaskStatus, TaskPriority, TaskType } from "@/lib/tasks-api";
+import { statusBadgeClass, priorityTextClass } from "@/lib/badge-styles";
 import {
   FileText,
   HelpCircle,
@@ -23,26 +24,8 @@ interface TaskCardProps {
 export function TaskCard({ task, onClick }: TaskCardProps) {
   const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== TaskStatus.COMPLETED;
 
-  const getStatusColor = (status: TaskStatus) => {
-    const colors: Record<TaskStatus, string> = {
-      [TaskStatus.PENDING]: "bg-blue-100 text-blue-800 border-blue-200",
-      [TaskStatus.IN_PROGRESS]: "bg-yellow-100 text-yellow-800 border-yellow-200",
-      [TaskStatus.WAITING_FOR_CLIENT]: "bg-purple-100 text-purple-800 border-purple-200",
-      [TaskStatus.COMPLETED]: "bg-green-100 text-green-800 border-green-200",
-      [TaskStatus.CANCELLED]: "bg-gray-100 text-gray-800 border-gray-200",
-    };
-    return colors[status] || "bg-gray-100 text-gray-800 border-gray-200";
-  };
-
-  const getPriorityColor = (priority: TaskPriority) => {
-    const colors: Record<TaskPriority, string> = {
-      [TaskPriority.LOW]: "text-gray-600",
-      [TaskPriority.MEDIUM]: "text-blue-600",
-      [TaskPriority.HIGH]: "text-orange-600",
-      [TaskPriority.URGENT]: "text-red-600",
-    };
-    return colors[priority] || "text-gray-600";
-  };
+  const getStatusColor = (status: TaskStatus) => statusBadgeClass(status);
+  const getPriorityColor = (priority: TaskPriority) => priorityTextClass(priority);
 
   const getPriorityBorderColor = (priority: TaskPriority) => {
     const colors: Record<TaskPriority, string> = {

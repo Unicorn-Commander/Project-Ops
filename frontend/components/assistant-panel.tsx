@@ -19,9 +19,10 @@ interface ChatMessage {
 }
 
 const SUGGESTIONS = [
-  "Draft a status update from the latest comments on this project.",
+  "What projects do I have right now?",
+  "What's on my plate this week?",
+  "Catch me up on what's changed lately.",
   "Break this scope into 5 tasks I can assign.",
-  "What's a good agenda for tomorrow's project sync?",
 ];
 
 function genId() {
@@ -164,10 +165,10 @@ export function AssistantPanel() {
                       How can I help today?
                     </h3>
                     <p className="mt-2 text-sm leading-relaxed text-foreground/65">
-                      I can help draft status updates, break scopes into tasks,
-                      summarize project context, and more. Direct read access
-                      to your projects is being wired up — for now, paste in
-                      what you want me to work with.
+                      I can read your projects, tasks, and recent activity
+                      directly — just ask. I can also draft status updates,
+                      break scopes into tasks, and summarize context you
+                      paste in.
                     </p>
                   </div>
                   <div className="space-y-2">

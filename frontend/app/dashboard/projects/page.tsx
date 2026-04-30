@@ -21,6 +21,12 @@ import { StatusUpdate } from "@/components/project/status-update";
 import { AssignProject } from "@/components/project/assign-project";
 import api from "@/lib/api";
 import {
+  statusBadgeClass,
+  priorityTextClass,
+  paymentStatusBadgeClass,
+} from "@/lib/badge-styles";
+import { format } from "date-fns";
+import {
   FileText,
   Search,
   Filter,
@@ -153,37 +159,9 @@ export default function ProjectsPage() {
     return userRole === "ADMIN" || userRole === "MANAGER";
   };
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      NEW: "bg-blue-100 text-blue-800",
-      IN_PROGRESS: "bg-yellow-100 text-yellow-800",
-      UNDER_REVIEW: "bg-purple-100 text-purple-800",
-      COMPLETED: "bg-green-100 text-green-800",
-      ARCHIVED: "bg-gray-100 text-gray-800",
-    };
-    return colors[status] || "bg-gray-100 text-gray-800";
-  };
-
-  const getPriorityColor = (priority: string) => {
-    const colors: Record<string, string> = {
-      LOW: "text-gray-600",
-      MEDIUM: "text-blue-600",
-      HIGH: "text-orange-600",
-      URGENT: "text-red-600",
-    };
-    return colors[priority] || "text-gray-600";
-  };
-
-  const getPaymentStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      UNPAID: "bg-red-100 text-red-800",
-      PARTIALLY_PAID: "bg-yellow-100 text-yellow-800",
-      PAID: "bg-green-100 text-green-800",
-      OVERDUE: "bg-red-200 text-red-900",
-      CANCELLED: "bg-gray-100 text-gray-800",
-    };
-    return colors[status] || "bg-gray-100 text-gray-800";
-  };
+  const getStatusColor = statusBadgeClass;
+  const getPriorityColor = priorityTextClass;
+  const getPaymentStatusColor = paymentStatusBadgeClass;
 
   const filteredProjects = projects.filter((c) => {
     const matchesSearch =
@@ -349,7 +327,7 @@ export default function ProjectsPage() {
                     <div className="flex items-center gap-1.5">
                       <AlertCircle className="h-4 w-4" />
                       <span>
-                        Due: {new Date(projectItem.dueDate).toLocaleDateString()}
+                        Due: {format(new Date(projectItem.dueDate), "MMM d, yyyy")}
                       </span>
                     </div>
                   )}

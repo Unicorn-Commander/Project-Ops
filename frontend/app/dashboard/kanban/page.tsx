@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
+import { priorityBadgeClass } from '@/lib/badge-styles';
 import {
   Task,
   TaskStatus,
@@ -92,24 +93,18 @@ const getTypeIcon = (type: TaskType) => {
   return icons[type];
 };
 
-// Priority colors mapping
-const getPriorityColor = (priority: TaskPriority) => {
-  const colors: Record<TaskPriority, string> = {
-    [TaskPriority.LOW]: 'bg-gray-100 text-gray-800',
-    [TaskPriority.MEDIUM]: 'bg-blue-100 text-blue-800',
-    [TaskPriority.HIGH]: 'bg-orange-100 text-orange-800',
-    [TaskPriority.URGENT]: 'bg-red-100 text-red-800',
-  };
-  return colors[priority];
-};
+// Priority colors mapping (dark-mode-aware via shared helper)
+const getPriorityColor = (priority: TaskPriority) =>
+  priorityBadgeClass(priority);
 
-// Status colors for columns
+// Status column accents — subtle tinted top border + faint background tint
+// so columns are visually distinct without being garish in either theme.
 const statusColors: Record<TaskStatus, string> = {
-  [TaskStatus.PENDING]: 'bg-blue-100 border-blue-300',
-  [TaskStatus.IN_PROGRESS]: 'bg-yellow-100 border-yellow-300',
-  [TaskStatus.WAITING_FOR_CLIENT]: 'bg-purple-100 border-purple-300',
-  [TaskStatus.COMPLETED]: 'bg-green-100 border-green-300',
-  [TaskStatus.CANCELLED]: 'bg-gray-100 border-gray-300',
+  [TaskStatus.PENDING]:            'bg-blue-500/5    border-blue-500/30',
+  [TaskStatus.IN_PROGRESS]:        'bg-amber-500/5   border-amber-500/30',
+  [TaskStatus.WAITING_FOR_CLIENT]: 'bg-violet-500/5  border-violet-500/30',
+  [TaskStatus.COMPLETED]:          'bg-emerald-500/5 border-emerald-500/30',
+  [TaskStatus.CANCELLED]:          'bg-zinc-500/5    border-zinc-500/30',
 };
 
 const statusTextColors: Record<TaskStatus, string> = {
