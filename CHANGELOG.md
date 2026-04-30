@@ -5,6 +5,17 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] — 2026-04-30
+
+### Documentation
+
+- **README refreshed** to match the v1.6 product. Drops the
+  hypothetical GFL deployment row, calls Garage S3 by name (env vars
+  still `MINIO_*` for back-compat), adds dedicated **What's inside**
+  and **AI assistant + MCP server** sections, and links the live site +
+  CHANGELOG. The agent surface is the differentiator — the README
+  wasn't mentioning it at all.
+
 ## [1.6.0] — 2026-04-30
 
 ### Added
