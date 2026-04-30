@@ -3,6 +3,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { iconWellClass } from "@/lib/badge-styles";
+import { KanbanShowcase } from "@/components/landing/kanban-showcase";
 import {
   KanbanSquare,
   Users,
@@ -13,6 +14,7 @@ import {
   Sparkles,
   MessageSquare,
   ArrowRight,
+  CheckCircle2,
 } from "lucide-react";
 
 const features: Array<{
@@ -38,12 +40,6 @@ const features: Array<{
     title: "Client portal",
     body: "Invite a client to a private view of their projects. Share documents. Stay out of email.",
     tone: "amber",
-  },
-  {
-    icon: Sparkles,
-    title: "AI assistant",
-    body: "Ask a Magic Unicorn–trained agent about your projects, tasks, and recent activity. Drafts updates. Breaks scopes into tasks.",
-    tone: "primary",
   },
   {
     icon: FileText,
@@ -75,7 +71,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Nav */}
-      <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+      <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center gap-3">
             <span className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-white ring-1 ring-border">
@@ -97,10 +93,7 @@ export default function Home() {
             </a>
             <ThemeToggle />
             <Link href="/auth/login">
-              <Button
-                size="sm"
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-              >
+              <Button size="sm" className="bg-foreground text-background hover:bg-foreground/90">
                 Sign in
                 <ArrowRight className="ml-1.5 h-4 w-4" />
               </Button>
@@ -109,131 +102,169 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="relative overflow-hidden border-b border-border">
-        <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-6 py-24 md:grid-cols-12 md:gap-16 md:py-32">
-          <div className="md:col-span-7">
-            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-foreground/70">
-              Part of the Unicorn Commander suite
-            </div>
-            <h1 className="mt-6 text-5xl font-semibold leading-[1.02] tracking-tight text-foreground sm:text-6xl md:text-[68px]">
-              Project work,
-              <br />
-              <span className="text-foreground/55">delivered without the drama.</span>
-            </h1>
-            <p className="mt-7 max-w-xl text-lg leading-relaxed text-foreground/70">
-              Project Ops keeps your team's work, your clients' visibility, and your operational
-              paper trail in one calm, well-lit place.
-            </p>
-            <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-              <Link href="/auth/login">
-                <Button
-                  size="lg"
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 px-7"
-                >
-                  Sign in
-                  <ArrowRight className="ml-1.5 h-4 w-4" />
-                </Button>
-              </Link>
-              <a href="#features">
-                <Button size="lg" variant="outline" className="px-7">
-                  See what's inside
-                </Button>
-              </a>
-            </div>
+      {/* Hero — centered, big, ambient multi-hue glow behind. The crew
+          artwork moves to the trust band lower on the page; here we put
+          the actual product (kanban) front-and-center underneath. */}
+      <section className="relative overflow-hidden">
+        {/* Multi-hue ambient glows — violet + amber + cyan. Each blurred
+            heavily and used at very low opacity so they whisper rather
+            than shout. The page reads as "deliberately neutral with a
+            little energy" rather than "purple". */}
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[700px] overflow-hidden">
+          <div className="absolute -top-32 left-1/4 h-[480px] w-[480px] -translate-x-1/2 rounded-full bg-violet-500/15 blur-[140px] dark:bg-violet-500/25" />
+          <div className="absolute -top-20 right-1/4 h-[420px] w-[420px] translate-x-1/2 rounded-full bg-amber-400/10 blur-[140px] dark:bg-amber-400/15" />
+          <div className="absolute top-40 left-1/2 h-[360px] w-[360px] -translate-x-1/2 rounded-full bg-cyan-400/10 blur-[120px] dark:bg-cyan-400/15" />
+        </div>
+
+        <div className="relative mx-auto max-w-5xl px-6 pt-24 pb-12 text-center md:pt-32">
+          {/* Trust mark */}
+          <Link
+            href="https://unicorncommander.ai"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-3.5 py-1.5 text-xs font-medium text-foreground/75 backdrop-blur transition-colors hover:border-foreground/30 hover:text-foreground"
+          >
+            <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            From the makers of Unicorn Commander
+            <ArrowRight className="h-3 w-3 opacity-60" />
+          </Link>
+
+          {/* Headline */}
+          <h1 className="mt-8 text-balance text-5xl font-semibold leading-[1.04] tracking-tight text-foreground sm:text-6xl md:text-[76px]">
+            Project work,
+            <br />
+            <span className="bg-gradient-to-br from-violet-500 via-rose-500 to-amber-500 bg-clip-text text-transparent">
+              delivered without the drama.
+            </span>
+          </h1>
+
+          <p className="mx-auto mt-7 max-w-2xl text-balance text-lg leading-relaxed text-foreground/70 md:text-xl">
+            CRM, project management, kanban, and a built-in AI agent — for teams who'd rather
+            ship than chase status updates.
+          </p>
+
+          <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Link href="/auth/login">
+              <Button
+                size="lg"
+                className="bg-foreground text-background hover:bg-foreground/90 px-7 shadow-lg shadow-foreground/10"
+              >
+                Sign in with Unicorn Commander
+                <ArrowRight className="ml-1.5 h-4 w-4" />
+              </Button>
+            </Link>
+            <a href="#preview">
+              <Button size="lg" variant="outline" className="px-7">
+                See the board
+              </Button>
+            </a>
           </div>
 
-          <div className="md:col-span-5">
-            <div className="relative mx-auto aspect-square w-full max-w-md">
-              <Image
-                src="/projectops-crew-light.png"
-                alt="Project Ops crew: a construction-helmet unicorn with blueprints, an exec unicorn with a tablet of charts, and an ops unicorn at a console — all in front of a project Gantt board."
-                fill
-                priority
-                sizes="(max-width: 768px) 80vw, 40vw"
-                className="object-contain block dark:hidden"
-              />
-              <Image
-                src="/projectops-crew-dark.png"
-                alt=""
-                fill
-                priority
-                sizes="(max-width: 768px) 80vw, 40vw"
-                className="object-contain hidden dark:block"
-              />
-            </div>
+          {/* Soft proof line */}
+          <div className="mt-7 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-foreground/55">
+            <span className="inline-flex items-center gap-1.5">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              SSO on day one
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              Self-hosted, your data
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              Live AI assistant
+            </span>
           </div>
         </div>
-      </section>
 
-      {/* Product preview — drop a real dashboard screenshot at
-          /public/dashboard-preview-light.png and /public/dashboard-preview-dark.png
-          (1920x1200 recommended) and the placeholder will swap automatically.
-          The aspect-[16/10] frame plus the soft gradient mask keeps the preview
-          looking like a window-on-the-app even before the screenshots land. */}
-      <section className="border-b border-border">
-        <div className="mx-auto max-w-6xl px-6 py-20 md:py-24">
-          <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-foreground/5">
-            <div className="relative aspect-[16/10] w-full">
-              {/* Placeholder behind the screenshots. Both /public PNGs ship
-                  as 1x1 transparent placeholders, so this content is fully
-                  visible until you replace them with real screenshots. */}
-              <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-foreground/[0.04] via-transparent to-foreground/[0.06]">
-                <div className="text-center">
-                  <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                    Dashboard preview
-                  </div>
-                  <p className="mt-3 max-w-md px-6 text-sm leading-relaxed text-foreground/70">
-                    Drop a screenshot at{" "}
-                    <code className="rounded bg-foreground/10 px-1.5 py-0.5 text-[11px] text-foreground">
-                      /public/dashboard-preview-light.png
-                    </code>
-                    {" "}+{" "}
-                    <code className="rounded bg-foreground/10 px-1.5 py-0.5 text-[11px] text-foreground">
-                      dashboard-preview-dark.png
-                    </code>
-                    {" "}— it'll appear here.
-                  </p>
-                </div>
-              </div>
-              {/* Plain <img> rather than next/image so a missing file
-                  silently 404s and the placeholder shows through. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/dashboard-preview-light.png"
-                alt="Project Ops dashboard — projects, tasks, and recent activity in one view."
-                className="absolute inset-0 h-full w-full object-cover object-top dark:hidden"
-              />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/dashboard-preview-dark.png"
-                alt=""
-                className="absolute inset-0 hidden h-full w-full object-cover object-top dark:block"
-              />
-            </div>
-            {/* Soft fade at the bottom — gives the preview a "leans into the page" feel */}
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background to-transparent"
-            />
-          </div>
+        {/* Inline product showcase — real components, not a screenshot */}
+        <div id="preview" className="relative mx-auto max-w-6xl px-6 pb-24 md:pb-32">
+          <KanbanShowcase />
         </div>
       </section>
 
       {/* Features */}
-      <section id="features" className="border-b border-border">
+      <section id="features" className="border-y border-border bg-foreground/[0.015]">
         <div className="mx-auto max-w-6xl px-6 py-24">
           <div className="mb-16 max-w-2xl">
-            <div className="text-xs font-medium uppercase tracking-wider text-foreground/55">
+            <div className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">
               What's inside
             </div>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl md:text-5xl">
               Everything a working team needs.
               <br />
-              <span className="text-foreground/55">Nothing it doesn't.</span>
+              <span className="text-foreground/45">Nothing it doesn't.</span>
             </h2>
           </div>
 
+          {/* Spotlight: AI assistant — wide card with richer treatment */}
+          <div className="relative mb-12 overflow-hidden rounded-2xl border border-border bg-card p-8 shadow-sm md:p-10">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-violet-500/10 blur-3xl dark:bg-violet-500/20"
+            />
+            <div className="relative grid gap-8 md:grid-cols-12 md:items-center">
+              <div className="md:col-span-7">
+                <div className={`inline-flex h-10 w-10 items-center justify-center rounded-md ${iconWellClass("violet")}`}>
+                  <Sparkles className="h-5 w-5" strokeWidth={1.75} />
+                </div>
+                <h3 className="mt-5 text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+                  An AI agent that actually knows your work.
+                </h3>
+                <p className="mt-3 max-w-xl text-foreground/70">
+                  Ask the embedded Magic Unicorn assistant about projects, tasks, and recent
+                  activity. It reads your live data through a secure MCP connection — drafts
+                  status updates, breaks scopes into tasks, and surfaces what changed today.
+                </p>
+                <ul className="mt-5 grid gap-2 text-sm text-foreground/75 sm:grid-cols-2">
+                  <li className="flex gap-2">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                    Per-user RBAC propagates into every tool call
+                  </li>
+                  <li className="flex gap-2">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                    Drafts comments, summaries, and task lists
+                  </li>
+                  <li className="flex gap-2">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                    Lives in a sidebar — never out of reach
+                  </li>
+                  <li className="flex gap-2">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                    Powered by Unicorn Brigade
+                  </li>
+                </ul>
+              </div>
+              {/* Faux chat panel — visualises what the assistant looks like */}
+              <div className="md:col-span-5">
+                <div className="relative rounded-xl border border-border bg-background p-4 shadow-md">
+                  <div className="flex items-center gap-2 border-b border-border pb-3">
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white ring-1 ring-border">
+                      <Image src="/projectops-mascot.png" alt="" width={24} height={24} />
+                    </span>
+                    <div className="leading-tight">
+                      <div className="text-xs font-semibold">Project Ops Assistant</div>
+                      <div className="text-[10px] text-foreground/50">Powered by Unicorn Brigade</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-2.5 text-[13px]">
+                    <div className="ml-auto max-w-[80%] rounded-lg bg-foreground px-3 py-1.5 text-background">
+                      what projects do I have right now?
+                    </div>
+                    <div className="mr-auto max-w-[90%] rounded-lg border border-border bg-card px-3 py-2 text-foreground/85">
+                      You've got <span className="font-mono">2</span> active projects:
+                      <div className="mt-1.5 space-y-0.5 text-[12px] text-foreground/70">
+                        <div>· P-00001 — Brigade ↔ Project-Ops MCP integration</div>
+                        <div>· P-00002 — Build In Public — Tuesday show prep</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Other features grid */}
           <div className="grid gap-x-10 gap-y-12 sm:grid-cols-2 lg:grid-cols-4">
             {features.map(({ icon: Icon, title, body, tone }) => (
               <div key={title} className="group">
@@ -249,16 +280,16 @@ export default function Home() {
       </section>
 
       {/* How it works */}
-      <section id="how-it-works" className="border-b border-border bg-foreground/[0.02]">
+      <section id="how-it-works" className="border-b border-border">
         <div className="mx-auto max-w-6xl px-6 py-24">
           <div className="mb-16 max-w-2xl">
-            <div className="text-xs font-medium uppercase tracking-wider text-foreground/55">
+            <div className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">
               How it works
             </div>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl md:text-5xl">
               Set up in an afternoon.
               <br />
-              <span className="text-foreground/55">Live for the next decade.</span>
+              <span className="text-foreground/45">Live for the next decade.</span>
             </h2>
           </div>
 
@@ -290,22 +321,79 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Closing */}
-      <section className="border-b border-border">
-        <div className="mx-auto max-w-3xl px-6 py-24 text-center">
-          <h2 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+      {/* Built by — the crew artwork lives here, where it earns its place
+          as identity rather than competing with the product showcase. */}
+      <section className="relative overflow-hidden border-b border-border bg-foreground/[0.015]">
+        <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-24 md:grid-cols-12 md:gap-16">
+          <div className="md:col-span-7">
+            <div className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">
+              Built by Magic Unicorn
+            </div>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+              Part of the Unicorn Commander suite.
+            </h2>
+            <p className="mt-5 max-w-xl text-foreground/70">
+              Project Ops is one of the apps Magic Unicorn ships internally — alongside the
+              Unicorn Brigade agent platform, the Ops-Center control plane, and our music,
+              media, and player apps. One SSO, one audit trail, one shared identity model
+              across everything.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link href="https://unicorncommander.ai" target="_blank" rel="noreferrer">
+                <Button variant="outline" size="sm">
+                  Unicorn Commander
+                  <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                </Button>
+              </Link>
+              <Link href="https://magicunicorn.dev" target="_blank" rel="noreferrer">
+                <Button variant="outline" size="sm">
+                  Magic Unicorn
+                  <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                </Button>
+              </Link>
+            </div>
+          </div>
+
+          <div className="md:col-span-5">
+            <div className="relative mx-auto aspect-square w-full max-w-md">
+              <Image
+                src="/projectops-crew-light.png"
+                alt="Project Ops crew: a construction-helmet unicorn with blueprints, an exec unicorn with a tablet of charts, and an ops unicorn at a console — in front of a project Gantt board."
+                fill
+                sizes="(max-width: 768px) 80vw, 40vw"
+                className="object-contain block dark:hidden"
+              />
+              <Image
+                src="/projectops-crew-dark.png"
+                alt=""
+                fill
+                sizes="(max-width: 768px) 80vw, 40vw"
+                className="object-contain hidden dark:block"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Closing — bigger, bolder, with ambient kicker */}
+      <section className="relative overflow-hidden border-b border-border">
+        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+          <div className="absolute left-1/2 top-1/2 h-[420px] w-[720px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-500/10 blur-[140px] dark:bg-violet-500/20" />
+        </div>
+        <div className="mx-auto max-w-3xl px-6 py-28 text-center">
+          <h2 className="text-balance text-4xl font-semibold tracking-tight text-foreground sm:text-5xl md:text-6xl">
             Ready when you are.
           </h2>
-          <p className="mx-auto mt-4 max-w-md text-foreground/70">
+          <p className="mx-auto mt-5 max-w-md text-foreground/70">
             Sign in with your Magic Unicorn account to pick up where the team left off.
           </p>
-          <div className="mt-8">
+          <div className="mt-9">
             <Link href="/auth/login">
               <Button
                 size="lg"
-                className="bg-primary text-primary-foreground hover:bg-primary/90 px-7"
+                className="bg-foreground text-background hover:bg-foreground/90 px-7 shadow-lg shadow-foreground/10"
               >
-                Sign in
+                Sign in with Unicorn Commander
                 <ArrowRight className="ml-1.5 h-4 w-4" />
               </Button>
             </Link>
