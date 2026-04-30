@@ -5,6 +5,26 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] — 2026-04-30
+
+### Added
+
+- **Landing-page FAQ.** Eight honest questions ("Can I self-host it?",
+  "Does the AI agent need to be on?", "What stack is it built on?", …)
+  rendered as native `<details>` so the section is zero-JS, accessible,
+  keyboard-friendly, and prints clean. Chevron rotates on open via
+  `[&[open]>summary>svg]:rotate-180`.
+- **Footer link to the live CHANGELOG** on Forgejo (and to the repo
+  source). The CHANGELOG was already shipping as the source of truth —
+  this just makes it discoverable from the marketing surface.
+
+### Changed
+
+- **Smooth in-page scrolling** for hash-anchor navigation, with
+  `scroll-padding-top: 5rem` so the sticky nav doesn't crop section
+  headings. Respects `prefers-reduced-motion`.
+- **Nav** picks up an FAQ link beside Features + How it works.
+
 ## [1.5.0] — 2026-04-30
 
 ### Changed

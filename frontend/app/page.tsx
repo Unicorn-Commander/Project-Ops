@@ -98,6 +98,9 @@ export default function Home() {
             <a href="#how-it-works" className="hidden px-3 py-1.5 text-sm text-foreground/70 transition-colors hover:text-foreground sm:inline-block">
               How it works
             </a>
+            <a href="#faq" className="hidden px-3 py-1.5 text-sm text-foreground/70 transition-colors hover:text-foreground sm:inline-block">
+              FAQ
+            </a>
             <ThemeToggle />
             <Link href="/auth/login">
               <Button size="sm" className="bg-foreground text-background hover:bg-foreground/90">
@@ -339,6 +342,76 @@ export default function Home() {
         </div>
       </section>
 
+      {/* FAQ — `<details>` so it's zero-JS, accessible, keyboard-friendly,
+          and prints cleanly. Soft chevron rotates on open via group syntax. */}
+      <section id="faq" className="border-b border-border bg-foreground/[0.015]">
+        <div className="mx-auto max-w-4xl px-6 py-24">
+          <div className="mb-12 max-w-2xl">
+            <div className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">
+              FAQ
+            </div>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl md:text-5xl">
+              The honest answers.
+            </h2>
+          </div>
+
+          <div className="divide-y divide-border rounded-xl border border-border bg-card">
+            {[
+              {
+                q: "Can I self-host it?",
+                a: "Yes. Project Ops runs as a small Docker Compose stack — Postgres, Redis, S3-compatible storage, NestJS backend, Next.js frontend. The entire repo is on Forgejo. There is no SaaS lock-in.",
+              },
+              {
+                q: "Does the AI agent need to be on?",
+                a: "No. The dashboard works fully without it. The Brigade agent integration is optional — point the BRIGADE_API_URL env at your own Brigade install or leave it disabled.",
+              },
+              {
+                q: "How does single sign-on work?",
+                a: "We use Keycloak (OpenID Connect). Sign in with Unicorn Commander federates to Google + Microsoft out of the box, and the same identities work across all the Magic Unicorn apps in the suite.",
+              },
+              {
+                q: "What about role-based access?",
+                a: "Three built-in roles — ADMIN, MANAGER, CLIENT — plus a Prisma-level visibility filter that scopes every list query and every MCP tool call. Clients only see their own organization’s projects; managers see what they own or are assigned to; admins see everything.",
+              },
+              {
+                q: "How do you handle billing & invoices?",
+                a: "Built into the project itself: invoice number, billing amount, amount paid, payment status, due date, paid date, billing notes. No second tool, no double entry. Export to CSV when your accountant needs the rollup.",
+              },
+              {
+                q: "Can I use it for client-facing work?",
+                a: "Yes — invite clients with the CLIENT role and they get a scoped view of just their projects, tasks, and shared documents. Comments thread per project so the conversation lives next to the work.",
+              },
+              {
+                q: "What stack is it built on?",
+                a: "NestJS 10 + Prisma 5 + Postgres 17 on the backend, Next.js 15 + Tailwind 4 + Radix on the frontend, S3-compatible storage (we use Garage), Keycloak for auth, and Unicorn Brigade for the agent layer. Everything observable, replaceable, boring in the right places.",
+              },
+              {
+                q: "Where can I see what changed in the latest release?",
+                a: "The CHANGELOG ships with the repo and follows Keep a Changelog. Each version names what shipped, what changed, what got fixed, and the infrastructure notes that the operator cares about.",
+              },
+            ].map(({ q, a }) => (
+              <details
+                key={q}
+                className="group px-5 py-4 [&[open]>summary>svg]:rotate-180"
+              >
+                <summary className="flex cursor-pointer list-none items-start justify-between gap-4 text-left">
+                  <span className="text-sm font-semibold text-foreground sm:text-base">
+                    {q}
+                  </span>
+                  <ArrowRight
+                    className="mt-1 h-4 w-4 shrink-0 rotate-90 text-foreground/55 transition-transform"
+                    aria-hidden
+                  />
+                </summary>
+                <p className="mt-3 max-w-3xl text-sm leading-relaxed text-foreground/70">
+                  {a}
+                </p>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Built by — the crew artwork lives here, where it earns its place
           as identity rather than competing with the product showcase. */}
       <section className="relative overflow-hidden border-b border-border bg-foreground/[0.015]">
@@ -428,14 +501,30 @@ export default function Home() {
 
       {/* Footer */}
       <footer>
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-6 py-10 text-sm text-foreground/60 sm:flex-row">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-10 text-sm text-foreground/60 sm:flex-row">
           <div className="flex items-center gap-2.5">
             <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded bg-white ring-1 ring-border">
               <Image src="/projectops-mascot.png" alt="" width={20} height={20} />
             </span>
             <span>&copy; {new Date().getFullYear()} Magic Unicorn</span>
           </div>
-          <div className="flex items-center gap-5">
+          <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+            <a
+              href="https://git.unicorncommander.ai/MagicUnicorn/Project-Ops/src/branch/deploy/magicunicorn-projectops/CHANGELOG.md"
+              className="transition-colors hover:text-foreground"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Changelog
+            </a>
+            <a
+              href="https://git.unicorncommander.ai/MagicUnicorn/Project-Ops"
+              className="transition-colors hover:text-foreground"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Source
+            </a>
             <a
               href="https://unicorncommander.ai"
               className="transition-colors hover:text-foreground"
@@ -452,7 +541,7 @@ export default function Home() {
             >
               Magic Unicorn
             </a>
-          </div>
+          </nav>
         </div>
       </footer>
     </div>
