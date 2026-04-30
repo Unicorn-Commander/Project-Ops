@@ -11,6 +11,7 @@ import {
   Building2,
   ShieldCheck,
   Sparkles,
+  MessageSquare,
   ArrowRight,
 } from "lucide-react";
 
@@ -55,6 +56,12 @@ const features: Array<{
     title: "Quiet notifications",
     body: "Email when work is assigned, status changes, or a deadline is near. Quiet otherwise.",
     tone: "orange",
+  },
+  {
+    icon: MessageSquare,
+    title: "Activity & comments",
+    body: "Threaded comments on projects and tasks, plus a unified activity feed so anyone can catch up in a glance.",
+    tone: "blue",
   },
   {
     icon: ShieldCheck,
@@ -182,7 +189,7 @@ export default function Home() {
             </h2>
           </div>
 
-          <div className="grid gap-x-12 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-x-10 gap-y-12 sm:grid-cols-2 lg:grid-cols-4">
             {features.map(({ icon: Icon, title, body, tone }) => (
               <div key={title} className="group">
                 <div className={`inline-flex h-10 w-10 items-center justify-center rounded-md transition-transform group-hover:scale-105 ${iconWellClass(tone)}`}>
