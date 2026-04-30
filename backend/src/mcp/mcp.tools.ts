@@ -9,8 +9,46 @@
 
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, User, UserRole } from '@prisma/client';
+import { MinioService } from '../documents/minio.service';
+import { v4 as uuidv4 } from 'uuid';
 
 type Logger = { log: (msg: string) => void; warn: (msg: string) => void };
+
+// Mime types whose bytes can be returned as text. Office formats are
+// included so the LLM at least gets the (often-readable) raw stream;
+// truly binary types (images, video, archives) fall through to the
+// download-URL branch.
+const TEXT_FRIENDLY_MIME_PREFIXES = ['text/'];
+const TEXT_FRIENDLY_MIME_TYPES = new Set<string>([
+  'application/pdf',
+  'application/json',
+  'text/markdown',
+  'text/csv',
+  'application/vnd.ms-excel',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+]);
+
+function isTextFriendlyMime(mime: string): boolean {
+  if (!mime) return false;
+  const lower = mime.toLowerCase();
+  if (TEXT_FRIENDLY_MIME_PREFIXES.some((prefix) => lower.startsWith(prefix))) {
+    return true;
+  }
+  if (TEXT_FRIENDLY_MIME_TYPES.has(lower)) return true;
+  if (lower.startsWith('application/vnd.openxmlformats-officedocument.')) return true;
+  return false;
+}
+
+async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as any));
+  }
+  return Buffer.concat(chunks);
+}
 
 function buildVisibilityFilter(user: User): Prisma.ProjectWhereInput {
   if (user.role === UserRole.ADMIN || user.role === UserRole.MANAGER) {
@@ -30,6 +68,7 @@ function buildVisibilityFilter(user: User): Prisma.ProjectWhereInput {
 export class ProjectOpsTools {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly minio: MinioService,
     private readonly logger: Logger = console,
   ) {}
 
@@ -422,5 +461,267 @@ export class ProjectOpsTools {
       },
     });
     return { project, documents, count: documents.length };
+  }
+
+  /**
+   * Fetch a document's bytes from MinIO and return text content when the mime
+   * type is text-friendly. For PDFs we attempt `pdf-parse` (lazy require so a
+   * missing dep degrades gracefully) and fall back to a presigned download
+   * URL if extraction fails or the dep isn't installed. Binary mime types
+   * always return `{ supported: false, downloadUrl }` so the LLM hands the
+   * user a link instead of trying to render.
+   *
+   * Output cap: 50KB of text, then truncated marker. Visibility is enforced
+   * via buildVisibilityFilter on the parent project; orphan documents (no
+   * project) are admin-only.
+   */
+  async getDocumentContent(
+    user: User,
+    args: { documentId?: string; fileName?: string; projectNumber?: string },
+  ) {
+    const TEXT_CAP = 50 * 1024;
+
+    if (!args.documentId && !(args.fileName && args.projectNumber)) {
+      throw new Error(
+        "Provide 'documentId', or both 'fileName' and 'projectNumber'.",
+      );
+    }
+
+    let document;
+    if (args.documentId) {
+      document = await this.prisma.document.findFirst({
+        where: {
+          id: args.documentId,
+          OR: [
+            { project: buildVisibilityFilter(user) },
+            // orphan docs (no project) only visible to admins / managers
+            ...(user.role === UserRole.ADMIN || user.role === UserRole.MANAGER
+              ? [{ projectId: null }]
+              : []),
+          ],
+        },
+      });
+    } else {
+      document = await this.prisma.document.findFirst({
+        where: {
+          fileName: args.fileName!,
+          project: {
+            ...buildVisibilityFilter(user),
+            projectNumber: args.projectNumber!,
+          },
+        },
+        orderBy: { uploadedAt: 'desc' },
+      });
+    }
+
+    if (!document) {
+      throw new Error("Document not found or you don't have access");
+    }
+
+    const downloadUrl = await this.minio.getPresignedDownloadUrl(
+      document.s3Key,
+      3600,
+    );
+
+    const mime = (document.mimeType || '').toLowerCase();
+
+    if (!isTextFriendlyMime(mime)) {
+      return {
+        documentId: document.id,
+        fileName: document.fileName,
+        mimeType: document.mimeType,
+        fileSize: document.fileSize,
+        supported: false,
+        downloadUrl,
+        note: 'Mime type is not text-friendly — hand the user the downloadUrl.',
+      };
+    }
+
+    let buffer: Buffer;
+    try {
+      const stream = await this.minio.getObjectStream(document.s3Key);
+      buffer = await streamToBuffer(stream);
+    } catch (err) {
+      this.logger.warn(
+        `MCP get_document_content: stream failed for ${document.id}: ${(err as Error).message}`,
+      );
+      return {
+        documentId: document.id,
+        fileName: document.fileName,
+        mimeType: document.mimeType,
+        supported: false,
+        downloadUrl,
+        note: 'Failed to read object from storage — use downloadUrl.',
+      };
+    }
+
+    let text: string | null = null;
+    let extractionMode: 'utf8' | 'pdf-parse' | 'raw' = 'utf8';
+
+    if (mime === 'application/pdf') {
+      try {
+        // Lazy require — pdf-parse is optional; if not installed, fall through.
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const pdfParse = require('pdf-parse');
+        const parsed = await pdfParse(buffer);
+        text = String(parsed?.text ?? '');
+        extractionMode = 'pdf-parse';
+      } catch (err) {
+        this.logger.warn(
+          `MCP get_document_content: pdf-parse unavailable or failed for ${document.id}: ${(err as Error).message}`,
+        );
+        return {
+          documentId: document.id,
+          fileName: document.fileName,
+          mimeType: document.mimeType,
+          fileSize: document.fileSize,
+          supported: false,
+          downloadUrl,
+          note: 'PDF text extraction unavailable — raw bytes available, use downloadUrl.',
+        };
+      }
+    } else if (mime.startsWith('text/') || mime === 'application/json') {
+      text = buffer.toString('utf8');
+      extractionMode = 'utf8';
+    } else {
+      // Office formats — emit raw bytes as utf8 best-effort. The LLM gets
+      // *something* but we mark it raw so it knows the rendering may be poor.
+      text = buffer.toString('utf8');
+      extractionMode = 'raw';
+    }
+
+    const truncated = text.length > TEXT_CAP;
+    const content = truncated ? text.slice(0, TEXT_CAP) : text;
+
+    this.logger.log(
+      `MCP get_document_content: user=${user.email} doc=${document.id} mode=${extractionMode} truncated=${truncated}`,
+    );
+
+    return {
+      documentId: document.id,
+      fileName: document.fileName,
+      mimeType: document.mimeType,
+      fileSize: document.fileSize,
+      supported: true,
+      extractionMode,
+      truncated,
+      contentLength: content.length,
+      content,
+      downloadUrl,
+    };
+  }
+
+  /**
+   * Ingest a new document directly via MCP. Decodes the payload (base64 for
+   * binary mime types, plain text for text/*), uploads to MinIO via the
+   * shared MinioService, and creates a Document row owned by the calling
+   * user. Skips the staged presigned-URL flow — this is for agents that
+   * already have the bytes in memory.
+   *
+   * Caps: 25 MB after decoding. Mime type required and must be a recognised
+   * top-level type.
+   */
+  async uploadDocument(
+    user: User,
+    args: {
+      projectId?: string;
+      projectNumber?: string;
+      fileName: string;
+      content: string;
+      mimeType: string;
+      description?: string;
+    },
+  ) {
+    this.assertCanWrite(user);
+
+    if (!args.projectId && !args.projectNumber) {
+      throw new Error("Either 'projectId' or 'projectNumber' is required.");
+    }
+    if (!args.fileName || !args.fileName.trim()) {
+      throw new Error("'fileName' is required.");
+    }
+    if (typeof args.content !== 'string') {
+      throw new Error("'content' must be a string (base64 for binary, plain for text).");
+    }
+    if (!args.mimeType || !args.mimeType.trim() || !args.mimeType.includes('/')) {
+      throw new Error("'mimeType' is required and must look like 'type/subtype'.");
+    }
+
+    const project = await this.prisma.project.findFirst({
+      where: {
+        ...buildVisibilityFilter(user),
+        ...(args.projectId
+          ? { id: args.projectId }
+          : { projectNumber: args.projectNumber! }),
+      },
+      select: { id: true, projectNumber: true },
+    });
+    if (!project) {
+      throw new Error('Project not found or no access');
+    }
+
+    const mime = args.mimeType.toLowerCase();
+    const isText = mime.startsWith('text/') || mime === 'application/json';
+
+    let buffer: Buffer;
+    try {
+      buffer = isText
+        ? Buffer.from(args.content, 'utf8')
+        : Buffer.from(args.content, 'base64');
+    } catch (err) {
+      throw new Error(`Failed to decode content: ${(err as Error).message}`);
+    }
+
+    const MAX_BYTES = 25 * 1024 * 1024;
+    if (buffer.length === 0) {
+      throw new Error('Decoded content is empty.');
+    }
+    if (buffer.length > MAX_BYTES) {
+      throw new Error(
+        `Content exceeds 25MB cap (got ${buffer.length} bytes).`,
+      );
+    }
+
+    const fileExtension =
+      args.fileName.includes('.') ? args.fileName.split('.').pop() || 'bin' : 'bin';
+    const s3Key = `projects/${project.id}/${uuidv4()}.${fileExtension}`;
+
+    await this.minio.uploadObject(s3Key, buffer, buffer.length, {
+      'Content-Type': args.mimeType,
+    });
+
+    // Schema's DocumentStatus enum has no COMPLETED — UPLOADED is the
+    // post-upload terminal state used by the existing proxy upload path.
+    const document = await this.prisma.document.create({
+      data: {
+        projectId: project.id,
+        uploadedById: user.id,
+        fileName: args.fileName,
+        fileSize: buffer.length,
+        mimeType: args.mimeType,
+        s3Key,
+        s3Bucket: this.minio.getBucketName(),
+        status: 'UPLOADED',
+        description: args.description,
+      },
+      select: {
+        id: true,
+        fileName: true,
+        fileSize: true,
+        mimeType: true,
+        status: true,
+        description: true,
+        uploadedAt: true,
+      },
+    });
+
+    this.logger.log(
+      `MCP upload_document: user=${user.email} project=${project.projectNumber} doc=${document.id} size=${buffer.length}`,
+    );
+
+    return {
+      project: { id: project.id, projectNumber: project.projectNumber },
+      document,
+    };
   }
 }

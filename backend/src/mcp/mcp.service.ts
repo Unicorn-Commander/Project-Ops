@@ -13,13 +13,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import { User } from '@prisma/client';
 import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
+import { MinioService } from '../documents/minio.service';
 import { ProjectOpsTools } from './mcp.tools';
 
 @Injectable()
 export class McpService {
   private readonly logger = new Logger(McpService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly minio: MinioService,
+  ) {}
 
   /**
    * Build a fresh MCP server bound to one authenticated user.
@@ -48,7 +52,7 @@ export class McpService {
       },
     );
 
-    const tools = new ProjectOpsTools(this.prisma, this.logger);
+    const tools = new ProjectOpsTools(this.prisma, this.minio, this.logger);
 
     server.registerTool(
       'list_my_projects',
@@ -239,6 +243,61 @@ export class McpService {
         },
       },
       async (args: any) => wrap(await tools.listProjectDocuments(user, args)),
+    );
+
+    server.registerTool(
+      'get_document_content',
+      {
+        title: 'Read a document\'s text content',
+        description:
+          'Fetch a document the user can see and return its text content. ' +
+          'Identify by documentId, or by fileName + projectNumber. Text-friendly ' +
+          'mime types (text/*, application/json, application/pdf, Office formats) ' +
+          'come back as up to 50KB of extracted text. Other mime types return ' +
+          '{ supported: false, downloadUrl } so the assistant can hand the user ' +
+          'a link instead. PDFs are extracted via pdf-parse when installed; if ' +
+          'unavailable the tool falls back to a download URL.',
+        inputSchema: {
+          documentId: z.string().optional(),
+          fileName: z.string().optional(),
+          projectNumber: z.string().optional(),
+        },
+      },
+      async (args: {
+        documentId?: string;
+        fileName?: string;
+        projectNumber?: string;
+      }) => wrap(await tools.getDocumentContent(user, args)),
+    );
+
+    server.registerTool(
+      'upload_document',
+      {
+        title: 'Upload a new document to a project',
+        description:
+          'Persist a new document on a project the caller can see. Provide ' +
+          'projectId or projectNumber, the fileName, mimeType, and content ' +
+          '(plain text for text/* and application/json, base64-encoded bytes ' +
+          'otherwise). Cap: 25MB after decoding. CLIENT-role users cannot call ' +
+          'this. Bypasses the staged presigned-URL flow — use when the agent ' +
+          'already has the bytes in memory.',
+        inputSchema: {
+          projectId: z.string().optional(),
+          projectNumber: z.string().optional(),
+          fileName: z.string().min(1).max(500),
+          content: z.string().min(1),
+          mimeType: z.string().min(1),
+          description: z.string().optional(),
+        },
+      },
+      async (args: {
+        projectId?: string;
+        projectNumber?: string;
+        fileName: string;
+        content: string;
+        mimeType: string;
+        description?: string;
+      }) => wrap(await tools.uploadDocument(user, args)),
     );
 
     return server;
