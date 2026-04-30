@@ -1,34 +1,41 @@
 @import "tailwindcss";
 
 @theme {
-  /* Project Ops Brand Colors */
-  --color-primary-blue: #6b3fa0;
-  --color-primary-blue-hover: #5a3488;
-  --color-dark-navy: #0f0520;
-  --color-accent-bronze: #d946ef;
-  --color-light-bg: #F5F0FC;
-  --color-border: #D4DADE;
-  --color-text-dark: #10172B;
-  --color-text-light: #A5A6AA;
+  /* Project Ops palette — neutral primary, warm-neutral darks. The
+   * mascot artwork carries the rainbow; the chrome stays calm. Only
+   * accent surfaces (status badges, icon wells, etc.) carry hue, via
+   * lib/badge-styles.ts. */
 
-  /* Semantic theme colors */
-  --color-background: #FFFFFF;
-  --color-foreground: #10172B;
-  --color-card: #FFFFFF;
-  --color-card-foreground: #10172B;
-  --color-primary: #6b3fa0;
-  --color-primary-foreground: #FFFFFF;
-  --color-secondary: #F5F0FC;
-  --color-secondary-foreground: #10172B;
-  --color-muted: #F5F0FC;
-  --color-muted-foreground: #A5A6AA;
-  --color-accent: #d946ef;
-  --color-destructive: #C91C05;
-  --color-destructive-foreground: #FFFFFF;
-  --color-input: #D4DADE;
-  --color-ring: #6b3fa0;
-  --color-popover: #FFFFFF;
-  --color-popover-foreground: #10172B;
+  /* Legacy brand-named tokens — kept (not removed) so any stragglers
+   * referencing them still compile, but values are neutral now. */
+  --color-primary-blue: #171717;
+  --color-primary-blue-hover: #0a0a0a;
+  --color-dark-navy: #0b0b0d;
+  --color-accent-bronze: #f59e0b;
+  --color-light-bg: #f4f4f5;
+  --color-border: #e4e4e7;
+  --color-text-dark: #171717;
+  --color-text-light: #71717a;
+
+  /* Semantic theme colors (light mode defaults) */
+  --color-background: #fafaf9;          /* warm off-white, not pure white */
+  --color-foreground: #171717;
+  --color-card: #ffffff;                /* cards stay pure white so they
+                                            lift gently off the off-white bg */
+  --color-card-foreground: #171717;
+  --color-primary: #171717;             /* near-black — Linear-ish */
+  --color-primary-foreground: #fafafa;
+  --color-secondary: #f4f4f5;
+  --color-secondary-foreground: #171717;
+  --color-muted: #f4f4f5;
+  --color-muted-foreground: #71717a;
+  --color-accent: #f59e0b;              /* amber — only used by .btn-accent */
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #ffffff;
+  --color-input: #e4e4e7;
+  --color-ring: #171717;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #171717;
 
   --radius-default: 0.5rem;
   --radius-sm: 0.375rem;
@@ -43,14 +50,21 @@
   }
 
   .dark {
-    --color-background: var(--color-dark-navy);
-    --color-foreground: #FFFFFF;
-    --color-card: #1a0f2e;
-    --color-card-foreground: #FFFFFF;
-    --color-border: #2a1545;
-    --color-input: #2a1545;
-    --color-popover: #1a0f2e;
-    --color-popover-foreground: #FFFFFF;
+    --color-background: #0b0b0d;        /* warm near-black, no purple cast */
+    --color-foreground: #fafafa;
+    --color-card: #15151a;              /* slightly elevated above bg */
+    --color-card-foreground: #fafafa;
+    --color-border: #27272a;            /* zinc-800 */
+    --color-input: #27272a;
+    --color-popover: #15151a;
+    --color-popover-foreground: #fafafa;
+    --color-primary: #fafafa;           /* foreground-on-background flip */
+    --color-primary-foreground: #0b0b0d;
+    --color-secondary: #1c1c20;
+    --color-secondary-foreground: #fafafa;
+    --color-muted: #1c1c20;
+    --color-muted-foreground: #a1a1aa;
+    --color-ring: #fafafa;
   }
 }
 
@@ -66,7 +80,7 @@
   }
 
   h1, h2, h3, h4, h5, h6 {
-    @apply text-text-dark font-semibold;
+    @apply text-foreground font-semibold;
   }
 }
 
@@ -124,7 +138,12 @@
   textarea:focus,
   select:focus {
     @apply outline-none border-ring;
-    box-shadow: 0 0 0 3px rgba(107, 63, 160, 0.1);
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.08);
+  }
+  .dark input:focus,
+  .dark textarea:focus,
+  .dark select:focus {
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
   }
 
   /* Navigation and Headers */

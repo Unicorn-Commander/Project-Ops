@@ -111,15 +111,6 @@ export default function Home() {
 
       {/* Hero */}
       <section className="relative overflow-hidden border-b border-border">
-        {/* Ambient brand glows — purposely subtle, won't compete with the artwork */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -top-32 left-1/3 h-[420px] w-[420px] rounded-full bg-primary/20 blur-[120px] dark:bg-primary/30"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -bottom-24 -right-24 h-[360px] w-[360px] rounded-full bg-accent/10 blur-[100px] dark:bg-accent/15"
-        />
         <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-6 py-24 md:grid-cols-12 md:gap-16 md:py-32">
           <div className="md:col-span-7">
             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-foreground/70">
@@ -171,6 +162,53 @@ export default function Home() {
                 className="object-contain hidden dark:block"
               />
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Product preview — drop a real dashboard screenshot at
+          /public/dashboard-preview-light.png and /public/dashboard-preview-dark.png
+          (1920x1200 recommended) and the placeholder will swap automatically.
+          The aspect-[16/10] frame plus the soft gradient mask keeps the preview
+          looking like a window-on-the-app even before the screenshots land. */}
+      <section className="border-b border-border">
+        <div className="mx-auto max-w-6xl px-6 py-20 md:py-24">
+          <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-foreground/5">
+            <div className="relative aspect-[16/10] w-full">
+              {/* Placeholder behind the screenshots — visible until you drop
+                  real images into /public. */}
+              <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-muted to-card">
+                <div className="text-center text-muted-foreground">
+                  <div className="text-xs uppercase tracking-[0.2em]">Dashboard preview</div>
+                  <p className="mt-3 max-w-sm px-6 text-sm leading-relaxed">
+                    Drop a screenshot at{" "}
+                    <code className="rounded bg-foreground/10 px-1.5 py-0.5 text-[11px] text-foreground">/public/dashboard-preview-light.png</code>
+                    {" "}+{" "}
+                    <code className="rounded bg-foreground/10 px-1.5 py-0.5 text-[11px] text-foreground">dashboard-preview-dark.png</code>
+                    {" "}— it'll appear here.
+                  </p>
+                </div>
+              </div>
+              {/* Plain <img> rather than next/image so a missing file
+                  silently 404s and the placeholder shows through. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/dashboard-preview-light.png"
+                alt="Project Ops dashboard — projects, tasks, and recent activity in one view."
+                className="absolute inset-0 h-full w-full object-cover object-top dark:hidden"
+              />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/dashboard-preview-dark.png"
+                alt=""
+                className="absolute inset-0 hidden h-full w-full object-cover object-top dark:block"
+              />
+            </div>
+            {/* Soft fade at the bottom — gives the preview a "leans into the page" feel */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background to-transparent"
+            />
           </div>
         </div>
       </section>
