@@ -175,16 +175,23 @@ export default function Home() {
         <div className="mx-auto max-w-6xl px-6 py-20 md:py-24">
           <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-foreground/5">
             <div className="relative aspect-[16/10] w-full">
-              {/* Placeholder behind the screenshots — visible until you drop
-                  real images into /public. */}
-              <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-muted to-card">
-                <div className="text-center text-muted-foreground">
-                  <div className="text-xs uppercase tracking-[0.2em]">Dashboard preview</div>
-                  <p className="mt-3 max-w-sm px-6 text-sm leading-relaxed">
+              {/* Placeholder behind the screenshots. Both /public PNGs ship
+                  as 1x1 transparent placeholders, so this content is fully
+                  visible until you replace them with real screenshots. */}
+              <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-foreground/[0.04] via-transparent to-foreground/[0.06]">
+                <div className="text-center">
+                  <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                    Dashboard preview
+                  </div>
+                  <p className="mt-3 max-w-md px-6 text-sm leading-relaxed text-foreground/70">
                     Drop a screenshot at{" "}
-                    <code className="rounded bg-foreground/10 px-1.5 py-0.5 text-[11px] text-foreground">/public/dashboard-preview-light.png</code>
+                    <code className="rounded bg-foreground/10 px-1.5 py-0.5 text-[11px] text-foreground">
+                      /public/dashboard-preview-light.png
+                    </code>
                     {" "}+{" "}
-                    <code className="rounded bg-foreground/10 px-1.5 py-0.5 text-[11px] text-foreground">dashboard-preview-dark.png</code>
+                    <code className="rounded bg-foreground/10 px-1.5 py-0.5 text-[11px] text-foreground">
+                      dashboard-preview-dark.png
+                    </code>
                     {" "}— it'll appear here.
                   </p>
                 </div>
