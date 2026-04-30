@@ -198,74 +198,38 @@ export default function DashboardPage() {
 
       <div>
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {/* Total Projects */}
-          <Card className="p-6 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Total Projects
-                </p>
-                <p className="text-3xl font-bold text-foreground mt-2">
-                  {stats.totalProjects}
-                </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          {([
+            { label: "Total projects", value: stats.totalProjects,      icon: FileText,    tone: "primary" as const, href: "/dashboard/projects" },
+            { label: "Active",         value: stats.activeProjects,     icon: Clock,       tone: "amber" as const,   href: "/dashboard/projects" },
+            { label: "Completed",      value: stats.completedProjects,  icon: CheckCircle2,tone: "emerald" as const, href: "/dashboard/projects" },
+            { label: "Due this week",  value: stats.upcomingDeadlines,  icon: AlertCircle, tone: "rose" as const,    href: "/dashboard/my-tasks" },
+          ]).map(({ label, value, icon: Icon, tone, href }) => (
+            <Card
+              key={label}
+              onClick={() => router.push(href)}
+              className="group relative cursor-pointer overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:shadow-md"
+            >
+              <div className="flex items-start justify-between">
+                <div className="space-y-1.5">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                    {label}
+                  </p>
+                  <p className="text-3xl font-semibold tracking-tight text-foreground tabular-nums">
+                    {value}
+                  </p>
+                </div>
+                <div className={`inline-flex h-10 w-10 items-center justify-center rounded-lg transition-transform group-hover:scale-105 ${iconWellClass(tone)}`}>
+                  <Icon className="h-5 w-5" strokeWidth={1.75} />
+                </div>
               </div>
-              <div className={`h-12 w-12 rounded-lg flex items-center justify-center ${iconWellClass("primary")}`}>
-                <FileText className="h-6 w-6" />
-              </div>
-            </div>
-          </Card>
-
-          {/* Active Projects */}
-          <Card className="p-6 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Active Projects
-                </p>
-                <p className="text-3xl font-bold text-foreground mt-2">
-                  {stats.activeProjects}
-                </p>
-              </div>
-              <div className={`h-12 w-12 rounded-lg flex items-center justify-center ${iconWellClass("amber")}`}>
-                <Clock className="h-6 w-6" />
-              </div>
-            </div>
-          </Card>
-
-          {/* Completed Projects */}
-          <Card className="p-6 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Completed
-                </p>
-                <p className="text-3xl font-bold text-foreground mt-2">
-                  {stats.completedProjects}
-                </p>
-              </div>
-              <div className={`h-12 w-12 rounded-lg flex items-center justify-center ${iconWellClass("emerald")}`}>
-                <CheckCircle2 className="h-6 w-6" />
-              </div>
-            </div>
-          </Card>
-
-          {/* Upcoming Deadlines */}
-          <Card className="p-6 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Due This Week
-                </p>
-                <p className="text-3xl font-bold text-foreground mt-2">
-                  {stats.upcomingDeadlines}
-                </p>
-              </div>
-              <div className={`h-12 w-12 rounded-lg flex items-center justify-center ${iconWellClass("rose")}`}>
-                <AlertCircle className="h-6 w-6" />
-              </div>
-            </div>
-          </Card>
+              {/* Subtle bottom-right gradient for depth */}
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-border to-transparent"
+              />
+            </Card>
+          ))}
         </div>
 
         {/* My Tasks + Top Contacts on top row; Recent Projects spans full width below */}
