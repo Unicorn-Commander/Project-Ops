@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -103,6 +103,16 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   }, [filteredNavigation]);
 
   const initials = (user?.firstName?.[0] ?? "") + (user?.lastName?.[0] ?? "");
+  const title = pageTitleFor(pathname);
+
+  // Server renders the generic "Project Ops · Magic Unicorn" title; once
+  // hydrated we update document.title to match the contextual page name so
+  // browser tabs / bookmarks read meaningfully.
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.title = `${title} · Project Ops`;
+    }
+  }, [title]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -206,7 +216,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <Menu className="h-5 w-5" />
           </Button>
           <h1 className="truncate text-base font-semibold tracking-tight text-foreground">
-            {pageTitleFor(pathname)}
+            {title}
           </h1>
           <div className="flex-1" />
           <AssistantPanel />

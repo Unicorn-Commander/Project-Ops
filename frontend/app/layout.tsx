@@ -9,12 +9,22 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Project Ops · Magic Unicorn",
+  title: {
+    default: "Project Ops · Magic Unicorn",
+    template: "%s · Project Ops",
+  },
   description:
-    "Project management, client portal, and operations workspace by Magic Unicorn. Part of the Unicorn Commander suite.",
+    "CRM, project management, kanban, billing, and a built-in AI agent — for teams who'd rather ship than chase status updates. Part of the Unicorn Commander suite.",
   icons: {
     icon: [{ url: "/projectops-mascot.png", type: "image/png" }],
     apple: [{ url: "/projectops-mascot.png" }],
+  },
+  openGraph: {
+    title: "Project Ops · Magic Unicorn",
+    description:
+      "CRM, project management, kanban, billing, and a built-in AI agent. Part of the Unicorn Commander suite.",
+    siteName: "Project Ops",
+    type: "website",
   },
 };
 
