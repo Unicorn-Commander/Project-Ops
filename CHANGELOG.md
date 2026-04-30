@@ -5,6 +5,29 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-04-30
+
+### Added
+
+- **`Avatar` primitive** (`components/ui/avatar.tsx`) — initials in a
+  deterministic-coloured pill (djb2 hash → 8-bucket gradient palette).
+  Same person = same gradient across the whole app. Used in user
+  dropdown, task-card, kanban assignees.
+- **Empty states** for the four list pages — Organizations, Contacts,
+  Documents, Users. Each picks a tone matching the section, includes
+  a primary CTA where relevant, and distinguishes "search returned
+  nothing" from "no data yet".
+
+### Changed
+
+- **Sidebar active-item icon** now wraps in a tinted icon-well
+  matching the section: Workspace = blue, CRM = emerald, Admin = rose.
+  The active route reads instantly without darkening the whole row.
+- **Recent Projects + My Tasks dashboard rows** get a richer hover
+  treatment: 0.5px lift, border tint, soft shadow, 150ms transition.
+  Matches the stat cards above them so the dashboard feels like one
+  cohesive surface.
+
 ## [1.3.0] — 2026-04-30
 
 ### Infrastructure
