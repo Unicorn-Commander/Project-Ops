@@ -9,8 +9,6 @@ volumes:
     driver: local
   redis_data:
     driver: local
-  minio_data:
-    driver: local
 
 services:
   # PostgreSQL 17 - Primary Database
@@ -88,44 +86,10 @@ services:
     labels:
       - "com.projectops.service=cache"
 
-  # MinIO - Object Storage
-  project-ops-minio:
-    image: minio/minio:latest
-    container_name: project-ops-minio
-    restart: unless-stopped
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      MINIO_DOMAIN: ${STORAGE_DOMAIN}
-    volumes:
-      - minio_data:/data
-    ports:
-      - "9202:9000"
-      - "9203:9001"
-    networks:
-      - project-ops-network
-      - web
-    command: server /data --console-address ":9001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.projectops-minio-api.rule=Host(`${STORAGE_DOMAIN}`)"
-      - "traefik.http.routers.projectops-minio-api.entrypoints=websecure"
-      - "traefik.http.routers.projectops-minio-api.tls=true"
-      - "traefik.http.routers.projectops-minio-api.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.projectops-minio-api.service=projectops-minio-api"
-      - "traefik.http.services.projectops-minio-api.loadbalancer.server.port=9000"
-      - "traefik.http.routers.projectops-minio-console.rule=Host(`${STORAGE_CONSOLE_DOMAIN}`)"
-      - "traefik.http.routers.projectops-minio-console.entrypoints=websecure"
-      - "traefik.http.routers.projectops-minio-console.tls=true"
-      - "traefik.http.routers.projectops-minio-console.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.projectops-minio-console.service=projectops-minio-console"
-      - "traefik.http.services.projectops-minio-console.loadbalancer.server.port=9001"
+  # Object storage: shared `unicorn-garage` (Garage S3) on the host. The
+  # backend reads `MINIO_*` env vars below for historical reasons but the
+  # endpoint actually points at unicorn-garage. There is intentionally no
+  # local MinIO container — see CHANGELOG v1.3.0 for the swap rationale.
 
   # NestJS Backend API
   project-ops-backend:
