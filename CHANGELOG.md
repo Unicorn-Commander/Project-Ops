@@ -5,6 +5,73 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-04-30
+
+### Infrastructure
+
+- **Storage backend swap.** Dropped the orphan `project-ops-minio`
+  service from compose. The bigboy deploy already routed every S3 call
+  to the shared `unicorn-garage` (Garage v1.0.1) container; this makes
+  that the official upstream config. Backend env vars are still named
+  `MINIO_*` (Garage is S3-compatible) — rename to `STORAGE_*` is a
+  separate cleanup pass.
+
+### GUI polish
+
+- New **`Skeleton` + `SkeletonText`** primitives (`components/ui/`).
+  Theme-aware, slower pulse than Tailwind's default for ambient feel.
+- New **`EmptyState`** primitive — tinted icon well, title, body,
+  optional CTA. Uses the same icon-well tones as the dashboard stat
+  cards so empty surfaces feel intentional rather than forgotten.
+- **Loading states** rebuilt across Dashboard / My Tasks / Projects
+  list / Project detail / Kanban — the placeholders now match the
+  actual layout shape, no more pulsing rectangles.
+- **Empty states polished** on the dashboard ("Inbox zero" with
+  emerald icon when no pending tasks; "No projects yet" with primary
+  CTA when the recent-projects list is empty).
+- **Kanban drop zones** now read "Drop tasks here" idle and "Drop
+  into {Column}" while a card is hovered, with a smooth border + tint
+  shift between idle and over-target states.
+- **Subtle page-mount animation** (`po-page-enter`) — 280ms fade-in-up
+  on Dashboard / My Tasks / Projects / Kanban. Respects
+  `prefers-reduced-motion`.
+
+## [1.2.0] — 2026-04-30
+
+### Added
+
+- **Project-Ops MCP write tools (full surface):** `create_project`,
+  `create_task`, `update_project_status`, `update_task_status`,
+  `update_billing_fields`, `add_task_comment`,
+  `list_project_documents`, `get_document_content`, `upload_document`.
+  All RBAC-scoped, CLIENT users blocked from writes.
+- **Brigade specialist agent** `project-ops-report-writer` for
+  long-form drafts and PDF rendering. Parent agent delegates via
+  `delegate_to_agent` for full reports while keeping
+  `doc_generate`/`generate_pdf` for inline outputs.
+- **Per-user knowledge memory.** Brigade's `knowledge_store` and
+  `knowledge_query` now have `needs_caller_context=True` and override
+  `agent_id` with `f"user:{caller_user_id}"` so FalkorDB partitions
+  cross-conversation memory by user.
+- **Coding-agent integration guide** at `docs/MCP_FOR_CODING_AGENTS.md`
+  — wire Claude Code / OpenCode / Cursor / Continue / Zed to the
+  Project-Ops MCP endpoint with a per-user JWT.
+
+### Changed
+
+- Agent system prompt rewritten with bucketed tool reference
+  (Read / Write / Output / Memory / Delegation) and a knowledge_store
+  schema example so the LLM gets it right first try.
+- Agent runs on **local Gemma 4 26B-a4b on midboy1** (Tailscale
+  `100.121.80.175:8087`) by default — `$0/call` for chat, full tool
+  calling intact, ~3-5s per response.
+
+## [1.1.0] — 2026-04-30
+
+Initial MCP write tools (create_project, create_task,
+update_project_status, update_task_status, list_project_documents).
+See git log for the full picture.
+
 ## [1.0.0] — 2026-04-30
 
 First production-ready release as Project Ops (the seed fork from NorthbridgeTax CPA
