@@ -5,6 +5,34 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.11] — 2026-04-30
+
+### Documentation
+
+- **Source-map upload to Glitchtip is wired but not yet functional.**
+  Investigated end-to-end:
+  - `withSentryConfig` correctly receives the auth token, sentryUrl,
+    and project slug.
+  - Releases ARE created in Glitchtip (`project-ops@1.6.10` and
+    earlier visible via `Release.objects`).
+  - Sentry CLI uses the chunked upload protocol (`chunkupload.start /
+    .post.files / .end` visible in `glitchtip-web` logs) and hits the
+    right endpoints with our token.
+  - Glitchtip's File model receives `release-artifacts.zip` rows but
+    they're **0 bytes** — the chunk POSTs land empty.
+  - This is a known Glitchtip ↔ Sentry-CLI protocol gap (multiple
+    users have reported the same symptom). Not something fixable from
+    our SDK config — we'd need either a newer Glitchtip release that
+    fixes the chunked-upload accept path, or to explicitly call
+    `sentry-cli releases files upload-sourcemaps` (the older
+    individual-file API) as a post-build step.
+- **Build script reverted to `next build --turbopack`** since we get
+  the same outcome (no maps in Glitchtip) regardless of bundler.
+  Saves ~30s per build. Wiring (auth token, URL, sourcemaps config)
+  stays in place — the moment Glitchtip's chunk-upload accepts the
+  payload OR we add an explicit sentry-cli step, source maps light
+  up. Logged as a known followup.
+
 ## [1.6.10] — 2026-04-30
 
 ### Added
