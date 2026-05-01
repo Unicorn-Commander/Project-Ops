@@ -5,6 +5,33 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] — 2026-04-30
+
+### Added
+
+- **`docs/AI_ASSISTANT.md`** — user-facing walkthrough of the in-app
+  Brigade agent: example prompts (read / plan / update / draft / use
+  memory), how RBAC + memory work, prompting tips, what's underneath,
+  privacy + audit, known limits. Linked from README beside the
+  developer-facing `MCP_FOR_CODING_AGENTS.md`.
+- **Targeted backend tests on the load-bearing RBAC surfaces** (12
+  specs, `mcp.tools.spec.ts` + `jwt.strategy.spec.ts`):
+  - `buildVisibilityFilter` returns no scope for ADMIN + MANAGER,
+    owner-or-assignee scope for STAFF, contact-only scope for CLIENT,
+    and the STAFF/CLIENT shapes are kept distinct so a future collapse
+    can't silently widen access.
+  - `ProjectOpsTools.assertCanWrite` allows ADMIN/MANAGER/STAFF and
+    rejects CLIENT.
+  - `JwtStrategy.validate` returns the resolved User on a valid
+    payload, and translates *any* failure (auth-thrown
+    `UnauthorizedException` or unexpected `Error`) into a 401 — so a
+    DB blip can never leak a 500 with an internal stack trace.
+
+### Changed
+
+- `buildVisibilityFilter` and `ProjectOpsTools.assertCanWrite` exposed
+  for testing — same runtime behaviour, no functional change.
+
 ## [1.6.1] — 2026-04-30
 
 ### Documentation

@@ -50,7 +50,7 @@ async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-function buildVisibilityFilter(user: User): Prisma.ProjectWhereInput {
+export function buildVisibilityFilter(user: User): Prisma.ProjectWhereInput {
   if (user.role === UserRole.ADMIN || user.role === UserRole.MANAGER) {
     return {};
   }
@@ -269,7 +269,8 @@ export class ProjectOpsTools {
   // STAFF to create or change state; CLIENT users are read-only.
   // ─────────────────────────────────────────────────────────────────────
 
-  private assertCanWrite(user: User) {
+  // Exposed for testing — same behaviour as before.
+  assertCanWrite(user: User) {
     if (user.role === UserRole.CLIENT) {
       throw new Error("Read-only role — clients cannot create or update.");
     }

@@ -63,9 +63,13 @@ short-lived per-user JWT → MCP server → Prisma `buildVisibilityFilter`.
 A `CLIENT` user asking "what projects do I have?" sees only their own.
 
 Any MCP-capable client (Claude Code, OpenCode, Cursor, Continue, Zed, or
-your own agent) can plug into the same surface. See
-[`docs/MCP_FOR_CODING_AGENTS.md`](docs/MCP_FOR_CODING_AGENTS.md) for the
-full tool list and per-user JWT setup.
+your own agent) can plug into the same surface.
+
+- **For end users** — [`docs/AI_ASSISTANT.md`](docs/AI_ASSISTANT.md):
+  what to ask, how RBAC + memory work, prompting tips.
+- **For developers wiring up a coding agent** —
+  [`docs/MCP_FOR_CODING_AGENTS.md`](docs/MCP_FOR_CODING_AGENTS.md): full
+  tool list, JWT minting, per-client config.
 
 ## Local development
 
