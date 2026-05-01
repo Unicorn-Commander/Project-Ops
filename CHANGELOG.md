@@ -5,6 +5,37 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.3] — 2026-04-30
+
+### Fixed
+
+- **Brigade ↔ Project-Ops MCP wiring (P1).** The Brigade compose was
+  missing `PROJECTOPS_MCP_URL` / `PROJECTOPS_MCP_TOKEN` /
+  `PROJECTOPS_JWT_SECRET` — the values sat in `.env` but never made
+  it into the container. As a result, the in-app assistant could only
+  answer in generalities and would tell users it had a "configuration
+  error" when asked about their projects. Now wired through. Verified
+  end-to-end with a live transcript captured in
+  `docs/AI_ASSISTANT_DEMO.md`.
+- **`JWT_SECRET` brittle multi-line value retired.** The Project-Ops
+  backend was running with a `JWT_SECRET` that contained a literal
+  newline + `O` — a documented gotcha that broke any caller hand-copying
+  the value (notably, env propagation into Brigade). Rotated to a clean
+  single-line 96-char hex secret, minted a new long-lived service-account
+  token (`exp=2036`) for Brigade's MCP fallback, and replaced both the
+  service token and the env wiring in one pass. In-flight Aaron+Shafen
+  sessions invalidated by the rotation; both signed back in.
+
+### Added
+
+- **`docs/AI_ASSISTANT_DEMO.md`** — verbatim transcript of an actual
+  session captured at v1.6.3 release: list visible projects, drill into
+  P-00001, search by title, create a task (write tool — DB-confirmed),
+  recent activity across projects, draft a status update. Includes
+  what's working end-to-end (per-user JWTs, native local tool calling
+  on Gemma 4 26B-a4b, audit trail), and what isn't (memory recall is
+  currently empty — regression worth investigating).
+
 ## [1.6.2] — 2026-04-30
 
 ### Added

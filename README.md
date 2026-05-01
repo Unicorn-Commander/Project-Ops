@@ -67,6 +67,10 @@ your own agent) can plug into the same surface.
 
 - **For end users** — [`docs/AI_ASSISTANT.md`](docs/AI_ASSISTANT.md):
   what to ask, how RBAC + memory work, prompting tips.
+- **See it in action** —
+  [`docs/AI_ASSISTANT_DEMO.md`](docs/AI_ASSISTANT_DEMO.md): verbatim
+  transcript of the assistant doing real work (list, drill in,
+  create, draft) against live production.
 - **For developers wiring up a coding agent** —
   [`docs/MCP_FOR_CODING_AGENTS.md`](docs/MCP_FOR_CODING_AGENTS.md): full
   tool list, JWT minting, per-client config.

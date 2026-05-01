@@ -12,6 +12,11 @@ talks to Project Ops through the same MCP server documented in
 things you tell it across conversations (per user — your memory is
 yours).
 
+> **See it in action:** [`AI_ASSISTANT_DEMO.md`](AI_ASSISTANT_DEMO.md)
+> is a verbatim transcript of the assistant doing real work against
+> live production data — listing projects, drilling into details,
+> creating a task, drafting a status update.
+
 ## What you can ask
 
 ### Read your work
