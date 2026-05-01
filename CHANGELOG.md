@@ -5,6 +5,24 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.21] — 2026-05-01
+
+### Changed
+
+- **My Tasks rows on the dashboard** now carry the per-project colour
+  treatment — 4px coloured left stripe + faint card wash + chip-style
+  project number pill + Hive-style solid status pill. Same visual
+  vocabulary as the kanban + Recent Projects so a task reads as
+  belonging to its project at a glance.
+- **Shared `TaskCard` component** (`components/tasks/task-card.tsx`,
+  used by `/dashboard/my-tasks` and a few other surfaces) rebuilt
+  around the same colour treatment. Dropped the priority-based
+  left stripe in favour of the project-based one — priority still
+  appears as text colour, but the visual identity of the card now
+  comes from "what project is this for", not "how urgent". Overdue
+  tasks override to a rose stripe so the urgency signal stays
+  unambiguous.
+
 ## [1.6.20] — 2026-05-01
 
 ### Added

@@ -17,6 +17,7 @@ import {
   statusBadgeClass,
   priorityTextClass,
   iconWellClass,
+  statusSolidClass,
 } from "@/lib/badge-styles";
 import { projectColorClasses } from "@/lib/project-colors";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
@@ -297,10 +298,12 @@ export default function DashboardPage() {
                   body="No pending tasks assigned to you. Enjoy the breathing room."
                 />
               ) : (
-                myTasks.map((task) => (
+                myTasks.map((task) => {
+                  const pc = projectColorClasses(task.projectId);
+                  return (
                   <div
                     key={task.id}
-                    className="group p-3 border rounded-lg cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-sm hover:bg-card"
+                    className={`group p-3 border rounded-lg cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-sm hover:bg-card border-l-4 ${pc.borderLeft} ${pc.cardWash}`}
                     onClick={() => handleTaskClick(task)}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -312,9 +315,14 @@ export default function DashboardPage() {
                           {task.description}
                         </p>
                         {task.project && (
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span className="font-mono">{task.project.projectNumber}</span>
-                            <span>·</span>
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
+                            <span className={`inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 font-mono text-[11px] font-medium ${pc.badgeBg} ${pc.badgeText}`}>
+                              <span className={`inline-block h-1.5 w-1.5 rounded-full ${pc.dot}`} />
+                              {task.project.projectNumber}
+                            </span>
+                            <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusSolidClass(task.status)}`}>
+                              {task.status.replace(/_/g, ' ')}
+                            </span>
                             <span className="truncate">{task.project.title}</span>
                           </div>
                         )}
@@ -331,7 +339,8 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
 

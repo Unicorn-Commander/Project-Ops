@@ -1,14 +1,13 @@
 "use client";
 
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Task, TaskStatus, TaskPriority, TaskType } from "@/lib/tasks-api";
-import { statusBadgeClass, priorityTextClass } from "@/lib/badge-styles";
+import { priorityTextClass, statusSolidClass } from "@/lib/badge-styles";
+import { projectColorClasses } from "@/lib/project-colors";
 import { Avatar } from "@/components/ui/avatar";
 import { taskTypeIcon } from "@/lib/task-types";
 import {
   Clock,
-  User,
   AlertTriangle,
 } from "lucide-react";
 
@@ -19,19 +18,9 @@ interface TaskCardProps {
 
 export function TaskCard({ task, onClick }: TaskCardProps) {
   const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== TaskStatus.COMPLETED;
+  const pc = projectColorClasses(task.projectId);
 
-  const getStatusColor = (status: TaskStatus) => statusBadgeClass(status);
   const getPriorityColor = (priority: TaskPriority) => priorityTextClass(priority);
-
-  const getPriorityBorderColor = (priority: TaskPriority) => {
-    const colors: Record<TaskPriority, string> = {
-      [TaskPriority.LOW]: "border-l-gray-400",
-      [TaskPriority.MEDIUM]: "border-l-blue-500",
-      [TaskPriority.HIGH]: "border-l-orange-500",
-      [TaskPriority.URGENT]: "border-l-red-500",
-    };
-    return colors[priority] || "border-l-gray-400";
-  };
 
   // Icon mapping centralised in lib/task-types.tsx (v1.6.13).
   const getTypeIcon = (type: TaskType) => taskTypeIcon(type);
@@ -51,11 +40,14 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
     }
   };
 
+  // Per-project colour stripe (overdue rose still wins so urgency reads loud)
+  // + faint full-card wash matching the project hue. Same treatment as the
+  // kanban + dashboard for visual continuity.
   return (
     <Card
-      className={`p-4 hover:shadow-md transition-all cursor-pointer border-l-4 ${getPriorityBorderColor(
-        task.priority
-      )} ${isOverdue ? 'bg-red-50' : ''}`}
+      className={`p-4 hover:shadow-md transition-all cursor-pointer border-l-4 ${
+        isOverdue ? 'border-l-rose-500' : pc.borderLeft
+      } ${pc.cardWash}`}
       onClick={onClick}
     >
       {/* Header */}
@@ -76,18 +68,24 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
       </div>
 
       {/* Metadata */}
-      <div className="flex items-center gap-4 flex-wrap">
-        {/* Status Badge */}
-        <Badge className={getStatusColor(task.status)}>
-          {task.status.replace(/_/g, ' ')}
-        </Badge>
-
-        {/* Priority */}
-        <div className="flex items-center gap-1">
-          <span className={`text-xs font-semibold ${getPriorityColor(task.priority)}`}>
-            {task.priority}
+      <div className="flex items-center gap-3 flex-wrap">
+        {/* Project pill — same chip-with-dot style as kanban cards */}
+        {task.project && (
+          <span className={`inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 font-mono text-[11px] font-medium ${pc.badgeBg} ${pc.badgeText}`}>
+            <span className={`inline-block h-1.5 w-1.5 rounded-full ${pc.dot}`} />
+            {task.project.projectNumber}
           </span>
-        </div>
+        )}
+
+        {/* Hive-style solid status pill */}
+        <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusSolidClass(task.status)}`}>
+          {task.status.replace(/_/g, ' ')}
+        </span>
+
+        {/* Priority — text-only, since the solid status pill carries the visual weight */}
+        <span className={`text-xs font-semibold ${getPriorityColor(task.priority)}`}>
+          {task.priority}
+        </span>
 
         {/* Assigned To */}
         {task.assignedTo && (() => {
@@ -96,7 +94,7 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
               ? `${task.assignedTo.firstName} ${task.assignedTo.lastName}`
               : task.assignedTo.email;
           return (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Avatar name={fullName} size={20} />
               <span className="truncate">{fullName}</span>
             </div>
@@ -105,27 +103,25 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
 
         {/* Due Date */}
         {task.dueDate && (
-          <div className={`flex items-center gap-1 text-xs ${isOverdue ? 'text-red-600 font-semibold' : 'text-muted-foreground'}`}>
+          <div className={`flex items-center gap-1 text-xs ${isOverdue ? 'text-rose-600 dark:text-rose-400 font-semibold' : 'text-muted-foreground'}`}>
             {isOverdue && <AlertTriangle className="h-3 w-3" />}
             <Clock className="h-3 w-3" />
             <span>{formatDueDate(task.dueDate)}</span>
           </div>
         )}
 
-        {/* Project Info */}
+        {/* Project title */}
         {task.project && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <span className="font-mono">{task.project.projectNumber}</span>
-            <span>·</span>
-            <span className="truncate">{task.project.title}</span>
-          </div>
+          <span className="text-xs text-muted-foreground truncate">
+            {task.project.title}
+          </span>
         )}
 
         {/* Comments Count */}
         {task._count && task._count.comments > 0 && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <span>{task._count.comments} comment{task._count.comments !== 1 ? 's' : ''}</span>
-          </div>
+          <span className="text-xs text-muted-foreground">
+            {task._count.comments} comment{task._count.comments !== 1 ? 's' : ''}
+          </span>
         )}
       </div>
     </Card>
