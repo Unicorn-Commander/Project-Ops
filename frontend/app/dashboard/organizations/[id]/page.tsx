@@ -153,7 +153,7 @@ export default function OrganizationProfilePage() {
         </div>
         <button
           onClick={() => setShowEditModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
         >
           <Edit className="h-4 w-4" />
           Edit Organization
@@ -338,7 +338,7 @@ export default function OrganizationProfilePage() {
                   ) : (
                     <button
                       onClick={() => handleInviteToPortal(primaryContact)}
-                      className="w-full px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors text-sm"
+                      className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm"
                     >
                       <UserPlus className="h-4 w-4 inline mr-2" />
                       Invite to Portal
@@ -352,7 +352,7 @@ export default function OrganizationProfilePage() {
                 <p className="text-muted-foreground text-center py-4">No primary contact set</p>
                 <button
                   onClick={() => setShowCreateContactModal(true)}
-                  className="w-full px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors"
+                  className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
                 >
                   <Plus className="h-4 w-4 inline mr-2" />
                   Add Contact
@@ -385,7 +385,7 @@ export default function OrganizationProfilePage() {
               <h2 className="text-xl font-semibold text-foreground">Portal Contacts ({contacts.length})</h2>
               <button
                 onClick={() => setShowCreateContactModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
               >
                 <Plus className="h-4 w-4" />
                 Add Contact
@@ -444,7 +444,7 @@ export default function OrganizationProfilePage() {
                     {!contact.portalAccessEnabled && (
                       <button
                         onClick={() => handleInviteToPortal(contact)}
-                        className="flex-1 px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors text-sm"
+                        className="flex-1 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm"
                       >
                         Invite
                       </button>
@@ -545,7 +545,7 @@ export default function OrganizationProfilePage() {
             </div>
             <button
               onClick={() => router.push(`/dashboard/projects/new?organizationId=${orgId}`)}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
             >
               <Plus className="h-4 w-4" />
               Add Case

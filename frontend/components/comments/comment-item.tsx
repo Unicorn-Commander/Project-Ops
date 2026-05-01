@@ -112,7 +112,7 @@ export function CommentItem({ comment, currentUserId, onUpdate, onDelete }: Comm
     <>
       <Card className="p-4">
         <div className="flex gap-3">
-          <div className="h-10 w-10 rounded-full bg-primary text-white flex items-center justify-center font-semibold flex-shrink-0">
+          <div className="h-10 w-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-semibold flex-shrink-0">
             {getInitials(comment.user?.name || 'Unknown')}
           </div>
 

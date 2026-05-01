@@ -104,7 +104,7 @@ export default function OrganizationsPage() {
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
         >
           <Plus className="h-5 w-5" />
           New Organization
@@ -199,7 +199,7 @@ export default function OrganizationsPage() {
               onClick={() => handleTypeFilter(undefined)}
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 filters.type === undefined
-                  ? 'bg-primary text-white border-primary'
+                  ? 'bg-primary text-primary-foreground border-primary'
                   : 'bg-card text-foreground border-border hover:bg-muted/50'
               }`}
             >
@@ -209,7 +209,7 @@ export default function OrganizationsPage() {
               onClick={() => handleTypeFilter('AGENCY')}
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 filters.type === 'AGENCY'
-                  ? 'bg-primary text-white border-primary'
+                  ? 'bg-primary text-primary-foreground border-primary'
                   : 'bg-card text-foreground border-border hover:bg-muted/50'
               }`}
             >
@@ -243,7 +243,7 @@ export default function OrganizationsPage() {
               onClick={() => handleActiveFilter(undefined)}
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 filters.isActive === undefined
-                  ? 'bg-primary text-white border-primary'
+                  ? 'bg-primary text-primary-foreground border-primary'
                   : 'bg-card text-foreground border-border hover:bg-muted/50'
               }`}
             >

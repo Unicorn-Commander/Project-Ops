@@ -5,6 +5,42 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.27] — 2026-05-01
+
+### Fixed (theme contrast — `bg-primary text-white` was invisible in dark)
+
+The big "Add Contact" / "New Organization" buttons + the org type
+labels + the contact-header icon-square were all using
+`bg-primary text-white`. That works in light theme (primary is
+near-black, text-white reads). In **dark theme** primary flips to
+near-white, so the button became white-text-on-white-background and
+disappeared. In **Vibrant theme** primary is violet, so white text
+worked but the org type labels (which used `bg-accent text-white`,
+where accent is amber) still missed the right contrast intent.
+
+**Fixes (15+ instances across pages, modals, and shared components):**
+
+- All `bg-primary text-white` → `bg-primary text-primary-foreground`.
+  The `text-primary-foreground` token is dark-mode-aware (defined in
+  `globals.css` `.dark` block as `#0b0b0d`), so it always contrasts
+  with whatever `--color-primary` is in the active theme.
+- All `hover:bg-primary-hover` → `hover:bg-primary/90`. The legacy
+  `--color-primary-blue-hover` token was a hard-coded near-black
+  that doesn't make sense as a hover state for a near-white primary
+  in dark mode.
+- All `hover:text-white` → `hover:text-primary-foreground`.
+- **`getOrganizationTypeBadgeColor`** now returns explicit saturated
+  colours per type (`bg-violet-600 dark:bg-violet-500` for AGENCY,
+  emerald for BUSINESS, amber for INDIVIDUAL, zinc for the default).
+  Solid saturated colour + white text reliably contrasts in light /
+  dark / vibrant.
+
+**Files swept:** `app/dashboard/{organizations,contacts,users}/page.tsx`,
+`app/dashboard/organizations/[id]/page.tsx`, `app/dashboard/contacts/[id]/page.tsx`,
+`app/client-portal/dashboard/page.tsx`, `components/organizations/hierarchy-tree.tsx`,
+`components/comments/comment-item.tsx`, all four create/edit
+contact + org modals, `lib/organizations-api.ts`.
+
 ## [1.6.26] — 2026-05-01
 
 ### Added (Contacts page polish)

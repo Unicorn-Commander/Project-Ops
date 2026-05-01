@@ -209,7 +209,7 @@ export default function ClientPortalDashboard() {
             <Link href="/client-portal/projects">
               <Button
                 variant="outline"
-                className="text-primary border-primary hover:bg-primary hover:text-white"
+                className="text-primary border-primary hover:bg-primary hover:text-primary-foreground"
               >
                 View All Projects
               </Button>

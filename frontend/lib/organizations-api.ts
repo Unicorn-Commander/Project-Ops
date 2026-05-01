@@ -215,16 +215,21 @@ export async function setPrimaryContact(id: string) {
 }
 
 // Utility functions
+// Solid saturated colour with white text — reliably contrasts in
+// light / dark / vibrant. The previous `bg-primary text-white`
+// rendered white-on-white in dark mode (since --color-primary
+// flips to near-white when .dark applies). Same trap with
+// `bg-accent text-white` under the Vibrant theme.
 export function getOrganizationTypeBadgeColor(type: Organization['type']): string {
   switch (type) {
     case 'AGENCY':
-      return 'bg-primary text-white';
+      return 'bg-violet-600 dark:bg-violet-500 text-white';
     case 'BUSINESS':
-      return 'bg-green-600 text-white';
+      return 'bg-emerald-600 dark:bg-emerald-500 text-white';
     case 'INDIVIDUAL':
-      return 'bg-accent text-white';
+      return 'bg-amber-600 dark:bg-amber-500 text-white';
     default:
-      return 'bg-gray-500 text-white';
+      return 'bg-zinc-600 dark:bg-zinc-500 text-white';
   }
 }
 

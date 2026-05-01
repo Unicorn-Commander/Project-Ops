@@ -199,7 +199,7 @@ export default function ContactProfilePage() {
                 onClick={handleInviteToPortal}
                 disabled={inviting}
                 variant="outline"
-                className="border-primary text-primary hover:bg-primary hover:text-white"
+                className="border-primary text-primary hover:bg-primary hover:text-primary-foreground"
               >
                 {inviting ? (
                   <>
@@ -215,7 +215,7 @@ export default function ContactProfilePage() {
               </Button>
               <Button
                 onClick={() => setEditModalOpen(true)}
-                className="bg-primary hover:bg-primary/90 text-white"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
               >
                 <Edit className="w-4 h-4 mr-2" />
                 Edit Contact
@@ -363,7 +363,7 @@ export default function ContactProfilePage() {
                 </h2>
                 <Button
                   onClick={() => router.push(`/dashboard/projects?contactId=${contactId}`)}
-                  className="bg-primary hover:bg-primary/90 text-white"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
                   size="sm"
                 >
                   View All Projects
