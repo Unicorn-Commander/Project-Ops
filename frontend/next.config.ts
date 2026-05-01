@@ -31,4 +31,13 @@ export default withSentryConfig(nextConfig, {
   silent: !process.env.CI,
   tunnelRoute: "/monitoring",
   disableLogger: true,
+  // Without these the Sentry plugin can't find Next's hidden client maps
+  // and the upload step is silently a no-op.
+  widenClientFileUpload: true,
+  // Generate sourcemaps and upload them, but strip the //# sourceMappingURL
+  // comment so the maps aren't reachable from the public bundle.
+  hideSourceMaps: true,
+  sourcemaps: {
+    disable: !process.env.SENTRY_AUTH_TOKEN,
+  },
 });
