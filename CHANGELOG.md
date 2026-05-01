@@ -5,6 +5,42 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.17] — 2026-05-01
+
+### Fixed (P1 — every POST/PATCH 500'd, all MCP write tools silently broken)
+
+- **`InternalServerError: stream is not readable` on every write.**
+  Reported by another agent who hit the bug while creating P-00017 via
+  MCP. Trace bottoms out at
+  `@sentry/core/.../integrations/express/patch-layer.js:197:36` and
+  `body-parser/.../raw-body/index.js:185:17`.
+
+  **Root cause:** Sentry SDK v10 default integrations include
+  OTel-driven auto-instrumentation for HTTP/Express that patches every
+  Express layer to attach span data — which includes consuming the
+  incoming request body. That ran BEFORE NestJS's body-parser, so by
+  the time NestJS read the stream it was already empty.
+
+  **Blast radius:** every POST/PATCH 500'd. Every MCP write tool
+  (`create_project`, `create_task`, `update_*`, `add_task_comment`,
+  `update_billing_fields`, `upload_document`) was silently broken
+  between v1.6.5 (when Sentry was added) and v1.6.16. The other agent
+  worked around it by SSHing into bigboy and running Prisma directly
+  in the container — confirmed P-00017 was created via that path,
+  bypassing the audit log.
+
+  **Fix:** filter the HTTP-layer-patching integrations out of Sentry's
+  defaults (`Http`, `Express`, `Connect`, `Fastify`, `Koa`, `NestJs`,
+  `NestJsFastify`) and set `tracesSampleRate: 0`. We keep pure error
+  capture (which is the actual reason we wired Sentry) and drop
+  express auto-tracing (which nobody queried). Errors continue to flow
+  via the `SentryFilter` + process-level uncaught handlers.
+
+  **If we want tracing back later:** install `@sentry/nestjs` properly
+  and register it as a Nest module so Sentry's Express patch is
+  sequenced AFTER body-parser instead of in front of it. Out of scope
+  for this fix.
+
 ## [1.6.16] — 2026-05-01
 
 ### Added
