@@ -2,7 +2,7 @@
 // Node runtime before any user code runs. No-op when SENTRY_DSN is unset.
 import './instrument';
 
-import { NestFactory } from '@nestjs/core';
+import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
@@ -57,8 +57,12 @@ async function bootstrap() {
 
   // Sentry filter — captures uncaught exceptions surfacing through Nest.
   // Process-level uncaught/unhandled handlers are already attached by the
-  // SDK init in instrument.ts.
-  app.useGlobalFilters(new SentryFilter());
+  // SDK init in instrument.ts. Pass the adapter host explicitly so
+  // BaseExceptionFilter has the HttpServer reference it needs to write
+  // the response (without it, every 5xx path crashes with
+  // `TypeError: Cannot read properties of undefined (reading 'isHeadersSent')`).
+  const httpAdapterHost = app.get(HttpAdapterHost);
+  app.useGlobalFilters(new SentryFilter(httpAdapterHost));
 
   // Swagger documentation
   const config = new DocumentBuilder()

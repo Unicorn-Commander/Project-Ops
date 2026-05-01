@@ -5,6 +5,26 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.12] — 2026-04-30
+
+### Fixed (P1)
+
+- **`SentryFilter` was crashing on every 5xx, breaking the dashboard.**
+  v1.6.5 added the filter as `new SentryFilter()` — but `BaseExceptionFilter`
+  needs the `HttpAdapter` passed to its constructor to write the actual
+  HTTP response. Without it, the moment any backend error path hit the
+  filter it threw
+  `TypeError: Cannot read properties of undefined (reading 'isHeadersSent')`.
+  The filter then re-threw, the request retried, and the dashboard's
+  parallel data fetches all failed in a tight loop — visible to the user
+  as "the dashboard just keeps spinning".
+  Caught by Glitchtip itself: 11+ instances logged in a 5-minute window
+  while the user was trying to load the dashboard. Exactly the silent-
+  failure bug class the v1.6.5 wiring was designed to surface — and
+  it surfaced its own bug. Fixed by injecting `HttpAdapterHost` into
+  the filter's constructor and forwarding to `super(...)`. Bumped
+  package.json to 1.6.12 so `/version` reports the right number.
+
 ## [1.6.11] — 2026-04-30
 
 ### Documentation
