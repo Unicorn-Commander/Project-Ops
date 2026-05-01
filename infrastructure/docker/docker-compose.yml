@@ -188,6 +188,10 @@ services:
         NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_FRONTEND:-}
         NEXT_PUBLIC_SENTRY_RELEASE: ${SENTRY_RELEASE:-}
         NEXT_PUBLIC_SENTRY_ENVIRONMENT: ${NODE_ENV:-production}
+        # Source-map upload — build-time only, not baked into runtime.
+        # Without SENTRY_AUTH_TOKEN the upload step is a no-op.
+        SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}
+        SENTRY_URL: ${SENTRY_URL:-https://glitchtip.magicunicorn.dev}
     container_name: project-ops-frontend
     restart: unless-stopped
     environment:

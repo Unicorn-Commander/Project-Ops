@@ -5,6 +5,28 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.10] — 2026-04-30
+
+### Added
+
+- **Frontend source-map upload to Glitchtip.** `withSentryConfig`
+  picks up `SENTRY_AUTH_TOKEN` + `SENTRY_URL` (defaults to
+  `https://glitchtip.magicunicorn.dev`) and uploads `.map` files
+  during `npm run build`. Stack frames in Glitchtip will resolve to
+  real function names + line numbers from the original TypeScript
+  instead of the minified `t.handleErr`-style frames.
+  - Token consumed at build time only (Dockerfile ARG → builder ENV
+    → drops out of the production image).
+  - Without `SENTRY_AUTH_TOKEN` the plugin silently skips upload —
+    Glitchtip still gets events, frames just stay minified.
+
+### Changed
+
+- **`backend/package.json` + `frontend/package.json` bumped to
+  1.6.10** so `/version` reports the same number the CHANGELOG +
+  release tag say. Was a longstanding 1.0.0 leftover from the
+  NorthbridgeTax CPA fork — now matches reality.
+
 ## [1.6.9] — 2026-04-30
 
 ### Added
