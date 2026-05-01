@@ -155,6 +155,11 @@ work to a specialist sub-agent (e.g.,
 - Document upload through the assistant requires the file already
   living somewhere the backend can fetch — for raw paste-uploads,
   use the Documents tab in the UI.
+- For self-recall to work cleanly, ask the assistant about
+  *preferences* or *facts about you* rather than your full name —
+  the assistant stores facts under a generic "User" entity scoped to
+  your account, so "what format do I prefer for status updates?" is
+  more reliable than "what does the assistant know about Aaron?"
 
 ## Going further — wire your own coding agent in
 

@@ -179,15 +179,24 @@ hand off to the `project-ops-report-writer` specialist via
   Turn 4) routes through the same Prisma hooks the dashboard uses, so
   the activity feed shows it as Aaron's edit.
 
-## Known limits seen in this session
+## Bug we caught + fixed during the demo
 
-- **Memory recall in this session was empty.** Asking the agent to
-  remember a preference, then asking it to recall, returned "no
-  record" — a regression vs. the verified-working state in March 2026.
-  Tracked as a follow-up; users can still tell the agent their
-  preferences inline and the agent will respect them within the
-  current conversation. See the "Known limits" section in
-  `AI_ASSISTANT.md`.
+- **Cross-session memory recall was returning empty.** The first pass
+  through this transcript found the agent firing `knowledge_store`,
+  Brigade logging "Tool result: knowledge_store -> ok", and then
+  `knowledge_query` returning nothing. Root cause: the Brigade compose
+  had `FALKORDB_ENABLED: "false"`, so the storage layer silently
+  no-op'd (the manager's `db` handle stayed `None` and `store_fact`
+  returned `{success: false, error: "FalkorDB not connected"}` — but
+  the agent log only checks ToolResult.error, not the inner result
+  dict, so it printed "ok" anyway). Fixed in v1.6.4 by enabling
+  FalkorDB in the compose + pointing it at `unicorn-falkordb:6379`.
+  Re-verified: the agent now stores a preference, and a follow-up
+  recall returns *both* the new fact and a fact stored in a March 2026
+  session. Real persistent per-user memory.
+
+## Other limit seen this session
+
 - **Tool argument drift (Turn 4).** Asked for `RESEARCH` type, got
   `OTHER`. Re-asking with the field name spelled out usually fixes it.
 

@@ -5,6 +5,45 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.4] — 2026-04-30
+
+### Fixed
+
+- **Cross-session memory was silently broken** (Brigade-side, surfaced
+  while finishing the v1.6.3 demo). The Brigade compose carried
+  `FALKORDB_ENABLED: "false"`, so the `KnowledgeGraphManager` initialised
+  with `db = None` and every `knowledge_store` call returned
+  `{success: false, error: "FalkorDB not connected"}`. Compounding it,
+  the agent_routes log line only inspects `ToolResult.error` (which
+  stays `None` on a success-shaped tool call), so the failed stores
+  were logged as "ok" — no error banner anywhere. The agent then
+  hallucinated "the knowledge graph is currently disconnected" when
+  recall returned empty. Fixed by enabling FalkorDB in the Brigade
+  compose and pointing it at `unicorn-falkordb:6379`. End-to-end
+  verified: the agent stored a fresh preference, then a follow-up
+  recall returned both the new fact and a fact stored in a March 2026
+  session — real persistent per-user memory across sessions.
+
+### Documentation
+
+- `docs/AI_ASSISTANT_DEMO.md` updated — the "memory broken" callout
+  rewritten as a "bug we caught + fixed during the demo" with the
+  root cause (compose flag + misleading "ok" log line) so the next
+  reader can see the diagnostic chain.
+- `docs/AI_ASSISTANT.md` known-limits section adds a tip: ask about
+  *preferences* / *facts about you*, not your full name, since
+  facts are stored under a generic `User` entity scoped to your
+  account.
+
+### Known followup (not in this version)
+
+- The graph index DDL in `graph_manager.py` uses Neo4j-flavoured
+  `CREATE INDEX IF NOT EXISTS FOR (e:Entity) ON (e.name)` syntax
+  which FalkorDB rejects with "Invalid input 'I'". Storage works fine
+  without the indexes; this just clutters the logs on every container
+  restart. Worth converting to `CREATE INDEX FOR (e:Entity) ON (e.name)`
+  + try/except in a focused Brigade session.
+
 ## [1.6.3] — 2026-04-30
 
 ### Fixed
