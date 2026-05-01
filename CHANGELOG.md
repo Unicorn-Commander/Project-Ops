@@ -5,6 +5,57 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.24] — 2026-05-01
+
+### Added (SSO access gate)
+
+- **SSO allowlist** in `backend/src/auth/access-list.ts` plus 9 specs
+  (now 21 backend tests total). Driven by the new
+  `PROJECT_OPS_ACCESS_LIST` env var. Format:
+  `aaron@magicunicorn.tech:ADMIN, shafenkhan@users.noreply.github.com:ADMIN, *@magicunicorn.tech:STAFF`.
+
+### Changed (intentional access semantics)
+
+- **`validateKeycloakUser` now rejects unknown SSO emails.** Previous
+  behaviour: any successful Keycloak SSO automatically JIT-provisioned
+  a CLIENT-role Project-Ops user. New behaviour: the email must match
+  an exact entry or domain wildcard in the allowlist; otherwise the
+  request is rejected with `401 You are not authorized for Project-Ops`.
+  This is the deliberate gate — Project-Ops is single-tenant internal
+  today, so "has a uchub Keycloak account" is *not* the same as
+  "should have a Project-Ops account."
+- **Resolution order:** exact email > domain wildcard > deny. Match
+  is case-insensitive. Malformed env entries (no role, unknown role)
+  silently dropped, not crash-on-boot. Empty/missing email rejected.
+- **Boot-time log** prints `SSO access list: N rule(s) (source: …)`
+  so operators can confirm via `docker logs project-ops-backend` that
+  the right env loaded vs. silent legacy fallback.
+- **Legacy fallback** (Aaron + Shafen as ADMIN, everyone else
+  rejected) kicks in if `PROJECT_OPS_ACCESS_LIST` is unset, with a
+  clear log line. Misconfigured deploy can't accidentally lock you
+  out, but it CAN'T accidentally let everyone in either.
+- `.env.example` documents the new variable with an example.
+
+### Multi-tenant question — answered, not implemented
+
+Project-Ops is **single-tenant internal** today. All projects /
+organizations / contacts / tasks / users live in one shared Postgres
+schema with no `tenantId` column anywhere. RBAC is role-based, not
+tenant-based.
+
+Two future paths if Project-Ops becomes a SaaS product:
+1. **Add a `Tenant` model + `tenantId` FK on every entity.** Scope
+   every Prisma query by tenant. Add tenant signup + onboarding +
+   billing (Lago is already in the suite). Real 1-2 week build with
+   a meaningful migration.
+2. **Boot config "default tenant"** so the existing internal usage
+   keeps working under the new tenant model — minimum customer
+   disruption when the multi-tenant code lands.
+
+Logged here as a strategic question; today's allowlist is the
+correct gate either way ("who can sign in at all" is independent of
+tenancy).
+
 ## [1.6.23] — 2026-05-01
 
 ### Changed (CRM polish + Users SSO explainer)

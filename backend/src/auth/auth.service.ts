@@ -8,6 +8,7 @@ import { LoginDto } from './dto/login.dto';
 import { ClientSignupDto } from './dto/client-signup.dto';
 import { User, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { resolveUserAccess, describeAccessList } from './access-list';
 
 export interface JwtPayload {
   sub: string;
@@ -26,7 +27,15 @@ export class AuthService {
     private configService: ConfigService,
     private prisma: PrismaService,
     private emailService: EmailService,
-  ) {}
+  ) {
+    // Boot-time visibility into the active SSO access list — operator
+    // can `docker logs project-ops-backend | grep "SSO access list"` to
+    // confirm the right env was loaded (vs. silent legacy fallback).
+    const meta = describeAccessList();
+    this.logger.log(
+      `SSO access list: ${meta.ruleCount} rule${meta.ruleCount === 1 ? '' : 's'} (source: ${meta.source})`,
+    );
+  }
 
   async validateUser(email: string): Promise<User | null> {
     const user = await this.usersService.findByEmail(email);
@@ -93,20 +102,34 @@ export class AuthService {
     }
 
     if (!user) {
-      // Determine default role based on email
-      const role = this.getDefaultRoleForEmail(email);
+      // Gate: Project-Ops is single-tenant internal. Just because an
+      // email exists in the shared `uchub` Keycloak realm does NOT
+      // mean they get a Project-Ops account — the access list defines
+      // who can JIT-provision and at what role. See
+      // `auth/access-list.ts` and the `PROJECT_OPS_ACCESS_LIST` env.
+      const access = resolveUserAccess(email);
+      if (!access.allowed) {
+        this.logger.warn(
+          `Rejected SSO JIT for ${email || '(no email)'} — ${access.reason}`,
+        );
+        throw new UnauthorizedException(
+          'You are not authorized for Project-Ops. Contact your administrator.',
+        );
+      }
 
-      // Auto-create user from Keycloak profile
+      // Auto-create user from Keycloak profile with the resolved role.
       user = await this.usersService.create({
         email,
         username: profile.preferred_username || profile.username || email,
         firstName: profile.given_name || profile.firstName || '',
         lastName: profile.family_name || profile.lastName || '',
         keycloakId,
-        role,
+        role: access.role,
       });
 
-      this.logger.log(`Created new user from Keycloak SSO: ${email} with role ${role}`);
+      this.logger.log(
+        `Created new user from Keycloak SSO: ${email} with role ${access.role} (${access.reason})`,
+      );
     }
 
     if (!user.isActive) {
@@ -114,17 +137,6 @@ export class AuthService {
     }
 
     return user;
-  }
-
-  private getDefaultRoleForEmail(email: string): UserRole {
-    if (!email) return UserRole.CLIENT;
-
-    const roleMap: Record<string, UserRole> = {
-      'aaron@magicunicorn.tech': UserRole.ADMIN,
-      'shafenkhan@users.noreply.github.com': UserRole.ADMIN,
-    };
-
-    return roleMap[email.toLowerCase()] || UserRole.CLIENT;
   }
 
   async generateTokenForUser(user: User) {
