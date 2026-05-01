@@ -199,7 +199,7 @@ export default function OrganizationsPage() {
               onClick={() => handleTypeFilter(undefined)}
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 filters.type === undefined
-                  ? 'bg-primary text-primary-foreground border-primary'
+                  ? 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30'
                   : 'bg-card text-foreground border-border hover:bg-muted/50'
               }`}
             >
@@ -209,7 +209,7 @@ export default function OrganizationsPage() {
               onClick={() => handleTypeFilter('AGENCY')}
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 filters.type === 'AGENCY'
-                  ? 'bg-primary text-primary-foreground border-primary'
+                  ? 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30'
                   : 'bg-card text-foreground border-border hover:bg-muted/50'
               }`}
             >
@@ -219,7 +219,7 @@ export default function OrganizationsPage() {
               onClick={() => handleTypeFilter('BUSINESS')}
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 filters.type === 'BUSINESS'
-                  ? 'bg-green-600 text-white border-green-600'
+                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
                   : 'bg-card text-foreground border-border hover:bg-muted/50'
               }`}
             >
@@ -229,7 +229,7 @@ export default function OrganizationsPage() {
               onClick={() => handleTypeFilter('INDIVIDUAL')}
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 filters.type === 'INDIVIDUAL'
-                  ? 'bg-accent text-white border-accent'
+                  ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30'
                   : 'bg-card text-foreground border-border hover:bg-muted/50'
               }`}
             >
@@ -243,7 +243,7 @@ export default function OrganizationsPage() {
               onClick={() => handleActiveFilter(undefined)}
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 filters.isActive === undefined
-                  ? 'bg-primary text-primary-foreground border-primary'
+                  ? 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30'
                   : 'bg-card text-foreground border-border hover:bg-muted/50'
               }`}
             >
@@ -253,7 +253,7 @@ export default function OrganizationsPage() {
               onClick={() => handleActiveFilter(true)}
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 filters.isActive === true
-                  ? 'bg-green-600 text-white border-green-600'
+                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
                   : 'bg-card text-foreground border-border hover:bg-muted/50'
               }`}
             >
@@ -263,7 +263,7 @@ export default function OrganizationsPage() {
               onClick={() => handleActiveFilter(false)}
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 filters.isActive === false
-                  ? 'bg-red-600 text-white border-red-600'
+                  ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30'
                   : 'bg-card text-foreground border-border hover:bg-muted/50'
               }`}
             >

@@ -48,7 +48,7 @@ import {
 import { TASK_TYPES, taskTypeIcon } from '@/lib/task-types';
 import type { Organization } from '@/lib/organizations-api';
 import { projectColorClasses } from '@/lib/project-colors';
-import { statusSolidClass } from '@/lib/badge-styles';
+import { statusBadgeClass } from '@/lib/badge-styles';
 import { TaskDetailsModal } from '@/components/modals/task-details-modal';
 import { CreateTaskModal } from '@/components/modals/create-task-modal';
 import { EditTaskModal } from '@/components/modals/edit-task-modal';
@@ -177,7 +177,7 @@ function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
               </span>
               {/* Hive-style solid status pill — saturated colour with white text */}
               <span
-                className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusSolidClass(task.status)}`}
+                className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10.5px] font-medium ${statusBadgeClass(task.status)}`}
               >
                 {task.status.replace(/_/g, ' ')}
               </span>

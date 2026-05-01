@@ -215,21 +215,19 @@ export async function setPrimaryContact(id: string) {
 }
 
 // Utility functions
-// Solid saturated colour with white text — reliably contrasts in
-// light / dark / vibrant. The previous `bg-primary text-white`
-// rendered white-on-white in dark mode (since --color-primary
-// flips to near-white when .dark applies). Same trap with
-// `bg-accent text-white` under the Vibrant theme.
+// Tinted background + matching text. Modern SaaS pattern (Linear /
+// Notion / Stripe) — saturated solid fills look like 2018 Bootstrap.
+// Keeps reading in light / dark / vibrant via the dark: variant.
 export function getOrganizationTypeBadgeColor(type: Organization['type']): string {
   switch (type) {
     case 'AGENCY':
-      return 'bg-violet-600 dark:bg-violet-500 text-white';
+      return 'bg-violet-500/15  text-violet-700  dark:text-violet-300';
     case 'BUSINESS':
-      return 'bg-emerald-600 dark:bg-emerald-500 text-white';
+      return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300';
     case 'INDIVIDUAL':
-      return 'bg-amber-600 dark:bg-amber-500 text-white';
+      return 'bg-amber-500/15   text-amber-700   dark:text-amber-300';
     default:
-      return 'bg-zinc-600 dark:bg-zinc-500 text-white';
+      return 'bg-zinc-500/15    text-zinc-700    dark:text-zinc-300';
   }
 }
 

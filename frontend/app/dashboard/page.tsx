@@ -17,7 +17,6 @@ import {
   statusBadgeClass,
   priorityTextClass,
   iconWellClass,
-  statusSolidClass,
 } from "@/lib/badge-styles";
 import { projectColorClasses } from "@/lib/project-colors";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
@@ -320,7 +319,7 @@ export default function DashboardPage() {
                               <span className={`inline-block h-1.5 w-1.5 rounded-full ${pc.dot}`} />
                               {task.project.projectNumber}
                             </span>
-                            <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusSolidClass(task.status)}`}>
+                            <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10.5px] font-medium ${statusBadgeClass(task.status)}`}>
                               {task.status.replace(/_/g, ' ')}
                             </span>
                             <span className="truncate">{task.project.title}</span>

@@ -5,6 +5,44 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.29] — 2026-05-01
+
+### Changed (modernise the badge / pill aesthetic)
+
+The kanban + dashboard My Tasks + TaskCard + organizations type
+labels were using **solid saturated fills** for status / type pills
+(`bg-emerald-500 text-white`-style). That was the v1.6.18 Hive-style
+attempt — looks dated in 2025 (more 2018 Bootstrap or early
+Material). Modern SaaS (Linear, Notion, Stripe Dashboard) uses
+**tinted backgrounds with matching text** for non-CTA labels, saving
+solid fills for chart elements and primary actions.
+
+**Sweep:**
+
+- `statusSolidClass` is gone everywhere — callers use the existing
+  `statusBadgeClass` (tinted, `bg-X-500/15 text-X-700 dark:text-X-300`).
+  Touched: kanban task cards, dashboard My Tasks rows, shared
+  `TaskCard` component, gantt import (still imported but inert).
+- **Pill className polish** — dropped the dated `uppercase
+  tracking-wide font-semibold text-[10px]` styling. Now
+  `rounded-md px-1.5 py-0.5 text-[10.5px] font-medium` — readable,
+  refined, sentence-case.
+- **`getOrganizationTypeBadgeColor`** now returns tinted strings
+  (violet-500/15, emerald-500/15, amber-500/15, zinc-500/15) instead
+  of solid `-500/-600 text-white` blocks.
+- **Organizations page filter buttons** (Agencies / Businesses /
+  Individuals + Active / Inactive) — active states are now tinted
+  pills matching their type colour, instead of solid green/red
+  blocks. Same modern look as the rest of the app.
+
+### Kept solid (deliberately)
+
+- **Gantt project bars** stay solid — they're chart elements, not
+  labels. Solid fill is correct on a busy timeline.
+- **Per-project number chips** (e.g., `PROJ-2026-000014`) stay
+  tinted with a saturated dot — same modern style as everywhere
+  else, no change.
+
 ## [1.6.28] — 2026-05-01
 
 ### Changed (primary brand colour — indigo)

@@ -2,7 +2,7 @@
 
 import { Card } from "@/components/ui/card";
 import { Task, TaskStatus, TaskPriority, TaskType } from "@/lib/tasks-api";
-import { priorityTextClass, statusSolidClass } from "@/lib/badge-styles";
+import { priorityTextClass, statusBadgeClass } from "@/lib/badge-styles";
 import { projectColorClasses } from "@/lib/project-colors";
 import { Avatar } from "@/components/ui/avatar";
 import { taskTypeIcon } from "@/lib/task-types";
@@ -78,7 +78,7 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         )}
 
         {/* Hive-style solid status pill */}
-        <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusSolidClass(task.status)}`}>
+        <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10.5px] font-medium ${statusBadgeClass(task.status)}`}>
           {task.status.replace(/_/g, ' ')}
         </span>
 
