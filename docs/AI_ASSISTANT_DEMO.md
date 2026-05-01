@@ -191,9 +191,32 @@ hand off to the `project-ops-report-writer` specialist via
   the agent log only checks ToolResult.error, not the inner result
   dict, so it printed "ok" anyway). Fixed in v1.6.4 by enabling
   FalkorDB in the compose + pointing it at `unicorn-falkordb:6379`.
-  Re-verified: the agent now stores a preference, and a follow-up
-  recall returns *both* the new fact and a fact stored in a March 2026
-  session. Real persistent per-user memory.
+
+### Verified working — turns 7+ of the v1.6.4 verification pass
+
+The same JWT, same agent, same MCP wiring, immediately after the fix:
+
+> **Aaron:** Use knowledge_store to remember: I want stand-up summaries
+> kept under 60 words.
+
+> **Agent:** Understood, Aaron. I've stored that preference.
+
+> **Aaron:** What format do I prefer for status updates?
+
+> **Agent:** You prefer **PDF memos** (specifically not Slack messages)
+> *and* **3-bullet markdown summaries**.
+
+The recall pulled **both** the fact stored in the v1.6.4 verification
+pass (3-bullet markdown summaries) AND a fact stored in a March 2026
+session (PDF memos, not Slack messages). Real persistent per-user
+memory across sessions, scoped to Aaron's user via
+`agent_id = user:7990db95-...`.
+
+Underneath, the LLM-issued queries follow the system prompt's
+instruction to use `entity_name="User"` for self-recall. If you ask
+"what does the assistant know about Aaron Stransky?" the literal
+name won't match the generic `User` entity stored under your scope —
+ask about *preferences* or *facts about you* instead.
 
 ## Other limit seen this session
 

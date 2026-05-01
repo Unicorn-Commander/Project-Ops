@@ -5,6 +5,27 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.9] — 2026-04-30
+
+### Added
+
+- **`GET /api/v1/version`** — unauthenticated endpoint returning build
+  identity (`version`, `release`, `commit`, `builtAt`, `environment`,
+  `node`, `uptimeSeconds`). One quick `curl` confirms which release
+  actually shipped vs. what `git log` says shipped — closes the gap
+  where a build cache miss or a stale image silently kept old code
+  running. Throttler-skipped to match the rest of the health surface.
+
+### Documentation
+
+- **`docs/AI_ASSISTANT_DEMO.md`** updated — the "memory broken"
+  callout has been replaced with a **Verified working** section
+  showing the post-v1.6.4 transcript: the agent stored "stand-up
+  summaries under 60 words" and recall returned **both** that fact
+  and a fact stored in a March 2026 session. Real persistent
+  cross-session memory. Added a tip about the literal-name vs.
+  generic-`User`-entity mismatch so future readers don't trip on it.
+
 ## [1.6.8] — 2026-04-30
 
 ### Documentation
