@@ -5,6 +5,39 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.6] — 2026-04-30
+
+### Fixed
+
+- **Backend container build was failing on bigboy** with `npm ci`
+  rejecting the lock file ("Missing: @opentelemetry/* from lock file").
+  Local dev was on Node 25 / npm 11; the Dockerfile targets
+  `node:20-alpine3.19` (npm 10) — the two write transitive resolution
+  differently. Regenerated the lock inside a matching Node 20
+  container. The first attempt was silently re-mutated by
+  `npm install` running locally between the regen and the commit;
+  the second attempt skipped that step entirely. `npm ci` now passes
+  cleanly.
+- **Sentry DSN format.** Glitchtip stores project keys as UUIDs
+  (`bd31b09a-571e-4674-...`) but the canonical Sentry-protocol DSN
+  strips the hyphens (`bd31b09a571e4674...`). The first wired DSN
+  was rejected by the SDK with `Invalid Sentry Dsn`; corrected via
+  Glitchtip's `ProjectKey.get_dsn()`. End-to-end smoke test —
+  `Sentry.captureException(...)` from inside `project-ops-backend`
+  → flush returned `true` → issue visible in Glitchtip with the
+  right title, project, and timestamp.
+
+### Documentation
+
+- Memory + this CHANGELOG record the audit on
+  `auth.magicunicorn.dev` brand-matched login. The hostname is live
+  on bigboy and serves the same `uchub` realm, but the `project-ops`
+  Keycloak client is registered only on commander, and bigboy
+  federates via OIDC broker (extra click for users). Brand-match is
+  already done at the theme layer (`uc-1-pro` + realm displayName).
+  Decision: keep `KEYCLOAK_URL=auth.unicorncommander.ai`; revisit
+  if/when commander is no longer the user-store source of truth.
+
 ## [1.6.5] — 2026-04-30
 
 ### Added
