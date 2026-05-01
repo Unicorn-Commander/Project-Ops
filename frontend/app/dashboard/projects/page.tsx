@@ -26,6 +26,7 @@ import {
   priorityTextClass,
   paymentStatusBadgeClass,
 } from "@/lib/badge-styles";
+import { projectColorClasses } from "@/lib/project-colors";
 import { format } from "date-fns";
 import {
   FileText,
@@ -270,12 +271,15 @@ export default function ProjectsPage() {
 
       {/* Projects Grid */}
       <div className="grid gap-4">
-        {filteredProjects.map((projectItem) => (
-          <Card key={projectItem.id} className="p-6 hover:shadow-md transition-shadow">
+        {filteredProjects.map((projectItem) => {
+          const pc = projectColorClasses(projectItem.id);
+          return (
+          <Card key={projectItem.id} className={`p-6 hover:shadow-md transition-shadow border-l-4 ${pc.borderLeft}`}>
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 mb-3 flex-wrap">
-                  <span className="font-mono text-sm font-medium text-muted-foreground">
+                  <span className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 font-mono text-xs font-medium ${pc.badgeBg} ${pc.badgeText}`}>
+                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${pc.dot}`} />
                     {projectItem.projectNumber}
                   </span>
 
@@ -395,7 +399,8 @@ export default function ProjectsPage() {
               </div>
             </div>
           </Card>
-        ))}
+          );
+        })}
       </div>
 
       {filteredProjects.length === 0 && (

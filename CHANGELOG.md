@@ -5,6 +5,32 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.16] — 2026-05-01
+
+### Added
+
+- **Per-project colour tagging — Hive/Asana style.** Every project now
+  carries a deterministic colour from a 10-colour palette (indigo,
+  rose, emerald, amber, violet, cyan, pink, orange, lime, sky) hashed
+  off the project's `id`. The colour shows up as:
+  - **Kanban task cards** — 4px coloured left-edge stripe (overdue
+    rose still wins so the urgency signal stays loud).
+  - **Project number badge** — small pill with a tinted background +
+    a saturated dot (`P-00001` reads like a chip, not just text).
+  - **Project list rows** (`/dashboard/projects`) — coloured left-edge
+    stripe + chip-style number.
+  - **Recent Projects on the dashboard** — same treatment.
+  - **No DB migration.** Colour is derived from `id`, so the same
+    project always shows the same hue across users + sessions. If we
+    later want operator-controlled colours, add a `color` column to
+    the Project model and prefer it when set, falling back to this
+    hash. Helper at `lib/project-colors.ts`.
+
+This is the visual splash you asked for — colour comes from the data
+(15 projects → up to 10 distinct hues, one per project) instead of
+the chrome trying to be colourful on its own. Reads cleanly in Light,
+Dark, and Vibrant themes.
+
 ## [1.6.15] — 2026-05-01
 
 ### Fixed (P1 — Vibrant theme crashed the dashboard)

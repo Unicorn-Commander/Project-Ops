@@ -17,6 +17,7 @@ import {
   priorityTextClass,
   iconWellClass,
 } from "@/lib/badge-styles";
+import { projectColorClasses } from "@/lib/project-colors";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { format, formatDistanceToNowStrict, isPast } from "date-fns";
@@ -361,15 +362,18 @@ export default function DashboardPage() {
             />
           ) : (
             <div className="space-y-3">
-              {recentProjects.map((projectItem) => (
+              {recentProjects.map((projectItem) => {
+                const pc = projectColorClasses(projectItem.id);
+                return (
                 <div
                   key={projectItem.id}
-                  className="group flex items-center justify-between gap-4 p-4 border rounded-lg cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md hover:bg-card"
+                  className={`group flex items-center justify-between gap-4 p-4 border rounded-lg cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md hover:bg-card border-l-4 ${pc.borderLeft}`}
                   onClick={() => router.push(`/dashboard/projects/${projectItem.id}`)}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-1.5">
-                      <span className="font-mono text-xs text-muted-foreground">
+                      <span className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 font-mono text-[11px] font-medium ${pc.badgeBg} ${pc.badgeText}`}>
+                        <span className={`inline-block h-1.5 w-1.5 rounded-full ${pc.dot}`} />
                         {projectItem.projectNumber}
                       </span>
                       <span
@@ -409,7 +413,8 @@ export default function DashboardPage() {
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </Card>

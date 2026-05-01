@@ -47,6 +47,7 @@ import {
 } from 'lucide-react';
 import { TASK_TYPES, taskTypeIcon } from '@/lib/task-types';
 import type { Organization } from '@/lib/organizations-api';
+import { projectColorClasses } from '@/lib/project-colors';
 import { TaskDetailsModal } from '@/components/modals/task-details-modal';
 import { CreateTaskModal } from '@/components/modals/create-task-modal';
 import { EditTaskModal } from '@/components/modals/edit-task-modal';
@@ -140,12 +141,19 @@ function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
     return email.substring(0, 2).toUpperCase();
   };
 
+  // Per-project colour stripe — same project always shows the same hue
+  // (deterministic by project id). Overdue rose stripe still wins so the
+  // "you should look at this" signal stays loud.
+  const projectColor = projectColorClasses(task.projectId);
+
   return (
     <div ref={setNodeRef} style={style} className="mb-2">
       <Card
-        className={`p-3 transition-all hover:shadow-md cursor-pointer ${
+        className={`p-3 transition-all hover:shadow-md cursor-pointer border-l-4 ${
+          isOverdue ? 'border-l-rose-500' : projectColor.borderLeft
+        } ${
           isDragging || isDraggingState ? 'shadow-lg opacity-80' : ''
-        } ${isOverdue ? 'border-l-4 border-l-rose-500' : ''}`}
+        }`}
       >
         <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing select-none">
           <div className="flex items-start justify-between gap-2 mb-2">
@@ -159,10 +167,13 @@ function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
           </div>
 
           <div className="text-xs text-muted-foreground mb-2">
-            <div className="flex items-center gap-1">
-              <FileText className="h-3 w-3" />
-              <span className="font-mono">{task.project?.projectNumber}</span>
-              <span className="mx-1">·</span>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11px] ${projectColor.badgeBg} ${projectColor.badgeText}`}
+              >
+                <span className={`inline-block h-1.5 w-1.5 rounded-full ${projectColor.dot}`} />
+                {task.project?.projectNumber}
+              </span>
               <span className="truncate">{task.project?.title}</span>
             </div>
           </div>
