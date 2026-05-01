@@ -13,9 +13,10 @@
    * lib/badge-styles.ts. */
 
   /* Legacy brand-named tokens — kept (not removed) so any stragglers
-   * referencing them still compile, but values are neutral now. */
-  --color-primary-blue: #171717;
-  --color-primary-blue-hover: #0a0a0a;
+   * referencing them still compile. Now matched to the indigo primary
+   * so anything that snuck through to these still reads correctly. */
+  --color-primary-blue: #4f46e5;
+  --color-primary-blue-hover: #4338ca;
   --color-dark-navy: #0b0b0d;
   --color-accent-bronze: #f59e0b;
   --color-light-bg: #f4f4f5;
@@ -29,7 +30,7 @@
   --color-card: #ffffff;                /* cards stay pure white so they
                                             lift gently off the off-white bg */
   --color-card-foreground: #171717;
-  --color-primary: #171717;             /* near-black — Linear-ish */
+  --color-primary: #4f46e5;             /* indigo-600 — modern SaaS CTA */
   --color-primary-foreground: #fafafa;
   --color-secondary: #f4f4f5;
   --color-secondary-foreground: #171717;
@@ -64,8 +65,8 @@
     --color-input: #2e2e33;
     --color-popover: #1a1a20;
     --color-popover-foreground: #fafafa;
-    --color-primary: #fafafa;           /* foreground-on-background flip */
-    --color-primary-foreground: #0b0b0d;
+    --color-primary: #6366f1;           /* indigo-500 — same hue as light, brighter for dark bg */
+    --color-primary-foreground: #fafafa;
     --color-secondary: #1f1f25;
     --color-secondary-foreground: #fafafa;
     --color-muted: #1f1f25;

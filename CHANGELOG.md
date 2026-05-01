@@ -5,6 +5,36 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.28] — 2026-05-01
+
+### Changed (primary brand colour — indigo)
+
+- **Primary is now indigo** (`#4f46e5` light, `#6366f1` dark) instead
+  of the Linear-style monochrome near-black/near-white flip. Same
+  approach as Linear, Notion, Vercel, Stripe Dashboard — saturated
+  brand colour in both themes, just brightness-adjusted for
+  background contrast. Reads as a real product CTA rather than "the
+  most prominent neutral surface".
+- **Vibrant theme keeps its violet primary** (`#a78bfa`) — the two
+  hues are adjacent on the colour wheel, so Light/Dark indigo and
+  Vibrant violet harmonize without clashing.
+- **Legacy `--color-primary-blue` + `--color-primary-blue-hover`**
+  tokens (kept for any straggler refs that didn't make it through
+  earlier sweeps) updated to match the new indigo so they don't
+  silently disagree.
+- All `bg-primary text-primary-foreground` buttons, badges, and
+  active states across the app pick this up automatically since
+  they read from the CSS variable. No per-component changes needed.
+
+### Visual identity check
+
+This brings Project-Ops in line with what users expect from a
+modern SaaS — coloured CTA, recognisable hue across themes, brand
+consistency. Combined with the per-project rainbow tagging on the
+data surfaces (kanban / projects / dashboard / contacts) the app
+now reads as "branded indigo product with rainbow data" instead of
+"monochrome reference design with rainbow accents."
+
 ## [1.6.27] — 2026-05-01
 
 ### Fixed (theme contrast — `bg-primary text-white` was invisible in dark)
