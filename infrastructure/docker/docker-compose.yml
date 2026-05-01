@@ -126,6 +126,11 @@ services:
       BRIGADE_URL: ${BRIGADE_URL:-https://brigade.magicunicorn.dev}
       BRIGADE_API_KEY: ${BRIGADE_API_KEY}
       BRIGADE_AGENT_ID: ${BRIGADE_AGENT_ID:-project-ops-assistant}
+      # SSO access allowlist (v1.6.24) — controls who can JIT-provision a
+      # Project-Ops account from the shared uchub Keycloak realm + at what
+      # role. Without this var the backend falls back to admitting only
+      # Aaron + Shafen as ADMIN and rejects everyone else.
+      PROJECT_OPS_ACCESS_LIST: ${PROJECT_OPS_ACCESS_LIST:-}
       # Sentry / Glitchtip — opt-in. SDK is a no-op when DSN is empty.
       # Production points at the self-hosted Glitchtip on bigboy. Reports
       # 5xx errors + uncaught exceptions only (4xx is the user's problem
