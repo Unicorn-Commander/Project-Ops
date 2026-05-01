@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Tailwind 4: extend the `dark:` variant to ALSO match `.vibrant`. The
+ * Vibrant theme is a dark-tone variant — it wants every `dark:foo` utility
+ * sprinkled through the codebase to fire. Default Tailwind dark variant
+ * only matches `.dark` (and descendants); we widen it. */
+@custom-variant dark (&:where(.dark, .dark *, .vibrant, .vibrant *));
+
 @theme {
   /* Project Ops palette — neutral primary, warm-neutral darks. The
    * mascot artwork carries the rainbow; the chrome stays calm. Only

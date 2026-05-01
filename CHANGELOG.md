@@ -5,6 +5,25 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.15] — 2026-05-01
+
+### Fixed (P1 — Vibrant theme crashed the dashboard)
+
+- **`InvalidCharacterError: Failed to execute 'remove' on
+  'DOMTokenList': The token provided ('vibrant dark') contains HTML
+  space characters`** — v1.6.14 mapped the Vibrant theme to the
+  multi-class string `"vibrant dark"` so Tailwind's `dark:` utilities
+  would fire alongside the Vibrant tokens. next-themes calls
+  `classList.remove(value)` to clear the previous theme, and DOMTokenList
+  rejects space-separated tokens — every theme switch threw and broke
+  React rendering on whichever page was mounted.
+  Fixed by reverting to single-class theme values
+  (`light` / `dark` / `vibrant`) and widening Tailwind 4's `dark:`
+  variant to also match `.vibrant` via
+  `@custom-variant dark (&:where(.dark, .dark *, .vibrant, .vibrant *))`
+  in `globals.css`. Same outcome (every `dark:foo` utility fires under
+  Vibrant), no DOM crash.
+
 ## [1.6.14] — 2026-05-01
 
 ### Added
