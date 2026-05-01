@@ -5,6 +5,51 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.7] — 2026-04-30
+
+### Added
+
+- **Frontend Sentry / Glitchtip integration** — `@sentry/nextjs` wired
+  for browser + SSR + edge runtimes. Browser-side errors, unhandled
+  rejections, error boundaries, and SSR Route Handler errors all flow
+  to the same Glitchtip instance the backend reports to.
+  - `sentry.client.config.ts` for the browser bundle, with sane noise
+    filters (`ResizeObserver loop limit`, browser-extension errors).
+  - `sentry.server.config.ts` + `instrumentation.ts` for SSR.
+  - `sentry.edge.config.ts` to keep `withSentryConfig` happy.
+  - `next.config.ts` wrapped with `withSentryConfig`. The Sentry plugin
+    sets up the `/monitoring` tunnel route so the browser SDK posts
+    through this origin instead of `glitchtip.magicunicorn.dev` —
+    avoids ad blockers killing reports for users with strict privacy
+    extensions.
+  - DSN injected at **build time** (`NEXT_PUBLIC_SENTRY_DSN` arg in
+    Dockerfile + compose) so it lands in the client bundle.
+  - PII off — no cookies, no localStorage, no form values shipped.
+- **Glitchtip is now publicly reachable** at
+  `https://glitchtip.magicunicorn.dev` (Cloudflare-proxied → Traefik
+  → `glitchtip-web` on bigboy). Required for the browser SDK to post
+  events. Backend DSN switched from the Tailscale IP form to the
+  public hostname for consistency.
+- **`docker-compose.glitchtip.yml`** restored under `UC-Cloud-production/`
+  (the original was missing). Captures the running env + adds Traefik
+  labels for the new public hostname. Healthcheck via Python stdlib
+  (the container has no `wget`/`curl`).
+
+### Why this exists
+
+Same reason as v1.6.5: silent failures kill us. Tonight's two big
+fixes (Brigade env wiring, FalkorDB disabled) were both server-side,
+but the broader bug class — a 500 on a dashboard page, a thrown
+ErrorBoundary, an uncaught fetch rejection — now also surfaces.
+
+### Known followup
+
+- Source-map upload requires `SENTRY_AUTH_TOKEN` + a Glitchtip auth
+  token. Stack traces in the Glitchtip UI will show minified names
+  until that's wired. Not blocking — the event still has the right
+  message + URL + user; we just lose function-level resolution. Plug
+  in next time we touch the build pipeline.
+
 ## [1.6.6] — 2026-04-30
 
 ### Fixed

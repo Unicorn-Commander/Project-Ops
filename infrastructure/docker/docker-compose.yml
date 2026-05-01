@@ -182,6 +182,12 @@ services:
         NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-https://auth.unicorncommander.ai}
         NEXT_PUBLIC_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-uchub}
         NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-project-ops}
+        # Sentry / Glitchtip — must be a build arg so Next.js inlines the
+        # DSN into the client bundle. Empty-string fallback keeps the
+        # build clean when error tracking is opt-out per environment.
+        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_FRONTEND:-}
+        NEXT_PUBLIC_SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+        NEXT_PUBLIC_SENTRY_ENVIRONMENT: ${NODE_ENV:-production}
     container_name: project-ops-frontend
     restart: unless-stopped
     environment:
@@ -192,6 +198,10 @@ services:
       NEXT_PUBLIC_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-uchub}
       NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-project-ops}
       NEXT_TELEMETRY_DISABLED: 1
+      # Server-side Sentry (Next.js Route Handlers + middleware fall here)
+      SENTRY_DSN: ${SENTRY_DSN_FRONTEND:-}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+      SENTRY_ENVIRONMENT: ${NODE_ENV:-production}
     ports:
       - "3200:3200"
     networks:
