@@ -5,6 +5,27 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.8] — 2026-04-30
+
+### Documentation
+
+- **Glitchtip alert notifications followup logged.** Tried wiring
+  Postmark SMTP into the Glitchtip container so issue notifications
+  actually email Aaron + Shafen. The Postmark server token in the
+  session-context credentials had been rotated since it was written
+  down, so authentication failed (`535 5.7.8 Error: authentication
+  failed`). Confirmed via a direct `smtplib` call from inside the
+  container — not a URL-parsing issue, the token is genuinely dead.
+  Reverted `GLITCHTIP_EMAIL_URL=consolemail://` to avoid Glitchtip
+  burning retries against a broken auth on every issue. Action item
+  for the next session: regenerate a Postmark server token (or pick
+  any other SMTP provider — token-style auth means username = password
+  = token), set it as `GLITCHTIP_EMAIL_URL=smtp+tls://TOKEN:TOKEN@smtp.postmarkapp.com:587`
+  in `/home/muut/UC-Cloud-production/.env`, recreate the Glitchtip
+  containers, then add an issue-occurrence Alert in the Glitchtip web
+  UI (`https://glitchtip.magicunicorn.dev`) for both projects so
+  events land as email at first occurrence.
+
 ## [1.6.7] — 2026-04-30
 
 ### Added
