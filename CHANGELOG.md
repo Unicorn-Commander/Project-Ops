@@ -5,6 +5,42 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.23] — 2026-05-01
+
+### Changed (CRM polish + Users SSO explainer)
+
+- **Organization rows now carry per-org colour** — same
+  `projectColorClasses` palette + 4px left stripe + faint card wash
+  the kanban / projects / dashboard use. The icon-well next to each
+  org name is tinted to its hue. So when you scan the orgs table you
+  read each row as one entity, and when you click into a project that
+  belongs to that org the visual identity carries through.
+- **Users page gets an SSO model explainer banner.** Federated
+  identity through `auth.unicorncommander.ai` (the uchub realm) means
+  team members appear here *after* their first SSO login — no
+  pre-creation step. New SSO users land as `CLIENT` by default;
+  promote them on this page. The "Add User" button is for non-SSO
+  password accounts (client-portal users invited via Contacts) and
+  for pre-seeding accounts with a specific role.
+- Contacts intentionally untouched — `Avatar` already gives each
+  contact its own deterministic gradient, so per-contact colour
+  treatment would be redundant. Contact rows continue to read as
+  individual people.
+
+### Known SSO gaps (logged, not fixed in this release)
+
+- **`getDefaultRoleForEmail` is hard-coded** in
+  `backend/src/auth/auth.service.ts` to `aaron@magicunicorn.tech` →
+  ADMIN, `shafenkhan@users.noreply.github.com` → ADMIN, everyone else → CLIENT.
+  Adding a third MU team member with a non-CLIENT default role
+  currently means a code change. Should be a DB-driven allowlist or
+  `INITIAL_ADMIN_EMAILS` env var. Worth ~30 min in a focused session.
+- **No "invite by email" pre-provision flow** with a target role.
+  The closest thing is the `/contacts/:id/invite` endpoint which
+  creates a CLIENT-role password user. A proper "invite teammate"
+  flow that pre-creates with role + waits for first SSO login would
+  be the right pattern for onboarding.
+
 ## [1.6.22] — 2026-05-01
 
 ### Added

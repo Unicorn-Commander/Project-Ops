@@ -122,6 +122,26 @@ export default function UsersPage() {
         </Button>
       </div>
 
+      {/* SSO model explainer — Project-Ops federates identity to the
+          uchub Keycloak realm; team members self-provision on first SSO
+          login. The "Add User" button creates non-SSO password users
+          intended for client-portal access via /contacts/:id/invite. */}
+      <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm flex items-start gap-3">
+        <Shield className="h-4 w-4 mt-0.5 text-foreground/60 shrink-0" />
+        <div className="space-y-1">
+          <p className="text-foreground">
+            <span className="font-semibold">Identity is federated through Unicorn Commander SSO.</span>{" "}
+            Team members appear in this list automatically the first time they sign in via{" "}
+            <span className="font-mono text-xs">auth.unicorncommander.ai</span> — there's no
+            pre-creation step.
+          </p>
+          <p className="text-muted-foreground text-xs">
+            New SSO users land as <span className="font-semibold">CLIENT</span> by default; promote them here.
+            The <span className="font-semibold">Add User</span> button is for non-SSO accounts (client-portal users invited via the Contacts page) and for seeding accounts with a specific role before first login.
+          </p>
+        </div>
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="p-4">

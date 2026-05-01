@@ -16,6 +16,7 @@ import { Building2, Users, Briefcase, User, Plus, Search, Filter, MoreVertical, 
 import { CreateOrganizationModal } from '@/components/modals/create-organization-modal';
 import { EditOrganizationModal } from '@/components/modals/edit-organization-modal';
 import { activeBadgeClass, iconWellClass } from '@/lib/badge-styles';
+import { projectColorClasses } from '@/lib/project-colors';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 
@@ -326,15 +327,17 @@ export default function OrganizationsPage() {
                 </td>
               </tr>
             ) : (
-              organizations.map((org) => (
+              organizations.map((org) => {
+                const oc = projectColorClasses(org.id);
+                return (
                 <tr
                   key={org.id}
                   onClick={() => handleRowClick(org)}
                   className="hover:bg-muted/30 cursor-pointer transition-colors"
                 >
-                  <td className="px-6 py-4">
+                  <td className={`px-6 py-4 border-l-4 ${oc.borderLeft} ${oc.cardWash}`}>
                     <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg ${iconWellClass("primary")}`}>
+                      <div className={`p-2 rounded-lg ${oc.badgeBg} ${oc.badgeText}`}>
                         <Building2 className="h-5 w-5" />
                       </div>
                       <div>
@@ -398,7 +401,8 @@ export default function OrganizationsPage() {
                     </div>
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
