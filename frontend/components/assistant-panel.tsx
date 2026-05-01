@@ -122,7 +122,7 @@ export function AssistantPanel() {
         title="Ask the assistant"
         className="group inline-flex items-center gap-2 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground/80 transition-colors hover:border-foreground/30 hover:text-foreground"
       >
-        <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-white ring-1 ring-border">
+        <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-white dark:bg-zinc-100 ring-1 ring-border">
           <Image src="/projectops-mascot.png" alt="" width={20} height={20} />
         </span>
         <span className="hidden sm:inline">Ask</span>
@@ -145,7 +145,7 @@ export function AssistantPanel() {
             {/* Header */}
             <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
               <div className="flex items-center gap-3">
-                <span className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-white ring-1 ring-border">
+                <span className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-white dark:bg-zinc-100 ring-1 ring-border">
                   <Image src="/projectops-mascot.png" alt="" width={36} height={36} />
                 </span>
                 <div className="leading-tight">

@@ -81,7 +81,7 @@ export default function Home() {
       <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center gap-3">
-            <span className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-white ring-1 ring-border">
+            <span className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-white dark:bg-zinc-100 ring-1 ring-border">
               <Image src="/projectops-mascot.png" alt="Project Ops" width={36} height={36} priority />
             </span>
             <div className="leading-tight">
@@ -260,7 +260,7 @@ export default function Home() {
               <div className="md:col-span-5">
                 <div className="relative rounded-xl border border-border bg-background p-4 shadow-md">
                   <div className="flex items-center gap-2 border-b border-border pb-3">
-                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white ring-1 ring-border">
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white dark:bg-zinc-100 ring-1 ring-border">
                       <Image src="/projectops-mascot.png" alt="" width={24} height={24} />
                     </span>
                     <div className="leading-tight">
@@ -503,7 +503,7 @@ export default function Home() {
       <footer>
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-10 text-sm text-foreground/60 sm:flex-row">
           <div className="flex items-center gap-2.5">
-            <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded bg-white ring-1 ring-border">
+            <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded bg-white dark:bg-zinc-100 ring-1 ring-border">
               <Image src="/projectops-mascot.png" alt="" width={20} height={20} />
             </span>
             <span>&copy; {new Date().getFullYear()} Magic Unicorn</span>

@@ -5,6 +5,46 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.14] — 2026-05-01
+
+### Added
+
+- **`Vibrant` theme.** Third option in the theme cycle (Light → Dark
+  → Vibrant → System). Deep aubergine background, violet-400 primary,
+  warm amber accent, soft lavender muted-foreground. Magic Unicorn
+  branding without going garish — chrome carries colour while still
+  reading as a serious tool. Cycled via the `Sparkles` icon in the
+  theme toggle. Layers `vibrant dark` on the html element so all
+  existing `dark:` Tailwind utilities continue to fire.
+- **Magic Unicorn organization seeded** in the database (`AGENCY` type,
+  `industry: "AI infrastructure"`) and all 15 projects backfilled to
+  reference it via `organizationId`. The kanban Organization filter
+  now has something to filter against — was returning empty because
+  the org table was empty (every project used the legacy free-text
+  `clientName` only).
+
+### Removed
+
+- **Dead `components/kanban/*` directory** (6 files: kanban-board,
+  kanban-board-v3, kanban-card, kanban-card-v2, kanban-column,
+  kanban-column-v2). Stale NorthbridgeTax CPA implementations using
+  `bg-blue-100 text-blue-800`-style pastels with no dark variants.
+  Nothing imported them — the active kanban is `app/dashboard/kanban/page.tsx`
+  with its own task card rendering. Removing eliminates the worst
+  cluster of dark-mode-broken styling.
+
+### Fixed (theme contrast pass)
+
+- **Logo well backgrounds were stark white in dark mode.** Six
+  `bg-white ring-1 ring-border` instances (landing nav, landing chat
+  panel, landing footer, dashboard sidebar logo, two assistant-panel
+  headers) now use `bg-white dark:bg-zinc-100` so the white card
+  around the mascot doesn't burn through dark backgrounds.
+- **Auth-page password eye-toggle buttons used `text-gray-500
+  hover:text-gray-700`** which rendered as near-invisible-on-dark
+  in dark mode. Switched to semantic `text-muted-foreground
+  hover:text-foreground` tokens — works in all three themes.
+
 ## [1.6.13] — 2026-04-30
 
 ### Fixed (NorthbridgeTax CPA fork-leftover sweep)

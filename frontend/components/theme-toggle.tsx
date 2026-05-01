@@ -1,12 +1,19 @@
 "use client";
 
 import * as React from "react";
-import { Moon, Sun, Monitor } from "lucide-react";
+import { Moon, Sun, Monitor, Sparkles } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 
-const order = ["light", "dark", "system"] as const;
+const order = ["light", "dark", "vibrant", "system"] as const;
 type ThemeName = (typeof order)[number];
+
+const META: Record<ThemeName, { icon: typeof Sun; label: string }> = {
+  light: { icon: Sun, label: "Light" },
+  dark: { icon: Moon, label: "Dark" },
+  vibrant: { icon: Sparkles, label: "Vibrant" },
+  system: { icon: Monitor, label: "System" },
+};
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
@@ -22,8 +29,7 @@ export function ThemeToggle() {
     setTheme(order[(idx + 1) % order.length]);
   }
 
-  const Icon = current === "dark" ? Moon : current === "system" ? Monitor : Sun;
-  const label = current === "dark" ? "Dark" : current === "system" ? "System" : "Light";
+  const { icon: Icon, label } = META[current];
 
   return (
     <Button

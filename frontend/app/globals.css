@@ -66,6 +66,35 @@
     --color-muted-foreground: #b4b4bd;  /* brighter for legibility */
     --color-ring: #fafafa;
   }
+
+  /* Vibrant — the brand-forward theme. Deep aubergine background, violet
+   * primary, soft amber accent. Magic Unicorn at night. Dark-tone variant
+   * (still elevated cards, still legible) but the chrome carries colour
+   * instead of staying neutral.
+   *
+   * We re-set every dark token here AND we want Tailwind's `dark:` utility
+   * variants to fire, so the body class is set to `vibrant dark` together
+   * by the theme provider — that way the existing `dark:bg-...` overrides
+   * sprinkled through the codebase still work, and these vars layer on top.
+   */
+  .vibrant {
+    --color-background: #0c0a1a;        /* deep aubergine, not pure black */
+    --color-foreground: #f4f0ff;        /* slight violet tint for warmth */
+    --color-card: #1a1530;              /* elevated aubergine */
+    --color-card-foreground: #f4f0ff;
+    --color-border: #2d2548;            /* tinted divider */
+    --color-input: #2d2548;
+    --color-popover: #1f1936;
+    --color-popover-foreground: #f4f0ff;
+    --color-primary: #a78bfa;           /* violet-400 — buttons + active states */
+    --color-primary-foreground: #0c0a1a;
+    --color-secondary: #251d3f;
+    --color-secondary-foreground: #f4f0ff;
+    --color-muted: #1f1a35;
+    --color-muted-foreground: #b8a9d9;  /* soft lavender */
+    --color-accent: #fb923c;            /* warm amber — used by .btn-accent */
+    --color-ring: #a78bfa;
+  }
 }
 
 @layer base {

@@ -135,7 +135,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           {/* Brand mark */}
           <div className="flex h-16 items-center justify-between border-b border-border/60 px-4">
             <Link href="/dashboard" className="flex items-center gap-2.5">
-              <span className="inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-md bg-white ring-1 ring-border">
+              <span className="inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-md bg-white dark:bg-zinc-100 ring-1 ring-border">
                 <Image src="/projectops-mascot.png" alt="" width={32} height={32} priority />
               </span>
               <div className="leading-tight">
