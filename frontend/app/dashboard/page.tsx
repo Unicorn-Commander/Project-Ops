@@ -9,6 +9,7 @@ import { CreateProjectModal } from "@/components/modals/create-project-modal";
 import { TaskDetailsModal } from "@/components/modals/task-details-modal";
 import { EditTaskModal } from "@/components/modals/edit-task-modal";
 import { TopContactsWidget } from "@/components/dashboard/top-contacts-widget";
+import { ProjectCharts } from "@/components/dashboard/project-charts";
 import api from "@/lib/api";
 import { getMyTasks, Task, TaskStatus } from "@/lib/tasks-api";
 import { useAuthStore } from "@/lib/store";
@@ -62,6 +63,7 @@ export default function DashboardPage() {
     upcomingDeadlines: 0,
   });
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
+  const [allProjects, setAllProjects] = useState<RecentProject[]>([]);
   const [myTasks, setMyTasks] = useState<Task[]>([]);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
@@ -77,10 +79,12 @@ export default function DashboardPage() {
 
   const fetchDashboardData = async () => {
     try {
-      // Fetch real dashboard data from API
+      // Fetch real dashboard data from API. The full-list pull (`limit=1000`)
+      // backs the Project Status + Priority charts — `recentProjects` is the
+      // first 5 of the same set, used for the Recent Projects panel.
       const [statsResponse, projectsResponse, tasksResponse] = await Promise.all([
         api.get("/dashboard/overview"),
-        api.get("/projects?page=1&limit=5&sort=createdAt:desc"),
+        api.get("/projects?page=1&limit=1000&sort=createdAt:desc"),
         getMyTasks({ take: 5, status: TaskStatus.PENDING }).catch(() => ({ data: [], total: 0, skip: 0, take: 0 })),
       ]);
 
@@ -91,7 +95,9 @@ export default function DashboardPage() {
         upcomingDeadlines: statsResponse.data.upcomingDeadlines || 0,
       });
 
-      setRecentProjects(projectsResponse.data.data || []);
+      const allProjects = projectsResponse.data.data || [];
+      setAllProjects(allProjects);
+      setRecentProjects(allProjects.slice(0, 5));
 
       // Handle both response formats: array directly or { data: [...] }
       const tasksData = Array.isArray(tasksResponse) ? tasksResponse : (tasksResponse.data || []);
@@ -218,18 +224,24 @@ export default function DashboardPage() {
         </div>
 
       <div>
-        {/* Stats Grid */}
+        {/* Stats Grid — each card carries its tone via a 4px left stripe + a
+            faint wash so the dashboard reads like a multicolour HUD instead of
+            four neutral white cards. Colours match the kanban project palette. */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {([
-            { label: "Total projects", value: stats.totalProjects,      icon: FileText,    tone: "primary" as const, href: "/dashboard/projects" },
-            { label: "Active",         value: stats.activeProjects,     icon: Clock,       tone: "amber" as const,   href: "/dashboard/projects" },
-            { label: "Completed",      value: stats.completedProjects,  icon: CheckCircle2,tone: "emerald" as const, href: "/dashboard/projects" },
-            { label: "Due this week",  value: stats.upcomingDeadlines,  icon: AlertCircle, tone: "rose" as const,    href: "/dashboard/my-tasks" },
-          ]).map(({ label, value, icon: Icon, tone, href }) => (
+            { label: "Total projects", value: stats.totalProjects,      icon: FileText,    tone: "primary" as const, href: "/dashboard/projects",
+              stripe: "border-l-foreground/40 dark:border-l-foreground/40", wash: "bg-foreground/[0.03] dark:bg-foreground/[0.04]" },
+            { label: "Active",         value: stats.activeProjects,     icon: Clock,       tone: "amber" as const,   href: "/dashboard/projects",
+              stripe: "border-l-amber-500 dark:border-l-amber-400",   wash: "bg-amber-500/10 dark:bg-amber-400/10" },
+            { label: "Completed",      value: stats.completedProjects,  icon: CheckCircle2,tone: "emerald" as const, href: "/dashboard/projects",
+              stripe: "border-l-emerald-500 dark:border-l-emerald-400", wash: "bg-emerald-500/10 dark:bg-emerald-400/10" },
+            { label: "Due this week",  value: stats.upcomingDeadlines,  icon: AlertCircle, tone: "rose" as const,    href: "/dashboard/my-tasks",
+              stripe: "border-l-rose-500 dark:border-l-rose-400",     wash: "bg-rose-500/10 dark:bg-rose-400/10" },
+          ]).map(({ label, value, icon: Icon, tone, href, stripe, wash }) => (
             <Card
               key={label}
               onClick={() => router.push(href)}
-              className="group relative cursor-pointer overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:shadow-md"
+              className={`group relative cursor-pointer overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:shadow-md border-l-4 ${stripe} ${wash}`}
             >
               <div className="flex items-start justify-between">
                 <div className="space-y-1.5">
@@ -252,6 +264,11 @@ export default function DashboardPage() {
             </Card>
           ))}
         </div>
+
+        {/* Project distribution charts — donut by status, bar by priority */}
+        {allProjects.length > 0 && (
+          <ProjectCharts projects={allProjects} />
+        )}
 
         {/* My Tasks + Top Contacts on top row; Recent Projects spans full width below */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

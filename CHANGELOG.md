@@ -5,6 +5,36 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.20] — 2026-05-01
+
+### Added
+
+- **Dashboard now carries the colour treatment.** Stat cards (Total /
+  Active / Completed / Due this week) get 4px tone-coloured left
+  stripes + matching ~10% washes — mirrors the kanban + project-list
+  pattern so the dashboard reads as a multicolour HUD instead of four
+  neutral cards.
+- **Project distribution charts.** Recharts donut + bar on the
+  dashboard:
+  - **Project status donut** — slice per status (NEW / IN_PROGRESS /
+    UNDER_REVIEW / COMPLETED / ON_HOLD / ARCHIVED), colour-matched to
+    the kanban's status colours, count legend below.
+  - **Priority distribution bar** — LOW / MEDIUM / HIGH / URGENT
+    counts, colour-matched, axes themed via CSS vars so dark + Vibrant
+    render cleanly.
+  - Tooltips themed via `var(--color-popover)` so they pick up the
+    active theme (light / dark / vibrant) automatically.
+  - Charts only render when at least one project exists; no empty SVG
+    skeletons.
+- Recharts pulled in (`recharts@3.8.1`).
+
+### Changed
+
+- **`cardWash` light-theme opacity bumped 5% → 10%.** The previous 5%
+  was barely visible on white cards; 10% reads as a clear "this is
+  Project X" signal without overpowering text contrast. Dark/Vibrant
+  already used 10%, so all three themes are now consistent.
+
 ## [1.6.19] — 2026-05-01
 
 ### Fixed (v1.6.18 cardWash silently rendered nothing)
