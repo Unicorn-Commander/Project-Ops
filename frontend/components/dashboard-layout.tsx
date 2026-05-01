@@ -31,6 +31,7 @@ import {
   UserCircle,
   CheckSquare,
   Building2,
+  CalendarRange,
   ChevronDown,
 } from "lucide-react";
 
@@ -47,6 +48,7 @@ const navigation: NavItem[] = [
   { name: "My Tasks", href: "/dashboard/my-tasks", icon: CheckSquare, group: "Workspace" },
   { name: "Projects", href: "/dashboard/projects", icon: FileText, group: "Workspace" },
   { name: "Kanban Board", href: "/dashboard/kanban", icon: LayoutGrid, group: "Workspace" },
+  { name: "Schedule", href: "/dashboard/schedule", icon: CalendarRange, group: "Workspace" },
   { name: "Documents", href: "/dashboard/documents", icon: FolderOpen, group: "Workspace" },
   { name: "Organizations", href: "/dashboard/organizations", icon: Building2, group: "CRM" },
   { name: "Contacts", href: "/dashboard/contacts", icon: UserCircle, group: "CRM" },

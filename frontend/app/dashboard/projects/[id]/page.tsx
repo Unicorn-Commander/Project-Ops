@@ -22,6 +22,7 @@ import {
   priorityTextClass,
   paymentStatusBadgeClass,
 } from "@/lib/badge-styles";
+import { projectColorClasses } from "@/lib/project-colors";
 import { format } from "date-fns";
 import {
   ArrowLeft,
@@ -232,9 +233,15 @@ export default function ProjectDetailPage() {
                 {projectData.status.replace("_", " ")}
               </span>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Project #{projectData.projectNumber}
-            </p>
+            {(() => {
+              const pc = projectColorClasses(projectData.id);
+              return (
+                <span className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 font-mono text-xs font-medium ${pc.badgeBg} ${pc.badgeText}`}>
+                  <span className={`inline-block h-1.5 w-1.5 rounded-full ${pc.dot}`} />
+                  {projectData.projectNumber}
+                </span>
+              );
+            })()}
           </div>
         </div>
         {canEditProject() && (

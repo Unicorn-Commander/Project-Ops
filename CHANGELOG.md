@@ -5,6 +5,48 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.22] — 2026-05-01
+
+### Added
+
+- **Schedule view** at `/dashboard/schedule` — a custom 2D Gantt
+  master timeline of every project. New "Schedule" entry in the
+  Workspace section of the sidebar. Built around our existing project
+  colour palette so the timeline reads with the same visual identity
+  as the kanban + dashboard:
+  - **Coloured project bars** — every project gets its `solidBg` /
+    `solidText` from `lib/project-colors.ts`. Same hue → same project.
+  - **Status text** rendered inside the bar so the schedule
+    communicates both *which project* and *what state*.
+  - **Today indicator** — vertical dashed rose line spans the body
+    rows, with a "TODAY" badge on top.
+  - **Overdue ring** — projects past their due date get a rose
+    ring-2 around the bar.
+  - **Completed projects** rendered at 60% opacity so they recede
+    visually without being hidden.
+  - **Bars that overflow the visible window** get a polygon clip-path
+    arrow on the relevant edge so it's clear "this continues outside
+    the current view."
+  - **Zoom**: 3 months / 6 months / Year / 18 months. Default 6 months.
+  - **Navigation**: prev / today / next month buttons.
+  - **Filters**: Status / Priority / Organization, collapsible.
+  - **Click-through**: any row navigates to the project detail page.
+  - **Empty state**: clear message when filters / window match nothing.
+- **Project detail page header** — project number now renders as the
+  same chip-with-dot pill used on the kanban + dashboard, picked up
+  from `projectColorClasses(projectData.id)`. Visual consistency
+  across every surface that names a project.
+
+### Followups deliberately out of scope (logged for next session)
+
+- **Drag to reschedule** the bars — needs a PATCH route on
+  `/projects/:id` for `dueDate` + an optimistic-update layer in the
+  Gantt component.
+- **Task ribbons** stacked under each project bar — the data is
+  there (`task.dueDate`), needs a second pass on the row layout.
+- **Group-by-organization swimlanes** — group the project rows
+  visually under their org for multi-client schedules.
+
 ## [1.6.21] — 2026-05-01
 
 ### Changed
