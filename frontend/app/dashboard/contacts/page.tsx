@@ -26,6 +26,7 @@ import {
   type Contact,
 } from "@/lib/contacts-api";
 import { activeBadgeClass, iconWellClass } from "@/lib/badge-styles";
+import { projectColorClasses } from "@/lib/project-colors";
 import {
   Search,
   Plus,
@@ -153,6 +154,35 @@ export default function ContactsPage() {
 
       {/* Content */}
       <div className="container mx-auto px-6 py-8">
+        {/* Summary stats — derived client-side from the loaded contacts. The
+            backend `/contacts/stats` endpoint is project-billing-focused
+            (used by TopContactsWidget); this is the at-a-glance snapshot. */}
+        {!loading && contacts.length > 0 && (() => {
+          const total = contacts.length;
+          const active = contacts.filter((c) => c.isActive).length;
+          const withOrg = contacts.filter((c) => c.organization?.id).length;
+          const withPortal = contacts.filter((c) => (c as any).portalAccessEnabled).length;
+          return (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+              {[
+                { label: "Total", value: total,        stripe: "border-l-foreground/40", wash: "bg-foreground/[0.03] dark:bg-foreground/[0.04]" },
+                { label: "Active", value: active,      stripe: "border-l-emerald-500 dark:border-l-emerald-400", wash: "bg-emerald-500/10 dark:bg-emerald-400/10" },
+                { label: "With organization", value: withOrg, stripe: "border-l-violet-500 dark:border-l-violet-400", wash: "bg-violet-500/10 dark:bg-violet-400/10" },
+                { label: "Portal access", value: withPortal,  stripe: "border-l-amber-500 dark:border-l-amber-400",  wash: "bg-amber-500/10 dark:bg-amber-400/10" },
+              ].map(({ label, value, stripe, wash }) => (
+                <Card key={label} className={`p-4 border-l-4 ${stripe} ${wash}`}>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                    {label}
+                  </p>
+                  <p className="text-2xl font-semibold tracking-tight text-foreground tabular-nums mt-1">
+                    {value}
+                  </p>
+                </Card>
+              ))}
+            </div>
+          );
+        })()}
+
         {/* Search and Filters */}
         <Card className="mb-6 p-6">
           <div className="flex flex-col md:flex-row gap-4">
@@ -255,13 +285,20 @@ export default function ContactsPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredContacts.map((contact) => (
+                  filteredContacts.map((contact) => {
+                    // If contact belongs to an org, paint the row with that
+                    // org's colour so the contact-org link is visually obvious.
+                    // No org → neutral row.
+                    const oc = contact.organization?.id
+                      ? projectColorClasses(contact.organization?.id)
+                      : null;
+                    return (
                     <tr
                       key={contact.id}
-                      className="hover:bg-muted/30 transition-colors cursor-pointer"
+                      className="hover:bg-muted/30 transition-colors cursor-pointer group"
                       onClick={() => handleViewContact(contact.id)}
                     >
-                      <td className="px-6 py-4">
+                      <td className={`px-6 py-4 ${oc ? `border-l-4 ${oc.borderLeft} ${oc.cardWash}` : ""}`}>
                         <div className="flex items-center gap-3">
                           <Avatar
                             name={`${contact.firstName} ${contact.lastName}`}
@@ -280,28 +317,37 @@ export default function ContactsPage() {
                       <td className="px-6 py-4">
                         <div className="space-y-1">
                           {contact.email && (
-                            <div className="flex items-center text-sm text-foreground">
+                            <a
+                              href={`mailto:${contact.email}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center text-sm text-foreground hover:text-primary hover:underline"
+                              title={`Email ${contact.email}`}
+                            >
                               <Mail className="w-4 h-4 mr-2 text-muted-foreground" />
                               {contact.email}
-                            </div>
+                            </a>
                           )}
                           {contact.phone && (
-                            <div className="flex items-center text-sm text-foreground">
+                            <a
+                              href={`tel:${contact.phone}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex items-center text-sm text-foreground hover:text-primary hover:underline"
+                              title={`Call ${contact.phone}`}
+                            >
                               <Phone className="w-4 h-4 mr-2 text-muted-foreground" />
                               {contact.phone}
-                            </div>
+                            </a>
                           )}
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        {contact.organization ? (
-                          <div className="flex items-center text-sm text-foreground">
-                            <Building2 className="w-4 h-4 mr-2 text-muted-foreground" />
+                        {contact.organization && oc ? (
+                          <span className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-medium ${oc.badgeBg} ${oc.badgeText}`}>
+                            <span className={`inline-block h-1.5 w-1.5 rounded-full ${oc.dot}`} />
                             {contact.organization.name}
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              ({contact.organization.type})
-                            </span>
-                          </div>
+                            <span className="opacity-70 ml-1">·</span>
+                            <span className="opacity-70">{contact.organization.type}</span>
+                          </span>
                         ) : contact.company ? (
                           <div className="flex items-center text-sm text-foreground">
                             <Building2 className="w-4 h-4 mr-2 text-muted-foreground" />
@@ -359,7 +405,8 @@ export default function ContactsPage() {
                         </div>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
