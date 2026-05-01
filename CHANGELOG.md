@@ -5,6 +5,22 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.19] — 2026-05-01
+
+### Fixed (v1.6.18 cardWash silently rendered nothing)
+
+- **`cardWash` Tailwind classes weren't reaching the compiled CSS.**
+  v1.6.18 used arbitrary-opacity bracket syntax (`bg-indigo-500/[0.04]`)
+  for the Hive-style row tint. Tailwind 4's content scanner (under
+  Turbopack) didn't pick up the bracket arbitraries from the
+  `lib/project-colors.ts` object literals, so the CSS rules were
+  never generated. Class names were in the rendered DOM but invisible
+  in the browser.
+  Switched all `cardWash` entries to standard-scale opacities
+  (`/5` and `/10`). Verified: `bg-amber-500/5`, `bg-emerald-500/5`,
+  etc. now appear in the compiled `static/chunks/*.css`. Same look
+  (4–10% wash), reliably picked up.
+
 ## [1.6.18] — 2026-05-01
 
 ### Changed (Hive-style colour deepening)
