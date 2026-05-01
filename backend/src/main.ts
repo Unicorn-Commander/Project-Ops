@@ -1,3 +1,7 @@
+// Sentry / Glitchtip MUST be the first import — the SDK has to hook the
+// Node runtime before any user code runs. No-op when SENTRY_DSN is unset.
+import './instrument';
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
@@ -8,6 +12,7 @@ import { AppModule } from './app.module';
 import { initializeOpenTelemetry } from './telemetry/opentelemetry';
 import { WinstonModule } from 'nest-winston';
 import { createLogger } from './common/logger/winston.config';
+import { SentryFilter } from './common/filters/sentry.filter';
 
 async function bootstrap() {
   // Initialize OpenTelemetry
@@ -49,6 +54,11 @@ async function bootstrap() {
       },
     }),
   );
+
+  // Sentry filter — captures uncaught exceptions surfacing through Nest.
+  // Process-level uncaught/unhandled handlers are already attached by the
+  // SDK init in instrument.ts.
+  app.useGlobalFilters(new SentryFilter());
 
   // Swagger documentation
   const config = new DocumentBuilder()

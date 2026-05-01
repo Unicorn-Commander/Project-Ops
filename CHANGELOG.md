@@ -5,6 +5,47 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.5] — 2026-04-30
+
+### Added
+
+- **Sentry / Glitchtip integration on the backend.** New `instrument.ts`
+  initialises the Sentry SDK before NestJS bootstraps; new
+  `SentryFilter` reports 5xx + uncaught exceptions through to the
+  self-hosted Glitchtip on bigboy (`http://100.126.207.157:8765/`).
+  4xx is intentionally not reported — those are the user's problem and
+  would just be noise.
+  - SDK is a no-op when `SENTRY_DSN` is unset (opt-in per environment).
+  - Sets `user.id`/`email`/`username`/`role` on the report when
+    Passport has populated `req.user`, so triage shows who hit the
+    error.
+  - Tags `http.method` + `http.url`.
+  - `tracesSampleRate` defaults to 0.1 (light) but is configurable.
+  - Release set to `project-ops-backend@<version>` so events bucket by
+    deploy. Re-bumping the version naturally rolls the release tag.
+- **`SENTRY_DSN_BACKEND` + friends** in `.env.example` and the live
+  bigboy `.env`. Production wired up.
+
+### Why this exists
+
+Two of the bugs we shipped fixes for tonight (v1.6.3 Brigade env
+wiring, v1.6.4 FalkorDB disabled) were silent failures — tools were
+firing but the work wasn't landing, and the upstream log lines
+declared "ok". Both would have surfaced in Glitchtip the moment
+Aaron's first chat session hit the failing path. The integration is
+specifically designed for that bug class — process-level
+unhandled rejections + uncaught exceptions + 5xx HTTP responses
+all flow through.
+
+### Known followup
+
+- **Frontend Sentry** (`@sentry/nextjs`) requires a publicly reachable
+  Glitchtip URL. The current Glitchtip exposes only via Tailscale
+  (`100.126.207.157:8765`) — fine for the backend container talking to
+  a sibling on bigboy, not for browser-side errors. Add a Traefik
+  label exposing Glitchtip at e.g. `glitchtip.magicunicorn.dev` (with
+  the existing letsencrypt resolver) before wiring frontend.
+
 ## [1.6.4] — 2026-04-30
 
 ### Fixed

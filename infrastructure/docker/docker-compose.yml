@@ -126,6 +126,14 @@ services:
       BRIGADE_URL: ${BRIGADE_URL:-https://brigade.magicunicorn.dev}
       BRIGADE_API_KEY: ${BRIGADE_API_KEY}
       BRIGADE_AGENT_ID: ${BRIGADE_AGENT_ID:-project-ops-assistant}
+      # Sentry / Glitchtip — opt-in. SDK is a no-op when DSN is empty.
+      # Production points at the self-hosted Glitchtip on bigboy. Reports
+      # 5xx errors + uncaught exceptions only (4xx is the user's problem
+      # and would just be noise). See docs/AI_ASSISTANT_DEMO.md for the
+      # silent-failure bug class this catches.
+      SENTRY_DSN: ${SENTRY_DSN_BACKEND:-}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
     ports:
       - "3201:3201"
     networks:
