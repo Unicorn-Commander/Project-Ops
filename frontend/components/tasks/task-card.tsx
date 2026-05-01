@@ -5,13 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Task, TaskStatus, TaskPriority, TaskType } from "@/lib/tasks-api";
 import { statusBadgeClass, priorityTextClass } from "@/lib/badge-styles";
 import { Avatar } from "@/components/ui/avatar";
+import { taskTypeIcon } from "@/lib/task-types";
 import {
-  FileText,
-  HelpCircle,
-  Phone,
-  Eye,
-  Upload,
-  CheckSquare,
   Clock,
   User,
   AlertTriangle,
@@ -38,17 +33,8 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
     return colors[priority] || "border-l-gray-400";
   };
 
-  const getTypeIcon = (type: TaskType) => {
-    const icons: Record<TaskType, React.ReactElement> = {
-      [TaskType.DOCUMENT_REQUEST]: <FileText className="h-4 w-4" />,
-      [TaskType.QUESTION]: <HelpCircle className="h-4 w-4" />,
-      [TaskType.IRS_CALL]: <Phone className="h-4 w-4" />,
-      [TaskType.REVIEW]: <Eye className="h-4 w-4" />,
-      [TaskType.FILING]: <Upload className="h-4 w-4" />,
-      [TaskType.OTHER]: <CheckSquare className="h-4 w-4" />,
-    };
-    return icons[type] || <CheckSquare className="h-4 w-4" />;
-  };
+  // Icon mapping centralised in lib/task-types.tsx (v1.6.13).
+  const getTypeIcon = (type: TaskType) => taskTypeIcon(type);
 
   const formatDueDate = (date: string) => {
     const dueDate = new Date(date);

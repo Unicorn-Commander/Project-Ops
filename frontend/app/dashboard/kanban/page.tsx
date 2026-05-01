@@ -40,32 +40,21 @@ import {
   Plus,
   X,
   FileText,
-  HelpCircle,
-  Phone,
-  Eye,
-  Upload,
-  CheckSquare,
   Calendar,
   User,
   AlertTriangle,
   Search,
 } from 'lucide-react';
+import { TASK_TYPES, taskTypeIcon } from '@/lib/task-types';
+import type { Organization } from '@/lib/organizations-api';
 import { TaskDetailsModal } from '@/components/modals/task-details-modal';
 import { CreateTaskModal } from '@/components/modals/create-task-modal';
 import { EditTaskModal } from '@/components/modals/edit-task-modal';
 import api from '@/lib/api';
 
-// Interfaces
-interface Client {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  company: string | null;
-}
-
-// Using Task type from tasks-api which includes project with contactId
-// interface ProjectItem - removed, using project from Task type
+// Interfaces — Organization comes from lib/organizations-api, Task from
+// lib/tasks-api. Kept the locally-declared UserItem shape since the kanban
+// only needs a subset of the User model.
 
 interface UserItem {
   id: string;
@@ -82,18 +71,8 @@ const columns = [
   { id: TaskStatus.COMPLETED, title: 'Completed', color: 'green' },
 ];
 
-// Task type icons mapping
-const getTypeIcon = (type: TaskType) => {
-  const icons: Record<TaskType, React.ReactElement> = {
-    [TaskType.DOCUMENT_REQUEST]: <FileText className="h-4 w-4" />,
-    [TaskType.QUESTION]: <HelpCircle className="h-4 w-4" />,
-    [TaskType.IRS_CALL]: <Phone className="h-4 w-4" />,
-    [TaskType.REVIEW]: <Eye className="h-4 w-4" />,
-    [TaskType.FILING]: <Upload className="h-4 w-4" />,
-    [TaskType.OTHER]: <CheckSquare className="h-4 w-4" />,
-  };
-  return icons[type];
-};
+// Task type icons + labels — single source of truth in lib/task-types.tsx
+const getTypeIcon = (type: TaskType) => taskTypeIcon(type);
 
 // Priority colors mapping (dark-mode-aware via shared helper)
 const getPriorityColor = (priority: TaskPriority) =>
@@ -289,14 +268,14 @@ export default function KanbanPage() {
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedClientId, setSelectedClientId] = useState<string>('ALL');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('ALL');
+  const [selectedOrgId, setSelectedOrgId] = useState<string>('ALL');
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>('ALL');
   const [selectedPriority, setSelectedPriority] = useState<string>('ALL');
   const [selectedType, setSelectedType] = useState<string>('ALL');
 
   // Filter data
-  const [clients, setClients] = useState<Client[]>([]);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [projects, setProjects] = useState<any[]>([]); // Using any for projects since structure varies
   const [users, setUsers] = useState<UserItem[]>([]);
 
@@ -340,9 +319,10 @@ export default function KanbanPage() {
 
   const fetchFilterData = async () => {
     try {
-      // Fetch clients
-      const clientsResponse = await api.get('/clients', { params: { page: 1, limit: 1000 } });
-      setClients(clientsResponse.data.data || clientsResponse.data || []);
+      // Fetch organizations (the post-Project-Ops replacement for the old
+      // /clients endpoint, which 404s post-rebrand).
+      const orgsResponse = await api.get('/organizations', { params: { page: 1, limit: 1000 } });
+      setOrganizations(orgsResponse.data.data || orgsResponse.data || []);
 
       // Fetch projects
       const projectsResponse = await api.get('/projects', { params: { page: 1, limit: 1000 } });
@@ -353,7 +333,7 @@ export default function KanbanPage() {
       setUsers(usersResponse.data.data || usersResponse.data || []);
     } catch (error) {
       // Error handling - reset data on error
-      setClients([]);
+      setOrganizations([]);
       setProjects([]);
       setUsers([]);
     }
@@ -377,9 +357,19 @@ export default function KanbanPage() {
       );
     }
 
-    // Client filter
-    if (selectedClientId && selectedClientId !== 'ALL') {
-      filtered = filtered.filter((task) => task.project?.contactId === selectedClientId);
+    // Organization filter — match the project's organizationId. Falls back
+    // to clientName comparison when a project is filed under a free-text
+    // client and we know the organization name.
+    if (selectedOrgId && selectedOrgId !== 'ALL') {
+      const orgName = organizations.find((o) => o.id === selectedOrgId)?.name?.toLowerCase();
+      filtered = filtered.filter((task) => {
+        const projectOrgId = (task.project as any)?.organizationId;
+        if (projectOrgId === selectedOrgId) return true;
+        if (orgName) {
+          return task.project?.clientName?.toLowerCase() === orgName;
+        }
+        return false;
+      });
     }
 
     // Project filter
@@ -410,7 +400,7 @@ export default function KanbanPage() {
     }
 
     return filtered;
-  }, [tasks, searchQuery, selectedClientId, selectedProjectId, selectedAssigneeId, selectedPriority, selectedType]);
+  }, [tasks, searchQuery, selectedOrgId, selectedProjectId, selectedAssigneeId, selectedPriority, selectedType]);
 
   const getTasksByStatus = (status: TaskStatus) => {
     return filteredTasks.filter((task) => task.status === status);
@@ -467,7 +457,7 @@ export default function KanbanPage() {
 
   const handleClearFilters = () => {
     setSearchQuery('');
-    setSelectedClientId('ALL');
+    setSelectedOrgId('ALL');
     setSelectedProjectId('ALL');
     setSelectedAssigneeId('ALL');
     setSelectedPriority('ALL');
@@ -536,16 +526,16 @@ export default function KanbanPage() {
             </div>
           </div>
 
-          {/* Client Filter */}
-          <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+          {/* Organization Filter (replaces the old /clients-backed dropdown) */}
+          <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
             <SelectTrigger>
-              <SelectValue placeholder="All Clients" />
+              <SelectValue placeholder="All Organizations" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">All Clients</SelectItem>
-              {clients.map((client) => (
-                <SelectItem key={client.id} value={client.id}>
-                  {client.firstName} {client.lastName} {client.company ? `(${client.company})` : ''}
+              <SelectItem value="ALL">All Organizations</SelectItem>
+              {organizations.map((org) => (
+                <SelectItem key={org.id} value={org.id}>
+                  {org.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -603,16 +593,16 @@ export default function KanbanPage() {
 
         <div className="flex items-center justify-between mt-4 pt-4 border-t">
           <div className="flex items-center gap-4">
-            {/* Type Filter */}
+            {/* Type Filter — labels via shared TASK_TYPES helper */}
             <Select value={selectedType} onValueChange={setSelectedType}>
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="All Types" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">All Types</SelectItem>
-                {Object.values(TaskType).map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {type.replace(/_/g, ' ')}
+                {TASK_TYPES.map((meta) => (
+                  <SelectItem key={meta.value} value={meta.value}>
+                    {meta.label}
                   </SelectItem>
                 ))}
               </SelectContent>

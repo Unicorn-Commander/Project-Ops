@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { createTask, TaskType, TaskPriority } from "@/lib/tasks-api";
+import { TASK_TYPES } from "@/lib/task-types";
 import {
   createTaskSchema,
   type CreateTaskFormData,
@@ -45,15 +46,6 @@ interface Project {
   title: string;
   clientName: string;
 }
-
-const TASK_TYPES = [
-  { value: TaskType.DOCUMENT_REQUEST, label: "Document Request" },
-  { value: TaskType.QUESTION, label: "Question" },
-  { value: TaskType.IRS_CALL, label: "IRS Call" },
-  { value: TaskType.REVIEW, label: "Review" },
-  { value: TaskType.FILING, label: "Filing" },
-  { value: TaskType.OTHER, label: "Other" },
-];
 
 const PRIORITY_LEVELS = [
   { value: TaskPriority.LOW, label: "Low", color: "text-zinc-500 dark:text-zinc-400" },

@@ -5,6 +5,44 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.13] — 2026-04-30
+
+### Fixed (NorthbridgeTax CPA fork-leftover sweep)
+
+- **`TaskType` enum was stale across the entire frontend.** The
+  Project-Ops backend Prisma schema defines
+  `TASK / MILESTONE / DELIVERABLE / REVIEW / MEETING / RESEARCH / OTHER`
+  but five frontend files (kanban, task-card, task-details modal,
+  create-task modal, edit-task modal) carried the old NorthbridgeTax CPA
+  values (`DOCUMENT_REQUEST / QUESTION / IRS_CALL / FILING / …`).
+  Result: the kanban Type filter dropdown showed wrong options and
+  filtering by any of them returned **zero** tasks (no enum overlap
+  with the backend). New tasks created via the modal saved with the
+  wrong enum, which the backend silently coerced to `OTHER`. Brought
+  the enum back in sync with the backend, and centralised
+  label + icon pairing in **new `lib/task-types.tsx`** so all five
+  consumers import from one source. Future schema changes only touch
+  the helper.
+- **Kanban "Client" filter pointed at a `/clients` endpoint that no
+  longer exists.** The `Client` model was renamed to
+  `Contact` + `Organization` during the Project-Ops fork, but the
+  kanban kept calling `GET /clients` (404), swallowing the error in
+  a try/catch, and rendering an empty "All Clients" dropdown.
+  Replaced with an **Organization** filter backed by the live
+  `/organizations` endpoint. Filter logic now matches projects by
+  `project.organizationId` and falls back to `clientName`
+  case-insensitive match for projects filed under a free-text client
+  string.
+
+### Why this kept biting
+
+These were both stale wires from the original NorthbridgeTax CPA fork — the
+backend and the schema got reshaped during the rebrand but a handful
+of UI components retained the old domain model. Symptoms were quiet:
+empty filter dropdowns, type filters that found nothing, and tasks
+created via the UI silently coercing on save. The "kanban can't sort
+by clients or projects" report was the first time these surfaced.
+
 ## [1.6.12] — 2026-04-30
 
 ### Fixed (P1)

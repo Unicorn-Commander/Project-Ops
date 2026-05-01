@@ -54,12 +54,18 @@ export interface TaskComment {
   };
 }
 
+// Mirrors backend Prisma enum TaskType. Stale tax-domain values
+// (DOCUMENT_REQUEST / IRS_CALL / FILING / QUESTION) carried over from the
+// NorthbridgeTax CPA fork were wired into the kanban, modals, and task cards
+// but no longer match the backend — every "filter by type" was returning
+// zero hits. v1.6.13 brought these back in sync.
 export enum TaskType {
-  DOCUMENT_REQUEST = 'DOCUMENT_REQUEST',
-  QUESTION = 'QUESTION',
-  IRS_CALL = 'IRS_CALL',
+  TASK = 'TASK',
+  MILESTONE = 'MILESTONE',
+  DELIVERABLE = 'DELIVERABLE',
   REVIEW = 'REVIEW',
-  FILING = 'FILING',
+  MEETING = 'MEETING',
+  RESEARCH = 'RESEARCH',
   OTHER = 'OTHER',
 }
 

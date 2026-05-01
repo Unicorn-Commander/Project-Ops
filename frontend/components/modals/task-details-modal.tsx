@@ -26,6 +26,7 @@ import {
   addTaskComment,
   assignTask,
 } from "@/lib/tasks-api";
+import { taskTypeIcon } from "@/lib/task-types";
 import {
   X,
   Loader2,
@@ -33,11 +34,6 @@ import {
   Trash2,
   CheckCircle,
   FileText,
-  HelpCircle,
-  Phone,
-  Eye,
-  Upload,
-  CheckSquare,
   User,
   Calendar,
   Clock,
@@ -249,17 +245,8 @@ export function TaskDetailsModal({
   const getStatusColor = (status: TaskStatus) => statusBadgeClass(status);
   const getPriorityColor = (priority: TaskPriority) => priorityBadgeClass(priority);
 
-  const getTypeIcon = (type: TaskType) => {
-    const icons: Record<TaskType, React.ReactElement> = {
-      [TaskType.DOCUMENT_REQUEST]: <FileText className="h-5 w-5" />,
-      [TaskType.QUESTION]: <HelpCircle className="h-5 w-5" />,
-      [TaskType.IRS_CALL]: <Phone className="h-5 w-5" />,
-      [TaskType.REVIEW]: <Eye className="h-5 w-5" />,
-      [TaskType.FILING]: <Upload className="h-5 w-5" />,
-      [TaskType.OTHER]: <CheckSquare className="h-5 w-5" />,
-    };
-    return icons[type];
-  };
+  // Centralised in lib/task-types.tsx (v1.6.13).
+  const getTypeIcon = (type: TaskType) => taskTypeIcon(type);
 
   return (
     <div
