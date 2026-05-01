@@ -5,6 +5,34 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.18] — 2026-05-01
+
+### Changed (Hive-style colour deepening)
+
+After actually looking at the Hive reference shots Aaron pointed at,
+the v1.6.16 per-project colour treatment was right in concept but
+under-saturated in execution. Two missing pieces:
+
+- **Subtle full-card colour wash** — Hive tints every row of a
+  project's cards with a very faint background (~4–7% opacity) so the
+  whole card reads as "this is a P-00014 card", not just a thin
+  stripe. Added `cardWash` token to the `projectColorClasses` palette
+  and applied to kanban cards, the projects list, and Recent Projects
+  on the dashboard. Mounted *over* the dark/vibrant card token so
+  text contrast stays clean.
+- **Solid-fill status pills** — Hive's status column is a
+  saturated coloured block with white text ("Completed" = solid
+  emerald, "In Progress" = solid amber). New `statusSolidClass()`
+  helper in `lib/badge-styles.ts` plus `STATUS_SOLID` map. Kanban
+  cards now show the task status as a solid pill next to the project
+  number chip.
+
+The kanban now reads as a multicolour painted board: every card has a
+left-stripe + faint full-card wash matching its project, plus a hard
+status block. Combined with the Vibrant theme that's the closest match
+to the Hive look the codebase can carry without a full table-view
+rewrite.
+
 ## [1.6.17] — 2026-05-01
 
 ### Fixed (P1 — every POST/PATCH 500'd, all MCP write tools silently broken)

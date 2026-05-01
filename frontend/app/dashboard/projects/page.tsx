@@ -274,7 +274,7 @@ export default function ProjectsPage() {
         {filteredProjects.map((projectItem) => {
           const pc = projectColorClasses(projectItem.id);
           return (
-          <Card key={projectItem.id} className={`p-6 hover:shadow-md transition-shadow border-l-4 ${pc.borderLeft}`}>
+          <Card key={projectItem.id} className={`p-6 hover:shadow-md transition-shadow border-l-4 ${pc.borderLeft} ${pc.cardWash}`}>
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 mb-3 flex-wrap">

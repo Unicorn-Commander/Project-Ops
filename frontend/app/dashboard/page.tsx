@@ -367,7 +367,7 @@ export default function DashboardPage() {
                 return (
                 <div
                   key={projectItem.id}
-                  className={`group flex items-center justify-between gap-4 p-4 border rounded-lg cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md hover:bg-card border-l-4 ${pc.borderLeft}`}
+                  className={`group flex items-center justify-between gap-4 p-4 border rounded-lg cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md hover:bg-card border-l-4 ${pc.borderLeft} ${pc.cardWash}`}
                   onClick={() => router.push(`/dashboard/projects/${projectItem.id}`)}
                 >
                   <div className="flex-1 min-w-0">

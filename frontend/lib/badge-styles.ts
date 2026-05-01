@@ -39,6 +39,22 @@ const STATUS_TONE: Record<string, string> = {
   WAITING_FOR_CLIENT:  "bg-violet-500/15 text-violet-700 dark:text-violet-300",
 };
 
+// Hive-style solid-fill status pills — saturated coloured block with white
+// text. Used in the kanban (where the status reads as a hard signal) so the
+// Hive "painted board" look comes through.
+const STATUS_SOLID: Record<string, string> = {
+  NEW:                 "bg-blue-500    text-white",
+  IN_PROGRESS:         "bg-amber-500   text-white",
+  UNDER_REVIEW:        "bg-violet-500  text-white",
+  COMPLETED:           "bg-emerald-500 text-white",
+  ON_HOLD:             "bg-orange-500  text-white",
+  ARCHIVED:            "bg-zinc-500    text-white",
+  PENDING:             "bg-blue-500    text-white",
+  BLOCKED:             "bg-rose-500    text-white",
+  CANCELLED:           "bg-zinc-500    text-white",
+  WAITING_FOR_CLIENT:  "bg-violet-500  text-white",
+};
+
 const PRIORITY_TONE: Record<string, string> = {
   LOW:    "text-zinc-500   dark:text-zinc-400",
   MEDIUM: "text-blue-600   dark:text-blue-400",
@@ -90,6 +106,15 @@ const ZINC_FALLBACK = "bg-zinc-500/15 text-zinc-700 dark:text-zinc-300";
  */
 export function statusBadgeClass(status: string): string {
   return STATUS_TONE[status] ?? ZINC_FALLBACK;
+}
+
+/**
+ * Hive-style solid-fill status pill — saturated colour with white text.
+ * Use where the status needs to read as a hard signal (kanban cards),
+ * not where it's incidental (dashboard tables).
+ */
+export function statusSolidClass(status: string): string {
+  return STATUS_SOLID[status] ?? "bg-zinc-500 text-white";
 }
 
 /**

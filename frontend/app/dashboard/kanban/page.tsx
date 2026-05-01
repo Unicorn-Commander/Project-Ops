@@ -48,6 +48,7 @@ import {
 import { TASK_TYPES, taskTypeIcon } from '@/lib/task-types';
 import type { Organization } from '@/lib/organizations-api';
 import { projectColorClasses } from '@/lib/project-colors';
+import { statusSolidClass } from '@/lib/badge-styles';
 import { TaskDetailsModal } from '@/components/modals/task-details-modal';
 import { CreateTaskModal } from '@/components/modals/create-task-modal';
 import { EditTaskModal } from '@/components/modals/edit-task-modal';
@@ -151,7 +152,7 @@ function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
       <Card
         className={`p-3 transition-all hover:shadow-md cursor-pointer border-l-4 ${
           isOverdue ? 'border-l-rose-500' : projectColor.borderLeft
-        } ${
+        } ${projectColor.cardWash} ${
           isDragging || isDraggingState ? 'shadow-lg opacity-80' : ''
         }`}
       >
@@ -167,12 +168,18 @@ function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
           </div>
 
           <div className="text-xs text-muted-foreground mb-2">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <span
                 className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11px] ${projectColor.badgeBg} ${projectColor.badgeText}`}
               >
                 <span className={`inline-block h-1.5 w-1.5 rounded-full ${projectColor.dot}`} />
                 {task.project?.projectNumber}
+              </span>
+              {/* Hive-style solid status pill — saturated colour with white text */}
+              <span
+                className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusSolidClass(task.status)}`}
+              >
+                {task.status.replace(/_/g, ' ')}
               </span>
               <span className="truncate">{task.project?.title}</span>
             </div>
