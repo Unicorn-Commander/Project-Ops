@@ -5,6 +5,35 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.26] — 2026-05-01
+
+### Added (Contacts page polish)
+
+- **Summary stats** at the top of `/dashboard/contacts` — Total /
+  Active / With organization / Portal access. Same coloured-stripe +
+  wash treatment the dashboard stat cards use. Computed client-side
+  from the loaded contacts.
+- **Per-org colour treatment on contact rows.** Contact linked to an
+  organization → row picks up that org's hue (4px left stripe + faint
+  `cardWash`), and the company column renders the org as a
+  chip-with-dot pill in the matching colour. Visual link from
+  contact → org → projects.
+- **Inline `mailto:` + `tel:` actions.** Email + phone columns are
+  now real anchors with hover affordance + `e.stopPropagation()` so
+  the row click doesn't fire when tapped. Turns the contact list
+  from a static read into a launcher.
+
+## [1.6.25] — 2026-05-01
+
+### Fixed
+
+- **Compose forward of `PROJECT_OPS_ACCESS_LIST`.** v1.6.24 set the
+  env var in the bigboy `.env` but never wired it through the
+  docker-compose `environment:` block, so the backend started with
+  the legacy fallback (visible in boot log as `PROJECT_OPS_ACCESS_LIST
+  not set`). One-line compose addition. Now: `SSO access list: 3
+  rules (source: env:PROJECT_OPS_ACCESS_LIST)`.
+
 ## [1.6.24] — 2026-05-01
 
 ### Added (SSO access gate)
