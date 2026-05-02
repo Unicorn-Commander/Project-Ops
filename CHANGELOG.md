@@ -5,6 +5,50 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.31] — 2026-05-01
+
+### Added (list views — sort, filter, active-chip toolbar)
+
+Every list page (Projects first; Tasks/Contacts/Orgs/Documents/Users
+follow in v1.6.32–34) was missing **sort** entirely and only had ad-hoc
+filter controls (a native `<select>` here, a click-the-stat-card filter
+there). Added a reusable toolbar that gives every list the same
+modern UX:
+
+- **`<ListToolbar>`** (`components/ui/list-toolbar.tsx`) — composable
+  search + filter dropdowns + sort dropdown, plus a row of
+  active-filter chips with one-click removal and a Clear-all link.
+  Active filters get a tinted primary trigger so it's obvious at a
+  glance which controls are doing something.
+- **`lib/list-controls.ts`** — `compareValues()` (null-safe, locale-
+  aware, date/number/string-aware), `priorityRank()` /
+  `statusRank()` for enum sorting, `withinDateRange()` + the
+  `DateRangePreset` set (Today / 7d / 30d / 90d / 365d / All).
+
+### Changed (Projects page consumes the toolbar)
+
+- `/dashboard/projects` now exposes:
+  - **Status** filter (in addition to the stat-card click pattern)
+  - **Priority** filter (Urgent / High / Medium / Low — coloured dots
+    in menu)
+  - **Assignee** filter — derived from whatever assignees are present
+    on loaded projects (no extra `/users` round-trip)
+  - **Created** date range filter
+  - **Sort by** Newest / Oldest / Recently updated / Due soon /
+    Priority / Title / Project number
+- Active-filter chip row appears below the toolbar when any filter is
+  set; each chip removes its own filter on click, plus a Clear-all link.
+- Result count line ("12 of 27 projects match") replaces the silent
+  filtered-count behaviour.
+- The dated `<select>` priority dropdown + dead "Filters" button are
+  gone.
+
+### Notes
+
+- Backend version bumped in lockstep; no backend code changes.
+- The same toolbar is wired up across Tasks / Contacts / Orgs /
+  Documents / Users in v1.6.32–34 so the UX is consistent everywhere.
+
 ## [1.6.30] — 2026-04-30
 
 ### Changed (Settings + Documents polish)

@@ -27,11 +27,17 @@ import {
   paymentStatusBadgeClass,
 } from "@/lib/badge-styles";
 import { projectColorClasses } from "@/lib/project-colors";
+import { ListToolbar, FilterOption } from "@/components/ui/list-toolbar";
+import {
+  compareValues,
+  priorityRank,
+  withinDateRange,
+  DateRangePreset,
+  DATE_RANGE_OPTIONS,
+} from "@/lib/list-controls";
 import { format } from "date-fns";
 import {
   FileText,
-  Search,
-  Filter,
   Plus,
   Calendar,
   User,
@@ -41,6 +47,13 @@ import {
   Trash2,
   DollarSign,
 } from "lucide-react";
+
+interface ProjectUser {
+  id: string;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+}
 
 interface Project {
   id: string;
@@ -54,12 +67,42 @@ interface Project {
   priority: string;
   dueDate: string | null;
   assignedToId: string | null;
+  assignedTo?: ProjectUser | null;
   createdAt: string;
+  updatedAt?: string;
   invoiceNumber?: string | null;
   billingAmount?: number | null;
   amountPaid?: number | null;
   paymentStatus?: string | null;
 }
+
+const STATUS_OPTIONS: FilterOption[] = [
+  { value: "ALL", label: "All statuses" },
+  { value: "NEW", label: "New", dot: "bg-blue-500" },
+  { value: "IN_PROGRESS", label: "In progress", dot: "bg-amber-500" },
+  { value: "UNDER_REVIEW", label: "Under review", dot: "bg-violet-500" },
+  { value: "COMPLETED", label: "Completed", dot: "bg-emerald-500" },
+  { value: "ON_HOLD", label: "On hold", dot: "bg-zinc-500" },
+  { value: "CANCELLED", label: "Cancelled", dot: "bg-rose-500" },
+];
+
+const PRIORITY_OPTIONS: FilterOption[] = [
+  { value: "ALL", label: "All priorities" },
+  { value: "URGENT", label: "Urgent", dot: "bg-rose-500" },
+  { value: "HIGH", label: "High", dot: "bg-orange-500" },
+  { value: "MEDIUM", label: "Medium", dot: "bg-amber-500" },
+  { value: "LOW", label: "Low", dot: "bg-emerald-500" },
+];
+
+const SORT_OPTIONS = [
+  { value: "createdAt-desc", label: "Newest first" },
+  { value: "createdAt-asc", label: "Oldest first" },
+  { value: "updatedAt-desc", label: "Recently updated" },
+  { value: "dueDate-asc", label: "Due soon" },
+  { value: "priority-desc", label: "Priority (highest)" },
+  { value: "title-asc", label: "Title A–Z" },
+  { value: "projectNumber-asc", label: "Project number" },
+];
 
 export default function ProjectsPage() {
   const router = useRouter();
@@ -68,6 +111,9 @@ export default function ProjectsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [filterPriority, setFilterPriority] = useState("ALL");
+  const [filterAssignee, setFilterAssignee] = useState("ALL");
+  const [filterCreatedRange, setFilterCreatedRange] = useState<DateRangePreset | "ALL">("ALL");
+  const [sortBy, setSortBy] = useState("createdAt-desc");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -165,15 +211,57 @@ export default function ProjectsPage() {
   const getPriorityColor = priorityTextClass;
   const getPaymentStatusColor = paymentStatusBadgeClass;
 
-  const filteredProjects = projects.filter((c) => {
-    const matchesSearch =
-      c.projectNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.clientName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === "ALL" || c.status === filterStatus;
-    const matchesPriority = filterPriority === "ALL" || c.priority === filterPriority;
-    return matchesSearch && matchesStatus && matchesPriority;
-  });
+  // Build the assignee filter options from whatever's actually present on
+  // the loaded projects — keeps the dropdown narrow + meaningful without
+  // a separate /users round-trip.
+  const assigneeOptions: FilterOption[] = (() => {
+    const seen = new Map<string, string>();
+    seen.set("UNASSIGNED", "Unassigned");
+    projects.forEach((p) => {
+      if (p.assignedTo && p.assignedTo.id) {
+        const name = p.assignedTo.firstName && p.assignedTo.lastName
+          ? `${p.assignedTo.firstName} ${p.assignedTo.lastName}`
+          : (p.assignedTo.email ?? p.assignedTo.id);
+        seen.set(p.assignedTo.id, name);
+      } else if (p.assignedToId) {
+        seen.set(p.assignedToId, p.assignedToId.slice(0, 8));
+      }
+    });
+    return [
+      { value: "ALL", label: "Any assignee" },
+      ...Array.from(seen.entries()).map(([value, label]) => ({ value, label })),
+    ];
+  })();
+
+  const filteredProjects = projects
+    .filter((c) => {
+      const matchesSearch =
+        searchTerm === "" ||
+        c.projectNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.clientName ?? "").toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = filterStatus === "ALL" || c.status === filterStatus;
+      const matchesPriority = filterPriority === "ALL" || c.priority === filterPriority;
+      const matchesAssignee =
+        filterAssignee === "ALL" ||
+        (filterAssignee === "UNASSIGNED" ? !c.assignedToId : c.assignedToId === filterAssignee);
+      const matchesCreated =
+        filterCreatedRange === "ALL" ||
+        withinDateRange(c.createdAt, filterCreatedRange as DateRangePreset);
+      return matchesSearch && matchesStatus && matchesPriority && matchesAssignee && matchesCreated;
+    })
+    .sort((a, b) => {
+      const [field, dir] = sortBy.split("-") as [string, "asc" | "desc"];
+      if (field === "priority") return (priorityRank(b.priority) - priorityRank(a.priority)) * (dir === "desc" ? 1 : -1);
+      const av = (a as any)[field];
+      const bv = (b as any)[field];
+      return compareValues(av, bv, dir);
+    });
+
+  const dateRangeOptions: FilterOption[] = DATE_RANGE_OPTIONS.map((o) => ({
+    value: o.value,
+    label: o.label,
+  }));
 
   const statusCounts = {
     ALL: projects.length,
@@ -240,34 +328,59 @@ export default function ProjectsPage() {
         ))}
       </div>
 
-      {/* Search and Filter */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search projects..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full rounded-md border border-input bg-background pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
-        <select
-          value={filterPriority}
-          onChange={(e) => setFilterPriority(e.target.value)}
-          className="px-4 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-        >
-          <option value="ALL">All Priorities</option>
-          <option value="LOW">Low</option>
-          <option value="MEDIUM">Medium</option>
-          <option value="HIGH">High</option>
-          <option value="URGENT">Urgent</option>
-        </select>
-        <Button variant="outline">
-          <Filter className="mr-2 h-4 w-4" />
-          Filters
-        </Button>
-      </div>
+      {/* Toolbar — search + multi-filter + sort + active-chip row.
+          Status filter still lives on the stat cards above for the
+          big-button glance pattern, but it's also reachable here. */}
+      <ListToolbar
+        search={{
+          value: searchTerm,
+          onChange: setSearchTerm,
+          placeholder: "Search by project number, title, or client…",
+        }}
+        filters={[
+          {
+            key: "status",
+            label: "Status",
+            value: filterStatus,
+            onChange: setFilterStatus,
+            options: STATUS_OPTIONS,
+          },
+          {
+            key: "priority",
+            label: "Priority",
+            value: filterPriority,
+            onChange: setFilterPriority,
+            options: PRIORITY_OPTIONS,
+          },
+          {
+            key: "assignee",
+            label: "Assignee",
+            value: filterAssignee,
+            onChange: setFilterAssignee,
+            options: assigneeOptions,
+            hidden: assigneeOptions.length <= 2, // just "Any" + "Unassigned"
+          },
+          {
+            key: "createdRange",
+            label: "Created",
+            value: filterCreatedRange,
+            onChange: (v) => setFilterCreatedRange(v as DateRangePreset),
+            options: dateRangeOptions,
+          },
+        ]}
+        sort={{
+          value: sortBy,
+          onChange: setSortBy,
+          options: SORT_OPTIONS,
+        }}
+      />
+
+      {/* Result count line — quiet, but useful when filters are active. */}
+      <p className="text-xs text-muted-foreground">
+        {filteredProjects.length === projects.length
+          ? `${projects.length} project${projects.length === 1 ? "" : "s"}`
+          : `${filteredProjects.length} of ${projects.length} projects match`}
+      </p>
 
       {/* Projects Grid */}
       <div className="grid gap-4">
