@@ -63,6 +63,7 @@ interface Document {
 
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [totalAvailable, setTotalAvailable] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("ALL");
@@ -80,8 +81,9 @@ export default function DocumentsPage() {
 
   const fetchDocuments = async () => {
     try {
-      const response = await api.get("/documents?page=1&limit=100");
+      const response = await api.get("/documents?page=1&limit=500");
       setDocuments(response.data.data || []);
+      setTotalAvailable(response.data.meta?.total ?? response.data.data?.length ?? 0);
       setLoading(false);
     } catch (error) {
       console.error("Error fetching documents:", error);
@@ -361,6 +363,11 @@ export default function DocumentsPage() {
         {filteredDocuments.length === documents.length
           ? `${documents.length} document${documents.length === 1 ? "" : "s"}`
           : `${filteredDocuments.length} of ${documents.length} documents match`}
+        {totalAvailable > documents.length && (
+          <span className="ml-2 text-amber-600 dark:text-amber-400">
+            · Showing first {documents.length} of {totalAvailable}. Refine filters to narrow further.
+          </span>
+        )}
       </p>
 
       {/* Documents List */}

@@ -52,6 +52,7 @@ interface User {
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
+  const [totalAvailable, setTotalAvailable] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState("ALL");
@@ -68,8 +69,9 @@ export default function UsersPage() {
 
   const fetchUsers = async () => {
     try {
-      const response = await api.get("/users?page=1&limit=100");
+      const response = await api.get("/users?page=1&limit=500");
       setUsers(response.data.data || []);
+      setTotalAvailable(response.data.meta?.total ?? response.data.data?.length ?? 0);
       setLoading(false);
     } catch (error) {
       // Error handling - always show errors
@@ -250,6 +252,11 @@ export default function UsersPage() {
         {filteredUsers.length === users.length
           ? `${users.length} user${users.length === 1 ? "" : "s"}`
           : `${filteredUsers.length} of ${users.length} users match`}
+        {totalAvailable > users.length && (
+          <span className="ml-2 text-amber-600 dark:text-amber-400">
+            · Showing first {users.length} of {totalAvailable}. Refine filters to narrow further.
+          </span>
+        )}
       </p>
 
       {/* Users Table */}

@@ -108,6 +108,7 @@ export default function ProjectsPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [totalAvailable, setTotalAvailable] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [filterPriority, setFilterPriority] = useState("ALL");
@@ -152,8 +153,9 @@ export default function ProjectsPage() {
 
   const fetchProjects = async () => {
     try {
-      const response = await api.get("/projects?page=1&limit=100");
+      const response = await api.get("/projects?page=1&limit=500");
       setProjects(response.data.data || []);
+      setTotalAvailable(response.data.meta?.total ?? response.data.data?.length ?? 0);
       setLoading(false);
     } catch (error) {
       // Error handling - always show errors
@@ -392,6 +394,11 @@ export default function ProjectsPage() {
         {filteredProjects.length === projects.length
           ? `${projects.length} project${projects.length === 1 ? "" : "s"}`
           : `${filteredProjects.length} of ${projects.length} projects match`}
+        {totalAvailable > projects.length && (
+          <span className="ml-2 text-amber-600 dark:text-amber-400">
+            · Showing first {projects.length} of {totalAvailable}. Refine filters to narrow further.
+          </span>
+        )}
       </p>
 
       {/* Projects Grid */}

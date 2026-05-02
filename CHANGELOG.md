@@ -5,6 +5,23 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.38] — 2026-05-02
+
+### Changed (list pages stop silently truncating)
+
+The Projects / My Tasks / Documents / Users list pages were fetching
+`?limit=100` and rendering whatever came back, with no indication that
+more rows might exist beyond the cutoff. Bumped the limit to 500 and
+surfaced the API's `meta.total` so the user can see when they're
+hitting the wall:
+
+- New amber line: "Showing first 500 of 1,217. Refine filters to
+  narrow further." appears beneath the result count when the total
+  exceeds what's loaded.
+- 500 is the new ceiling for now — proper paging (cursor or page
+  buttons) is a follow-up. For 99% of teams, 500 is plenty headroom
+  without performance pain.
+
 ## [1.6.37] — 2026-05-02
 
 ### Added (Cmd+K command palette)

@@ -99,7 +99,7 @@ export default function MyTasksPage() {
   const fetchTasks = async () => {
     setLoading(true);
     try {
-      const params: any = { take: 100 };
+      const params: any = { take: 500 };
       if (filterStatus !== "ALL") {
         params.status = filterStatus;
       }
