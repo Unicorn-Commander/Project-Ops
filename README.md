@@ -25,6 +25,16 @@ Changelog: [`CHANGELOG.md`](CHANGELOG.md)
 - **Cmd/Ctrl+K palette** — global jump surface. Search projects, tasks,
   contacts, organisations + quick actions (New project / task /
   contact). Keyboard-first: ↑↓ navigate, ↵ select, Esc close.
+- **Bulk actions** — multi-select on every list page; floating action
+  bar with Set Status / Activate / Deactivate / Delete depending on
+  the entity. Selected rows tint primary so the selection stays
+  visible during scroll.
+- **Saved views** — filter + sort presets per list page, persisted in
+  localStorage. Built-in starting points ship per page; Save current
+  view captures whatever filters are active.
+- **Per-org / per-contact snapshot** — Active / Completed / Billed /
+  Outstanding stats + project status donut + priority bar at the top
+  of each org and contact detail page.
 - **Organizations & contacts** — real CRM with parent/child org hierarchy and per-org rollups.
 - **Billing** — invoice number, amount, payment status, due/paid dates, billing notes — on the project itself.
 - **Client portal** — `CLIENT` role users see only their own organization's projects + shared documents.
