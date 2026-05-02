@@ -5,6 +5,26 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.39] — 2026-05-02
+
+### Added (inline task status edit)
+
+Task cards on My Tasks (and anywhere else `<TaskList>` is rendered)
+now expose a `<TaskStatusUpdate>` dropdown in place of the static
+status pill. Click the pill, pick a new status, the task moves
+without opening the edit modal — same UX the projects list shipped
+with the StatusUpdate component on the project rows. Stops
+propagation so the row's open-modal click doesn't fire while you're
+choosing a status.
+
+### Fixed (README phantom env var)
+
+Removed reference to `INITIAL_ADMIN_EMAILS` — that variable doesn't
+exist in code; the actual fallback when `PROJECT_OPS_ACCESS_LIST` is
+unset is a hardcoded two-entry allowlist (Aaron + Shafen as ADMIN)
+defined in `backend/src/auth/access-list.ts`. README now describes
+the real behaviour.
+
 ## [1.6.38] — 2026-05-02
 
 ### Changed (list pages stop silently truncating)

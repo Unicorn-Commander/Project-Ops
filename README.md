@@ -153,9 +153,9 @@ PROJECT_OPS_ACCESS_LIST="aaron@magicunicorn.tech:ADMIN, *@magicunicorn.tech:STAF
 ```
 
 Resolution: exact match → domain wildcard → deny. Without the env var
-set, only the bootstrap admins from `INITIAL_ADMIN_EMAILS` are admitted.
-This stops every `uchub` realm user from auto-creating a Project-Ops
-account on their first sign-in.
+set, the backend falls back to a hardcoded two-entry allowlist
+(Aaron + Shafen as ADMIN) so the deploy boots into a working state on
+day one. Production should always set the env var explicitly.
 
 The email + password form on the login page is retained for
 client-portal users invited via `/contacts/:id/invite` — those users

@@ -6,10 +6,12 @@ import { TaskCard } from "./task-card";
 interface TaskListProps {
   tasks: Task[];
   onTaskClick: (task: Task) => void;
+  /** Optional: called when an inline edit (e.g. status change) succeeds. */
+  onTaskChange?: () => void;
   emptyMessage?: string;
 }
 
-export function TaskList({ tasks, onTaskClick, emptyMessage = "No tasks found" }: TaskListProps) {
+export function TaskList({ tasks, onTaskClick, onTaskChange, emptyMessage = "No tasks found" }: TaskListProps) {
   if (tasks.length === 0) {
     return (
       <div className="text-center py-12">
@@ -21,7 +23,12 @@ export function TaskList({ tasks, onTaskClick, emptyMessage = "No tasks found" }
   return (
     <div className="space-y-3">
       {tasks.map((task) => (
-        <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
+        <TaskCard
+          key={task.id}
+          task={task}
+          onClick={() => onTaskClick(task)}
+          onChange={onTaskChange}
+        />
       ))}
     </div>
   );

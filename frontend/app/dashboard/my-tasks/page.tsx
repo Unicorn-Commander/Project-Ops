@@ -428,6 +428,7 @@ export default function MyTasksPage() {
           <TaskList
             tasks={filteredTasks}
             onTaskClick={handleTaskClick}
+            onTaskChange={handleRefresh}
             emptyMessage={
               searchTerm || filterStatus !== "ALL" || filterPriority !== "ALL"
                 ? "No tasks match your filters"

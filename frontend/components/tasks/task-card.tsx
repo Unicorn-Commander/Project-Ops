@@ -2,10 +2,11 @@
 
 import { Card } from "@/components/ui/card";
 import { Task, TaskStatus, TaskPriority, TaskType } from "@/lib/tasks-api";
-import { priorityTextClass, statusBadgeClass } from "@/lib/badge-styles";
+import { priorityTextClass } from "@/lib/badge-styles";
 import { projectColorClasses } from "@/lib/project-colors";
 import { Avatar } from "@/components/ui/avatar";
 import { taskTypeIcon } from "@/lib/task-types";
+import { TaskStatusUpdate } from "@/components/tasks/task-status-update";
 import {
   Clock,
   AlertTriangle,
@@ -14,9 +15,11 @@ import {
 interface TaskCardProps {
   task: Task;
   onClick: () => void;
+  /** Optional refresh hook so an inline status change re-fetches list data. */
+  onChange?: () => void;
 }
 
-export function TaskCard({ task, onClick }: TaskCardProps) {
+export function TaskCard({ task, onClick, onChange }: TaskCardProps) {
   const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== TaskStatus.COMPLETED;
   const pc = projectColorClasses(task.projectId);
 
@@ -77,10 +80,13 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
           </span>
         )}
 
-        {/* Hive-style solid status pill */}
-        <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10.5px] font-medium ${statusBadgeClass(task.status)}`}>
-          {task.status.replace(/_/g, ' ')}
-        </span>
+        {/* Inline status — click to change without opening the modal. */}
+        <TaskStatusUpdate
+          taskId={task.id}
+          currentStatus={task.status}
+          onSuccess={onChange}
+          compact
+        />
 
         {/* Priority — text-only, since the solid status pill carries the visual weight */}
         <span className={`text-xs font-semibold ${getPriorityColor(task.priority)}`}>
