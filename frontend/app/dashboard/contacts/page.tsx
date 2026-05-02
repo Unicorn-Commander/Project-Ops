@@ -82,6 +82,16 @@ export default function ContactsPage() {
     fetchContacts();
   }, [searchTerm, filterActive, skip]);
 
+  // Deep-link from Cmd+K palette: ?new=1 opens the Create Contact modal.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("new") === "1") {
+      setCreateModalOpen(true);
+      router.replace("/dashboard/contacts");
+    }
+  }, [router]);
+
   const fetchContacts = async () => {
     try {
       setLoading(true);

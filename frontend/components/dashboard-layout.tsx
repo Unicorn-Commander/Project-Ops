@@ -16,6 +16,7 @@ import {
 import { useAuthStore } from "@/lib/store";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AssistantPanel } from "@/components/assistant-panel";
+import { CommandPalette } from "@/components/command-palette";
 import { roleBadgeClass } from "@/lib/badge-styles";
 import { Avatar } from "@/components/ui/avatar";
 import {
@@ -33,6 +34,7 @@ import {
   Building2,
   CalendarRange,
   ChevronDown,
+  Search,
 } from "lucide-react";
 
 interface NavItem {
@@ -83,6 +85,26 @@ function pageTitleFor(pathname: string | null): string {
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // Cmd/Ctrl+K opens the command palette from anywhere in the dashboard.
+  // Cmd+/ toggles too — common alt-binding from other SaaS apps.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K" || e.key === "/")) {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Pretty platform-aware shortcut hint for the trigger button.
+  const cmdLabel = useMemo(() => {
+    if (typeof navigator === "undefined") return "Ctrl K";
+    return navigator.platform.toLowerCase().includes("mac") ? "⌘K" : "Ctrl K";
+  }, []);
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuthStore();
@@ -239,6 +261,29 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             {title}
           </h1>
           <div className="flex-1" />
+          {/* Cmd+K trigger — keyboard-first shortcut to jump anywhere. */}
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            className="hidden md:inline-flex items-center gap-2 rounded-md border border-border bg-background/60 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+            aria-label="Open command palette"
+          >
+            <Search className="h-3.5 w-3.5" />
+            <span>Search…</span>
+            <kbd className="ml-2 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium">
+              {cmdLabel}
+            </kbd>
+          </button>
+          {/* Mobile-only icon trigger */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="md:hidden"
+            onClick={() => setPaletteOpen(true)}
+            aria-label="Open command palette"
+          >
+            <Search className="h-5 w-5" />
+          </Button>
           <AssistantPanel />
           <ThemeToggle />
 
@@ -303,6 +348,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         {/* Page content */}
         <main className="p-4 lg:p-6">{children}</main>
       </div>
+
+      {/* Cmd+K palette — mounted once at root so it's reachable from any page. */}
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </div>
   );
 }

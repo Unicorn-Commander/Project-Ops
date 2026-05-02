@@ -128,6 +128,18 @@ export default function ProjectsPage() {
     fetchUserRole();
   }, []);
 
+  // Cmd+K palette can deep-link to the New Project modal via ?new=1.
+  // Reading window.location.search (instead of useSearchParams) avoids the
+  // Next.js Suspense-boundary requirement for prerendered routes.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("new") === "1") {
+      setCreateModalOpen(true);
+      router.replace("/dashboard/projects");
+    }
+  }, [router]);
+
   const fetchUserRole = () => {
     if (typeof window !== "undefined") {
       const user = localStorage.getItem("user");

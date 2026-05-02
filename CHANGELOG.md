@@ -5,6 +5,33 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.37] — 2026-05-02
+
+### Added (Cmd+K command palette)
+
+Global keyboard-first jump surface for the dashboard.
+
+- **`<CommandPalette>`** (`components/command-palette.tsx`) — modal
+  dialog with a search input + filterable result list grouped by
+  type (Projects / Tasks / Contacts / Organisations / Actions).
+- **Keyboard shortcut**: `Cmd/Ctrl+K` (or `Cmd/Ctrl+/`) toggles the
+  palette from any dashboard route.
+- **Topbar trigger**: a "Search… ⌘K" button sits left of the
+  assistant + theme toggle so the shortcut is discoverable; mobile
+  shows just the search icon.
+- **Quick actions**: New project / New task / New contact +
+  Schedule / Kanban quick-jumps. Empty-query state shows actions
+  first then top 5 projects.
+- **Search** is client-side and incremental against pre-loaded
+  data (one round-trip per type, on first open). Arrow keys
+  navigate, Enter selects, Esc closes.
+- **Deep-link from palette**: New-X actions push `?new=1` and the
+  target list page reads it on mount, opens the create modal, then
+  cleans the URL via `router.replace`.
+
+Footer of the palette shows the navigation hints (↑↓ navigate, ↵
+select, Esc close) plus the live result count.
+
 ## [1.6.36] — 2026-05-01
 
 ### Added (drag-to-reschedule on the Gantt)

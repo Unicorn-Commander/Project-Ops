@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
@@ -54,6 +55,7 @@ const SORT_OPTIONS = [
 ];
 
 export default function MyTasksPage() {
+  const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [overdueTasks, setOverdueTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +85,16 @@ export default function MyTasksPage() {
     fetchTasks();
     fetchOverdueTasks();
   }, [filterStatus]);
+
+  // Deep-link from Cmd+K palette: ?new=1 opens the Create Task modal.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("new") === "1") {
+      setIsCreateModalOpen(true);
+      router.replace("/dashboard/my-tasks");
+    }
+  }, [router]);
 
   const fetchTasks = async () => {
     setLoading(true);
