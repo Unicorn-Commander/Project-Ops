@@ -149,8 +149,10 @@ services:
         condition: service_healthy
       project-ops-redis:
         condition: service_healthy
-      project-ops-minio:
-        condition: service_healthy
+      # Object storage dependency intentionally absent — the backend uses
+      # the shared `unicorn-garage` (Garage S3) container which lives in
+      # its own compose stack. The MINIO_* env vars below are pointed at
+      # that hostname; storage-config cleanup is tracked separately.
     volumes:
       - ../../backend/logs:/app/logs
       - ../../backend/uploads:/app/uploads
