@@ -37,7 +37,8 @@ import {
 import api from "@/lib/api";
 import { projectColorClasses } from "@/lib/project-colors";
 import { getRecent } from "@/lib/recently-visited";
-import { Clock } from "lucide-react";
+import { useStarred } from "@/lib/starred";
+import { Clock, Star as StarIcon } from "lucide-react";
 
 interface PaletteResult {
   id: string;
@@ -76,6 +77,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const [tasks, setTasks] = useState<PaletteResult[]>([]);
   const [contacts, setContacts] = useState<PaletteResult[]>([]);
   const [organizations, setOrganizations] = useState<PaletteResult[]>([]);
+  const { starred } = useStarred();
 
   // Quick actions — always available, weight them after data when query
   // is non-empty so a bare-name search doesn't hide a real project.
@@ -243,9 +245,19 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     const actionsHits = quickActions.filter(matches);
 
     if (q === "") {
-      // Empty query: surface the user's recently visited entities first
-      // (a one-keystroke jump back to "where I was"), then quick actions
-      // and a tail of the alphabetical project list.
+      // Empty query: Starred first (explicit pick), then Recent
+      // (implicit jump-back), then Quick actions, then alphabetical
+      // tail. Ordering matches user intent: "show me what I asked for,
+      // then where I was, then what I can do."
+      const starredItems: PaletteResult[] = projects
+        .filter((p) => {
+          // p.id is "project-<uuid>"; the actual project id is the
+          // suffix used by the starred set.
+          const pid = p.id.replace(/^project-/, "");
+          return starred.has(pid);
+        })
+        .slice(0, 8)
+        .map((p) => ({ ...p, id: `starred-${p.id}`, Icon: StarIcon, tone: "text-amber-500" }));
       const recent: PaletteResult[] = getRecent(undefined, 6).map((r) => ({
         id: `recent-${r.type}-${r.id}`,
         type: r.type as PaletteResult["type"],
@@ -257,6 +269,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         match: [r.title ?? "", r.subtitle ?? ""],
       }));
       return [
+        ...(starredItems.length > 0 ? [{ label: "Starred", items: starredItems }] : []),
         ...(recent.length > 0 ? [{ label: "Recent", items: recent }] : []),
         { label: "Quick actions", items: actionsHits },
         { label: "Projects", items: projectsHits.slice(0, 5) },

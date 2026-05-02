@@ -5,6 +5,25 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.47] — 2026-05-02
+
+### Added (Star/favorite projects)
+
+Each project on the Projects list grew a star button next to its
+project number. Click to flag that project as starred — local-only,
+per-browser. Starred projects surface in the Cmd+K palette under a
+new **Starred** section above Recent.
+
+- `lib/starred.ts` — module-level set + React hook
+  (`useStarred()`) backed by localStorage
+  (`projectops:starred:projects`).
+- Star icon stays in sync across components on the same page via a
+  custom `projectops:starred-changed` event.
+- Cross-tab sync via the standard `storage` event.
+
+Cross-device sync would require a backend table — filed for the
+next session if anyone asks.
+
 ## [1.6.46] — 2026-05-02
 
 ### Added (Recently visited surface in Cmd+K)

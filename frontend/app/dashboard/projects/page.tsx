@@ -44,7 +44,9 @@ import {
   Trash2 as TrashIcon,
   CheckSquare as CheckSquareIcon,
   Square as SquareIcon,
+  Star as StarIcon,
 } from "lucide-react";
+import { useStarred } from "@/lib/starred";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -129,6 +131,7 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [totalAvailable, setTotalAvailable] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const { starred, toggle: toggleStar } = useStarred();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [filterPriority, setFilterPriority] = useState("ALL");
@@ -535,6 +538,27 @@ export default function ProjectsPage() {
               </button>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 mb-3 flex-wrap">
+                  {/* Star — local-only favorite (v1.6.47). Surfaces in
+                      the Cmd+K palette as a Starred section. */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleStar(projectItem.id);
+                    }}
+                    className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded hover:bg-muted/60 transition-colors"
+                    aria-label={starred.has(projectItem.id) ? "Unstar project" : "Star project"}
+                    title={starred.has(projectItem.id) ? "Unstar" : "Star"}
+                  >
+                    <StarIcon
+                      className={`h-4 w-4 ${
+                        starred.has(projectItem.id)
+                          ? "fill-amber-400 text-amber-500 dark:text-amber-400"
+                          : "text-muted-foreground/50 hover:text-muted-foreground"
+                      }`}
+                      strokeWidth={1.75}
+                    />
+                  </button>
                   <span className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 font-mono text-xs font-medium ${pc.badgeBg} ${pc.badgeText}`}>
                     <span className={`inline-block h-1.5 w-1.5 rounded-full ${pc.dot}`} />
                     {projectItem.projectNumber}
