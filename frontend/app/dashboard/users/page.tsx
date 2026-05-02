@@ -15,7 +15,8 @@ import { Avatar } from "@/components/ui/avatar";
 import { ListToolbar, FilterOption } from "@/components/ui/list-toolbar";
 import { compareValues } from "@/lib/list-controls";
 import { BulkActionBar, BulkActionButton, useBulkRunner } from "@/components/ui/bulk-action-bar";
-import { CheckSquare as CheckSquareIcon, ToggleLeft, ToggleRight } from "lucide-react";
+import { CheckSquare as CheckSquareIcon, ToggleLeft, ToggleRight, Download as DownloadIcon } from "lucide-react";
+import { downloadCsv, csvFilename } from "@/lib/csv-export";
 
 const ROLE_OPTIONS: FilterOption[] = [
   { value: "ALL", label: "All roles" },
@@ -185,13 +186,38 @@ export default function UsersPage() {
             Manage users, roles, and permissions
           </p>
         </div>
-        <Button
-          className="bg-primary hover:bg-primary/90"
-          onClick={() => setIsCreateModalOpen(true)}
-        >
-          <UserPlus className="mr-2 h-4 w-4" />
-          Add User
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              const rows: Array<Array<unknown>> = [
+                ["First Name", "Last Name", "Email", "Username", "Role", "Active", "Last Login", "Created"],
+                ...filteredUsers.map((u) => [
+                  u.firstName ?? "",
+                  u.lastName ?? "",
+                  u.email ?? "",
+                  u.username ?? "",
+                  u.role ?? "",
+                  u.isActive ? "Yes" : "No",
+                  u.lastLoginAt ? new Date(u.lastLoginAt).toISOString().slice(0, 10) : "",
+                  u.createdAt ? new Date(u.createdAt).toISOString().slice(0, 10) : "",
+                ]),
+              ];
+              downloadCsv(csvFilename("users"), rows);
+            }}
+            disabled={filteredUsers.length === 0}
+          >
+            <DownloadIcon className="mr-2 h-4 w-4" />
+            Export CSV
+          </Button>
+          <Button
+            className="bg-primary hover:bg-primary/90"
+            onClick={() => setIsCreateModalOpen(true)}
+          >
+            <UserPlus className="mr-2 h-4 w-4" />
+            Add User
+          </Button>
+        </div>
       </div>
 
       {/* SSO model explainer — Project-Ops federates identity to the

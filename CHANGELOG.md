@@ -5,6 +5,18 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.49] — 2026-05-02
+
+### Added (CSV export on My Tasks + Users)
+
+- **My Tasks** — Title / Project / Status / Priority / Type / Due
+  Date / Created. Honours the active filter set + sort.
+- **Users** — First / Last / Email / Username / Role / Active /
+  Last Login / Created. Admin-only page anyway.
+
+Same `lib/csv-export.ts` helper as v1.6.48 — every list page that
+gets viewed regularly now has a one-click downloadable snapshot.
+
 ## [1.6.48] — 2026-05-02
 
 ### Added (CSV export on Projects + Contacts)

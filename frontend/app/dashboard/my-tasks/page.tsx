@@ -40,8 +40,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { Trash2 as TrashIcon, ChevronDown as ChevronDownIcon, CheckSquare as CheckSquareIcon, Square as SquareIcon } from "lucide-react";
+import { Trash2 as TrashIcon, ChevronDown as ChevronDownIcon, CheckSquare as CheckSquareIcon, Square as SquareIcon, Download as DownloadIcon } from "lucide-react";
 import api from "@/lib/api";
+import { downloadCsv, csvFilename } from "@/lib/csv-export";
 
 const STATUS_OPTIONS: FilterOption[] = [
   { value: "ALL", label: "All statuses" },
@@ -335,10 +336,34 @@ export default function MyTasksPage() {
           <p className="text-sm text-muted-foreground">
             Tasks assigned to you, sorted by due date.
           </p>
-          <Button onClick={() => setIsCreateModalOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            New task
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                const rows: Array<Array<unknown>> = [
+                  ["Title", "Project", "Status", "Priority", "Type", "Due Date", "Created"],
+                  ...filteredTasks.map((t) => [
+                    t.title,
+                    t.project?.projectNumber ?? "",
+                    t.status,
+                    t.priority,
+                    t.type ?? "",
+                    t.dueDate ? new Date(t.dueDate).toISOString().slice(0, 10) : "",
+                    t.createdAt ? new Date((t as any).createdAt).toISOString().slice(0, 10) : "",
+                  ]),
+                ];
+                downloadCsv(csvFilename("my-tasks"), rows);
+              }}
+              disabled={filteredTasks.length === 0}
+            >
+              <DownloadIcon className="mr-2 h-4 w-4" />
+              Export CSV
+            </Button>
+            <Button onClick={() => setIsCreateModalOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              New task
+            </Button>
+          </div>
         </div>
 
         {/* Stats Grid */}
