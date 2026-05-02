@@ -7,11 +7,36 @@ import { useToast } from "@/components/ui/use-toast";
 import api from "@/lib/api";
 import { roleBadgeClass, activeBadgeClass } from "@/lib/badge-styles";
 import { format } from "date-fns";
-import { UserPlus, Search, MoreVertical, Shield, User, Edit } from "lucide-react";
+import { UserPlus, MoreVertical, Shield, User, Edit } from "lucide-react";
 import { EditUserModal } from "@/components/modals/edit-user-modal";
 import { CreateUserModal } from "@/components/modals/create-user-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Avatar } from "@/components/ui/avatar";
+import { ListToolbar, FilterOption } from "@/components/ui/list-toolbar";
+import { compareValues } from "@/lib/list-controls";
+
+const ROLE_OPTIONS: FilterOption[] = [
+  { value: "ALL", label: "All roles" },
+  { value: "ADMIN", label: "Admin", dot: "bg-violet-500" },
+  { value: "MANAGER", label: "Manager", dot: "bg-blue-500" },
+  { value: "STAFF", label: "Staff", dot: "bg-emerald-500" },
+  { value: "CLIENT", label: "Client", dot: "bg-amber-500" },
+];
+
+const ACTIVE_OPTIONS: FilterOption[] = [
+  { value: "ALL", label: "Active + inactive" },
+  { value: "ACTIVE", label: "Active only", dot: "bg-emerald-500" },
+  { value: "INACTIVE", label: "Inactive only", dot: "bg-zinc-500" },
+];
+
+const SORT_OPTIONS = [
+  { value: "lastName-asc", label: "Last name A–Z" },
+  { value: "lastName-desc", label: "Last name Z–A" },
+  { value: "email-asc", label: "Email A–Z" },
+  { value: "createdAt-desc", label: "Newest first" },
+  { value: "createdAt-asc", label: "Oldest first" },
+  { value: "lastLoginAt-desc", label: "Recently logged in" },
+];
 
 interface User {
   id: string;
@@ -29,6 +54,9 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [filterRole, setFilterRole] = useState("ALL");
+  const [filterActive, setFilterActive] = useState("ALL");
+  const [sortBy, setSortBy] = useState("lastName-asc");
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -84,13 +112,25 @@ export default function UsersPage() {
     );
   };
 
-  const filteredUsers = users.filter(
-    (user) =>
-      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.username.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredUsers = users
+    .filter((user) => {
+      const term = searchTerm.toLowerCase();
+      const matchesSearch =
+        term === "" ||
+        user.email.toLowerCase().includes(term) ||
+        user.firstName.toLowerCase().includes(term) ||
+        user.lastName.toLowerCase().includes(term) ||
+        user.username.toLowerCase().includes(term);
+      const matchesRole = filterRole === "ALL" || user.role === filterRole;
+      const matchesActive =
+        filterActive === "ALL" ||
+        (filterActive === "ACTIVE" ? user.isActive : !user.isActive);
+      return matchesSearch && matchesRole && matchesActive;
+    })
+    .sort((a, b) => {
+      const [field, dir] = sortBy.split("-") as [string, "asc" | "desc"];
+      return compareValues((a as any)[field], (b as any)[field], dir);
+    });
 
   if (loading) {
     return (
@@ -176,19 +216,41 @@ export default function UsersPage() {
         </Card>
       </div>
 
-      {/* Search */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search users..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full rounded-md border border-input bg-background pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
-      </div>
+      {/* Toolbar — search + Role + State filters + sort (v1.6.34). */}
+      <ListToolbar
+        search={{
+          value: searchTerm,
+          onChange: setSearchTerm,
+          placeholder: "Search by name, email, or username…",
+        }}
+        filters={[
+          {
+            key: "role",
+            label: "Role",
+            value: filterRole,
+            onChange: setFilterRole,
+            options: ROLE_OPTIONS,
+          },
+          {
+            key: "active",
+            label: "State",
+            value: filterActive,
+            onChange: setFilterActive,
+            options: ACTIVE_OPTIONS,
+          },
+        ]}
+        sort={{
+          value: sortBy,
+          onChange: setSortBy,
+          options: SORT_OPTIONS,
+        }}
+      />
+
+      <p className="text-xs text-muted-foreground">
+        {filteredUsers.length === users.length
+          ? `${users.length} user${users.length === 1 ? "" : "s"}`
+          : `${filteredUsers.length} of ${users.length} users match`}
+      </p>
 
       {/* Users Table */}
       <Card className="overflow-hidden">

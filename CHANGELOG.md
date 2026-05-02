@@ -5,6 +5,33 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.34] — 2026-05-01
+
+### Changed (Documents + Users finish the toolbar sweep)
+
+The two remaining list pages now share the same `<ListToolbar>` UX
+that landed in v1.6.31–33:
+
+**Documents** —
+- File-type filter (Images / PDFs / Spreadsheets / Other) with
+  coloured dots
+- Project filter (derived from loaded documents; hidden when only
+  one project is present in the data)
+- Sort by Newest first (default) / Oldest / Name A–Z / Name Z–A /
+  Largest first / Smallest first
+- Result count line
+
+**Users** —
+- Role filter (Admin / Manager / Staff / Client) with coloured dots
+- State filter (Active / Inactive / Both)
+- Sort by Last name A–Z (default) / First name / Email / Newest /
+  Oldest / Recently logged in
+- Result count line
+
+This completes the v1.6.31–34 sort+filter sweep. Every list page in
+the dashboard now offers identical search, filter chip, clear-all,
+and sort controls.
+
 ## [1.6.33] — 2026-05-01
 
 ### Changed (Contacts + Organizations adopt the toolbar)

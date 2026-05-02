@@ -7,7 +7,6 @@ import { useToast } from "@/components/ui/use-toast";
 import api from "@/lib/api";
 import {
   Upload,
-  Search,
   FileText,
   Download,
   Trash2,
@@ -25,6 +24,32 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { DocumentViewerModal } from "@/components/documents/document-viewer-modal";
 import { iconWellClass } from "@/lib/badge-styles";
 import { projectColorClasses } from "@/lib/project-colors";
+import { ListToolbar, FilterOption } from "@/components/ui/list-toolbar";
+import { compareValues } from "@/lib/list-controls";
+
+const TYPE_OPTIONS: FilterOption[] = [
+  { value: "ALL", label: "All file types" },
+  { value: "image", label: "Images", dot: "bg-emerald-500" },
+  { value: "pdf", label: "PDFs", dot: "bg-rose-500" },
+  { value: "spreadsheet", label: "Spreadsheets", dot: "bg-emerald-500" },
+  { value: "other", label: "Other", dot: "bg-zinc-500" },
+];
+
+const SORT_OPTIONS = [
+  { value: "createdAt-desc", label: "Newest first" },
+  { value: "createdAt-asc", label: "Oldest first" },
+  { value: "fileName-asc", label: "Name A–Z" },
+  { value: "fileName-desc", label: "Name Z–A" },
+  { value: "fileSize-desc", label: "Largest first" },
+  { value: "fileSize-asc", label: "Smallest first" },
+];
+
+function classifyMime(mimeType: string): string {
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.includes("pdf")) return "pdf";
+  if (mimeType.includes("spreadsheet") || mimeType.includes("excel")) return "spreadsheet";
+  return "other";
+}
 
 interface Document {
   id: string;
@@ -40,6 +65,9 @@ export default function DocumentsPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [filterType, setFilterType] = useState("ALL");
+  const [filterProject, setFilterProject] = useState("ALL");
+  const [sortBy, setSortBy] = useState("createdAt-desc");
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewingDocument, setViewingDocument] = useState<Document | null>(null);
@@ -179,9 +207,33 @@ export default function DocumentsPage() {
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   };
 
-  const filteredDocuments = documents.filter((doc) =>
-    doc.fileName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const projectOptions: FilterOption[] = (() => {
+    const seen = new Map<string, string>();
+    seen.set("NONE", "No project");
+    documents.forEach((d) => {
+      if (d.projectId) seen.set(d.projectId, d.projectId.slice(0, 8));
+    });
+    return [
+      { value: "ALL", label: "All projects" },
+      ...Array.from(seen.entries()).map(([value, label]) => ({ value, label })),
+    ];
+  })();
+
+  const filteredDocuments = documents
+    .filter((doc) => {
+      const matchesSearch =
+        searchTerm === "" ||
+        doc.fileName.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesType = filterType === "ALL" || classifyMime(doc.mimeType) === filterType;
+      const matchesProject =
+        filterProject === "ALL" ||
+        (filterProject === "NONE" ? !doc.projectId : doc.projectId === filterProject);
+      return matchesSearch && matchesType && matchesProject;
+    })
+    .sort((a, b) => {
+      const [field, dir] = sortBy.split("-") as [string, "asc" | "desc"];
+      return compareValues((a as any)[field], (b as any)[field], dir);
+    });
 
   if (loading) {
     return (
@@ -274,19 +326,42 @@ export default function DocumentsPage() {
         </Card>
       </div>
 
-      {/* Search */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search documents..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full rounded-md border border-input bg-background pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
-      </div>
+      {/* Toolbar — search + Type + Project filters + sort (v1.6.34). */}
+      <ListToolbar
+        search={{
+          value: searchTerm,
+          onChange: setSearchTerm,
+          placeholder: "Search documents…",
+        }}
+        filters={[
+          {
+            key: "type",
+            label: "Type",
+            value: filterType,
+            onChange: setFilterType,
+            options: TYPE_OPTIONS,
+          },
+          {
+            key: "project",
+            label: "Project",
+            value: filterProject,
+            onChange: setFilterProject,
+            options: projectOptions,
+            hidden: projectOptions.length <= 2,
+          },
+        ]}
+        sort={{
+          value: sortBy,
+          onChange: setSortBy,
+          options: SORT_OPTIONS,
+        }}
+      />
+
+      <p className="text-xs text-muted-foreground">
+        {filteredDocuments.length === documents.length
+          ? `${documents.length} document${documents.length === 1 ? "" : "s"}`
+          : `${filteredDocuments.length} of ${documents.length} documents match`}
+      </p>
 
       {/* Documents List */}
       <Card className="overflow-hidden">
