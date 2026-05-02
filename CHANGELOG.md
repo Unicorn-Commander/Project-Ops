@@ -5,6 +5,27 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.48] — 2026-05-02
+
+### Added (CSV export on Projects + Contacts)
+
+Both list pages got an "Export CSV" button next to the New… action:
+
+- **Projects** — exports the currently filtered + sorted set with
+  Project Number / Title / Client / Status / Priority / Created /
+  Due Date / Assigned To / Billing Amount / Amount Paid / Payment
+  Status. Whatever's in view is what gets exported, so a saved view
+  ("Active only") doubles as a download preset.
+- **Contacts** — First Name / Last Name / Email / Phone / Company /
+  Organization / Active / Created.
+
+Filenames are date-stamped (`projects-2026-05-02.csv`). UTF-8 BOM
+prepended so Excel reads accents properly. RFC-4180 quoting on cells
+with commas / quotes / newlines.
+
+`lib/csv-export.ts` is the helper — `downloadCsv` + `csvFilename`.
+Same util can be wired into Tasks / Documents / Users in a follow-up.
+
 ## [1.6.47] — 2026-05-02
 
 ### Added (Star/favorite projects)

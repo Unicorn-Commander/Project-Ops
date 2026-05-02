@@ -47,6 +47,8 @@ import {
   Star as StarIcon,
 } from "lucide-react";
 import { useStarred } from "@/lib/starred";
+import { downloadCsv, csvFilename } from "@/lib/csv-export";
+import { Download as DownloadIcon } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -394,10 +396,53 @@ export default function ProjectsPage() {
         <p className="text-sm text-muted-foreground">
           Every project you can see, newest first.
         </p>
-        <Button onClick={() => setCreateModalOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          New project
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              const rows: Array<Array<unknown>> = [
+                [
+                  "Project Number",
+                  "Title",
+                  "Client",
+                  "Status",
+                  "Priority",
+                  "Created",
+                  "Due Date",
+                  "Assigned To",
+                  "Billing Amount",
+                  "Amount Paid",
+                  "Payment Status",
+                ],
+                ...filteredProjects.map((p) => [
+                  p.projectNumber,
+                  p.title,
+                  p.clientName ?? "",
+                  p.status,
+                  p.priority,
+                  p.createdAt ? new Date(p.createdAt).toISOString().slice(0, 10) : "",
+                  p.dueDate ? new Date(p.dueDate).toISOString().slice(0, 10) : "",
+                  p.assignedTo
+                    ? `${p.assignedTo.firstName ?? ""} ${p.assignedTo.lastName ?? ""}`.trim() ||
+                      (p.assignedTo.email ?? "")
+                    : "",
+                  p.billingAmount ?? "",
+                  p.amountPaid ?? "",
+                  p.paymentStatus ?? "",
+                ]),
+              ];
+              downloadCsv(csvFilename("projects"), rows);
+            }}
+            disabled={filteredProjects.length === 0}
+          >
+            <DownloadIcon className="mr-2 h-4 w-4" />
+            Export CSV
+          </Button>
+          <Button onClick={() => setCreateModalOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            New project
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}

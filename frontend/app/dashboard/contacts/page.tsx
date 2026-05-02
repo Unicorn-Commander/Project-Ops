@@ -30,8 +30,9 @@ import { projectColorClasses } from "@/lib/project-colors";
 import { ListToolbar, FilterOption } from "@/components/ui/list-toolbar";
 import { compareValues } from "@/lib/list-controls";
 import { BulkActionBar, BulkActionButton, useBulkRunner } from "@/components/ui/bulk-action-bar";
-import { CheckSquare as CheckSquareIcon, ToggleLeft, ToggleRight } from "lucide-react";
+import { CheckSquare as CheckSquareIcon, ToggleLeft, ToggleRight, Download as DownloadIcon } from "lucide-react";
 import api from "@/lib/api";
+import { downloadCsv, csvFilename } from "@/lib/csv-export";
 import {
   Search,
   Plus,
@@ -224,13 +225,38 @@ export default function ContactsPage() {
                 </p>
               </div>
             </div>
-            <Button
-              onClick={() => setCreateModalOpen(true)}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              New Contact
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const rows: Array<Array<unknown>> = [
+                    ["First Name", "Last Name", "Email", "Phone", "Company", "Organization", "Active", "Created"],
+                    ...filteredContacts.map((c) => [
+                      c.firstName ?? "",
+                      c.lastName ?? "",
+                      c.email ?? "",
+                      c.phone ?? "",
+                      c.company ?? "",
+                      c.organization?.name ?? "",
+                      c.isActive ? "Yes" : "No",
+                      c.createdAt ? new Date(c.createdAt).toISOString().slice(0, 10) : "",
+                    ]),
+                  ];
+                  downloadCsv(csvFilename("contacts"), rows);
+                }}
+                disabled={filteredContacts.length === 0}
+              >
+                <DownloadIcon className="w-4 h-4 mr-2" />
+                Export CSV
+              </Button>
+              <Button
+                onClick={() => setCreateModalOpen(true)}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                New Contact
+              </Button>
+            </div>
           </div>
         </div>
       </div>
