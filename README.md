@@ -11,7 +11,20 @@ Changelog: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## What's inside
 
-- **Projects & tasks** — status, priority, deadlines, owners; kanban + list views.
+- **Projects & tasks** — status, priority, deadlines, owners; kanban,
+  list, and Gantt views. **Drag-to-reschedule** on the Gantt; click-
+  the-stat-card or use the toolbar to filter; sort by 6+ fields.
+- **List toolbars everywhere** — every list page (Projects, My Tasks,
+  Contacts, Organisations, Documents, Users) shares the same UX:
+  search, multi-filter dropdowns with active-chip row, Clear-all, and
+  an explicit Sort dropdown. Per-project colour stripes carry across
+  every surface so a long list reads as more than rows.
+- **Project snapshot card** — `/dashboard/projects/[id]` opens with
+  completion %, status donut, priority bar, and Total/Completed/Overdue
+  quick stats above the task list.
+- **Cmd/Ctrl+K palette** — global jump surface. Search projects, tasks,
+  contacts, organisations + quick actions (New project / task /
+  contact). Keyboard-first: ↑↓ navigate, ↵ select, Esc close.
 - **Organizations & contacts** — real CRM with parent/child org hierarchy and per-org rollups.
 - **Billing** — invoice number, amount, payment status, due/paid dates, billing notes — on the project itself.
 - **Client portal** — `CLIENT` role users see only their own organization's projects + shared documents.
@@ -20,6 +33,16 @@ Changelog: [`CHANGELOG.md`](CHANGELOG.md)
 - **Real-time collaboration** — WebSocket updates so every tab catches up live.
 - **Activity & comments** — threaded comments on projects and tasks plus a unified activity feed.
 - **SSO + audit trail** — Keycloak (`uchub` realm) with Google + Microsoft federation; every change logged.
+
+## Keyboard shortcuts
+
+| Shortcut | What |
+|---|---|
+| `⌘K` / `Ctrl+K` | Open the command palette |
+| `⌘/` / `Ctrl+/` | Same — alternate binding |
+| `↑` `↓` | Navigate palette results |
+| `↵` | Select highlighted result |
+| `Esc` | Close palette |
 
 ## Stack
 
@@ -119,9 +142,20 @@ client secret in `.env`.
 
 The login page exposes a "Sign in with Unicorn Commander" button that
 hits `/api/v1/auth/keycloak`, which redirects to the `uchub` realm and
-returns the user to `/auth/sso-callback?token=…`. First-time SSO users
-are JIT-provisioned with a default role from `getDefaultRoleForEmail`
-in `backend/src/auth/auth.service.ts`.
+returns the user to `/auth/sso-callback?token=…`.
+
+First-time SSO users are JIT-provisioned only if they appear in the
+**`PROJECT_OPS_ACCESS_LIST`** allowlist — an env var of comma-separated
+`email-or-pattern:role` entries:
+
+```
+PROJECT_OPS_ACCESS_LIST="aaron@magicunicorn.tech:ADMIN, *@magicunicorn.tech:STAFF"
+```
+
+Resolution: exact match → domain wildcard → deny. Without the env var
+set, only the bootstrap admins from `INITIAL_ADMIN_EMAILS` are admitted.
+This stops every `uchub` realm user from auto-creating a Project-Ops
+account on their first sign-in.
 
 The email + password form on the login page is retained for
 client-portal users invited via `/contacts/:id/invite` — those users
