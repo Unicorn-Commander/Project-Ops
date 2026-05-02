@@ -21,7 +21,7 @@
  *    PATCH route + an optimistic-update layer.
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +35,7 @@ import { useRouter } from "next/navigation";
 import {
   format,
   addMonths,
+  addDays,
   startOfMonth,
   endOfMonth,
   startOfDay,
@@ -80,6 +81,15 @@ export interface ScheduleProject {
 
 interface GanttProps {
   projects: ScheduleProject[];
+  /**
+   * If supplied, bars become draggable: pointer-down on a bar starts a
+   * drag, pointer-move shows a live preview translation, pointer-up
+   * fires this callback with the new due date. Receivers should PATCH
+   * /projects/:id then refresh the project list.
+   *
+   * If omitted, bars are read-only (the original v1.6.7 behaviour).
+   */
+  onReschedule?: (projectId: string, newDueDate: Date) => void | Promise<void>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -97,7 +107,7 @@ type ZoomKey = keyof typeof ZOOM_LEVELS;
 
 // ─────────────────────────────────────────────────────────────────────────
 
-export function Gantt({ projects }: GanttProps) {
+export function Gantt({ projects, onReschedule }: GanttProps) {
   const router = useRouter();
   const [zoom, setZoom] = useState<ZoomKey>("6-months");
   const [anchorMonth, setAnchorMonth] = useState<Date>(() => startOfMonth(new Date()));
@@ -107,6 +117,33 @@ export function Gantt({ projects }: GanttProps) {
   const [filterPriority, setFilterPriority] = useState<string>("ALL");
   const [filterOrg, setFilterOrg] = useState<string>("ALL");
   const [showFilters, setShowFilters] = useState(true);
+
+  // Drag-to-reschedule state (v1.6.36). Active when the user is mid-drag on
+  // a bar. dxDays is recomputed on every pointermove.
+  const [drag, setDrag] = useState<{
+    projectId: string;
+    startX: number;
+    originalEnd: Date;
+    dxDays: number;
+    didMove: boolean;
+  } | null>(null);
+
+  // Pixels-per-day depends on the rendered timeline width (everything to
+  // the right of the 260px label column). Recomputed on resize so a
+  // window-resize during drag still gives accurate day deltas.
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const [timelinePx, setTimelinePx] = useState(0);
+  useEffect(() => {
+    const el = timelineRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      setTimelinePx(w);
+    });
+    ro.observe(el);
+    setTimelinePx(el.getBoundingClientRect().width);
+    return () => ro.disconnect();
+  }, []);
 
   const z = ZOOM_LEVELS[zoom];
   // Visible window starts 1 month before the anchor for readability — so
@@ -330,16 +367,27 @@ export function Gantt({ projects }: GanttProps) {
             </p>
           </div>
         ) : (
-          <div className="relative">
+          <div className="relative" ref={timelineRef}>
             {rows.map(({ project, leftPct, widthPct, overflowLeft, overflowRight, end }) => {
               const pc = projectColorClasses(project.id);
               const isCompleted = !!project.completedAt;
               const isOverdue = !isCompleted && project.dueDate && isAfter(today, new Date(project.dueDate));
+              const isDragging = drag?.projectId === project.id;
+              const draggable = !!onReschedule && !isCompleted && !!project.dueDate;
+              const pixelsPerDay = timelinePx > 0 ? (timelinePx - 260) / totalDays : 0;
+              const dragOffsetPx = isDragging ? drag!.dxDays * pixelsPerDay : 0;
+              const previewDate = isDragging
+                ? addDays(drag!.originalEnd, drag!.dxDays)
+                : null;
               return (
                 <div
                   key={project.id}
                   className="flex border-b last:border-b-0 hover:bg-muted/30 transition-colors cursor-pointer group"
-                  onClick={() => router.push(`/dashboard/projects/${project.id}`)}
+                  onClick={(e) => {
+                    // Suppress navigation if a drag just happened on this row.
+                    if (drag || (e as any).__justDragged) return;
+                    router.push(`/dashboard/projects/${project.id}`);
+                  }}
                 >
                   <div className={`shrink-0 w-[260px] px-4 py-3 border-r flex items-center gap-2 border-l-4 ${pc.borderLeft} ${pc.cardWash}`}>
                     <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] font-medium shrink-0 ${pc.badgeBg} ${pc.badgeText}`}>
@@ -361,10 +409,11 @@ export function Gantt({ projects }: GanttProps) {
 
                     {/* The bar itself */}
                     <div
-                      className={`absolute top-1/2 -translate-y-1/2 h-6 rounded-md ${pc.solidBg} ${pc.solidText} flex items-center px-2 text-[10px] font-semibold shadow-sm transition-all group-hover:shadow-md ${isCompleted ? "opacity-60" : ""}`}
+                      className={`absolute top-1/2 -translate-y-1/2 h-6 rounded-md ${pc.solidBg} ${pc.solidText} flex items-center px-2 text-[10px] font-semibold shadow-sm group-hover:shadow-md ${isCompleted ? "opacity-60" : ""} ${isDragging ? "ring-2 ring-primary shadow-lg z-20" : "transition-all"} ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
                       style={{
                         left: `calc(${leftPct}% + 2px)`,
                         width: `calc(${widthPct}% - 4px)`,
+                        transform: isDragging ? `translateX(${dragOffsetPx}px)` : undefined,
                         // If bar overflows the window edges, soften that side
                         clipPath:
                           overflowLeft && overflowRight
@@ -376,10 +425,64 @@ export function Gantt({ projects }: GanttProps) {
                                 : undefined,
                       }}
                       title={`${project.projectNumber} · ${project.title}\n${format(new Date(project.createdAt), "MMM d, yyyy")} → ${project.completedAt ? format(new Date(project.completedAt), "MMM d, yyyy") + " (completed)" : project.dueDate ? format(new Date(project.dueDate), "MMM d, yyyy") + (isOverdue ? " (overdue)" : "") : "ongoing"}`}
+                      onPointerDown={(e) => {
+                        if (!draggable) return;
+                        if (e.button !== 0) return;
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const endDate = project.dueDate
+                          ? new Date(project.dueDate)
+                          : end;
+                        setDrag({
+                          projectId: project.id,
+                          startX: e.clientX,
+                          originalEnd: endDate,
+                          dxDays: 0,
+                          didMove: false,
+                        });
+                        try {
+                          (e.currentTarget as Element).setPointerCapture(e.pointerId);
+                        } catch {}
+                      }}
+                      onPointerMove={(e) => {
+                        if (!isDragging || pixelsPerDay <= 0) return;
+                        const px = e.clientX - drag!.startX;
+                        const days = Math.round(px / pixelsPerDay);
+                        if (days !== drag!.dxDays) {
+                          setDrag({ ...drag!, dxDays: days, didMove: true });
+                        }
+                      }}
+                      onPointerUp={async (e) => {
+                        if (!isDragging || !onReschedule) return;
+                        const moved = drag!.didMove && drag!.dxDays !== 0;
+                        const newDate = addDays(drag!.originalEnd, drag!.dxDays);
+                        const projId = drag!.projectId;
+                        try {
+                          (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+                        } catch {}
+                        // Mark this click as the dragged-tail so the row's
+                        // navigation doesn't fire on the synthetic click.
+                        (e as any).__justDragged = moved;
+                        // Clear drag state next tick so our `drag &&` guard
+                        // in the row onClick still suppresses navigation.
+                        setTimeout(() => setDrag(null), 0);
+                        if (moved) {
+                          await onReschedule(projId, newDate);
+                        }
+                      }}
+                      onClick={(e) => {
+                        // Bar is owned by the drag flow; never let the row's
+                        // onClick fire from a click on the bar.
+                        e.stopPropagation();
+                      }}
                     >
-                      {/* Overlay status pill on the bar when there's room */}
+                      {/* Overlay status pill on the bar when there's room. While
+                          dragging, replace the status text with the live preview
+                          date so the user sees what they'll commit. */}
                       <span className="truncate">
-                        {project.status.replace(/_/g, " ")}
+                        {isDragging
+                          ? `→ ${format(previewDate!, "MMM d")}`
+                          : project.status.replace(/_/g, " ")}
                       </span>
                     </div>
 

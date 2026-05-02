@@ -5,6 +5,34 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.36] — 2026-05-01
+
+### Added (drag-to-reschedule on the Gantt)
+
+The `/dashboard/schedule` Gantt was read-only since v1.6.7 — bars
+ran from `createdAt` to `dueDate` and clicking a bar navigated to
+the project. Now bars are **draggable**: pointer-down on a bar
+starts a drag, pointer-move shows a live preview translation, and
+pointer-up commits the new due date via `PATCH /projects/:id`.
+
+- `<Gantt>` takes a new optional `onReschedule(projectId, newDate)`
+  callback. If omitted, bars stay read-only (back-compat).
+- The dragging bar shows a primary-coloured ring + shadow + replaces
+  its status text with `→ MMM d` so the user sees the target date.
+- Days delta is computed from pixel-displacement using a
+  `ResizeObserver` on the timeline container so the math stays correct
+  on viewport resize during drag.
+- Pointer capture means the drag survives leaving the bar's
+  hit-rect — drag a bar 200 days out and it just keeps going.
+- Optimistic update: the local `projects` state shifts immediately on
+  pointer-up. PATCH happens in the background. On failure, the row
+  reverts and a destructive toast explains.
+- Completed projects + bars without a due date stay non-draggable
+  (cursor stays as pointer, not grab).
+- Click-vs-drag heuristic: if the user moved the bar at all, the row's
+  navigate-to-project click is suppressed. Click without moving still
+  navigates.
+
 ## [1.6.35] — 2026-05-01
 
 ### Added (project detail page snapshot card)

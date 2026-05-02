@@ -1,41 +1,77 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/use-toast";
 import { Gantt, type ScheduleProject } from "@/components/schedule/gantt";
 import api from "@/lib/api";
+import { format } from "date-fns";
 
 export default function SchedulePage() {
   const [projects, setProjects] = useState<ScheduleProject[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
+  const fetchProjects = useCallback(async () => {
+    try {
+      const res = await api.get(
+        "/projects?page=1&limit=1000&sort=createdAt:desc",
+      );
+      setProjects(res.data.data || []);
+    } catch (err) {
+      toast({
+        title: "Couldn't load schedule",
+        description: "Project list fetch failed.",
+        variant: "destructive",
+      });
+    }
+  }, [toast]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const res = await api.get(
-          "/projects?page=1&limit=1000&sort=createdAt:desc",
-        );
-        if (cancelled) return;
-        setProjects(res.data.data || []);
-      } catch (err) {
-        if (cancelled) return;
-        toast({
-          title: "Couldn't load schedule",
-          description: "Project list fetch failed.",
-          variant: "destructive",
-        });
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+      await fetchProjects();
+      if (!cancelled) setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [toast]);
+  }, [fetchProjects]);
+
+  // Drag-to-reschedule handler — optimistic local update + PATCH (v1.6.36).
+  const handleReschedule = useCallback(
+    async (projectId: string, newDueDate: Date) => {
+      const original = projects.find((p) => p.id === projectId);
+      if (!original) return;
+      const newIso = newDueDate.toISOString();
+      // Optimistic: shift the local row immediately so the bar settles
+      // at the new position even before the server responds.
+      setProjects((prev) =>
+        prev.map((p) => (p.id === projectId ? { ...p, dueDate: newIso } : p)),
+      );
+      try {
+        await api.patch(`/projects/${projectId}`, { dueDate: newIso });
+        toast({
+          title: "Project rescheduled",
+          description: `${original.projectNumber} due ${format(newDueDate, "MMM d, yyyy")}`,
+        });
+      } catch (err: any) {
+        // Revert on failure.
+        setProjects((prev) =>
+          prev.map((p) => (p.id === projectId ? { ...p, dueDate: original.dueDate } : p)),
+        );
+        toast({
+          title: "Couldn't save new due date",
+          description:
+            err?.response?.data?.message ??
+            "The server rejected the change. The schedule has been reverted.",
+          variant: "destructive",
+        });
+      }
+    },
+    [projects, toast],
+  );
 
   return (
     <div className="space-y-6">
@@ -44,7 +80,7 @@ export default function SchedulePage() {
         <p className="text-muted-foreground mt-1">
           Master timeline across every project. Bars run from project start
           to due date, coloured per project, with today marked in red.
-          Filter by status, priority, or organization.
+          Drag a bar to reschedule. Filter by status, priority, or organization.
         </p>
       </div>
 
@@ -57,7 +93,7 @@ export default function SchedulePage() {
           <SkeletonText lines={6} />
         </Card>
       ) : (
-        <Gantt projects={projects} />
+        <Gantt projects={projects} onReschedule={handleReschedule} />
       )}
     </div>
   );
