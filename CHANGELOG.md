@@ -5,6 +5,18 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.50] — 2026-05-02
+
+### Added (CSV export on Documents + Organizations)
+
+The last two list pages got Export CSV buttons too. Every list
+page in the dashboard now offers one-click downloadable snapshots
+of whatever the current filter + sort is showing.
+
+- **Documents** — File Name / Type / Size / Project ID / Uploaded.
+- **Organizations** — Name / Type / Industry / Tax ID / Active /
+  Created.
+
 ## [1.6.49] — 2026-05-02
 
 ### Added (CSV export on My Tasks + Users)

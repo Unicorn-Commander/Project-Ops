@@ -27,7 +27,8 @@ import { projectColorClasses } from "@/lib/project-colors";
 import { ListToolbar, FilterOption } from "@/components/ui/list-toolbar";
 import { compareValues } from "@/lib/list-controls";
 import { BulkActionBar, BulkActionButton, useBulkRunner } from "@/components/ui/bulk-action-bar";
-import { CheckSquare as CheckSquareIcon } from "lucide-react";
+import { CheckSquare as CheckSquareIcon, Download as DownloadIcon } from "lucide-react";
+import { downloadCsv, csvFilename } from "@/lib/csv-export";
 
 const TYPE_OPTIONS: FilterOption[] = [
   { value: "ALL", label: "All file types" },
@@ -280,10 +281,32 @@ export default function DocumentsPage() {
             Manage and organize project documents
           </p>
         </div>
-        <Button className="bg-primary hover:bg-primary/90" onClick={handleUploadClick}>
-          <Upload className="mr-2 h-4 w-4" />
-          Upload Document
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              const rows: Array<Array<unknown>> = [
+                ["File Name", "Type", "Size (bytes)", "Project ID", "Uploaded"],
+                ...filteredDocuments.map((d) => [
+                  d.fileName,
+                  d.mimeType,
+                  d.fileSize,
+                  d.projectId ?? "",
+                  d.createdAt ? new Date(d.createdAt).toISOString().slice(0, 10) : "",
+                ]),
+              ];
+              downloadCsv(csvFilename("documents"), rows);
+            }}
+            disabled={filteredDocuments.length === 0}
+          >
+            <DownloadIcon className="mr-2 h-4 w-4" />
+            Export CSV
+          </Button>
+          <Button className="bg-primary hover:bg-primary/90" onClick={handleUploadClick}>
+            <Upload className="mr-2 h-4 w-4" />
+            Upload Document
+          </Button>
+        </div>
       </div>
 
       {/* Stats — match dashboard tinted-icon-well pattern (v1.6.31) */}
