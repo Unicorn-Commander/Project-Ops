@@ -11,14 +11,7 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import api from "@/lib/api";
 import { User } from "lucide-react";
-
-interface User {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  role: string;
-}
+import { useTeamMembers } from "@/lib/team-members";
 
 interface AssignProjectProps {
   projectId: string;
@@ -36,40 +29,22 @@ export function AssignProject({
   const [assignedToId, setAssignedToId] = useState<string | null>(
     currentAssignedToId
   );
-  const [staffMembers, setStaffMembers] = useState<User[]>([]);
+  // Single shared cache — every AssignProject row hits the same in-flight
+  // promise, then the same cached array. Before v1.6.44 this was a
+  // per-row fetch and 27 simultaneous /users calls tripped the throttler.
+  const { members: staffMembers, loading: loadingUsers, error: teamError } = useTeamMembers();
   const [loading, setLoading] = useState(false);
-  const [loadingUsers, setLoadingUsers] = useState(true);
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchStaffMembers();
-  }, []);
-
-  const fetchStaffMembers = async () => {
-    try {
-      const response = await api.get("/users?page=1&limit=100");
-      const allUsers = response.data.data || [];
-
-      // Filter for STAFF, MANAGER, and ADMIN roles
-      const staffUsers = allUsers.filter(
-        (user: User) =>
-          user.role === "STAFF" ||
-          user.role === "MANAGER" ||
-          user.role === "ADMIN"
-      );
-
-      setStaffMembers(staffUsers);
-      setLoadingUsers(false);
-    } catch (error) {
-      console.error("Error fetching users:", error);
+    if (teamError) {
       toast({
-        title: "Error",
-        description: "Failed to load team members",
+        title: "Couldn't load team members",
+        description: teamError,
         variant: "destructive",
       });
-      setLoadingUsers(false);
     }
-  };
+  }, [teamError, toast]);
 
   const handleAssign = async (userId: string) => {
     if (userId === assignedToId) return;

@@ -5,6 +5,28 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.44] — 2026-05-02
+
+### Fixed (team-members fetch storm on Projects list)
+
+The `<AssignProject>` row component fetched `/users?limit=…` from
+its own `useEffect`. With 27+ projects in view that meant 27+
+simultaneous round-trips on every render of `/dashboard/projects`,
+which sporadically hit the NestJS throttler and surfaced as
+"Failed to load team members" toasts on a normal page render.
+
+Fixed by lifting the fetch to a shared `lib/team-members.ts` with:
+- A module-level cache + single in-flight promise (every consumer
+  awaits the same request the first one kicked off; subsequent
+  mounts are synchronous against the cache).
+- A `useTeamMembers()` React hook that returns
+  `{ members, loading, error }`.
+- An `invalidateTeamMembers()` escape hatch for after a known
+  user-table mutation.
+
+Net: 27→1 `/users` round-trips on the projects list, and the
+"Failed to load team members" toast goes away.
+
 ## [1.6.43] — 2026-05-02
 
 ### Added (saved views — filter presets per list page)
