@@ -5,6 +5,27 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.46] — 2026-05-02
+
+### Added (Recently visited surface in Cmd+K)
+
+`<CommandPalette>`'s empty-query state now leads with a **Recent**
+section showing the user's last 6 detail-page visits across
+projects / contacts / organizations (tasks not yet — the task list
+doesn't currently route to a detail page). One keystroke (⌘K, ↵)
+jumps back to where you were yesterday.
+
+- `lib/recently-visited.ts` — module-level helpers backed by
+  localStorage (key `projectops:recently-visited`). Capped at 8
+  entries per type so an active org user doesn't bury contact
+  visits.
+- Each detail page (`projects/[id]`, `organizations/[id]`,
+  `contacts/[id]`) calls `recordVisit({ id, type, title, subtitle,
+  href })` once the entity loads. Cheap, bounded, no backend
+  round-trip.
+- The palette's `getRecent()` call is synchronous (localStorage
+  read) so opening Cmd+K stays instant.
+
 ## [1.6.45] — 2026-05-02
 
 ### Added (popped assistant — corner-widget mode)

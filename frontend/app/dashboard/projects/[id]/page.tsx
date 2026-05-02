@@ -13,6 +13,7 @@ import { CommentThread } from "@/components/comments/comment-thread";
 import { DocumentList } from "@/components/documents/document-list";
 import { TaskList } from "@/components/tasks/task-list";
 import { ProjectSnapshot } from "@/components/project/project-snapshot";
+import { recordVisit } from "@/lib/recently-visited";
 import { CreateTaskModal } from "@/components/modals/create-task-modal";
 import { TaskDetailsModal } from "@/components/modals/task-details-modal";
 import { EditTaskModal } from "@/components/modals/edit-task-modal";
@@ -105,6 +106,14 @@ export default function ProjectDetailPage() {
     try {
       const response = await api.get(`/projects/${projectId}`);
       setProjectData(response.data);
+      // Track for the Cmd+K Recent section (v1.6.46).
+      recordVisit({
+        id: response.data.id,
+        type: "project",
+        title: response.data.title,
+        subtitle: `${response.data.projectNumber}${response.data.clientName ? " · " + response.data.clientName : ""}`,
+        href: `/dashboard/projects/${response.data.id}`,
+      });
       setLoading(false);
     } catch (error: any) {
       console.error("Error fetching project:", error);

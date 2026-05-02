@@ -36,6 +36,8 @@ import {
 } from "@/components/ui/dialog";
 import api from "@/lib/api";
 import { projectColorClasses } from "@/lib/project-colors";
+import { getRecent } from "@/lib/recently-visited";
+import { Clock } from "lucide-react";
 
 interface PaletteResult {
   id: string;
@@ -241,8 +243,21 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     const actionsHits = quickActions.filter(matches);
 
     if (q === "") {
-      // Empty query: show top 5 projects + actions, hide the rest.
+      // Empty query: surface the user's recently visited entities first
+      // (a one-keystroke jump back to "where I was"), then quick actions
+      // and a tail of the alphabetical project list.
+      const recent: PaletteResult[] = getRecent(undefined, 6).map((r) => ({
+        id: `recent-${r.type}-${r.id}`,
+        type: r.type as PaletteResult["type"],
+        title: r.title,
+        subtitle: r.subtitle,
+        href: r.href,
+        Icon: Clock,
+        tone: "text-muted-foreground",
+        match: [r.title ?? "", r.subtitle ?? ""],
+      }));
       return [
+        ...(recent.length > 0 ? [{ label: "Recent", items: recent }] : []),
         { label: "Quick actions", items: actionsHits },
         { label: "Projects", items: projectsHits.slice(0, 5) },
       ];

@@ -38,6 +38,7 @@ import { CreateContactModal } from '@/components/modals/create-contact-modal';
 import { HierarchyTree } from '@/components/organizations/hierarchy-tree';
 import { activeBadgeClass, statusBadgeClass, paymentStatusBadgeClass, iconWellClass } from '@/lib/badge-styles';
 import { ProjectsRollupCard } from '@/components/project/projects-rollup-card';
+import { recordVisit } from '@/lib/recently-visited';
 import { format } from 'date-fns';
 
 export default function OrganizationProfilePage() {
@@ -72,6 +73,14 @@ export default function OrganizationProfilePage() {
       setOrganization(orgData);
       setContacts(contactsData);
       setProjects(projectsData);
+      // Track for the Cmd+K Recent section (v1.6.46).
+      recordVisit({
+        id: orgData.id,
+        type: "organization",
+        title: orgData.name,
+        subtitle: orgData.type ? orgData.type.toLowerCase() : undefined,
+        href: `/dashboard/organizations/${orgData.id}`,
+      });
     } catch (error) {
       console.error('Failed to load organization:', error);
     } finally {

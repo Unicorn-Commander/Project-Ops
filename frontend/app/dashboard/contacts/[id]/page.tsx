@@ -20,6 +20,7 @@ import {
   iconWellClass,
 } from "@/lib/badge-styles";
 import { ProjectsRollupCard } from "@/components/project/projects-rollup-card";
+import { recordVisit } from "@/lib/recently-visited";
 import { format } from "date-fns";
 import {
   ArrowLeft,
@@ -90,6 +91,16 @@ export default function ContactProfilePage() {
       setContact(contactData);
       setProjects(casesData.data);
       setBilling(billingData);
+      // Track for the Cmd+K Recent section (v1.6.46).
+      recordVisit({
+        id: contactData.id,
+        type: "contact",
+        title:
+          `${contactData.firstName ?? ""} ${contactData.lastName ?? ""}`.trim() ||
+          contactData.email,
+        subtitle: contactData.email,
+        href: `/dashboard/contacts/${contactData.id}`,
+      });
     } catch (error: any) {
       toast({
         title: "Error",
