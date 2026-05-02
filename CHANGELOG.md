@@ -5,6 +5,28 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.35] — 2026-05-01
+
+### Added (project detail page snapshot card)
+
+`/dashboard/projects/[id]` now opens with a `<ProjectSnapshot>` card
+summarising the project's task work — sits above the task list so
+the project's shape reads at a glance:
+
+- Three quick stats: **Total tasks**, **Completed**, **Overdue**
+  (overdue stat goes rose-tinted when > 0).
+- **Completion progress bar** with `X% · 12 of 27 done` label.
+- **Status donut** (Pending / In progress / Waiting for client /
+  Completed / Cancelled) with coloured legend chips.
+- **Priority bar** (Low / Medium / High / Urgent).
+- Empty state: when the project has no tasks, renders a friendly
+  "Add a task below to start tracking progress" card instead of
+  empty SVGs.
+
+Reuses the same Recharts setup, theme-aware tooltips, and colour
+vocabulary as the dashboard `<ProjectCharts>` so the dashboard and
+detail page feel like one product.
+
 ## [1.6.34] — 2026-05-01
 
 ### Changed (Documents + Users finish the toolbar sweep)

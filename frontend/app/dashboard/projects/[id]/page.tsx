@@ -12,6 +12,7 @@ import { AssignProject } from "@/components/project/assign-project";
 import { CommentThread } from "@/components/comments/comment-thread";
 import { DocumentList } from "@/components/documents/document-list";
 import { TaskList } from "@/components/tasks/task-list";
+import { ProjectSnapshot } from "@/components/project/project-snapshot";
 import { CreateTaskModal } from "@/components/modals/create-task-modal";
 import { TaskDetailsModal } from "@/components/modals/task-details-modal";
 import { EditTaskModal } from "@/components/modals/edit-task-modal";
@@ -448,6 +449,12 @@ export default function ProjectDetailPage() {
               </div>
             </Card>
           )}
+
+          {/* Snapshot — completion + status donut + priority bar (v1.6.35).
+              Sits above the task list so the project's shape reads at
+              a glance before scrolling. Hidden when there are no tasks
+              (component renders a friendly empty card instead). */}
+          {!loadingTasks && <ProjectSnapshot tasks={tasks} />}
 
           {/* Tasks */}
           <Card className="p-6">
