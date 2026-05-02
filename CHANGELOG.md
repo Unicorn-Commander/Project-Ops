@@ -5,6 +5,24 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.45] — 2026-05-02
+
+### Added (popped assistant — corner-widget mode)
+
+The `<AssistantPanel>` was a full-height side drawer with a backdrop
+that blocked the rest of the dashboard. Now it has two modes:
+
+- **Side drawer** (default) — what was there before. Best for
+  long-form chat sessions.
+- **Popped** — fixed bottom-right corner widget, ~380×560, no
+  backdrop. The dashboard stays interactive while the assistant is
+  open, so you can ask "what's on my plate this week?" and click
+  through to the answer in the same gesture.
+
+Toggle via the header button (Minimize2 → pop / PanelRightOpen →
+expand back). Choice is persisted in localStorage so the next
+"Ask" opens in the same mode.
+
 ## [1.6.44] — 2026-05-02
 
 ### Fixed (team-members fetch storm on Projects list)

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useParams, usePathname } from "next/navigation";
-import { Sparkles, X, Send, Loader2 } from "lucide-react";
+import { Sparkles, X, Send, Loader2, PanelRightOpen, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import api from "@/lib/api";
@@ -31,6 +31,21 @@ function genId() {
 
 export function AssistantPanel() {
   const [open, setOpen] = useState(false);
+  /**
+   * "popped" mode (v1.6.44): float in a corner instead of taking the
+   * full right side. No backdrop, smaller footprint, dashboard stays
+   * interactive while the assistant is open. The toggle is a small
+   * button in the panel header. Persisted to localStorage so the
+   * user's last preference sticks across sessions.
+   */
+  const [popped, setPopped] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("projectops:assistant-popped") === "1";
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("projectops:assistant-popped", popped ? "1" : "0");
+  }, [popped]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -129,16 +144,27 @@ export function AssistantPanel() {
         <Sparkles className="h-3.5 w-3.5 text-foreground/55 transition-colors group-hover:text-foreground/80" />
       </button>
 
-      {/* Panel */}
+      {/* Panel — two modes:
+          - Side drawer (default): full-height right side + backdrop, blocks
+            the rest of the dashboard. Best for long-form chat.
+          - Popped (corner widget): no backdrop, fixed bottom-right
+            ~380x540, dashboard stays interactive. Best for "ask while I
+            keep working". Toggle via the header buttons; persisted. */}
       {open && (
         <>
-          <div
-            className="fixed inset-0 z-40 bg-foreground/20 backdrop-blur-sm"
-            onClick={() => setOpen(false)}
-            aria-hidden
-          />
+          {!popped && (
+            <div
+              className="fixed inset-0 z-40 bg-foreground/20 backdrop-blur-sm"
+              onClick={() => setOpen(false)}
+              aria-hidden
+            />
+          )}
           <aside
-            className="fixed inset-y-0 right-0 z-50 flex h-screen w-full max-w-md flex-col border-l border-border bg-background shadow-2xl sm:max-w-lg"
+            className={
+              popped
+                ? "fixed bottom-4 right-4 z-50 flex h-[min(560px,calc(100vh-6rem))] w-[min(380px,calc(100vw-2rem))] flex-col rounded-xl border border-border bg-background shadow-2xl"
+                : "fixed inset-y-0 right-0 z-50 flex h-screen w-full max-w-md flex-col border-l border-border bg-background shadow-2xl sm:max-w-lg"
+            }
             role="dialog"
             aria-label="Project Ops assistant"
           >
@@ -157,14 +183,29 @@ export function AssistantPanel() {
                   </div>
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setOpen(false)}
-                aria-label="Close assistant"
-              >
-                <X className="h-5 w-5" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setPopped((v) => !v)}
+                  aria-label={popped ? "Expand to side drawer" : "Pop out to corner"}
+                  title={popped ? "Expand to side drawer" : "Pop out to corner"}
+                >
+                  {popped ? (
+                    <PanelRightOpen className="h-4 w-4" />
+                  ) : (
+                    <Minimize2 className="h-4 w-4" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setOpen(false)}
+                  aria-label="Close assistant"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
             </header>
 
             {/* Messages — min-h-0 lets flex-1 actually shrink and scroll
