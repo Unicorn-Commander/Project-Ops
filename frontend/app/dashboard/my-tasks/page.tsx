@@ -3,14 +3,6 @@
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { TaskList } from "@/components/tasks/task-list";
 import { CreateTaskModal } from "@/components/modals/create-task-modal";
@@ -23,9 +15,43 @@ import {
   TaskStatus,
   TaskPriority,
 } from "@/lib/tasks-api";
-import { Plus, Filter, Search, AlertTriangle, CheckCircle, Clock } from "lucide-react";
+import { Plus, AlertTriangle, CheckCircle, Clock } from "lucide-react";
 import { iconWellClass } from "@/lib/badge-styles";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
+import { ListToolbar, FilterOption } from "@/components/ui/list-toolbar";
+import {
+  compareValues,
+  priorityRank,
+  withinDateRange,
+  DateRangePreset,
+  DATE_RANGE_OPTIONS,
+} from "@/lib/list-controls";
+
+const STATUS_OPTIONS: FilterOption[] = [
+  { value: "ALL", label: "All statuses" },
+  { value: TaskStatus.PENDING, label: "Pending", dot: "bg-blue-500" },
+  { value: TaskStatus.IN_PROGRESS, label: "In progress", dot: "bg-amber-500" },
+  { value: TaskStatus.WAITING_FOR_CLIENT, label: "Waiting for client", dot: "bg-violet-500" },
+  { value: TaskStatus.COMPLETED, label: "Completed", dot: "bg-emerald-500" },
+  { value: TaskStatus.CANCELLED, label: "Cancelled", dot: "bg-rose-500" },
+];
+
+const PRIORITY_OPTIONS: FilterOption[] = [
+  { value: "ALL", label: "All priorities" },
+  { value: TaskPriority.URGENT, label: "Urgent", dot: "bg-rose-500" },
+  { value: TaskPriority.HIGH, label: "High", dot: "bg-orange-500" },
+  { value: TaskPriority.MEDIUM, label: "Medium", dot: "bg-amber-500" },
+  { value: TaskPriority.LOW, label: "Low", dot: "bg-emerald-500" },
+];
+
+const SORT_OPTIONS = [
+  { value: "dueDate-asc", label: "Due soon" },
+  { value: "createdAt-desc", label: "Newest first" },
+  { value: "createdAt-asc", label: "Oldest first" },
+  { value: "updatedAt-desc", label: "Recently updated" },
+  { value: "priority-desc", label: "Priority (highest)" },
+  { value: "title-asc", label: "Title A–Z" },
+];
 
 export default function MyTasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -33,6 +59,9 @@ export default function MyTasksPage() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<TaskStatus | "ALL">("ALL");
   const [filterPriority, setFilterPriority] = useState<TaskPriority | "ALL">("ALL");
+  const [filterProject, setFilterProject] = useState<string>("ALL");
+  const [filterCreatedRange, setFilterCreatedRange] = useState<DateRangePreset | "ALL">("ALL");
+  const [sortBy, setSortBy] = useState("dueDate-asc");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -110,25 +139,56 @@ export default function MyTasksPage() {
     fetchOverdueTasks();
   };
 
-  const filteredTasks = tasks.filter((task) => {
-    // Filter by priority
-    if (filterPriority !== "ALL" && task.priority !== filterPriority) {
-      return false;
-    }
+  // Project filter options derived from loaded tasks (no extra round-trip).
+  const projectOptions: FilterOption[] = (() => {
+    const seen = new Map<string, string>();
+    tasks.forEach((t) => {
+      if (t.project?.id) {
+        const label = t.project.projectNumber
+          ? `${t.project.projectNumber} — ${t.project.title ?? ""}`.trim()
+          : (t.project.title ?? t.project.id.slice(0, 8));
+        seen.set(t.project.id, label);
+      }
+    });
+    return [
+      { value: "ALL", label: "All projects" },
+      ...Array.from(seen.entries()).map(([value, label]) => ({ value, label })),
+    ];
+  })();
 
-    // Filter by search term
-    if (searchTerm) {
-      const search = searchTerm.toLowerCase();
-      return (
-        task.title?.toLowerCase().includes(search) ||
-        task.description?.toLowerCase().includes(search) ||
-        task.project?.projectNumber?.toLowerCase().includes(search) ||
-        task.project?.clientName?.toLowerCase().includes(search)
-      );
-    }
+  const dateRangeOptions: FilterOption[] = DATE_RANGE_OPTIONS.map((o) => ({
+    value: o.value,
+    label: o.label,
+  }));
 
-    return true;
-  });
+  const filteredTasks = tasks
+    .filter((task) => {
+      if (filterPriority !== "ALL" && task.priority !== filterPriority) return false;
+      if (filterProject !== "ALL" && task.project?.id !== filterProject) return false;
+      if (
+        filterCreatedRange !== "ALL" &&
+        !withinDateRange((task as any).createdAt, filterCreatedRange as DateRangePreset)
+      ) {
+        return false;
+      }
+      if (searchTerm) {
+        const search = searchTerm.toLowerCase();
+        return (
+          task.title?.toLowerCase().includes(search) ||
+          task.description?.toLowerCase().includes(search) ||
+          task.project?.projectNumber?.toLowerCase().includes(search) ||
+          task.project?.clientName?.toLowerCase().includes(search)
+        );
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const [field, dir] = sortBy.split("-") as [string, "asc" | "desc"];
+      if (field === "priority") return (priorityRank(b.priority) - priorityRank(a.priority)) * (dir === "desc" ? 1 : -1);
+      const av = (a as any)[field];
+      const bv = (b as any)[field];
+      return compareValues(av, bv, dir);
+    });
 
   const taskCounts = {
     all: tasks.length,
@@ -291,61 +351,56 @@ export default function MyTasksPage() {
           </Card>
         )}
 
-        {/* Filters */}
-        <Card className="p-4">
-          <div className="flex items-center gap-3 mb-4">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <h3 className="font-semibold text-foreground">Filters</h3>
-          </div>
+        {/* Toolbar — search + multi-filter + sort + active-chip row (v1.6.32). */}
+        <ListToolbar
+          search={{
+            value: searchTerm,
+            onChange: setSearchTerm,
+            placeholder: "Search tasks…",
+          }}
+          filters={[
+            {
+              key: "status",
+              label: "Status",
+              value: filterStatus,
+              onChange: (v) => setFilterStatus(v as TaskStatus | "ALL"),
+              options: STATUS_OPTIONS,
+            },
+            {
+              key: "priority",
+              label: "Priority",
+              value: filterPriority,
+              onChange: (v) => setFilterPriority(v as TaskPriority | "ALL"),
+              options: PRIORITY_OPTIONS,
+            },
+            {
+              key: "project",
+              label: "Project",
+              value: filterProject,
+              onChange: setFilterProject,
+              options: projectOptions,
+              hidden: projectOptions.length <= 1,
+            },
+            {
+              key: "createdRange",
+              label: "Created",
+              value: filterCreatedRange,
+              onChange: (v) => setFilterCreatedRange(v as DateRangePreset),
+              options: dateRangeOptions,
+            },
+          ]}
+          sort={{
+            value: sortBy,
+            onChange: setSortBy,
+            options: SORT_OPTIONS,
+          }}
+        />
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search tasks..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-
-            {/* Status Filter */}
-            <Select
-              value={filterStatus}
-              onValueChange={(value) => setFilterStatus(value as TaskStatus | "ALL")}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Statuses</SelectItem>
-                <SelectItem value={TaskStatus.PENDING}>Pending</SelectItem>
-                <SelectItem value={TaskStatus.IN_PROGRESS}>In Progress</SelectItem>
-                <SelectItem value={TaskStatus.WAITING_FOR_CLIENT}>Waiting for Client</SelectItem>
-                <SelectItem value={TaskStatus.COMPLETED}>Completed</SelectItem>
-                <SelectItem value={TaskStatus.CANCELLED}>Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* Priority Filter */}
-            <Select
-              value={filterPriority}
-              onValueChange={(value) => setFilterPriority(value as TaskPriority | "ALL")}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Filter by priority" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Priorities</SelectItem>
-                <SelectItem value={TaskPriority.LOW}>Low</SelectItem>
-                <SelectItem value={TaskPriority.MEDIUM}>Medium</SelectItem>
-                <SelectItem value={TaskPriority.HIGH}>High</SelectItem>
-                <SelectItem value={TaskPriority.URGENT}>Urgent</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </Card>
+        <p className="text-xs text-muted-foreground">
+          {filteredTasks.length === tasks.length
+            ? `${tasks.length} task${tasks.length === 1 ? "" : "s"}`
+            : `${filteredTasks.length} of ${tasks.length} tasks match`}
+        </p>
 
         {/* Tasks List */}
         <Card className="p-6">

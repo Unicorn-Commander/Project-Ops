@@ -5,6 +5,27 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.32] — 2026-05-01
+
+### Changed (My Tasks list adopts the toolbar)
+
+`/dashboard/my-tasks` now uses the same `<ListToolbar>` shipped in
+v1.6.31. The previous "Filters" card with two `<Select>` dropdowns
++ a search input is gone:
+
+- **Status / Priority / Project / Created** filter dropdowns with
+  coloured dots in the menu (status + priority); Project list is
+  derived from whatever's loaded so it doesn't render an empty menu.
+- **Sort by** Due-soon (default), Newest, Oldest, Recently updated,
+  Priority, Title.
+- Active-filter chip row + Clear-all link.
+- "12 of 27 tasks match" result-count line.
+
+### Notes
+
+The /dashboard/kanban view stays as-is (it's a board, not a list);
+its filter UX may get a separate pass if needed.
+
 ## [1.6.31] — 2026-05-01
 
 ### Added (list views — sort, filter, active-chip toolbar)
