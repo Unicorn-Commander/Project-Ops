@@ -5,6 +5,48 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.30] — 2026-04-30
+
+### Changed (Settings + Documents polish)
+
+**Settings page (`/dashboard/settings`)** — was showing a static
+"profile information" form whose Save button did nothing, plus an
+inline change-password form duplicating `/auth/change-password`,
+plus three notification toggles that the backend doesn't act on.
+
+- Profile form now wires against `PATCH /users/:id` and updates the
+  Zustand auth store on success — the change is reflected immediately
+  in the topbar avatar + sidebar without a refresh.
+- Email field shows a quiet "SSO at auth.unicorncommander.ai is the
+  source of truth" hint so users don't expect a federated update.
+- Inline change-password form removed; a tinted "Change password"
+  link to `/auth/change-password` replaces it.
+- Notifications card marked **Coming soon** with `opacity-60
+  pointer-events-none` rather than presenting non-functional toggles.
+- Section headers use the standard tinted icon-well pattern
+  (`iconWellClass("blue")` for User, `"rose"` for Shield, `"amber"`
+  for Bell, `"violet"` for the admin Shield) — same as the rest of
+  the app.
+
+**Documents page (`/dashboard/documents`)** —
+
+- Stat cards (Total / Total Size / PDFs / Images) replaced the
+  numerals-on-blank-card layout with the dashboard-style tinted
+  icon-well + count pairing (blue Files, violet HardDrive, rose
+  FileText, emerald Image).
+- Document rows now carry the per-project colour stripe (left border
+  + faint `cardWash`) — same hashed palette as kanban / contacts /
+  organizations. A 50-document inbox stops looking like an undifferent-
+  iated list.
+- File-type icons swept off solid `text-red-600` / `text-green-600`
+  to tinted dark-mode-aware variants. Trash button matches.
+
+### Notes
+
+No backend code changes; `/users/:id` PATCH already existed and is
+unchanged. Backend version bumps in lockstep so the deploy pipeline
+ships both halves cleanly.
+
 ## [1.6.29] — 2026-05-01
 
 ### Changed (modernise the badge / pill aesthetic)

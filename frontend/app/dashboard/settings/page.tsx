@@ -1,15 +1,62 @@
 "use client";
 
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/use-toast";
 import { useAuthStore } from "@/lib/store";
-import { User, Lock, Bell, Shield, Mail, ChevronRight } from "lucide-react";
+import { iconWellClass } from "@/lib/badge-styles";
+import api from "@/lib/api";
+import {
+  User,
+  Lock,
+  Bell,
+  Shield,
+  Mail,
+  ChevronRight,
+  Loader2,
+} from "lucide-react";
 import Link from "next/link";
 
 export default function SettingsPage() {
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
+  const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
+  const [firstName, setFirstName] = useState(user?.firstName ?? "");
+  const [lastName, setLastName] = useState(user?.lastName ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
+  const [username, setUsername] = useState(user?.username ?? "");
+
+  async function handleSaveProfile() {
+    if (!user) return;
+    setSaving(true);
+    try {
+      const { data } = await api.patch(`/users/${user.id}`, {
+        firstName,
+        lastName,
+        email,
+        username,
+      });
+      // The store accepts a full user; merge with existing keys we might miss.
+      setUser({ ...user, ...data });
+      toast({
+        title: "Profile updated",
+        description: "Your changes have been saved.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Couldn't save profile",
+        description:
+          err?.response?.data?.message ??
+          "The server rejected the update. Try again or contact your admin.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -21,117 +68,137 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      {/* Profile Settings */}
+      {/* Profile Settings — wired against PATCH /users/:id (v1.6.30). */}
       <Card className="p-6">
         <div className="flex items-center gap-3 mb-6">
-          <User className="h-5 w-5 text-primary" />
-          <h2 className="text-xl font-semibold">Profile Information</h2>
+          <div className={`inline-flex h-9 w-9 items-center justify-center rounded-md ${iconWellClass("blue")}`}>
+            <User className="h-5 w-5" strokeWidth={1.75} />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold">Profile information</h2>
+            <p className="text-xs text-muted-foreground">
+              How your name appears in projects, comments, and the assistant.
+            </p>
+          </div>
         </div>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="firstName">First Name</Label>
-              <Input id="firstName" defaultValue={user?.firstName} />
+              <Label htmlFor="firstName">First name</Label>
+              <Input
+                id="firstName"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                disabled={saving}
+              />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="lastName">Last Name</Label>
-              <Input id="lastName" defaultValue={user?.lastName} />
+              <Label htmlFor="lastName">Last name</Label>
+              <Input
+                id="lastName"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                disabled={saving}
+              />
             </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" defaultValue={user?.email} />
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={saving}
+            />
+            <p className="text-xs text-muted-foreground">
+              Changing your email here updates your Project-Ops record only;
+              SSO email at <span className="font-mono">auth.unicorncommander.ai</span> is the
+              source of truth and won't change.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="username">Username</Label>
-            <Input id="username" defaultValue={user?.username} />
+            <Input
+              id="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              disabled={saving}
+            />
           </div>
-          <Button className="bg-primary hover:bg-primary/90">
-            Save Changes
+          <Button onClick={handleSaveProfile} disabled={saving}>
+            {saving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving…
+              </>
+            ) : (
+              "Save changes"
+            )}
           </Button>
-        </div>
-      </Card>
-
-      {/* Password Settings */}
-      <Card className="p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <Lock className="h-5 w-5 text-primary" />
-          <h2 className="text-xl font-semibold">Change Password</h2>
-        </div>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="currentPassword">Current Password</Label>
-            <Input id="currentPassword" type="password" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="newPassword">New Password</Label>
-            <Input id="newPassword" type="password" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm New Password</Label>
-            <Input id="confirmPassword" type="password" />
-          </div>
-          <Button className="bg-primary hover:bg-primary/90">
-            Update Password
-          </Button>
-        </div>
-      </Card>
-
-      {/* Notification Settings */}
-      <Card className="p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <Bell className="h-5 w-5 text-primary" />
-          <h2 className="text-xl font-semibold">Notifications</h2>
-        </div>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Email Notifications</p>
-              <p className="text-sm text-muted-foreground">
-                Receive email updates about your cases
-              </p>
-            </div>
-            <input type="checkbox" className="h-4 w-4" defaultChecked />
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Project Updates</p>
-              <p className="text-sm text-muted-foreground">
-                Get notified when project status changes
-              </p>
-            </div>
-            <input type="checkbox" className="h-4 w-4" defaultChecked />
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Document Uploads</p>
-              <p className="text-sm text-muted-foreground">
-                Alerts when new documents are uploaded
-              </p>
-            </div>
-            <input type="checkbox" className="h-4 w-4" defaultChecked />
-          </div>
         </div>
       </Card>
 
       {/* Security */}
       <Card className="p-6">
         <div className="flex items-center gap-3 mb-6">
-          <Shield className="h-5 w-5 text-primary" />
-          <h2 className="text-xl font-semibold">Security</h2>
+          <div className={`inline-flex h-9 w-9 items-center justify-center rounded-md ${iconWellClass("rose")}`}>
+            <Shield className="h-5 w-5" strokeWidth={1.75} />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold">Security</h2>
+            <p className="text-xs text-muted-foreground">
+              Authentication is handled by Unicorn Commander SSO. The
+              password form is for the local fallback account only.
+            </p>
+          </div>
         </div>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between rounded-md border p-4">
             <div>
-              <p className="font-medium">Password Security</p>
+              <p className="font-medium">Local password</p>
               <p className="text-sm text-muted-foreground">
-                Your password is encrypted and securely stored
+                Used only when SSO is unavailable, or for client-portal users.
               </p>
             </div>
             <Link href="/auth/change-password">
-              <Button variant="outline">Change Password</Button>
+              <Button variant="outline">
+                <Lock className="mr-2 h-4 w-4" />
+                Change password
+              </Button>
             </Link>
           </div>
+        </div>
+      </Card>
+
+      {/* Notifications — placeholder honest about not yet being wired. */}
+      <Card className="p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <div className={`inline-flex h-9 w-9 items-center justify-center rounded-md ${iconWellClass("amber")}`}>
+            <Bell className="h-5 w-5" strokeWidth={1.75} />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold">Notifications</h2>
+            <p className="text-xs text-muted-foreground">
+              Coming soon — these toggles are placeholder. Per-user notification
+              preferences land alongside the email-send pipeline.
+            </p>
+          </div>
+        </div>
+        <div className="space-y-3 opacity-60 pointer-events-none">
+          {[
+            { label: "Email notifications", body: "Receive email updates about your projects." },
+            { label: "Project status changes", body: "Get notified when project status changes." },
+            { label: "Document uploads", body: "Alerts when new documents are uploaded." },
+          ].map(({ label, body }) => (
+            <div key={label} className="flex items-center justify-between rounded-md border p-4">
+              <div>
+                <p className="font-medium">{label}</p>
+                <p className="text-sm text-muted-foreground">{body}</p>
+              </div>
+              <input type="checkbox" className="h-4 w-4" defaultChecked disabled />
+            </div>
+          ))}
         </div>
       </Card>
 
@@ -139,22 +206,31 @@ export default function SettingsPage() {
       {user?.role === "ADMIN" && (
         <Card className="p-6">
           <div className="flex items-center gap-3 mb-6">
-            <Shield className="h-5 w-5 text-primary" />
-            <h2 className="text-xl font-semibold">Admin Settings</h2>
+            <div className={`inline-flex h-9 w-9 items-center justify-center rounded-md ${iconWellClass("violet")}`}>
+              <Shield className="h-5 w-5" strokeWidth={1.75} />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold">Admin settings</h2>
+              <p className="text-xs text-muted-foreground">
+                Tenant-wide configuration. Visible only to ADMIN users.
+              </p>
+            </div>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-2">
             <Link href="/dashboard/settings/email">
-              <div className="flex items-center justify-between p-4 rounded-lg border border-border hover:bg-muted/50 transition-colors cursor-pointer">
+              <div className="flex items-center justify-between p-4 rounded-md border hover:bg-muted/50 transition-colors cursor-pointer group">
                 <div className="flex items-center gap-3">
-                  <Mail className="h-5 w-5 text-primary" />
+                  <div className={`inline-flex h-9 w-9 items-center justify-center rounded-md ${iconWellClass("blue")}`}>
+                    <Mail className="h-5 w-5" strokeWidth={1.75} />
+                  </div>
                   <div>
-                    <p className="font-medium">Email Configuration</p>
+                    <p className="font-medium">Email configuration</p>
                     <p className="text-sm text-muted-foreground">
-                      Configure SMTP settings for sending emails
+                      SMTP settings used by the project notification + invite flows.
                     </p>
                   </div>
                 </div>
-                <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                <ChevronRight className="h-5 w-5 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
               </div>
             </Link>
           </div>

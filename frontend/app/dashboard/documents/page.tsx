@@ -17,10 +17,14 @@ import {
   Eye,
   FolderOpen,
   Plus,
+  HardDrive,
+  Files,
 } from "lucide-react";
 import UploadDocumentsModal from "@/components/modals/upload-documents-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DocumentViewerModal } from "@/components/documents/document-viewer-modal";
+import { iconWellClass } from "@/lib/badge-styles";
+import { projectColorClasses } from "@/lib/project-colors";
 
 interface Document {
   id: string;
@@ -157,16 +161,16 @@ export default function DocumentsPage() {
 
   const getFileIcon = (mimeType: string) => {
     if (mimeType.startsWith("image/")) {
-      return <Image className="h-5 w-5 text-green-600" />;
+      return <Image className="h-5 w-5 text-emerald-600 dark:text-emerald-400" strokeWidth={1.75} />;
     } else if (
       mimeType.includes("spreadsheet") ||
       mimeType.includes("excel")
     ) {
-      return <FileSpreadsheet className="h-5 w-5 text-green-600" />;
+      return <FileSpreadsheet className="h-5 w-5 text-emerald-600 dark:text-emerald-400" strokeWidth={1.75} />;
     } else if (mimeType.includes("pdf")) {
-      return <FileText className="h-5 w-5 text-red-600" />;
+      return <FileText className="h-5 w-5 text-rose-600 dark:text-rose-400" strokeWidth={1.75} />;
     }
-    return <File className="h-5 w-5 text-gray-600" />;
+    return <File className="h-5 w-5 text-zinc-600 dark:text-zinc-400" strokeWidth={1.75} />;
   };
 
   const formatFileSize = (bytes: number) => {
@@ -206,38 +210,66 @@ export default function DocumentsPage() {
         </Button>
       </div>
 
-      {/* Stats */}
+      {/* Stats — match dashboard tinted-icon-well pattern (v1.6.31) */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="p-4">
-          <div className="text-sm font-medium text-muted-foreground">
-            Total Documents
-          </div>
-          <div className="text-2xl font-bold mt-2">{documents.length}</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-sm font-medium text-muted-foreground">
-            Total Size
-          </div>
-          <div className="text-2xl font-bold mt-2">
-            {formatFileSize(
-              documents.reduce((acc, doc) => acc + doc.fileSize, 0)
-            )}
+          <div className="flex items-center gap-3">
+            <div className={`inline-flex h-9 w-9 items-center justify-center rounded-md ${iconWellClass("blue")}`}>
+              <Files className="h-5 w-5" strokeWidth={1.75} />
+            </div>
+            <div>
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Total Documents
+              </div>
+              <div className="text-2xl font-bold leading-tight">{documents.length}</div>
+            </div>
           </div>
         </Card>
         <Card className="p-4">
-          <div className="text-sm font-medium text-muted-foreground">
-            PDFs
-          </div>
-          <div className="text-2xl font-bold mt-2 text-red-600">
-            {documents.filter((d) => d.mimeType.includes("pdf")).length}
+          <div className="flex items-center gap-3">
+            <div className={`inline-flex h-9 w-9 items-center justify-center rounded-md ${iconWellClass("violet")}`}>
+              <HardDrive className="h-5 w-5" strokeWidth={1.75} />
+            </div>
+            <div>
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Total Size
+              </div>
+              <div className="text-2xl font-bold leading-tight">
+                {formatFileSize(
+                  documents.reduce((acc, doc) => acc + doc.fileSize, 0)
+                )}
+              </div>
+            </div>
           </div>
         </Card>
         <Card className="p-4">
-          <div className="text-sm font-medium text-muted-foreground">
-            Images
+          <div className="flex items-center gap-3">
+            <div className={`inline-flex h-9 w-9 items-center justify-center rounded-md ${iconWellClass("rose")}`}>
+              <FileText className="h-5 w-5" strokeWidth={1.75} />
+            </div>
+            <div>
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                PDFs
+              </div>
+              <div className="text-2xl font-bold leading-tight">
+                {documents.filter((d) => d.mimeType.includes("pdf")).length}
+              </div>
+            </div>
           </div>
-          <div className="text-2xl font-bold mt-2 text-green-600">
-            {documents.filter((d) => d.mimeType.startsWith("image/")).length}
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className={`inline-flex h-9 w-9 items-center justify-center rounded-md ${iconWellClass("emerald")}`}>
+              <Image className="h-5 w-5" strokeWidth={1.75} />
+            </div>
+            <div>
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Images
+              </div>
+              <div className="text-2xl font-bold leading-tight">
+                {documents.filter((d) => d.mimeType.startsWith("image/")).length}
+              </div>
+            </div>
           </div>
         </Card>
       </div>
@@ -280,55 +312,61 @@ export default function DocumentsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredDocuments.map((doc) => (
-                <tr key={doc.id} className="hover:bg-muted/30">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-3">
-                      {getFileIcon(doc.mimeType)}
-                      <span className="text-sm font-medium text-foreground">
-                        {doc.fileName}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                    {doc.mimeType.split("/")[1].toUpperCase()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                    {formatFileSize(doc.fileSize)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                    {new Date(doc.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleView(doc)}
-                        title="View document"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDownload(doc)}
-                        title="Download document"
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDelete(doc)}
-                        title="Delete document"
-                      >
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {filteredDocuments.map((doc) => {
+                const pc = doc.projectId ? projectColorClasses(doc.projectId) : null;
+                return (
+                  <tr
+                    key={doc.id}
+                    className={`group hover:bg-muted/30 transition-colors ${pc ? pc.cardWash : ""}`}
+                  >
+                    <td className={`px-6 py-4 whitespace-nowrap ${pc ? `border-l-4 ${pc.borderLeft}` : ""}`}>
+                      <div className="flex items-center gap-3">
+                        {getFileIcon(doc.mimeType)}
+                        <span className="text-sm font-medium text-foreground">
+                          {doc.fileName}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                      {doc.mimeType.split("/")[1].toUpperCase()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                      {formatFileSize(doc.fileSize)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                      {new Date(doc.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleView(doc)}
+                          title="View document"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDownload(doc)}
+                          title="Download document"
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDelete(doc)}
+                          title="Delete document"
+                        >
+                          <Trash2 className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
