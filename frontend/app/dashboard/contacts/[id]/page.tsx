@@ -19,6 +19,7 @@ import {
   priorityTextClass,
   iconWellClass,
 } from "@/lib/badge-styles";
+import { ProjectsRollupCard } from "@/components/project/projects-rollup-card";
 import { format } from "date-fns";
 import {
   ArrowLeft,
@@ -355,7 +356,13 @@ export default function ContactProfilePage() {
           </div>
 
           {/* Right Column - Projects */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 space-y-6">
+            {/* Snapshot card — Active/Completed/Billed/Outstanding +
+                status donut + priority bar (v1.6.42). */}
+            <ProjectsRollupCard
+              projects={projects as any}
+              emptyMessage="No projects with this contact yet."
+            />
             <Card className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-semibold text-foreground">

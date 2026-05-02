@@ -37,6 +37,7 @@ import { EditOrganizationModal } from '@/components/modals/edit-organization-mod
 import { CreateContactModal } from '@/components/modals/create-contact-modal';
 import { HierarchyTree } from '@/components/organizations/hierarchy-tree';
 import { activeBadgeClass, statusBadgeClass, paymentStatusBadgeClass, iconWellClass } from '@/lib/badge-styles';
+import { ProjectsRollupCard } from '@/components/project/projects-rollup-card';
 import { format } from 'date-fns';
 
 export default function OrganizationProfilePage() {
@@ -528,6 +529,12 @@ export default function OrganizationProfilePage() {
       {/* Projects Tab */}
       {activeTab === 'projects' && (
         <div className="space-y-4">
+          {/* Snapshot card — Active/Completed/Billed/Outstanding +
+              status donut + priority bar (v1.6.42). */}
+          <ProjectsRollupCard
+            projects={projects as any}
+            emptyMessage="No projects associated with this organisation yet."
+          />
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <h2 className="text-xl font-semibold text-foreground">Projects ({projects.length})</h2>

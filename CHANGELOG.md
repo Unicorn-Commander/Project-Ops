@@ -5,6 +5,26 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.42] — 2026-05-02
+
+### Added (per-org / per-contact snapshot cards)
+
+`<ProjectsRollupCard>` (new in `components/project/`) summarises a list
+of projects: Active count, Completed count, Total billed, Outstanding,
+plus a project-status donut and priority bar. Mirrors the per-project
+`<ProjectSnapshot>` (which summarises tasks) so the dashboard, project
+detail, and CRM detail pages share one chromatic vocabulary.
+
+- **Organization detail** (`/dashboard/organizations/[id]`) — the
+  Projects tab now opens with the rollup card above the project list.
+  Picks up the include-child-orgs toggle automatically.
+- **Contact detail** (`/dashboard/contacts/[id]`) — the right-column
+  Projects card is preceded by the rollup, summarising every project
+  this contact is associated with.
+
+Empty state: friendly card instead of empty SVGs when there are no
+projects to summarise.
+
 ## [1.6.41] — 2026-05-02
 
 ### Added (bulk actions on Tasks / Contacts / Documents / Users)
