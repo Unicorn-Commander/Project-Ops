@@ -5,6 +5,33 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.40] — 2026-05-02
+
+### Added (bulk actions on Projects)
+
+The Projects list now supports multi-select + bulk actions. Click the
+checkbox on any row (or "Select all in view") and a floating
+`<BulkActionBar>` slides up at the bottom of the viewport with:
+
+- **Set status** — bulk-move every selected project to a new status
+  (NEW / IN_PROGRESS / UNDER_REVIEW / COMPLETED / ON_HOLD / CANCELLED)
+- **Delete** — confirm dialog, then soft-delete every selected project
+
+Selected rows get a primary ring + offset so the selection is visible
+without losing the per-project colour stripe.
+
+Internals:
+- `<BulkActionBar>` (`components/ui/bulk-action-bar.tsx`) — reusable
+  floating shell + `useBulkRunner` hook.
+- `useBulkRunner` runs N parallel single-entity requests via
+  `Promise.allSettled`, then toasts the aggregate result (success /
+  partial / failure). When backend bulk endpoints land
+  (`POST /projects/bulk-update`, etc) the hook stays the same — we
+  just swap the `op` to the bulk URL.
+
+Tasks / Contacts / Documents / Users list pages get the same
+treatment in v1.6.41.
+
 ## [1.6.39] — 2026-05-02
 
 ### Added (inline task status edit)

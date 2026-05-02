@@ -35,6 +35,25 @@ import {
   DateRangePreset,
   DATE_RANGE_OPTIONS,
 } from "@/lib/list-controls";
+import {
+  BulkActionBar,
+  BulkActionButton,
+  useBulkRunner,
+} from "@/components/ui/bulk-action-bar";
+import {
+  Trash2 as TrashIcon,
+  CheckSquare as CheckSquareIcon,
+  Square as SquareIcon,
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown as ChevronDownIcon } from "lucide-react";
 import { format } from "date-fns";
 import {
   FileText,
@@ -109,6 +128,7 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalAvailable, setTotalAvailable] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [filterPriority, setFilterPriority] = useState("ALL");
@@ -277,6 +297,59 @@ export default function ProjectsPage() {
     label: o.label,
   }));
 
+  // Selection helpers (v1.6.40 bulk actions).
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const allFilteredSelected =
+    filteredProjects.length > 0 &&
+    filteredProjects.every((p) => selectedIds.has(p.id));
+  const toggleSelectAllFiltered = () => {
+    setSelectedIds((prev) => {
+      if (allFilteredSelected) return new Set();
+      const next = new Set(prev);
+      filteredProjects.forEach((p) => next.add(p.id));
+      return next;
+    });
+  };
+
+  // Bulk delete — N parallel single-entity requests until a backend
+  // bulk endpoint exists. Toasts aggregate the result.
+  const bulkDelete = useBulkRunner({
+    op: (id: string) => api.delete(`/projects/${id}`),
+    label: "Deleted",
+    successMessage: (ok, total) => `Deleted ${ok} of ${total} projects`,
+    onAfter: async () => {
+      setSelectedIds(new Set());
+      await fetchProjects();
+    },
+  });
+  const [bulkStatusPending, setBulkStatusPending] = useState(false);
+  const runBulkStatus = async (target: string) => {
+    const ids = [...selectedIds];
+    setBulkStatusPending(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) => api.patch(`/projects/${id}/status`, { status: target })),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      toast({
+        title: ok === ids.length ? "Status updated" : "Status update partial",
+        description: `${ok} of ${ids.length} projects → ${target.replace(/_/g, " ")}`,
+        variant: ok === ids.length ? "default" : "destructive",
+      });
+    } finally {
+      setSelectedIds(new Set());
+      await fetchProjects();
+      setBulkStatusPending(false);
+    }
+  };
+
   const statusCounts = {
     ALL: projects.length,
     NEW: projects.filter((c) => c.status === "NEW").length,
@@ -389,25 +462,60 @@ export default function ProjectsPage() {
         }}
       />
 
-      {/* Result count line — quiet, but useful when filters are active. */}
-      <p className="text-xs text-muted-foreground">
-        {filteredProjects.length === projects.length
-          ? `${projects.length} project${projects.length === 1 ? "" : "s"}`
-          : `${filteredProjects.length} of ${projects.length} projects match`}
-        {totalAvailable > projects.length && (
-          <span className="ml-2 text-amber-600 dark:text-amber-400">
-            · Showing first {projects.length} of {totalAvailable}. Refine filters to narrow further.
-          </span>
+      {/* Result count line + select-all toggle. */}
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          {filteredProjects.length === projects.length
+            ? `${projects.length} project${projects.length === 1 ? "" : "s"}`
+            : `${filteredProjects.length} of ${projects.length} projects match`}
+          {totalAvailable > projects.length && (
+            <span className="ml-2 text-amber-600 dark:text-amber-400">
+              · Showing first {projects.length} of {totalAvailable}. Refine filters to narrow further.
+            </span>
+          )}
+        </p>
+        {filteredProjects.length > 0 && (
+          <button
+            type="button"
+            onClick={toggleSelectAllFiltered}
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {allFilteredSelected ? (
+              <CheckSquareIcon className="h-3.5 w-3.5 text-primary" />
+            ) : (
+              <SquareIcon className="h-3.5 w-3.5" />
+            )}
+            {allFilteredSelected ? "Deselect all" : "Select all in view"}
+          </button>
         )}
-      </p>
+      </div>
 
       {/* Projects Grid */}
       <div className="grid gap-4">
         {filteredProjects.map((projectItem) => {
           const pc = projectColorClasses(projectItem.id);
+          const isSelected = selectedIds.has(projectItem.id);
           return (
-          <Card key={projectItem.id} className={`p-6 hover:shadow-md transition-shadow border-l-4 ${pc.borderLeft} ${pc.cardWash}`}>
+          <Card
+            key={projectItem.id}
+            className={`p-6 hover:shadow-md transition-all border-l-4 ${pc.borderLeft} ${pc.cardWash} ${isSelected ? "ring-2 ring-primary/60 ring-offset-1 ring-offset-background" : ""}`}
+          >
             <div className="flex items-start justify-between gap-4">
+              {/* Selection checkbox — clicking the row body still
+                  navigates; the checkbox stops propagation. */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleSelected(projectItem.id);
+                }}
+                className="mt-1 shrink-0 h-5 w-5 rounded border border-border hover:border-primary inline-flex items-center justify-center transition-colors"
+                aria-label={isSelected ? "Deselect project" : "Select project"}
+              >
+                {isSelected && (
+                  <CheckSquareIcon className="h-4 w-4 text-primary" strokeWidth={2.5} />
+                )}
+              </button>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 mb-3 flex-wrap">
                   <span className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 font-mono text-xs font-medium ${pc.badgeBg} ${pc.badgeText}`}>
@@ -599,6 +707,58 @@ export default function ProjectsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Bulk-action bar — shows when ≥1 project is selected (v1.6.40). */}
+      <BulkActionBar
+        selectedCount={selectedIds.size}
+        entityLabel="project"
+        onClear={() => setSelectedIds(new Set())}
+      >
+        {/* Bulk status — pick from the same status options as the
+            single-row StatusUpdate */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8 text-xs" disabled={bulkStatusPending}>
+              {bulkStatusPending ? "Updating…" : "Set status"}
+              <ChevronDownIcon className="ml-1 h-3 w-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[10rem]">
+            <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground px-2 py-1.5">
+              Move to status
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {STATUS_OPTIONS.filter((s) => s.value !== "ALL").map((opt) => (
+              <DropdownMenuItem
+                key={opt.value}
+                onSelect={() => runBulkStatus(opt.value)}
+                className="cursor-pointer"
+              >
+                {opt.dot && (
+                  <span className={`mr-2 inline-block h-2 w-2 rounded-full ${opt.dot}`} />
+                )}
+                {opt.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <BulkActionButton
+          icon={TrashIcon}
+          pending={bulkDelete.pending}
+          onClick={() => {
+            if (
+              window.confirm(
+                `Delete ${selectedIds.size} project${selectedIds.size === 1 ? "" : "s"}? This cannot be undone.`,
+              )
+            ) {
+              bulkDelete.run([...selectedIds]);
+            }
+          }}
+          destructive
+        >
+          Delete
+        </BulkActionButton>
+      </BulkActionBar>
     </div>
   );
 }
