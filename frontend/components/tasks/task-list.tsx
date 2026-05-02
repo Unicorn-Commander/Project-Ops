@@ -8,10 +8,20 @@ interface TaskListProps {
   onTaskClick: (task: Task) => void;
   /** Optional: called when an inline edit (e.g. status change) succeeds. */
   onTaskChange?: () => void;
+  /** Optional: bulk-selection set + toggle. If both omitted, no checkbox UI. */
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
   emptyMessage?: string;
 }
 
-export function TaskList({ tasks, onTaskClick, onTaskChange, emptyMessage = "No tasks found" }: TaskListProps) {
+export function TaskList({
+  tasks,
+  onTaskClick,
+  onTaskChange,
+  selectedIds,
+  onToggleSelect,
+  emptyMessage = "No tasks found",
+}: TaskListProps) {
   if (tasks.length === 0) {
     return (
       <div className="text-center py-12">
@@ -28,6 +38,8 @@ export function TaskList({ tasks, onTaskClick, onTaskChange, emptyMessage = "No 
           task={task}
           onClick={() => onTaskClick(task)}
           onChange={onTaskChange}
+          selected={selectedIds?.has(task.id)}
+          onToggleSelect={onToggleSelect ? () => onToggleSelect(task.id) : undefined}
         />
       ))}
     </div>

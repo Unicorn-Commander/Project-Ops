@@ -27,6 +27,21 @@ import {
   DateRangePreset,
   DATE_RANGE_OPTIONS,
 } from "@/lib/list-controls";
+import {
+  BulkActionBar,
+  BulkActionButton,
+  useBulkRunner,
+} from "@/components/ui/bulk-action-bar";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { Trash2 as TrashIcon, ChevronDown as ChevronDownIcon, CheckSquare as CheckSquareIcon, Square as SquareIcon } from "lucide-react";
+import api from "@/lib/api";
 
 const STATUS_OPTIONS: FilterOption[] = [
   { value: "ALL", label: "All statuses" },
@@ -65,6 +80,7 @@ export default function MyTasksPage() {
   const [filterCreatedRange, setFilterCreatedRange] = useState<DateRangePreset | "ALL">("ALL");
   const [sortBy, setSortBy] = useState("dueDate-asc");
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -172,6 +188,48 @@ export default function MyTasksPage() {
     value: o.value,
     label: o.label,
   }));
+
+  // Selection helpers (v1.6.40 bulk actions).
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // Bulk delete + bulk status — N parallel single requests until backend
+  // bulk endpoints land.
+  const bulkDelete = useBulkRunner({
+    op: (id: string) => api.delete(`/tasks/${id}`),
+    label: "Deleted",
+    successMessage: (ok, total) => `Deleted ${ok} of ${total} tasks`,
+    onAfter: async () => {
+      setSelectedIds(new Set());
+      handleRefresh();
+    },
+  });
+  const [bulkStatusPending, setBulkStatusPending] = useState(false);
+  const runBulkStatus = async (target: TaskStatus) => {
+    const ids = [...selectedIds];
+    setBulkStatusPending(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) => api.patch(`/tasks/${id}/status`, { status: target })),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      toast({
+        title: ok === ids.length ? "Status updated" : "Status update partial",
+        description: `${ok} of ${ids.length} tasks → ${target.replace(/_/g, " ").toLowerCase()}`,
+        variant: ok === ids.length ? "default" : "destructive",
+      });
+    } finally {
+      setSelectedIds(new Set());
+      handleRefresh();
+      setBulkStatusPending(false);
+    }
+  };
 
   const filteredTasks = tasks
     .filter((task) => {
@@ -429,6 +487,8 @@ export default function MyTasksPage() {
             tasks={filteredTasks}
             onTaskClick={handleTaskClick}
             onTaskChange={handleRefresh}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelected}
             emptyMessage={
               searchTerm || filterStatus !== "ALL" || filterPriority !== "ALL"
                 ? "No tasks match your filters"
@@ -437,6 +497,53 @@ export default function MyTasksPage() {
           />
         </Card>
       </div>
+
+      {/* Bulk-action bar (v1.6.40) */}
+      <BulkActionBar
+        selectedCount={selectedIds.size}
+        entityLabel="task"
+        onClear={() => setSelectedIds(new Set())}
+      >
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8 text-xs" disabled={bulkStatusPending}>
+              {bulkStatusPending ? "Updating…" : "Set status"}
+              <ChevronDownIcon className="ml-1 h-3 w-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[10rem]">
+            <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground px-2 py-1.5">
+              Move to status
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {Object.values(TaskStatus).map((s) => (
+              <DropdownMenuItem
+                key={s}
+                onSelect={() => runBulkStatus(s)}
+                className="cursor-pointer"
+              >
+                {s.replace(/_/g, " ").toLowerCase()}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <BulkActionButton
+          icon={TrashIcon}
+          pending={bulkDelete.pending}
+          onClick={() => {
+            if (
+              window.confirm(
+                `Delete ${selectedIds.size} task${selectedIds.size === 1 ? "" : "s"}? This cannot be undone.`,
+              )
+            ) {
+              bulkDelete.run([...selectedIds]);
+            }
+          }}
+          destructive
+        >
+          Delete
+        </BulkActionButton>
+      </BulkActionBar>
     </>
   );
 }

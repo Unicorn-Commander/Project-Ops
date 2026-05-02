@@ -10,6 +10,7 @@ import { TaskStatusUpdate } from "@/components/tasks/task-status-update";
 import {
   Clock,
   AlertTriangle,
+  CheckSquare as CheckSquareIcon,
 } from "lucide-react";
 
 interface TaskCardProps {
@@ -17,9 +18,12 @@ interface TaskCardProps {
   onClick: () => void;
   /** Optional refresh hook so an inline status change re-fetches list data. */
   onChange?: () => void;
+  /** When provided, renders a selection checkbox + ring for bulk-action lists. */
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
-export function TaskCard({ task, onClick, onChange }: TaskCardProps) {
+export function TaskCard({ task, onClick, onChange, selected, onToggleSelect }: TaskCardProps) {
   const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== TaskStatus.COMPLETED;
   const pc = projectColorClasses(task.projectId);
 
@@ -50,12 +54,27 @@ export function TaskCard({ task, onClick, onChange }: TaskCardProps) {
     <Card
       className={`p-4 hover:shadow-md transition-all cursor-pointer border-l-4 ${
         isOverdue ? 'border-l-rose-500' : pc.borderLeft
-      } ${pc.cardWash}`}
+      } ${pc.cardWash} ${selected ? "ring-2 ring-primary/60 ring-offset-1 ring-offset-background" : ""}`}
       onClick={onClick}
     >
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-start gap-3 flex-1">
+          {onToggleSelect && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSelect();
+              }}
+              className="mt-1 shrink-0 h-5 w-5 rounded border border-border hover:border-primary inline-flex items-center justify-center transition-colors"
+              aria-label={selected ? "Deselect task" : "Select task"}
+            >
+              {selected && (
+                <CheckSquareIcon className="h-4 w-4 text-primary" strokeWidth={2.5} />
+              )}
+            </button>
+          )}
           <div className="mt-1">
             {getTypeIcon(task.type)}
           </div>

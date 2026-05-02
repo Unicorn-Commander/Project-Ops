@@ -14,6 +14,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Avatar } from "@/components/ui/avatar";
 import { ListToolbar, FilterOption } from "@/components/ui/list-toolbar";
 import { compareValues } from "@/lib/list-controls";
+import { BulkActionBar, BulkActionButton, useBulkRunner } from "@/components/ui/bulk-action-bar";
+import { CheckSquare as CheckSquareIcon, ToggleLeft, ToggleRight } from "lucide-react";
 
 const ROLE_OPTIONS: FilterOption[] = [
   { value: "ALL", label: "All roles" },
@@ -53,6 +55,7 @@ interface User {
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [totalAvailable, setTotalAvailable] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState("ALL");
@@ -113,6 +116,33 @@ export default function UsersPage() {
       <User className="h-4 w-4" />
     );
   };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const bulkActivate = useBulkRunner({
+    op: (id: string) => api.patch(`/users/${id}/activate`),
+    label: "Activated",
+    successMessage: (ok, total) => `Activated ${ok} of ${total} users`,
+    onAfter: async () => {
+      setSelectedIds(new Set());
+      await fetchUsers();
+    },
+  });
+  const bulkDeactivate = useBulkRunner({
+    op: (id: string) => api.patch(`/users/${id}/deactivate`),
+    label: "Deactivated",
+    successMessage: (ok, total) => `Deactivated ${ok} of ${total} users`,
+    onAfter: async () => {
+      setSelectedIds(new Set());
+      await fetchUsers();
+    },
+  });
 
   const filteredUsers = users
     .filter((user) => {
@@ -265,6 +295,29 @@ export default function UsersPage() {
           <table className="w-full">
             <thead className="bg-muted/50">
               <tr>
+                <th className="pl-4 pr-2 py-3 w-10">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allSelected =
+                        filteredUsers.length > 0 &&
+                        filteredUsers.every((u) => selectedIds.has(u.id));
+                      setSelectedIds((prev) => {
+                        if (allSelected) return new Set();
+                        const next = new Set(prev);
+                        filteredUsers.forEach((u) => next.add(u.id));
+                        return next;
+                      });
+                    }}
+                    className="h-5 w-5 rounded border border-border hover:border-primary inline-flex items-center justify-center transition-colors"
+                    aria-label="Select all visible"
+                  >
+                    {filteredUsers.length > 0 &&
+                      filteredUsers.every((u) => selectedIds.has(u.id)) && (
+                        <CheckSquareIcon className="h-4 w-4 text-primary" strokeWidth={2.5} />
+                      )}
+                  </button>
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   User
                 </th>
@@ -286,8 +339,22 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredUsers.map((user) => (
-                <tr key={user.id} className="hover:bg-muted/30">
+              {filteredUsers.map((user) => {
+                const isSelected = selectedIds.has(user.id);
+                return (
+                <tr key={user.id} className={`hover:bg-muted/30 ${isSelected ? "bg-primary/5" : ""}`}>
+                  <td className="pl-4 pr-2 py-4 w-10">
+                    <button
+                      type="button"
+                      onClick={() => toggleSelected(user.id)}
+                      className="h-5 w-5 rounded border border-border hover:border-primary inline-flex items-center justify-center transition-colors"
+                      aria-label={isSelected ? "Deselect user" : "Select user"}
+                    >
+                      {isSelected && (
+                        <CheckSquareIcon className="h-4 w-4 text-primary" strokeWidth={2.5} />
+                      )}
+                    </button>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-3">
                       <Avatar
@@ -352,7 +419,8 @@ export default function UsersPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -397,6 +465,29 @@ export default function UsersPage() {
         onClose={() => setIsCreateModalOpen(false)}
         onSuccess={fetchUsers}
       />
+
+      {/* Bulk-action bar (v1.6.41) — admin-only entity, no delete (use deactivate). */}
+      <BulkActionBar
+        selectedCount={selectedIds.size}
+        entityLabel="user"
+        onClear={() => setSelectedIds(new Set())}
+      >
+        <BulkActionButton
+          icon={ToggleRight}
+          pending={bulkActivate.pending}
+          onClick={() => bulkActivate.run([...selectedIds])}
+        >
+          Activate
+        </BulkActionButton>
+        <BulkActionButton
+          icon={ToggleLeft}
+          pending={bulkDeactivate.pending}
+          onClick={() => bulkDeactivate.run([...selectedIds])}
+          destructive
+        >
+          Deactivate
+        </BulkActionButton>
+      </BulkActionBar>
     </div>
   );
 }

@@ -5,6 +5,28 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.41] — 2026-05-02
+
+### Added (bulk actions on Tasks / Contacts / Documents / Users)
+
+The remaining four list pages adopt the v1.6.40 `<BulkActionBar>`
+pattern. Per-page actions:
+
+- **My Tasks** — Set status (5 statuses), Delete
+- **Contacts** — Activate, Deactivate, Delete
+- **Documents** — Delete
+- **Users** — Activate, Deactivate (no delete; deactivate is the
+  soft-delete on this entity)
+
+`<TaskCard>` gained optional `selected` + `onToggleSelect` props so it
+can render the checkbox + ring without forcing the project-detail page
+to also adopt selection. `<TaskList>` passes them through.
+
+Documents / Contacts / Users tables added a leading checkbox column
+with header-level "select all visible" and per-row toggle. Selected
+rows tint primary so the selection is visible at a glance even with
+the per-project colour stripe in play.
+
 ## [1.6.40] — 2026-05-02
 
 ### Added (bulk actions on Projects)

@@ -26,6 +26,8 @@ import { iconWellClass } from "@/lib/badge-styles";
 import { projectColorClasses } from "@/lib/project-colors";
 import { ListToolbar, FilterOption } from "@/components/ui/list-toolbar";
 import { compareValues } from "@/lib/list-controls";
+import { BulkActionBar, BulkActionButton, useBulkRunner } from "@/components/ui/bulk-action-bar";
+import { CheckSquare as CheckSquareIcon } from "lucide-react";
 
 const TYPE_OPTIONS: FilterOption[] = [
   { value: "ALL", label: "All file types" },
@@ -64,6 +66,7 @@ interface Document {
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [totalAvailable, setTotalAvailable] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("ALL");
@@ -221,6 +224,25 @@ export default function DocumentsPage() {
     ];
   })();
 
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const bulkDelete = useBulkRunner({
+    op: (id: string) => api.delete(`/documents/${id}`),
+    label: "Deleted",
+    successMessage: (ok, total) => `Deleted ${ok} of ${total} documents`,
+    onAfter: async () => {
+      setSelectedIds(new Set());
+      await fetchDocuments();
+    },
+  });
+
   const filteredDocuments = documents
     .filter((doc) => {
       const matchesSearch =
@@ -376,6 +398,29 @@ export default function DocumentsPage() {
           <table className="w-full">
             <thead className="bg-muted/50">
               <tr>
+                <th className="pl-4 pr-2 py-3 w-10">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allSelected =
+                        filteredDocuments.length > 0 &&
+                        filteredDocuments.every((d) => selectedIds.has(d.id));
+                      setSelectedIds((prev) => {
+                        if (allSelected) return new Set();
+                        const next = new Set(prev);
+                        filteredDocuments.forEach((d) => next.add(d.id));
+                        return next;
+                      });
+                    }}
+                    className="h-5 w-5 rounded border border-border hover:border-primary inline-flex items-center justify-center transition-colors"
+                    aria-label="Select all visible"
+                  >
+                    {filteredDocuments.length > 0 &&
+                      filteredDocuments.every((d) => selectedIds.has(d.id)) && (
+                        <CheckSquareIcon className="h-4 w-4 text-primary" strokeWidth={2.5} />
+                      )}
+                  </button>
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   File Name
                 </th>
@@ -396,11 +441,24 @@ export default function DocumentsPage() {
             <tbody className="divide-y divide-border">
               {filteredDocuments.map((doc) => {
                 const pc = doc.projectId ? projectColorClasses(doc.projectId) : null;
+                const isSelected = selectedIds.has(doc.id);
                 return (
                   <tr
                     key={doc.id}
-                    className={`group hover:bg-muted/30 transition-colors ${pc ? pc.cardWash : ""}`}
+                    className={`group hover:bg-muted/30 transition-colors ${pc ? pc.cardWash : ""} ${isSelected ? "bg-primary/5" : ""}`}
                   >
+                    <td className="pl-4 pr-2 py-4 w-10">
+                      <button
+                        type="button"
+                        onClick={() => toggleSelected(doc.id)}
+                        className="h-5 w-5 rounded border border-border hover:border-primary inline-flex items-center justify-center transition-colors"
+                        aria-label={isSelected ? "Deselect document" : "Select document"}
+                      >
+                        {isSelected && (
+                          <CheckSquareIcon className="h-4 w-4 text-primary" strokeWidth={2.5} />
+                        )}
+                      </button>
+                    </td>
                     <td className={`px-6 py-4 whitespace-nowrap ${pc ? `border-l-4 ${pc.borderLeft}` : ""}`}>
                       <div className="flex items-center gap-3">
                         {getFileIcon(doc.mimeType)}
@@ -496,6 +554,30 @@ export default function DocumentsPage() {
         isOpen={viewerOpen}
         onClose={handleCloseViewer}
       />
+
+      {/* Bulk-action bar (v1.6.41) */}
+      <BulkActionBar
+        selectedCount={selectedIds.size}
+        entityLabel="document"
+        onClear={() => setSelectedIds(new Set())}
+      >
+        <BulkActionButton
+          icon={Trash2}
+          pending={bulkDelete.pending}
+          onClick={() => {
+            if (
+              window.confirm(
+                `Delete ${selectedIds.size} document${selectedIds.size === 1 ? "" : "s"}? This cannot be undone.`,
+              )
+            ) {
+              bulkDelete.run([...selectedIds]);
+            }
+          }}
+          destructive
+        >
+          Delete
+        </BulkActionButton>
+      </BulkActionBar>
     </div>
   );
 }

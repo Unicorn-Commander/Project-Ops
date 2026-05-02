@@ -29,6 +29,9 @@ import { activeBadgeClass, iconWellClass } from "@/lib/badge-styles";
 import { projectColorClasses } from "@/lib/project-colors";
 import { ListToolbar, FilterOption } from "@/components/ui/list-toolbar";
 import { compareValues } from "@/lib/list-controls";
+import { BulkActionBar, BulkActionButton, useBulkRunner } from "@/components/ui/bulk-action-bar";
+import { CheckSquare as CheckSquareIcon, ToggleLeft, ToggleRight } from "lucide-react";
+import api from "@/lib/api";
 import {
   Search,
   Plus,
@@ -67,6 +70,7 @@ export default function ContactsPage() {
   const [filterActiveLabel, setFilterActiveLabel] = useState<"ALL" | "ACTIVE" | "INACTIVE">("ACTIVE");
   const [filterOrganization, setFilterOrganization] = useState("ALL");
   const [sortBy, setSortBy] = useState("lastName-asc");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
@@ -151,6 +155,44 @@ export default function ContactsPage() {
   const handleViewContact = (contactId: string) => {
     router.push(`/dashboard/contacts/${contactId}`);
   };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const bulkDelete = useBulkRunner({
+    op: (id: string) => api.delete(`/contacts/${id}`),
+    label: "Deleted",
+    successMessage: (ok, total) => `Deleted ${ok} of ${total} contacts`,
+    onAfter: async () => {
+      setSelectedIds(new Set());
+      await fetchContacts();
+    },
+  });
+
+  const bulkActivate = useBulkRunner({
+    op: (id: string) => api.patch(`/contacts/${id}`, { isActive: true }),
+    label: "Activated",
+    successMessage: (ok, total) => `Activated ${ok} of ${total} contacts`,
+    onAfter: async () => {
+      setSelectedIds(new Set());
+      await fetchContacts();
+    },
+  });
+  const bulkDeactivate = useBulkRunner({
+    op: (id: string) => api.patch(`/contacts/${id}`, { isActive: false }),
+    label: "Deactivated",
+    successMessage: (ok, total) => `Deactivated ${ok} of ${total} contacts`,
+    onAfter: async () => {
+      setSelectedIds(new Set());
+      await fetchContacts();
+    },
+  });
 
   const filteredContacts = contacts
     .filter((c) => {
@@ -282,6 +324,29 @@ export default function ContactsPage() {
             <table className="w-full">
               <thead className="bg-muted/50 border-b border-border">
                 <tr>
+                  <th className="pl-4 pr-2 py-4 w-10">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allSelected =
+                          filteredContacts.length > 0 &&
+                          filteredContacts.every((c) => selectedIds.has(c.id));
+                        setSelectedIds((prev) => {
+                          if (allSelected) return new Set();
+                          const next = new Set(prev);
+                          filteredContacts.forEach((c) => next.add(c.id));
+                          return next;
+                        });
+                      }}
+                      className="h-5 w-5 rounded border border-border hover:border-primary inline-flex items-center justify-center transition-colors"
+                      aria-label="Select all visible"
+                    >
+                      {filteredContacts.length > 0 &&
+                        filteredContacts.every((c) => selectedIds.has(c.id)) && (
+                          <CheckSquareIcon className="h-4 w-4 text-primary" strokeWidth={2.5} />
+                        )}
+                    </button>
+                  </th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
                     Contact
                   </th>
@@ -305,7 +370,7 @@ export default function ContactsPage() {
               <tbody className="bg-card divide-y divide-border">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center">
+                    <td colSpan={7} className="px-6 py-12 text-center">
                       <div className="flex items-center justify-center">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                       </div>
@@ -313,7 +378,7 @@ export default function ContactsPage() {
                   </tr>
                 ) : filteredContacts.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-0">
+                    <td colSpan={7} className="p-0">
                       <EmptyState
                         icon={Users}
                         iconTone="violet"
@@ -335,12 +400,28 @@ export default function ContactsPage() {
                     const oc = contact.organization?.id
                       ? projectColorClasses(contact.organization?.id)
                       : null;
+                    const isSelected = selectedIds.has(contact.id);
                     return (
                     <tr
                       key={contact.id}
-                      className="hover:bg-muted/30 transition-colors cursor-pointer group"
+                      className={`hover:bg-muted/30 transition-colors cursor-pointer group ${isSelected ? "bg-primary/5" : ""}`}
                       onClick={() => handleViewContact(contact.id)}
                     >
+                      <td className="pl-4 pr-2 py-4 w-10">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSelected(contact.id);
+                          }}
+                          className="h-5 w-5 rounded border border-border hover:border-primary inline-flex items-center justify-center transition-colors"
+                          aria-label={isSelected ? "Deselect contact" : "Select contact"}
+                        >
+                          {isSelected && (
+                            <CheckSquareIcon className="h-4 w-4 text-primary" strokeWidth={2.5} />
+                          )}
+                        </button>
+                      </td>
                       <td className={`px-6 py-4 ${oc ? `border-l-4 ${oc.borderLeft} ${oc.cardWash}` : ""}`}>
                         <div className="flex items-center gap-3">
                           <Avatar
@@ -529,6 +610,44 @@ export default function ContactsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Bulk-action bar (v1.6.41) */}
+      <BulkActionBar
+        selectedCount={selectedIds.size}
+        entityLabel="contact"
+        onClear={() => setSelectedIds(new Set())}
+      >
+        <BulkActionButton
+          icon={ToggleRight}
+          pending={bulkActivate.pending}
+          onClick={() => bulkActivate.run([...selectedIds])}
+        >
+          Activate
+        </BulkActionButton>
+        <BulkActionButton
+          icon={ToggleLeft}
+          pending={bulkDeactivate.pending}
+          onClick={() => bulkDeactivate.run([...selectedIds])}
+        >
+          Deactivate
+        </BulkActionButton>
+        <BulkActionButton
+          icon={Trash2}
+          pending={bulkDelete.pending}
+          onClick={() => {
+            if (
+              window.confirm(
+                `Delete ${selectedIds.size} contact${selectedIds.size === 1 ? "" : "s"}? This cannot be undone.`,
+              )
+            ) {
+              bulkDelete.run([...selectedIds]);
+            }
+          }}
+          destructive
+        >
+          Delete
+        </BulkActionButton>
+      </BulkActionBar>
     </div>
   );
 }
