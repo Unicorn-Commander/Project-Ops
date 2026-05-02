@@ -5,6 +5,32 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.33] — 2026-05-01
+
+### Changed (Contacts + Organizations adopt the toolbar)
+
+`/dashboard/contacts` and `/dashboard/organizations` were the last
+two list pages still using ad-hoc filter buttons. They now share the
+same `<ListToolbar>` as Projects and My Tasks:
+
+**Contacts** —
+- State filter (Active only / Inactive only / Both) replaces the
+  three-button row that was easy to mis-click.
+- Organisation filter (derived from loaded contacts; hidden if
+  there's only one organisation in the data).
+- Sort by Last name A–Z (default) / First name / Newest / Oldest /
+  Recently updated.
+
+**Organizations** —
+- Type filter (Agencies / Businesses / Individuals) replaces four
+  buttons.
+- State filter (Active / Inactive / Both) replaces three buttons.
+- Sort by Name A–Z (default) / Newest / Oldest / Recently updated.
+- Result count line below toolbar.
+
+Net: every list page in the dashboard now offers the same UX —
+search, filter chips with clear-all, and explicit sort.
+
 ## [1.6.32] — 2026-05-01
 
 ### Changed (My Tasks list adopts the toolbar)

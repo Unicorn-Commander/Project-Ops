@@ -27,6 +27,8 @@ import {
 } from "@/lib/contacts-api";
 import { activeBadgeClass, iconWellClass } from "@/lib/badge-styles";
 import { projectColorClasses } from "@/lib/project-colors";
+import { ListToolbar, FilterOption } from "@/components/ui/list-toolbar";
+import { compareValues } from "@/lib/list-controls";
 import {
   Search,
   Plus,
@@ -41,12 +43,30 @@ import {
   DollarSign,
 } from "lucide-react";
 
+const ACTIVE_OPTIONS: FilterOption[] = [
+  { value: "ALL", label: "Active + inactive" },
+  { value: "ACTIVE", label: "Active only", dot: "bg-emerald-500" },
+  { value: "INACTIVE", label: "Inactive only", dot: "bg-zinc-500" },
+];
+
+const SORT_OPTIONS = [
+  { value: "lastName-asc", label: "Last name A–Z" },
+  { value: "lastName-desc", label: "Last name Z–A" },
+  { value: "firstName-asc", label: "First name A–Z" },
+  { value: "createdAt-desc", label: "Newest first" },
+  { value: "createdAt-asc", label: "Oldest first" },
+  { value: "updatedAt-desc", label: "Recently updated" },
+];
+
 export default function ContactsPage() {
   const router = useRouter();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterActive, setFilterActive] = useState<boolean | undefined>(true);
+  const [filterActiveLabel, setFilterActiveLabel] = useState<"ALL" | "ACTIVE" | "INACTIVE">("ACTIVE");
+  const [filterOrganization, setFilterOrganization] = useState("ALL");
+  const [sortBy, setSortBy] = useState("lastName-asc");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
@@ -122,7 +142,18 @@ export default function ContactsPage() {
     router.push(`/dashboard/contacts/${contactId}`);
   };
 
-  const filteredContacts = contacts;
+  const filteredContacts = contacts
+    .filter((c) => {
+      if (filterOrganization === "ALL") return true;
+      if (filterOrganization === "NONE") return !c.organization?.id;
+      return c.organization?.id === filterOrganization;
+    })
+    .sort((a, b) => {
+      const [field, dir] = sortBy.split("-") as [string, "asc" | "desc"];
+      const av = (a as any)[field];
+      const bv = (b as any)[field];
+      return compareValues(av, bv, dir);
+    });
 
   return (
     <div className="min-h-screen bg-background">
@@ -183,55 +214,57 @@ export default function ContactsPage() {
           );
         })()}
 
-        {/* Search and Filters */}
-        <Card className="mb-6 p-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
-              <Input
-                placeholder="Search by name, email, or company..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 py-6"
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant={filterActive === true ? "default" : "outline"}
-                onClick={() => setFilterActive(true)}
-                className={
-                  filterActive === true
-                    ? "bg-primary hover:bg-primary/90"
-                    : ""
-                }
-              >
-                Active
-              </Button>
-              <Button
-                variant={filterActive === false ? "default" : "outline"}
-                onClick={() => setFilterActive(false)}
-                className={
-                  filterActive === false
-                    ? "bg-primary hover:bg-primary/90"
-                    : ""
-                }
-              >
-                Inactive
-              </Button>
-              <Button
-                variant={filterActive === undefined ? "default" : "outline"}
-                onClick={() => setFilterActive(undefined)}
-                className={
-                  filterActive === undefined
-                    ? "bg-primary hover:bg-primary/90"
-                    : ""
-                }
-              >
-                All
-              </Button>
-            </div>
-          </div>
-        </Card>
+        {/* Toolbar — search + Active + Organization filters + sort. */}
+        {(() => {
+          const orgOptions: FilterOption[] = (() => {
+            const seen = new Map<string, string>();
+            contacts.forEach((c) => {
+              if (c.organization) {
+                seen.set(c.organization.id, c.organization.name);
+              }
+            });
+            return [
+              { value: "ALL", label: "All organizations" },
+              { value: "NONE", label: "No organization" },
+              ...Array.from(seen.entries()).map(([value, label]) => ({ value, label })),
+            ];
+          })();
+          return (
+            <ListToolbar
+              search={{
+                value: searchTerm,
+                onChange: setSearchTerm,
+                placeholder: "Search by name, email, or company…",
+              }}
+              filters={[
+                {
+                  key: "active",
+                  label: "State",
+                  value: filterActiveLabel,
+                  onChange: (v) => {
+                    const label = v as "ALL" | "ACTIVE" | "INACTIVE";
+                    setFilterActiveLabel(label);
+                    setFilterActive(label === "ALL" ? undefined : label === "ACTIVE");
+                  },
+                  options: ACTIVE_OPTIONS,
+                },
+                {
+                  key: "organization",
+                  label: "Organization",
+                  value: filterOrganization,
+                  onChange: setFilterOrganization,
+                  options: orgOptions,
+                  hidden: orgOptions.length <= 2,
+                },
+              ]}
+              sort={{
+                value: sortBy,
+                onChange: setSortBy,
+                options: SORT_OPTIONS,
+              }}
+            />
+          );
+        })()}
 
         {/* Contacts Table */}
         <Card>

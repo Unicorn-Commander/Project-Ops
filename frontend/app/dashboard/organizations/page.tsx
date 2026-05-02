@@ -12,13 +12,36 @@ import {
   getOrganizationTypeBadgeColor,
   getOrganizationTypeLabel,
 } from '@/lib/organizations-api';
-import { Building2, Users, Briefcase, User, Plus, Search, Filter, MoreVertical, Edit, Trash2, Network } from 'lucide-react';
+import { Building2, Users, Briefcase, User, Plus, MoreVertical, Edit, Trash2, Network } from 'lucide-react';
 import { CreateOrganizationModal } from '@/components/modals/create-organization-modal';
 import { EditOrganizationModal } from '@/components/modals/edit-organization-modal';
 import { activeBadgeClass, iconWellClass } from '@/lib/badge-styles';
 import { projectColorClasses } from '@/lib/project-colors';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
+import { ListToolbar, FilterOption } from '@/components/ui/list-toolbar';
+import { compareValues } from '@/lib/list-controls';
+
+const TYPE_OPTIONS: FilterOption[] = [
+  { value: 'ALL', label: 'All types' },
+  { value: 'AGENCY', label: 'Agencies', dot: 'bg-violet-500' },
+  { value: 'BUSINESS', label: 'Businesses', dot: 'bg-emerald-500' },
+  { value: 'INDIVIDUAL', label: 'Individuals', dot: 'bg-amber-500' },
+];
+
+const ACTIVE_OPTIONS: FilterOption[] = [
+  { value: 'ALL', label: 'Active + inactive' },
+  { value: 'ACTIVE', label: 'Active only', dot: 'bg-emerald-500' },
+  { value: 'INACTIVE', label: 'Inactive only', dot: 'bg-rose-500' },
+];
+
+const SORT_OPTIONS = [
+  { value: 'name-asc', label: 'Name A–Z' },
+  { value: 'name-desc', label: 'Name Z–A' },
+  { value: 'createdAt-desc', label: 'Newest first' },
+  { value: 'createdAt-asc', label: 'Oldest first' },
+  { value: 'updatedAt-desc', label: 'Recently updated' },
+];
 
 export default function OrganizationsPage() {
   const router = useRouter();
@@ -33,6 +56,7 @@ export default function OrganizationsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
   const [selectedOrg, setSelectedOrg] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState('name-asc');
 
   useEffect(() => {
     loadData();
@@ -176,102 +200,39 @@ export default function OrganizationsPage() {
         </div>
       )}
 
-      {/* Filters */}
-      <div className="bg-card p-4 rounded-lg border border-border shadow-sm">
-        <div className="flex flex-col lg:flex-row gap-4">
-          {/* Search */}
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search by name, tax ID, or industry..."
-                value={filters.search}
-                onChange={handleSearch}
-                className="w-full pl-10 pr-4 py-2 border border-border bg-background rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-          </div>
+      {/* Toolbar — type / state filters + sort (v1.6.33). */}
+      <ListToolbar
+        search={{
+          value: filters.search ?? '',
+          onChange: (v) => setFilters({ ...filters, search: v }),
+          placeholder: 'Search by name, tax ID, or industry…',
+        }}
+        filters={[
+          {
+            key: 'type',
+            label: 'Type',
+            value: filters.type ?? 'ALL',
+            onChange: (v) => handleTypeFilter(v === 'ALL' ? undefined : (v as 'AGENCY' | 'BUSINESS' | 'INDIVIDUAL')),
+            options: TYPE_OPTIONS,
+          },
+          {
+            key: 'active',
+            label: 'State',
+            value: filters.isActive === undefined ? 'ALL' : filters.isActive ? 'ACTIVE' : 'INACTIVE',
+            onChange: (v) => handleActiveFilter(v === 'ALL' ? undefined : v === 'ACTIVE'),
+            options: ACTIVE_OPTIONS,
+          },
+        ]}
+        sort={{
+          value: sortBy,
+          onChange: setSortBy,
+          options: SORT_OPTIONS,
+        }}
+      />
 
-          {/* Type Filter */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => handleTypeFilter(undefined)}
-              className={`px-4 py-2 rounded-lg border transition-colors ${
-                filters.type === undefined
-                  ? 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30'
-                  : 'bg-card text-foreground border-border hover:bg-muted/50'
-              }`}
-            >
-              All Types
-            </button>
-            <button
-              onClick={() => handleTypeFilter('AGENCY')}
-              className={`px-4 py-2 rounded-lg border transition-colors ${
-                filters.type === 'AGENCY'
-                  ? 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30'
-                  : 'bg-card text-foreground border-border hover:bg-muted/50'
-              }`}
-            >
-              Agencies
-            </button>
-            <button
-              onClick={() => handleTypeFilter('BUSINESS')}
-              className={`px-4 py-2 rounded-lg border transition-colors ${
-                filters.type === 'BUSINESS'
-                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
-                  : 'bg-card text-foreground border-border hover:bg-muted/50'
-              }`}
-            >
-              Businesses
-            </button>
-            <button
-              onClick={() => handleTypeFilter('INDIVIDUAL')}
-              className={`px-4 py-2 rounded-lg border transition-colors ${
-                filters.type === 'INDIVIDUAL'
-                  ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30'
-                  : 'bg-card text-foreground border-border hover:bg-muted/50'
-              }`}
-            >
-              Individuals
-            </button>
-          </div>
-
-          {/* Active Filter */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => handleActiveFilter(undefined)}
-              className={`px-4 py-2 rounded-lg border transition-colors ${
-                filters.isActive === undefined
-                  ? 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30'
-                  : 'bg-card text-foreground border-border hover:bg-muted/50'
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => handleActiveFilter(true)}
-              className={`px-4 py-2 rounded-lg border transition-colors ${
-                filters.isActive === true
-                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
-                  : 'bg-card text-foreground border-border hover:bg-muted/50'
-              }`}
-            >
-              Active
-            </button>
-            <button
-              onClick={() => handleActiveFilter(false)}
-              className={`px-4 py-2 rounded-lg border transition-colors ${
-                filters.isActive === false
-                  ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30'
-                  : 'bg-card text-foreground border-border hover:bg-muted/50'
-              }`}
-            >
-              Inactive
-            </button>
-          </div>
-        </div>
-      </div>
+      <p className="text-xs text-muted-foreground -mt-3">
+        {organizations.length} organisation{organizations.length === 1 ? '' : 's'}
+      </p>
 
       {/* Organizations Table */}
       <div className="bg-card rounded-lg border border-border shadow-sm overflow-hidden">
@@ -327,7 +288,12 @@ export default function OrganizationsPage() {
                 </td>
               </tr>
             ) : (
-              organizations.map((org) => {
+              [...organizations]
+                .sort((a, b) => {
+                  const [field, dir] = sortBy.split('-') as [string, 'asc' | 'desc'];
+                  return compareValues((a as any)[field], (b as any)[field], dir);
+                })
+                .map((org) => {
                 const oc = projectColorClasses(org.id);
                 return (
                 <tr
