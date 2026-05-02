@@ -460,6 +460,23 @@ export default function ProjectsPage() {
           onChange: setSortBy,
           options: SORT_OPTIONS,
         }}
+        views={{
+          scope: "projects",
+          current: {
+            filterStatus,
+            filterPriority,
+            filterAssignee,
+            filterCreatedRange,
+            sortBy,
+          },
+          onApply: (state) => {
+            if (state.filterStatus !== undefined) setFilterStatus(state.filterStatus);
+            if (state.filterPriority !== undefined) setFilterPriority(state.filterPriority);
+            if (state.filterAssignee !== undefined) setFilterAssignee(state.filterAssignee);
+            if (state.filterCreatedRange !== undefined) setFilterCreatedRange(state.filterCreatedRange as DateRangePreset);
+            if (state.sortBy !== undefined) setSortBy(state.sortBy);
+          },
+        }}
       />
 
       {/* Result count line + select-all toggle. */}

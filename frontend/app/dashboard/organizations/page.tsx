@@ -228,6 +228,24 @@ export default function OrganizationsPage() {
           onChange: setSortBy,
           options: SORT_OPTIONS,
         }}
+        views={{
+          scope: "organizations",
+          current: {
+            type: filters.type ?? "ALL",
+            active:
+              filters.isActive === undefined ? "ALL" : filters.isActive ? "ACTIVE" : "INACTIVE",
+            sortBy,
+          },
+          onApply: (state) => {
+            if (state.type !== undefined) {
+              handleTypeFilter(state.type === "ALL" ? undefined : (state.type as 'AGENCY' | 'BUSINESS' | 'INDIVIDUAL'));
+            }
+            if (state.active !== undefined) {
+              handleActiveFilter(state.active === "ALL" ? undefined : state.active === "ACTIVE");
+            }
+            if (state.sortBy !== undefined) setSortBy(state.sortBy);
+          },
+        }}
       />
 
       <p className="text-xs text-muted-foreground -mt-3">

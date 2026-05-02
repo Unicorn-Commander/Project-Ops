@@ -314,6 +314,23 @@ export default function ContactsPage() {
                 onChange: setSortBy,
                 options: SORT_OPTIONS,
               }}
+              views={{
+                scope: "contacts",
+                current: {
+                  filterActiveLabel,
+                  filterOrganization,
+                  sortBy,
+                },
+                onApply: (state) => {
+                  if (state.filterActiveLabel) {
+                    const label = state.filterActiveLabel as "ALL" | "ACTIVE" | "INACTIVE";
+                    setFilterActiveLabel(label);
+                    setFilterActive(label === "ALL" ? undefined : label === "ACTIVE");
+                  }
+                  if (state.filterOrganization !== undefined) setFilterOrganization(state.filterOrganization);
+                  if (state.sortBy !== undefined) setSortBy(state.sortBy);
+                },
+              }}
             />
           );
         })()}

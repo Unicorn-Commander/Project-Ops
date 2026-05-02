@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Search, ArrowUpDown, X, Check } from "lucide-react";
+import { Search, ArrowUpDown, X, Check, BookmarkPlus, Bookmark, Trash2 as TrashIcon } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +11,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import {
+  type SavedView,
+  getAllViews,
+  loadUserViews,
+  saveUserViews,
+} from "@/lib/saved-views";
+import { useState, useEffect, useCallback } from "react";
 
 /**
  * One entry in a filter dropdown. `tone` (optional) drives a coloured
@@ -46,6 +53,15 @@ export interface SortControl {
   options: SortControlOption[];
 }
 
+export interface ListViewsControl {
+  /** localStorage scope id ("projects" / "tasks" / etc). */
+  scope: string;
+  /** Current state snapshot to store when the user clicks "Save view". */
+  current: Record<string, string>;
+  /** Called with the saved view's state when the user clicks one. */
+  onApply: (state: Record<string, string>) => void;
+}
+
 interface ListToolbarProps {
   search?: {
     value: string;
@@ -54,6 +70,7 @@ interface ListToolbarProps {
   };
   filters?: FilterControl[];
   sort?: SortControl;
+  views?: ListViewsControl;
   /** Optional right-aligned slot, e.g. a "View toggle" button group. */
   rightSlot?: React.ReactNode;
 }
@@ -147,10 +164,94 @@ function SortDropdown({ control }: { control: SortControl }) {
   );
 }
 
+function ViewsDropdown({ views }: { views: ListViewsControl }) {
+  const [tick, setTick] = useState(0);
+  const [allViews, setAllViews] = useState<SavedView[]>(() => getAllViews(views.scope));
+
+  // Re-pull when the user adds or deletes a view.
+  useEffect(() => {
+    setAllViews(getAllViews(views.scope));
+  }, [tick, views.scope]);
+
+  const handleSave = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const name = window.prompt("Name this view:");
+    if (!name) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const userViews = loadUserViews(views.scope);
+    const id = `u-${Date.now().toString(36)}`;
+    saveUserViews(views.scope, [...userViews, { id, name: trimmed, state: views.current }]);
+    setTick((t) => t + 1);
+  }, [views.current, views.scope]);
+
+  const handleDelete = useCallback(
+    (id: string) => {
+      const userViews = loadUserViews(views.scope);
+      saveUserViews(views.scope, userViews.filter((v) => v.id !== id));
+      setTick((t) => t + 1);
+    },
+    [views.scope],
+  );
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Bookmark className="mr-1.5 h-3.5 w-3.5" />
+          <span className="text-xs">Views</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[14rem]">
+        <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground px-2 py-1.5">
+          Saved views
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {allViews.length === 0 && (
+          <div className="px-2 py-2 text-xs text-muted-foreground">
+            No views yet. Configure filters + click below.
+          </div>
+        )}
+        {allViews.map((v) => (
+          <DropdownMenuItem
+            key={v.id}
+            onSelect={() => views.onApply(v.state)}
+            className="flex items-center gap-2 cursor-pointer"
+          >
+            <Bookmark className={`h-3.5 w-3.5 ${v.builtIn ? "text-muted-foreground" : "text-primary"}`} />
+            <span className="flex-1">{v.name}</span>
+            {!v.builtIn && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleDelete(v.id);
+                }}
+                className="opacity-50 hover:opacity-100 hover:text-rose-600"
+                title="Delete view"
+                aria-label="Delete view"
+              >
+                <TrashIcon className="h-3 w-3" />
+              </button>
+            )}
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={handleSave} className="cursor-pointer">
+          <BookmarkPlus className="h-3.5 w-3.5 text-primary" />
+          <span>Save current as view…</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function ListToolbar({
   search,
   filters,
   sort,
+  views,
   rightSlot,
 }: ListToolbarProps) {
   const visibleFilters = (filters ?? []).filter((f) => !f.hidden);
@@ -176,6 +277,7 @@ export function ListToolbar({
           <FilterDropdown key={f.key} control={f} />
         ))}
         {sort && <SortDropdown control={sort} />}
+        {views && <ViewsDropdown views={views} />}
         {rightSlot && <div className="ml-auto">{rightSlot}</div>}
       </div>
 

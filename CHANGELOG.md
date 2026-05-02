@@ -5,6 +5,34 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.43] — 2026-05-02
+
+### Added (saved views — filter presets per list page)
+
+`<ListToolbar>` gained an optional `views` prop that adds a Views
+dropdown next to Sort. Two flavours of view:
+
+- **Built-in defaults** (always present, can't be deleted) — sensible
+  starting points per page, e.g. Projects: "Active only", "Urgent
+  priority", "Recently updated"; Tasks: "Pending", "In progress",
+  "Urgent"; Contacts: "Active only", "Recently updated"; Documents:
+  "PDFs only", "Images only"; Users: "Admins", "Active only".
+- **User-saved**: click "Save current as view…" in the dropdown,
+  give it a name; a snapshot of every filter + sort + search value
+  is persisted to localStorage under `projectops:saved-views:<scope>`.
+  Click the saved view to restore the state. Trash icon next to a
+  user view deletes it.
+
+Lives entirely client-side (localStorage) so no backend changes; new
+filters added later don't break old views (unknown keys are ignored
+at apply time).
+
+Wired into all six list pages: Projects, My Tasks, Contacts,
+Organizations, Documents, Users.
+
+`lib/saved-views.ts` is the data layer (load / save / built-in
+registry); the toolbar's `<ViewsDropdown>` is the UI.
+
 ## [1.6.42] — 2026-05-02
 
 ### Added (per-org / per-contact snapshot cards)

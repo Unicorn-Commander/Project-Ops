@@ -276,6 +276,15 @@ export default function UsersPage() {
           onChange: setSortBy,
           options: SORT_OPTIONS,
         }}
+        views={{
+          scope: "users",
+          current: { filterRole, filterActive, sortBy },
+          onApply: (state) => {
+            if (state.filterRole !== undefined) setFilterRole(state.filterRole);
+            if (state.filterActive !== undefined) setFilterActive(state.filterActive);
+            if (state.sortBy !== undefined) setSortBy(state.sortBy);
+          },
+        }}
       />
 
       <p className="text-xs text-muted-foreground">

@@ -464,6 +464,23 @@ export default function MyTasksPage() {
             onChange: setSortBy,
             options: SORT_OPTIONS,
           }}
+          views={{
+            scope: "tasks",
+            current: {
+              filterStatus,
+              filterPriority,
+              filterProject,
+              filterCreatedRange,
+              sortBy,
+            },
+            onApply: (state) => {
+              if (state.filterStatus !== undefined) setFilterStatus(state.filterStatus as TaskStatus | "ALL");
+              if (state.filterPriority !== undefined) setFilterPriority(state.filterPriority as TaskPriority | "ALL");
+              if (state.filterProject !== undefined) setFilterProject(state.filterProject);
+              if (state.filterCreatedRange !== undefined) setFilterCreatedRange(state.filterCreatedRange as DateRangePreset);
+              if (state.sortBy !== undefined) setSortBy(state.sortBy);
+            },
+          }}
         />
 
         <p className="text-xs text-muted-foreground">

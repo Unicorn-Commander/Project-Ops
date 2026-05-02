@@ -379,6 +379,15 @@ export default function DocumentsPage() {
           onChange: setSortBy,
           options: SORT_OPTIONS,
         }}
+        views={{
+          scope: "documents",
+          current: { filterType, filterProject, sortBy },
+          onApply: (state) => {
+            if (state.filterType !== undefined) setFilterType(state.filterType);
+            if (state.filterProject !== undefined) setFilterProject(state.filterProject);
+            if (state.sortBy !== undefined) setSortBy(state.sortBy);
+          },
+        }}
       />
 
       <p className="text-xs text-muted-foreground">
