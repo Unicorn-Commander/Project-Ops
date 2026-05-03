@@ -5,6 +5,30 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.51] — 2026-05-02
+
+### Added (Star contacts + organizations — consistency with projects)
+
+The star button v1.6.47 shipped on Projects now lives on Contacts and
+Organizations too. Click the star next to any row to flag — local-only,
+per-browser, per-entity-type. The Cmd+K palette's **Starred** section
+merges all three scopes so a single jump-back surface lists every
+explicitly-pinned project, person, and org.
+
+- `lib/starred.ts` is now scope-aware: `useStarred("projects" |
+  "contacts" | "organizations")`. Each scope persists to a separate
+  localStorage key (`projectops:starred:<scope>`). Same module-level
+  helpers + custom-event sync as before.
+- Star button on Contacts list rows (left of avatar) and Organizations
+  list rows (left of the building icon well). Identical visual
+  treatment to Projects: amber fill when on, muted when off.
+- `<CommandPalette>` subscribes to all three sets and merges into one
+  Starred section; capped at 8 across the union so the palette stays
+  scannable.
+
+Cross-device sync still requires a backend table — same future-work
+note as v1.6.47.
+
 ## [1.6.50] — 2026-05-02
 
 ### Added (CSV export on Documents + Organizations)

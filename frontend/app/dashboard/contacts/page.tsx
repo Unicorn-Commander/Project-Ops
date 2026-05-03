@@ -30,9 +30,10 @@ import { projectColorClasses } from "@/lib/project-colors";
 import { ListToolbar, FilterOption } from "@/components/ui/list-toolbar";
 import { compareValues } from "@/lib/list-controls";
 import { BulkActionBar, BulkActionButton, useBulkRunner } from "@/components/ui/bulk-action-bar";
-import { CheckSquare as CheckSquareIcon, ToggleLeft, ToggleRight, Download as DownloadIcon } from "lucide-react";
+import { CheckSquare as CheckSquareIcon, ToggleLeft, ToggleRight, Download as DownloadIcon, Star as StarIcon } from "lucide-react";
 import api from "@/lib/api";
 import { downloadCsv, csvFilename } from "@/lib/csv-export";
+import { useStarred } from "@/lib/starred";
 import {
   Search,
   Plus,
@@ -72,6 +73,7 @@ export default function ContactsPage() {
   const [filterOrganization, setFilterOrganization] = useState("ALL");
   const [sortBy, setSortBy] = useState("lastName-asc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const { starred, toggle: toggleStar } = useStarred("contacts");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
@@ -467,6 +469,25 @@ export default function ContactsPage() {
                       </td>
                       <td className={`px-6 py-4 ${oc ? `border-l-4 ${oc.borderLeft} ${oc.cardWash}` : ""}`}>
                         <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleStar(contact.id);
+                            }}
+                            className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded hover:bg-muted/60 transition-colors"
+                            aria-label={starred.has(contact.id) ? "Unstar contact" : "Star contact"}
+                            title={starred.has(contact.id) ? "Unstar" : "Star"}
+                          >
+                            <StarIcon
+                              className={`h-4 w-4 ${
+                                starred.has(contact.id)
+                                  ? "fill-amber-400 text-amber-500 dark:text-amber-400"
+                                  : "text-muted-foreground/50 hover:text-muted-foreground"
+                              }`}
+                              strokeWidth={1.75}
+                            />
+                          </button>
                           <Avatar
                             name={`${contact.firstName} ${contact.lastName}`}
                             size={36}

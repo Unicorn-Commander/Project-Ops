@@ -12,7 +12,8 @@ import {
   getOrganizationTypeBadgeColor,
   getOrganizationTypeLabel,
 } from '@/lib/organizations-api';
-import { Building2, Users, Briefcase, User, Plus, MoreVertical, Edit, Trash2, Network } from 'lucide-react';
+import { Building2, Users, Briefcase, User, Plus, MoreVertical, Edit, Trash2, Network, Star as StarIcon } from 'lucide-react';
+import { useStarred } from '@/lib/starred';
 import { CreateOrganizationModal } from '@/components/modals/create-organization-modal';
 import { EditOrganizationModal } from '@/components/modals/edit-organization-modal';
 import { activeBadgeClass, iconWellClass } from '@/lib/badge-styles';
@@ -59,6 +60,7 @@ export default function OrganizationsPage() {
   const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
   const [selectedOrg, setSelectedOrg] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState('name-asc');
+  const { starred, toggle: toggleStar } = useStarred('organizations');
 
   useEffect(() => {
     loadData();
@@ -348,6 +350,25 @@ export default function OrganizationsPage() {
                 >
                   <td className={`px-6 py-4 border-l-4 ${oc.borderLeft} ${oc.cardWash}`}>
                     <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleStar(org.id);
+                        }}
+                        className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded hover:bg-muted/60 transition-colors"
+                        aria-label={starred.has(org.id) ? 'Unstar organization' : 'Star organization'}
+                        title={starred.has(org.id) ? 'Unstar' : 'Star'}
+                      >
+                        <StarIcon
+                          className={`h-4 w-4 ${
+                            starred.has(org.id)
+                              ? 'fill-amber-400 text-amber-500 dark:text-amber-400'
+                              : 'text-muted-foreground/50 hover:text-muted-foreground'
+                          }`}
+                          strokeWidth={1.75}
+                        />
+                      </button>
                       <div className={`p-2 rounded-lg ${oc.badgeBg} ${oc.badgeText}`}>
                         <Building2 className="h-5 w-5" />
                       </div>

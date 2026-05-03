@@ -77,7 +77,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const [tasks, setTasks] = useState<PaletteResult[]>([]);
   const [contacts, setContacts] = useState<PaletteResult[]>([]);
   const [organizations, setOrganizations] = useState<PaletteResult[]>([]);
-  const { starred } = useStarred();
+  const { starred: starredProjects } = useStarred("projects");
+  const { starred: starredContacts } = useStarred("contacts");
+  const { starred: starredOrgs } = useStarred("organizations");
 
   // Quick actions — always available, weight them after data when query
   // is non-empty so a bare-name search doesn't hide a real project.
@@ -249,15 +251,30 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       // (implicit jump-back), then Quick actions, then alphabetical
       // tail. Ordering matches user intent: "show me what I asked for,
       // then where I was, then what I can do."
-      const starredItems: PaletteResult[] = projects
-        .filter((p) => {
-          // p.id is "project-<uuid>"; the actual project id is the
-          // suffix used by the starred set.
-          const pid = p.id.replace(/^project-/, "");
-          return starred.has(pid);
-        })
-        .slice(0, 8)
-        .map((p) => ({ ...p, id: `starred-${p.id}`, Icon: StarIcon, tone: "text-amber-500" }));
+      // Three starred sets (projects / contacts / organizations) live in
+      // separate localStorage scopes; merge into one "Starred" section
+      // so the palette gives the user a single jump-back surface.
+      const starredFrom = (
+        items: PaletteResult[],
+        prefix: "project" | "contact" | "org",
+        set: Set<string>,
+      ) =>
+        items
+          .filter((it) => {
+            const id = it.id.replace(new RegExp(`^${prefix}-`), "");
+            return set.has(id);
+          })
+          .map((it) => ({
+            ...it,
+            id: `starred-${it.id}`,
+            Icon: StarIcon,
+            tone: "text-amber-500",
+          }));
+      const starredItems: PaletteResult[] = [
+        ...starredFrom(projects, "project", starredProjects),
+        ...starredFrom(contacts, "contact", starredContacts),
+        ...starredFrom(organizations, "org", starredOrgs),
+      ].slice(0, 8);
       const recent: PaletteResult[] = getRecent(undefined, 6).map((r) => ({
         id: `recent-${r.type}-${r.id}`,
         type: r.type as PaletteResult["type"],
@@ -282,7 +299,17 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       { label: "Organisations", items: orgsHits.slice(0, 5) },
       { label: "Actions", items: actionsHits.slice(0, 5) },
     ].filter((s) => s.items.length > 0);
-  }, [query, projects, tasks, contacts, organizations, quickActions]);
+  }, [
+    query,
+    projects,
+    tasks,
+    contacts,
+    organizations,
+    quickActions,
+    starredProjects,
+    starredContacts,
+    starredOrgs,
+  ]);
 
   // Flatten for keyboard navigation.
   const flatItems = useMemo(

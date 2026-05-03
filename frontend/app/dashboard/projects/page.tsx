@@ -133,7 +133,7 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [totalAvailable, setTotalAvailable] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const { starred, toggle: toggleStar } = useStarred();
+  const { starred, toggle: toggleStar } = useStarred("projects");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [filterPriority, setFilterPriority] = useState("ALL");
