@@ -40,9 +40,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { Trash2 as TrashIcon, ChevronDown as ChevronDownIcon, CheckSquare as CheckSquareIcon, Square as SquareIcon, Download as DownloadIcon } from "lucide-react";
+import { Trash2 as TrashIcon, ChevronDown as ChevronDownIcon, CheckSquare as CheckSquareIcon, Square as SquareIcon } from "lucide-react";
 import api from "@/lib/api";
-import { downloadCsv, csvFilename } from "@/lib/csv-export";
+import { ExportCsvButton } from "@/components/ui/export-csv-button";
 
 const STATUS_OPTIONS: FilterOption[] = [
   { value: "ALL", label: "All statuses" },
@@ -337,28 +337,29 @@ export default function MyTasksPage() {
             Tasks assigned to you, sorted by due date.
           </p>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                const rows: Array<Array<unknown>> = [
-                  ["Title", "Project", "Status", "Priority", "Type", "Due Date", "Created"],
-                  ...filteredTasks.map((t) => [
-                    t.title,
-                    t.project?.projectNumber ?? "",
-                    t.status,
-                    t.priority,
-                    t.type ?? "",
-                    t.dueDate ? new Date(t.dueDate).toISOString().slice(0, 10) : "",
-                    t.createdAt ? new Date((t as any).createdAt).toISOString().slice(0, 10) : "",
-                  ]),
-                ];
-                downloadCsv(csvFilename("my-tasks"), rows);
+            <ExportCsvButton
+              data={filteredTasks}
+              filenameStem="my-tasks"
+              dateField={{ label: "Due", get: (t) => t.dueDate ?? null }}
+              statusField={{
+                label: "Status",
+                options: STATUS_OPTIONS.filter((s) => s.value !== "ALL").map((s) => ({
+                  value: s.value as string,
+                  label: s.label,
+                })),
+                get: (t) => t.status,
               }}
-              disabled={filteredTasks.length === 0}
-            >
-              <DownloadIcon className="mr-2 h-4 w-4" />
-              Export CSV
-            </Button>
+              buildHeader={() => ["Title", "Project", "Status", "Priority", "Type", "Due Date", "Created"]}
+              buildRow={(t) => [
+                t.title,
+                t.project?.projectNumber ?? "",
+                t.status,
+                t.priority,
+                t.type ?? "",
+                t.dueDate ? new Date(t.dueDate).toISOString().slice(0, 10) : "",
+                (t as any).createdAt ? new Date((t as any).createdAt).toISOString().slice(0, 10) : "",
+              ]}
+            />
             <Button onClick={() => setIsCreateModalOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               New task

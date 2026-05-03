@@ -5,6 +5,39 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.52] — 2026-05-02
+
+### Added (CSV export popover — date-range + status scope)
+
+The plain Export CSV button on every list page is now a popover:
+clicking it opens a small panel with two scope controls that
+narrow the export *without* touching the list's active filters.
+
+- **Date range** chips: All time / Last 7 / 30 / 90 days / Custom
+  (date pickers). Each list page picks the most useful date column
+  to scope by — Created for Projects / Contacts / Organizations /
+  Documents / Users; **Due** for My Tasks (matches what you'd want
+  when exporting "tasks due this week").
+- **Status / type / role / activity** chips: pick one or many to
+  filter to. Per page:
+  - Projects → Status (NEW…CANCELLED)
+  - My Tasks → Status (PENDING…CANCELLED)
+  - Contacts → Active state
+  - Organizations → Type (Agency / Business / Individual)
+  - Documents → File type (Image / PDF / Spreadsheet / Other)
+  - Users → Role (Admin / Manager / Staff / Client)
+- A live "**N of M records**" counter updates as scope changes; the
+  Export button shows the same N. A small "scoped" badge appears
+  on the trigger when any non-default scope is set.
+- The popover defaults to "no extra scope" so the historical
+  one-click behaviour (export everything currently visible) is
+  preserved — just open + click Export.
+
+`components/ui/export-csv-button.tsx` is the reusable primitive
+(generic over the data type, takes `dateField` / `statusField` /
+`buildHeader` / `buildRow`). All six list pages migrated; the
+inline csv builder code on each page is gone.
+
 ## [1.6.51] — 2026-05-02
 
 ### Added (Star contacts + organizations — consistency with projects)

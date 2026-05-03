@@ -22,8 +22,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { ListToolbar, FilterOption } from '@/components/ui/list-toolbar';
 import { compareValues } from '@/lib/list-controls';
-import { Download as DownloadIcon } from 'lucide-react';
-import { downloadCsv, csvFilename } from '@/lib/csv-export';
+import { ExportCsvButton } from '@/components/ui/export-csv-button';
 
 const TYPE_OPTIONS: FilterOption[] = [
   { value: 'ALL', label: 'All types' },
@@ -131,29 +130,30 @@ export default function OrganizationsPage() {
           <p className="text-muted-foreground mt-1">Manage CPA firms, businesses, and individual clients</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              const rows: Array<Array<unknown>> = [
-                ['Name', 'Type', 'Industry', 'Tax ID', 'Active', 'Created'],
-                ...organizations.map((o) => [
-                  o.name ?? '',
-                  o.type ?? '',
-                  (o as any).industry ?? '',
-                  (o as any).taxId ?? '',
-                  o.isActive ? 'Yes' : 'No',
-                  (o as any).createdAt
-                    ? new Date((o as any).createdAt).toISOString().slice(0, 10)
-                    : '',
-                ]),
-              ];
-              downloadCsv(csvFilename('organizations'), rows);
+          <ExportCsvButton
+            data={organizations}
+            filenameStem="organizations"
+            dateField={{ label: 'Created', get: (o) => (o as any).createdAt ?? null }}
+            statusField={{
+              label: 'Type',
+              options: TYPE_OPTIONS.filter((t) => t.value !== 'ALL').map((t) => ({
+                value: t.value,
+                label: t.label,
+              })),
+              get: (o) => o.type ?? null,
             }}
-            disabled={organizations.length === 0}
-            className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg hover:bg-muted/60 transition-colors disabled:opacity-50"
-          >
-            <DownloadIcon className="h-4 w-4" />
-            Export CSV
-          </button>
+            buildHeader={() => ['Name', 'Type', 'Industry', 'Tax ID', 'Active', 'Created']}
+            buildRow={(o) => [
+              o.name ?? '',
+              o.type ?? '',
+              (o as any).industry ?? '',
+              (o as any).taxId ?? '',
+              o.isActive ? 'Yes' : 'No',
+              (o as any).createdAt
+                ? new Date((o as any).createdAt).toISOString().slice(0, 10)
+                : '',
+            ]}
+          />
           <button
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"

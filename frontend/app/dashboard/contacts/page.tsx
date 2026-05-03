@@ -30,9 +30,9 @@ import { projectColorClasses } from "@/lib/project-colors";
 import { ListToolbar, FilterOption } from "@/components/ui/list-toolbar";
 import { compareValues } from "@/lib/list-controls";
 import { BulkActionBar, BulkActionButton, useBulkRunner } from "@/components/ui/bulk-action-bar";
-import { CheckSquare as CheckSquareIcon, ToggleLeft, ToggleRight, Download as DownloadIcon, Star as StarIcon } from "lucide-react";
+import { CheckSquare as CheckSquareIcon, ToggleLeft, ToggleRight, Star as StarIcon } from "lucide-react";
 import api from "@/lib/api";
-import { downloadCsv, csvFilename } from "@/lib/csv-export";
+import { ExportCsvButton } from "@/components/ui/export-csv-button";
 import { useStarred } from "@/lib/starred";
 import {
   Search,
@@ -228,29 +228,30 @@ export default function ContactsPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  const rows: Array<Array<unknown>> = [
-                    ["First Name", "Last Name", "Email", "Phone", "Company", "Organization", "Active", "Created"],
-                    ...filteredContacts.map((c) => [
-                      c.firstName ?? "",
-                      c.lastName ?? "",
-                      c.email ?? "",
-                      c.phone ?? "",
-                      c.company ?? "",
-                      c.organization?.name ?? "",
-                      c.isActive ? "Yes" : "No",
-                      c.createdAt ? new Date(c.createdAt).toISOString().slice(0, 10) : "",
-                    ]),
-                  ];
-                  downloadCsv(csvFilename("contacts"), rows);
+              <ExportCsvButton
+                data={filteredContacts}
+                filenameStem="contacts"
+                dateField={{ label: "Created", get: (c) => c.createdAt ?? null }}
+                statusField={{
+                  label: "Active state",
+                  options: [
+                    { value: "ACTIVE", label: "Active" },
+                    { value: "INACTIVE", label: "Inactive" },
+                  ],
+                  get: (c) => (c.isActive ? "ACTIVE" : "INACTIVE"),
                 }}
-                disabled={filteredContacts.length === 0}
-              >
-                <DownloadIcon className="w-4 h-4 mr-2" />
-                Export CSV
-              </Button>
+                buildHeader={() => ["First Name", "Last Name", "Email", "Phone", "Company", "Organization", "Active", "Created"]}
+                buildRow={(c) => [
+                  c.firstName ?? "",
+                  c.lastName ?? "",
+                  c.email ?? "",
+                  c.phone ?? "",
+                  c.company ?? "",
+                  c.organization?.name ?? "",
+                  c.isActive ? "Yes" : "No",
+                  c.createdAt ? new Date(c.createdAt).toISOString().slice(0, 10) : "",
+                ]}
+              />
               <Button
                 onClick={() => setCreateModalOpen(true)}
                 className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3"
