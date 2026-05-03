@@ -12,7 +12,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 
-export type StarredScope = "projects" | "contacts" | "organizations";
+export type StarredScope = "projects" | "contacts" | "organizations" | "tasks";
 
 const KEY_PREFIX = "projectops:starred:";
 const EVENT = "projectops:starred-changed";

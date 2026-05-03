@@ -80,6 +80,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const { starred: starredProjects } = useStarred("projects");
   const { starred: starredContacts } = useStarred("contacts");
   const { starred: starredOrgs } = useStarred("organizations");
+  const { starred: starredTasks } = useStarred("tasks");
 
   // Quick actions — always available, weight them after data when query
   // is non-empty so a bare-name search doesn't hide a real project.
@@ -256,7 +257,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       // so the palette gives the user a single jump-back surface.
       const starredFrom = (
         items: PaletteResult[],
-        prefix: "project" | "contact" | "org",
+        prefix: "project" | "contact" | "org" | "task",
         set: Set<string>,
       ) =>
         items
@@ -272,6 +273,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           }));
       const starredItems: PaletteResult[] = [
         ...starredFrom(projects, "project", starredProjects),
+        ...starredFrom(tasks, "task", starredTasks),
         ...starredFrom(contacts, "contact", starredContacts),
         ...starredFrom(organizations, "org", starredOrgs),
       ].slice(0, 8);
@@ -309,6 +311,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     starredProjects,
     starredContacts,
     starredOrgs,
+    starredTasks,
   ]);
 
   // Flatten for keyboard navigation.

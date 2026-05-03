@@ -43,6 +43,8 @@ import {
 import { Trash2 as TrashIcon, ChevronDown as ChevronDownIcon, CheckSquare as CheckSquareIcon, Square as SquareIcon } from "lucide-react";
 import api from "@/lib/api";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
+import { useStarred } from "@/lib/starred";
+import { Pin as PinIcon } from "lucide-react";
 
 const STATUS_OPTIONS: FilterOption[] = [
   { value: "ALL", label: "All statuses" },
@@ -82,6 +84,7 @@ export default function MyTasksPage() {
   const [sortBy, setSortBy] = useState("dueDate-asc");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const { starred: pinnedTaskIds, toggle: togglePinnedTask } = useStarred("tasks");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -515,30 +518,62 @@ export default function MyTasksPage() {
             : `${filteredTasks.length} of ${tasks.length} tasks match`}
         </p>
 
-        {/* Tasks List */}
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-foreground">
-              Tasks ({filteredTasks.length})
-            </h2>
-            <Button variant="outline" size="sm" onClick={handleRefresh}>
-              Refresh
-            </Button>
-          </div>
+        {/* Pinned tasks (v1.6.54) — float to the top, local-only,
+            persisted in localStorage scope "tasks". Surfaces only when
+            at least one pinned task is present in the current
+            filter set. */}
+        {(() => {
+          const pinned = filteredTasks.filter((t) => pinnedTaskIds.has(t.id));
+          const rest = filteredTasks.filter((t) => !pinnedTaskIds.has(t.id));
+          return (
+            <>
+              {pinned.length > 0 && (
+                <Card className="p-6 border-l-4 border-l-amber-400/70">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-bold text-foreground inline-flex items-center gap-2">
+                      <PinIcon className="h-5 w-5 fill-amber-400 text-amber-500" strokeWidth={1.75} />
+                      Pinned ({pinned.length})
+                    </h2>
+                  </div>
+                  <TaskList
+                    tasks={pinned}
+                    onTaskClick={handleTaskClick}
+                    onTaskChange={handleRefresh}
+                    selectedIds={selectedIds}
+                    onToggleSelect={toggleSelected}
+                    pinnedIds={pinnedTaskIds}
+                    onTogglePin={togglePinnedTask}
+                  />
+                </Card>
+              )}
+              <Card className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-foreground">
+                    Tasks ({rest.length})
+                  </h2>
+                  <Button variant="outline" size="sm" onClick={handleRefresh}>
+                    Refresh
+                  </Button>
+                </div>
 
-          <TaskList
-            tasks={filteredTasks}
-            onTaskClick={handleTaskClick}
-            onTaskChange={handleRefresh}
-            selectedIds={selectedIds}
-            onToggleSelect={toggleSelected}
-            emptyMessage={
-              searchTerm || filterStatus !== "ALL" || filterPriority !== "ALL"
-                ? "No tasks match your filters"
-                : "No tasks assigned to you"
-            }
-          />
-        </Card>
+                <TaskList
+                  tasks={rest}
+                  onTaskClick={handleTaskClick}
+                  onTaskChange={handleRefresh}
+                  selectedIds={selectedIds}
+                  onToggleSelect={toggleSelected}
+                  pinnedIds={pinnedTaskIds}
+                  onTogglePin={togglePinnedTask}
+                  emptyMessage={
+                    searchTerm || filterStatus !== "ALL" || filterPriority !== "ALL"
+                      ? "No tasks match your filters"
+                      : "No tasks assigned to you"
+                  }
+                />
+              </Card>
+            </>
+          );
+        })()}
       </div>
 
       {/* Bulk-action bar (v1.6.40) */}

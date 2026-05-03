@@ -11,6 +11,9 @@ interface TaskListProps {
   /** Optional: bulk-selection set + toggle. If both omitted, no checkbox UI. */
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
+  /** Optional: pin set + toggle. If both omitted, no pin UI. (v1.6.54) */
+  pinnedIds?: Set<string>;
+  onTogglePin?: (id: string) => void;
   emptyMessage?: string;
 }
 
@@ -20,6 +23,8 @@ export function TaskList({
   onTaskChange,
   selectedIds,
   onToggleSelect,
+  pinnedIds,
+  onTogglePin,
   emptyMessage = "No tasks found",
 }: TaskListProps) {
   if (tasks.length === 0) {
@@ -40,6 +45,8 @@ export function TaskList({
           onChange={onTaskChange}
           selected={selectedIds?.has(task.id)}
           onToggleSelect={onToggleSelect ? () => onToggleSelect(task.id) : undefined}
+          pinned={pinnedIds?.has(task.id)}
+          onTogglePin={onTogglePin ? () => onTogglePin(task.id) : undefined}
         />
       ))}
     </div>

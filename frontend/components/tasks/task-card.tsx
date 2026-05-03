@@ -11,6 +11,7 @@ import {
   Clock,
   AlertTriangle,
   CheckSquare as CheckSquareIcon,
+  Pin as PinIcon,
 } from "lucide-react";
 
 interface TaskCardProps {
@@ -21,9 +22,12 @@ interface TaskCardProps {
   /** When provided, renders a selection checkbox + ring for bulk-action lists. */
   selected?: boolean;
   onToggleSelect?: () => void;
+  /** When provided, renders a pin toggle in the header (v1.6.54). */
+  pinned?: boolean;
+  onTogglePin?: () => void;
 }
 
-export function TaskCard({ task, onClick, onChange, selected, onToggleSelect }: TaskCardProps) {
+export function TaskCard({ task, onClick, onChange, selected, onToggleSelect, pinned, onTogglePin }: TaskCardProps) {
   const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== TaskStatus.COMPLETED;
   const pc = projectColorClasses(task.projectId);
 
@@ -73,6 +77,27 @@ export function TaskCard({ task, onClick, onChange, selected, onToggleSelect }: 
               {selected && (
                 <CheckSquareIcon className="h-4 w-4 text-primary" strokeWidth={2.5} />
               )}
+            </button>
+          )}
+          {onTogglePin && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onTogglePin();
+              }}
+              className="mt-1 shrink-0 inline-flex h-5 w-5 items-center justify-center rounded hover:bg-muted/60 transition-colors"
+              aria-label={pinned ? "Unpin task" : "Pin task"}
+              title={pinned ? "Unpin" : "Pin to top of My Tasks"}
+            >
+              <PinIcon
+                className={`h-4 w-4 ${
+                  pinned
+                    ? "fill-amber-400 text-amber-500 dark:text-amber-400"
+                    : "text-muted-foreground/50 hover:text-muted-foreground"
+                }`}
+                strokeWidth={1.75}
+              />
             </button>
           )}
           <div className="mt-1">

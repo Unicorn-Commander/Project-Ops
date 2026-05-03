@@ -5,6 +5,32 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.54] — 2026-05-03
+
+### Added (Pinned tasks on My Tasks)
+
+Each task card now exposes a small pin toggle (left of the type
+icon, mirrors the star pattern shipped on Projects/Contacts/Orgs
+in v1.6.47/51). Click the pin and the task floats to a dedicated
+**Pinned** card at the top of My Tasks above the regular list,
+with an amber accent stripe.
+
+- `lib/starred.ts` gained a `"tasks"` scope; same module-level
+  helpers + scoped localStorage key
+  (`projectops:starred:tasks`).
+- `<TaskCard>` and `<TaskList>` got optional `pinned` /
+  `onTogglePin` props so the pin UI is opt-in. Anywhere
+  `<TaskList>` is rendered without the prop continues to render
+  exactly as before (project detail, etc).
+- The Cmd+K palette now includes pinned tasks in its merged
+  **Starred** section so a pinned task is also one keystroke
+  away from anywhere in the dashboard.
+
+The Pinned section auto-respects the active filter set — pin a
+task, then filter to "Completed" and the pinned task disappears
+along with the rest until the filter clears. Same intent the
+Recent section applies on the Cmd+K palette.
+
 ## [1.6.53] — 2026-05-03
 
 ### Added (Bulk actions on Organizations)
