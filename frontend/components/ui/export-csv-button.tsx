@@ -91,10 +91,12 @@ export function ExportCsvButton<T>(props: ExportCsvButtonProps<T>) {
   const [statusPicks, setStatusPicks] = useState<Set<string>>(new Set());
   const popRef = useRef<HTMLDivElement>(null);
 
-  // Close on outside click + Escape.
+  // Close on outside press + Escape. `pointerdown` covers mouse + touch +
+  // pen in one listener (v1.6.58 — was mousedown-only, missed touch
+  // dismissal on mobile).
   useEffect(() => {
     if (!open) return;
-    const onClick = (e: MouseEvent) => {
+    const onPress = (e: PointerEvent) => {
       if (popRef.current && !popRef.current.contains(e.target as Node)) {
         setOpen(false);
       }
@@ -102,10 +104,10 @@ export function ExportCsvButton<T>(props: ExportCsvButtonProps<T>) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
-    document.addEventListener("mousedown", onClick);
+    document.addEventListener("pointerdown", onPress);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("pointerdown", onPress);
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);

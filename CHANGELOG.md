@@ -5,6 +5,25 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.58] — 2026-05-03
+
+### Fixed (post-overnight nits)
+
+Three small cleanups after a code-review pass over the v1.6.51-57
+batch:
+
+1. **Print stylesheet card selector is now durable.** The card-flatten
+   rule used `[class*="rounded-lg"][class*="border"]` which would break
+   silently if the Tailwind class names ever changed. Added a `po-card`
+   semantic class to the `<Card>` component itself; print rule now
+   targets `.po-card`.
+2. **Removed the no-op `a[href]:after { content: "" }`** rule from the
+   print block — was a leftover scaffold with an opt-out comment but no
+   effect. Cleaner stylesheet.
+3. **`<ExportCsvButton>` outside-press now uses `pointerdown`** instead
+   of `mousedown`. Same desktop behaviour, but mobile/touch users can
+   actually dismiss the popover by tapping outside it now.
+
 ## [1.6.57] — 2026-05-03
 
 ### Changed (README refresh covering v1.6.39–56)

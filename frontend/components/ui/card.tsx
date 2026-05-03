@@ -12,7 +12,10 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "relative rounded-xl border border-border bg-card text-card-foreground shadow-sm",
+      // `po-card` is a semantic hook used by the print stylesheet (and any
+      // other surface-level rules that need to target every Card without
+      // depending on Tailwind class spelling). v1.6.58.
+      "po-card relative rounded-xl border border-border bg-card text-card-foreground shadow-sm",
       "before:pointer-events-none before:absolute before:inset-0 before:rounded-xl",
       "before:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] dark:before:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]",
       className,
