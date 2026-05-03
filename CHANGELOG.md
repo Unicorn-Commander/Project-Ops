@@ -5,6 +5,27 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.53] — 2026-05-03
+
+### Added (Bulk actions on Organizations)
+
+The Organizations list now supports the same multi-select +
+floating action bar that v1.6.40/41 shipped on Projects, Tasks,
+Contacts, Documents, and Users. Per-row checkbox + a leading
+"select all visible" header checkbox; selected rows tint primary
+without losing the per-org colour stripe.
+
+Three actions in the bar:
+
+- **Activate** — bulk-set `isActive: true`
+- **Deactivate** — bulk-set `isActive: false`
+- **Delete** — confirm dialog ("This will deactivate the
+  organization (soft delete)"), then `DELETE /organizations/:id`
+  per selected row
+
+Same `useBulkRunner` hook as the other pages — N parallel
+`Promise.allSettled` requests, aggregate toast on completion.
+
 ## [1.6.52] — 2026-05-02
 
 ### Added (CSV export popover — date-range + status scope)

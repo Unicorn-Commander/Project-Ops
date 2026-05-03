@@ -12,7 +12,7 @@ import {
   getOrganizationTypeBadgeColor,
   getOrganizationTypeLabel,
 } from '@/lib/organizations-api';
-import { Building2, Users, Briefcase, User, Plus, MoreVertical, Edit, Trash2, Network, Star as StarIcon } from 'lucide-react';
+import { Building2, Users, Briefcase, User, Plus, MoreVertical, Edit, Trash2, Network, Star as StarIcon, CheckSquare as CheckSquareIcon, ToggleLeft, ToggleRight } from 'lucide-react';
 import { useStarred } from '@/lib/starred';
 import { CreateOrganizationModal } from '@/components/modals/create-organization-modal';
 import { EditOrganizationModal } from '@/components/modals/edit-organization-modal';
@@ -23,6 +23,8 @@ import { Button } from '@/components/ui/button';
 import { ListToolbar, FilterOption } from '@/components/ui/list-toolbar';
 import { compareValues } from '@/lib/list-controls';
 import { ExportCsvButton } from '@/components/ui/export-csv-button';
+import { BulkActionBar, BulkActionButton, useBulkRunner } from '@/components/ui/bulk-action-bar';
+import api from '@/lib/api';
 
 const TYPE_OPTIONS: FilterOption[] = [
   { value: 'ALL', label: 'All types' },
@@ -60,6 +62,44 @@ export default function OrganizationsPage() {
   const [selectedOrg, setSelectedOrg] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState('name-asc');
   const { starred, toggle: toggleStar } = useStarred('organizations');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const bulkActivate = useBulkRunner({
+    op: (id: string) => api.patch(`/organizations/${id}`, { isActive: true }),
+    label: 'Activated',
+    successMessage: (ok, total) => `Activated ${ok} of ${total} organizations`,
+    onAfter: async () => {
+      setSelectedIds(new Set());
+      await loadData();
+    },
+  });
+  const bulkDeactivate = useBulkRunner({
+    op: (id: string) => api.patch(`/organizations/${id}`, { isActive: false }),
+    label: 'Deactivated',
+    successMessage: (ok, total) => `Deactivated ${ok} of ${total} organizations`,
+    onAfter: async () => {
+      setSelectedIds(new Set());
+      await loadData();
+    },
+  });
+  const bulkDelete = useBulkRunner({
+    op: (id: string) => api.delete(`/organizations/${id}`),
+    label: 'Deleted',
+    successMessage: (ok, total) => `Deleted ${ok} of ${total} organizations`,
+    onAfter: async () => {
+      setSelectedIds(new Set());
+      await loadData();
+    },
+  });
 
   useEffect(() => {
     loadData();
@@ -286,6 +326,29 @@ export default function OrganizationsPage() {
         <table className="w-full">
           <thead className="bg-muted/50 border-b border-border">
             <tr>
+              <th className="pl-4 pr-2 py-3 w-10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allSelected =
+                      organizations.length > 0 &&
+                      organizations.every((o) => selectedIds.has(o.id));
+                    setSelectedIds((prev) => {
+                      if (allSelected) return new Set();
+                      const next = new Set(prev);
+                      organizations.forEach((o) => next.add(o.id));
+                      return next;
+                    });
+                  }}
+                  className="h-5 w-5 rounded border border-border hover:border-primary inline-flex items-center justify-center transition-colors"
+                  aria-label="Select all visible"
+                >
+                  {organizations.length > 0 &&
+                    organizations.every((o) => selectedIds.has(o.id)) && (
+                      <CheckSquareIcon className="h-4 w-4 text-primary" strokeWidth={2.5} />
+                    )}
+                </button>
+              </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Organization
               </th>
@@ -312,13 +375,13 @@ export default function OrganizationsPage() {
           <tbody className="divide-y divide-border">
             {loading ? (
               <tr>
-                <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
+                <td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">
                   Loading organizations...
                 </td>
               </tr>
             ) : organizations.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-0">
+                <td colSpan={8} className="p-0">
                   <EmptyState
                     icon={Building2}
                     iconTone="emerald"
@@ -342,12 +405,28 @@ export default function OrganizationsPage() {
                 })
                 .map((org) => {
                 const oc = projectColorClasses(org.id);
+                const isSelected = selectedIds.has(org.id);
                 return (
                 <tr
                   key={org.id}
                   onClick={() => handleRowClick(org)}
-                  className="hover:bg-muted/30 cursor-pointer transition-colors"
+                  className={`hover:bg-muted/30 cursor-pointer transition-colors ${isSelected ? 'bg-primary/5' : ''}`}
                 >
+                  <td className="pl-4 pr-2 py-4 w-10">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSelected(org.id);
+                      }}
+                      className="h-5 w-5 rounded border border-border hover:border-primary inline-flex items-center justify-center transition-colors"
+                      aria-label={isSelected ? 'Deselect organization' : 'Select organization'}
+                    >
+                      {isSelected && (
+                        <CheckSquareIcon className="h-4 w-4 text-primary" strokeWidth={2.5} />
+                      )}
+                    </button>
+                  </td>
                   <td className={`px-6 py-4 border-l-4 ${oc.borderLeft} ${oc.cardWash}`}>
                     <div className="flex items-center gap-3">
                       <button
@@ -463,6 +542,43 @@ export default function OrganizationsPage() {
           }}
         />
       )}
+
+      <BulkActionBar
+        selectedCount={selectedIds.size}
+        entityLabel="organization"
+        onClear={() => setSelectedIds(new Set())}
+      >
+        <BulkActionButton
+          icon={ToggleRight}
+          pending={bulkActivate.pending}
+          onClick={() => bulkActivate.run([...selectedIds])}
+        >
+          Activate
+        </BulkActionButton>
+        <BulkActionButton
+          icon={ToggleLeft}
+          pending={bulkDeactivate.pending}
+          onClick={() => bulkDeactivate.run([...selectedIds])}
+        >
+          Deactivate
+        </BulkActionButton>
+        <BulkActionButton
+          icon={Trash2}
+          pending={bulkDelete.pending}
+          onClick={() => {
+            if (
+              window.confirm(
+                `Delete ${selectedIds.size} organization${selectedIds.size === 1 ? '' : 's'}? This will deactivate them (soft delete).`,
+              )
+            ) {
+              bulkDelete.run([...selectedIds]);
+            }
+          }}
+          destructive
+        >
+          Delete
+        </BulkActionButton>
+      </BulkActionBar>
     </div>
   );
 }
