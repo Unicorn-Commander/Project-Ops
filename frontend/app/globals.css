@@ -249,3 +249,95 @@
     @apply bg-primary text-primary-foreground px-3 py-1 rounded-full text-sm font-medium;
   }
 }
+
+/* Print-only utilities — `.print-only` is hidden in screen mode and shown
+ * when printing; `.no-print` is the inverse. Pair them on the project
+ * detail page to swap an interactive header for a static print header. */
+.print-only {
+  display: none !important;
+}
+
+/* Print stylesheet (v1.6.56). The first iteration targets the project
+ * detail page (the most-printable surface — clients ask for these as
+ * paper status reports), but the chrome-hiding rules apply globally so
+ * any page can be printed cleanly. */
+@media print {
+  /* 1) Hide dashboard chrome — sidebar, sticky topbar, and any element
+   *    explicitly tagged .no-print (interactive buttons, tabs, etc). */
+  aside,
+  header.sticky,
+  .no-print {
+    display: none !important;
+  }
+
+  /* 2) Reset the lg:pl-64 offset so content fills the printable width. */
+  .lg\:pl-64 {
+    padding-left: 0 !important;
+  }
+
+  /* 3) Show print-only blocks (e.g. a static print header that summarises
+   *    the project up top in lieu of the interactive header). */
+  .print-only {
+    display: block !important;
+  }
+
+  /* 4) Force light surface + dark text, regardless of theme. Keeps badge
+   *    backgrounds via print-color-adjust so status colours still print. */
+  html,
+  body {
+    background: #ffffff !important;
+    color: #111111 !important;
+    font-size: 11pt;
+  }
+  * {
+    color: #111111 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* 5) Cards: flatten to a clean bordered block; let them break naturally
+   *    but avoid splitting a single card across pages where possible. */
+  [class*="rounded-lg"][class*="border"] {
+    border-color: #d4d4d8 !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* 6) Single-column flow — override the responsive grid on detail pages
+   *    so the right rail (client info, etc.) drops below the main column. */
+  .grid {
+    display: block !important;
+  }
+  .grid > * {
+    margin-bottom: 1rem;
+  }
+
+  /* 7) Tighter type for paper. */
+  h1 { font-size: 18pt !important; }
+  h2 { font-size: 14pt !important; }
+  h3 { font-size: 12pt !important; }
+
+  /* 8) Hide animation hooks so nothing flickers as Chrome paints the
+   *    print preview. */
+  .po-page-enter,
+  .po-stagger-1,
+  .po-stagger-2,
+  .po-stagger-3 {
+    animation: none !important;
+  }
+
+  /* 9) Reasonable page margins. */
+  @page {
+    margin: 0.6in 0.6in;
+  }
+
+  /* 10) Always show URL after links so the printed page is self-referencing
+   *     for project numbers and external links. */
+  a[href]:after {
+    content: "";  /* opt out — we set this per-element where useful */
+  }
+}

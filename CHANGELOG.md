@@ -5,6 +5,40 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.56] — 2026-05-03
+
+### Added (Print stylesheet for project detail page)
+
+The project detail page is the most-printable surface in the
+dashboard — clients and ops folks ask for "the project as a paper
+status report" routinely. It now prints cleanly:
+
+- **Print button** in the header (next to Edit) calls
+  `window.print()`. Uses the lucide `Printer` icon.
+- **`@media print` stylesheet** in `globals.css` (applies globally,
+  not just to project detail):
+  - Hides the sidebar (`aside`), the sticky topbar, and any element
+    tagged `.no-print` (interactive headers, action buttons,
+    assistant panel, etc).
+  - Resets the `lg:pl-64` content offset so the printable area
+    fills the page.
+  - Forces a white background + dark ink, but keeps badge/status
+    fills via `print-color-adjust: exact` so the colour vocabulary
+    survives.
+  - Flattens the responsive `grid` to a single column so the
+    right-rail (client info, billing) drops below the main column.
+  - Page-break-inside on cards so a single Card doesn't get
+    cleaved across pages where avoidable.
+  - 18pt h1 / 14pt h2 / 12pt h3 / 11pt body for paper.
+  - 0.6in margins.
+- **`.print-only` print header** at the top of the project detail
+  page, replacing the interactive header at print time. Shows
+  project number · status · title · printed-at timestamp +
+  source URL — so the printout is self-describing.
+
+`.no-print` and `.print-only` are reusable utility classes; we'll
+expand to other surfaces (invoices, tasks lists) as need arises.
+
 ## [1.6.55] — 2026-05-03
 
 ### Changed (Kanban empty-state polish)

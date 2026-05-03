@@ -39,6 +39,7 @@ import {
   DollarSign,
   CheckSquare,
   Plus,
+  Printer,
 } from "lucide-react";
 
 interface Project {
@@ -220,8 +221,25 @@ export default function ProjectDetailPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Print-only header (v1.6.56) — replaces the interactive header at
+          print time. Project number, title, status, and a date stamp so
+          the printout is self-contained. */}
+      <div className="print-only">
+        <div style={{ borderBottom: "1px solid #d4d4d8", paddingBottom: "0.5rem", marginBottom: "1rem" }}>
+          <div style={{ fontSize: "10pt", fontFamily: "monospace", color: "#52525b" }}>
+            {projectData.projectNumber} · {projectData.status.replace(/_/g, " ")}
+          </div>
+          <h1 style={{ fontSize: "20pt", margin: "0.25rem 0 0 0" }}>
+            {projectData.title}
+          </h1>
+          <div style={{ fontSize: "9pt", color: "#71717a", marginTop: "0.25rem" }}>
+            Printed {format(new Date(), "MMM d, yyyy 'at' h:mm a")} · projectops.magicunicorn.dev
+          </div>
+        </div>
+      </div>
+
+      {/* Interactive header — hidden in print mode (v1.6.56). */}
+      <div className="flex items-center justify-between no-print">
         <div className="flex items-center gap-4">
           <Button
             variant="outline"
@@ -254,15 +272,25 @@ export default function ProjectDetailPage() {
             })()}
           </div>
         </div>
-        {canEditProject() && (
+        <div className="flex items-center gap-2">
           <Button
-            className="bg-primary hover:bg-primary/90"
-            onClick={() => setEditModalOpen(true)}
+            variant="outline"
+            onClick={() => window.print()}
+            title="Print this project as a paper status report"
           >
-            <Edit className="mr-2 h-4 w-4" />
-            Edit Project
+            <Printer className="mr-2 h-4 w-4" />
+            Print
           </Button>
-        )}
+          {canEditProject() && (
+            <Button
+              className="bg-primary hover:bg-primary/90"
+              onClick={() => setEditModalOpen(true)}
+            >
+              <Edit className="mr-2 h-4 w-4" />
+              Edit Project
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Main Content */}
