@@ -24,14 +24,36 @@ Changelog: [`CHANGELOG.md`](CHANGELOG.md)
   quick stats above the task list.
 - **Cmd/Ctrl+K palette** — global jump surface. Search projects, tasks,
   contacts, organisations + quick actions (New project / task /
-  contact). Keyboard-first: ↑↓ navigate, ↵ select, Esc close.
-- **Bulk actions** — multi-select on every list page; floating action
+  contact). On empty query: a **Starred** section (your explicit
+  picks) and a **Recent** section (last 6 detail-page visits) lead
+  the list. Keyboard-first: ↑↓ navigate, ↵ select, Esc close.
+- **Star projects, contacts, organisations + pin tasks** — local-only
+  flag per entity, per browser. Star icon on each row in the list
+  page; pinned tasks float to a dedicated **Pinned** card at the top
+  of My Tasks. All four scopes feed the Cmd+K Starred section so a
+  flagged item is one keystroke away from anywhere.
+- **Bulk actions** — multi-select on every list page (Projects, My
+  Tasks, Contacts, Organisations, Documents, Users); floating action
   bar with Set Status / Activate / Deactivate / Delete depending on
   the entity. Selected rows tint primary so the selection stays
   visible during scroll.
 - **Saved views** — filter + sort presets per list page, persisted in
-  localStorage. Built-in starting points ship per page; Save current
-  view captures whatever filters are active.
+  localStorage. Built-in starting points ship per page (e.g.
+  Projects: "Active only", "Urgent priority", "Recently updated");
+  Save current view captures whatever filters are active.
+- **CSV export — scoped** — every list page has an Export CSV
+  popover with date-range chips (None / 7 / 30 / 90 days / Custom
+  pickers) and status / type / role / activity chips that scope the
+  export *without* changing the list's active filters. Live
+  "N of M records" counter; UTF-8 BOM for Excel; RFC-4180 quoting.
+- **Assistant in popped mode** — the AI sidebar can swap to a
+  fixed-corner widget so the dashboard stays interactive while you
+  ask a question and click through to the answer in the same
+  gesture. Mode is remembered.
+- **Print-friendly project detail** — a Print button on
+  `/dashboard/projects/[id]` triggers a clean paper layout: chrome
+  hidden, single-column flow, status colours preserved, project
+  number + title + timestamp as a print header.
 - **Per-org / per-contact snapshot** — Active / Completed / Billed /
   Outstanding stats + project status donut + priority bar at the top
   of each org and contact detail page.

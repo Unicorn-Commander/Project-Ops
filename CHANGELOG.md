@@ -5,6 +5,30 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.57] — 2026-05-03
+
+### Changed (README refresh covering v1.6.39–56)
+
+The README's "What's inside" section had drifted — most of what
+shipped over the v1.6.39–56 sprint was visible only via
+`CHANGELOG.md`. Now the top of the README surfaces the active set
+of UX primitives a user actually meets in the dashboard:
+
+- Star projects / contacts / organisations + pin tasks (cross-page
+  Cmd+K Starred section)
+- Cmd+K **Recent** section (last 6 detail-page visits)
+- Bulk actions on every list page (six pages now, was three at
+  README-write time)
+- Saved views — clarified that built-in starting points ship per
+  page
+- CSV export with the date-range + status scope popover (v1.6.52)
+  on every list page
+- Assistant in popped corner-widget mode (v1.6.45)
+- Print-friendly project detail page (v1.6.56)
+
+Docs-only release. No code or schema changes; no container rebuild
+required.
+
 ## [1.6.56] — 2026-05-03
 
 ### Added (Print stylesheet for project detail page)
