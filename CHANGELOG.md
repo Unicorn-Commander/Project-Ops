@@ -5,6 +5,27 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.55] — 2026-05-03
+
+### Changed (Kanban empty-state polish)
+
+`/dashboard/kanban` used to render four empty drag-targets when
+the board had no tasks — visually noisy and didn't tell the user
+how to recover. Replaced with the dashboard's `<EmptyState>`
+primitive in two flavours:
+
+- **No tasks at all** — violet `LayoutGrid` icon, "Your board is
+  empty", primary **New task** CTA that opens the create modal.
+  The four columns are hidden entirely; once you create a task
+  they re-appear.
+- **No tasks match the current filters** — amber `Search` icon,
+  "No tasks match the current filters", outline **Clear filters**
+  CTA that calls the existing `handleClearFilters`.
+
+The per-column "Drop tasks here" boxes still render exactly as
+before once at least one task is in view, since they're useful
+during drag.
+
 ## [1.6.54] — 2026-05-03
 
 ### Added (Pinned tasks on My Tasks)

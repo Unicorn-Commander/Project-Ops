@@ -44,7 +44,9 @@ import {
   User,
   AlertTriangle,
   Search,
+  LayoutGrid,
 } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
 import { TASK_TYPES, taskTypeIcon } from '@/lib/task-types';
 import type { Organization } from '@/lib/organizations-api';
 import { projectColorClasses } from '@/lib/project-colors';
@@ -638,25 +640,55 @@ export default function KanbanPage() {
         </div>
       </Card>
 
-      {/* Kanban Board */}
-      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          {columns.map((column) => (
-            <KanbanColumn
-              key={column.id}
-              id={column.id}
-              title={column.title}
-              tasks={getTasksByStatus(column.id)}
-              onTaskClick={handleTaskClick}
-            />
-          ))}
-        </div>
-        <DragOverlay>
-          {activeTask ? (
-            <TaskCard task={activeTask} isDragging onClick={() => {}} />
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+      {/* Kanban Board (or polished empty state when there is nothing to show) */}
+      {tasks.length === 0 ? (
+        <EmptyState
+          icon={LayoutGrid}
+          iconTone="violet"
+          title="Your board is empty"
+          body="Tasks created on any project show up here automatically, grouped by status. Create one to see the columns come alive."
+          action={
+            <Button onClick={() => setIsCreateModalOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              New task
+            </Button>
+          }
+          className="bg-card"
+        />
+      ) : filteredTasks.length === 0 ? (
+        <EmptyState
+          icon={Search}
+          iconTone="amber"
+          title="No tasks match the current filters"
+          body="Try widening your search, or clear the filters to see everything that's on the board."
+          action={
+            <Button variant="outline" onClick={handleClearFilters}>
+              <X className="mr-2 h-4 w-4" />
+              Clear filters
+            </Button>
+          }
+          className="bg-card"
+        />
+      ) : (
+        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          <div className="flex gap-4 overflow-x-auto pb-4">
+            {columns.map((column) => (
+              <KanbanColumn
+                key={column.id}
+                id={column.id}
+                title={column.title}
+                tasks={getTasksByStatus(column.id)}
+                onTaskClick={handleTaskClick}
+              />
+            ))}
+          </div>
+          <DragOverlay>
+            {activeTask ? (
+              <TaskCard task={activeTask} isDragging onClick={() => {}} />
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      )}
 
       {/* Modals */}
       <TaskDetailsModal
