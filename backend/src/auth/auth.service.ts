@@ -161,13 +161,36 @@ export class AuthService {
     };
   }
 
-  async validateJwtPayload(payload: JwtPayload): Promise<User> {
-    const user = await this.usersService.findOne(payload.sub);
+  async validateJwtPayload(payload: any): Promise<User> {
+    // Disambiguate locally-signed (browser) vs Keycloak realm-signed
+    // (federation) JWTs. Locally-signed payloads carry our own `sub`
+    // (project-ops user id) and no `iss`. Keycloak realm tokens carry
+    // an `iss` like `https://auth.unicorncommander.ai/realms/uchub`,
+    // a `sub` that is the Keycloak userId, plus `email` and the usual
+    // OIDC profile claims.
+    const issuer: string | undefined = payload?.iss;
+    const isKeycloakRealmToken =
+      typeof issuer === 'string' && issuer.includes('/realms/');
 
+    if (isKeycloakRealmToken) {
+      // Reuse the same JIT-provisioning + access-list gate as the
+      // /auth/keycloak browser callback so cross-app federation cannot
+      // bypass policy. validateKeycloakUser handles linking by email
+      // when an existing local user is present.
+      const profile = {
+        email: payload.email,
+        preferred_username: payload.preferred_username,
+        given_name: payload.given_name,
+        family_name: payload.family_name,
+      };
+      return this.validateKeycloakUser(payload.sub, profile);
+    }
+
+    // Locally-signed token: existing behavior.
+    const user = await this.usersService.findOne(payload.sub);
     if (!user || !user.isActive) {
       throw new UnauthorizedException('User not found or inactive');
     }
-
     return user;
   }
 

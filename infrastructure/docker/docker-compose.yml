@@ -3,6 +3,8 @@ networks:
     driver: bridge
   web:
     external: true
+  unicorn-network:
+    external: true
 
 volumes:
   postgres_data:
@@ -144,6 +146,7 @@ services:
     networks:
       - project-ops-network
       - web
+      - unicorn-network
     depends_on:
       project-ops-postgres:
         condition: service_healthy
