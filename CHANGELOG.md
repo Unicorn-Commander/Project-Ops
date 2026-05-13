@@ -5,6 +5,31 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.59] — 2026-05-13
+
+### Fixed
+
+**MCP `create_project` numbering collision.** The MCP-side
+project-number generator picked the wrong "last" row when both
+formats (`P-XXXXX` from MCP, `PROJ-YYYY-XXXXXX` from the seed/web
+UI) coexisted in the database. `findFirst({ orderBy: { projectNumber:
+'desc' } })` returns rows in lexicographic order, so a row like
+`PROJ-2026-000072` sorts after every `P-XXXXX` and was returned as
+`last`. The regex `/P-(\d+)/` then failed to match the `PROJ-` prefix
+(because `R` follows `P`, not `-`), the next number defaulted to `1`,
+and Prisma threw `Unique constraint failed: projectNumber` on the
+attempted `P-00001` insert.
+
+Two-line fix in `backend/src/mcp/mcp.tools.ts`:
+
+1. `findFirst` now filters to rows whose `projectNumber` starts with
+   `P-`, so MCP-generated rows are the only candidates.
+2. Anchored the regex to `^P-(\d+)$` for defensive parsing.
+
+Hot-patched on the bigboy `project-ops-backend` container 2026-05-12
+to unblock the PeerTube project (P-00033); this commit lands the same
+change in source so it survives a rebuild.
+
 ## [1.6.58] — 2026-05-03
 
 ### Fixed (post-overnight nits)

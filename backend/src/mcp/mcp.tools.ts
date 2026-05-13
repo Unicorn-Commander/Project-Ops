@@ -290,12 +290,13 @@ export class ProjectOpsTools {
   ) {
     this.assertCanWrite(user);
     const last = await this.prisma.project.findFirst({
+      where: { projectNumber: { startsWith: 'P-' } },
       orderBy: { projectNumber: 'desc' },
       select: { projectNumber: true },
     });
     const next =
-      last?.projectNumber?.match(/P-(\d+)/)?.[1] !== undefined
-        ? parseInt(last!.projectNumber!.match(/P-(\d+)/)![1], 10) + 1
+      last?.projectNumber?.match(/^P-(\d+)$/)?.[1] !== undefined
+        ? parseInt(last!.projectNumber!.match(/^P-(\d+)$/)![1], 10) + 1
         : 1;
     const projectNumber = `P-${String(next).padStart(5, '0')}`;
     const project = await this.prisma.project.create({
