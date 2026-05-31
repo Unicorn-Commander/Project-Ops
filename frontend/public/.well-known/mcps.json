@@ -1,0 +1,156 @@
+{
+  "$schema": "https://brigade.unicorncommander.ai/.well-known/mcps-schema-v1.json",
+  "name": "Project-Ops",
+  "version": "1.6.59",
+  "mcp_endpoint": "https://api.projectops.magicunicorn.dev",
+  "tool_namespace": "project",
+  "auth": {
+    "type": "pat",
+    "prefix": "po_pat_",
+    "mint_url": "https://projectops.magicunicorn.dev/dashboard/settings",
+    "federated_auth": {
+      "type": "brigade_jwt",
+      "trusted_issuer": "https://brigade.unicorncommander.ai",
+      "jwks_url": "https://brigade.unicorncommander.ai/.well-known/jwks.json",
+      "expected_audience": "project-ops",
+      "signing_algorithm": "ed25519"
+    }
+  },
+  "tools": [
+    {
+      "name": "list_my_projects",
+      "description": "List the projects the calling user can see, newest first. Optional status filter (NEW, IN_PROGRESS, UNDER_REVIEW, COMPLETED, ARCHIVED, ON_HOLD).",
+      "input_schema": { "type": "object", "properties": { "status": { "type": "string" }, "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } } },
+      "scopes_required": ["read:projects"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 200
+    },
+    {
+      "name": "get_project",
+      "description": "Fetch a single project by id (UUID) or project number (P-XXXXX), including client, billing, and assignment fields the caller may see.",
+      "input_schema": { "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"] },
+      "scopes_required": ["read:projects"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 200
+    },
+    {
+      "name": "search_projects",
+      "description": "Keyword search across the caller's projects (title, client name, description).",
+      "input_schema": { "type": "object", "properties": { "query": { "type": "string" }, "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } }, "required": ["query"] },
+      "scopes_required": ["read:projects"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 300
+    },
+    {
+      "name": "create_project",
+      "description": "Create a new project. Auto-assigns the next project number. Defaults: status NEW, priority MEDIUM, assignee = caller. CLIENT-role users cannot call this.",
+      "input_schema": { "type": "object", "properties": { "title": { "type": "string", "maxLength": 200 }, "clientName": { "type": "string", "maxLength": 200 }, "clientEmail": { "type": "string" }, "description": { "type": "string" }, "priority": { "type": "string" }, "projectType": { "type": "string" }, "dueDate": { "type": "string", "description": "ISO date or datetime" }, "organizationId": { "type": "string" }, "assignedToId": { "type": "string" } }, "required": ["title", "clientName"] },
+      "scopes_required": ["write:projects"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 500
+    },
+    {
+      "name": "update_project_status",
+      "description": "Move a project to a new status (NEW, IN_PROGRESS, UNDER_REVIEW, COMPLETED, ARCHIVED, ON_HOLD).",
+      "input_schema": { "type": "object", "properties": { "id": { "type": "string" }, "status": { "type": "string" } }, "required": ["id", "status"] },
+      "scopes_required": ["write:projects"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 400
+    },
+    {
+      "name": "update_billing_fields",
+      "description": "Update a project's billing and invoicing fields (invoice number, amounts, payment status, billing dates, notes).",
+      "input_schema": { "type": "object", "properties": { "id": { "type": "string" }, "invoiceNumber": { "type": "string" }, "billingAmount": { "type": "number" }, "amountPaid": { "type": "number" }, "paymentStatus": { "type": "string" }, "billingDate": { "type": "string" }, "paymentDueDate": { "type": "string" }, "billingNotes": { "type": "string" } }, "required": ["id"] },
+      "scopes_required": ["write:billing"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 400
+    },
+    {
+      "name": "list_my_tasks",
+      "description": "List tasks assigned to or visible to the caller. Optional status and project filters.",
+      "input_schema": { "type": "object", "properties": { "status": { "type": "string" }, "projectId": { "type": "string" }, "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } } },
+      "scopes_required": ["read:tasks"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 200
+    },
+    {
+      "name": "create_task",
+      "description": "Create a task under a project. Requires projectId (UUID). Optional type, status, priority, dueDate, assignee.",
+      "input_schema": { "type": "object", "properties": { "projectId": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "type": { "type": "string" }, "status": { "type": "string" }, "priority": { "type": "string" }, "dueDate": { "type": "string" }, "assignedToId": { "type": "string" } }, "required": ["projectId", "title"] },
+      "scopes_required": ["write:tasks"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 500
+    },
+    {
+      "name": "update_task_status",
+      "description": "Move a task to a new status (PENDING, IN_PROGRESS, WAITING_FOR_CLIENT, COMPLETED, CANCELLED).",
+      "input_schema": { "type": "object", "properties": { "id": { "type": "string" }, "status": { "type": "string" } }, "required": ["id", "status"] },
+      "scopes_required": ["write:tasks"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 400
+    },
+    {
+      "name": "add_task_comment",
+      "description": "Add a comment to a task on the caller's behalf.",
+      "input_schema": { "type": "object", "properties": { "taskId": { "type": "string" }, "content": { "type": "string" } }, "required": ["taskId", "content"] },
+      "scopes_required": ["write:tasks"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 400
+    },
+    {
+      "name": "list_project_documents",
+      "description": "List documents attached to a project.",
+      "input_schema": { "type": "object", "properties": { "projectId": { "type": "string" } }, "required": ["projectId"] },
+      "scopes_required": ["read:documents"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 250
+    },
+    {
+      "name": "get_document_content",
+      "description": "Fetch the extracted text content of a project document.",
+      "input_schema": { "type": "object", "properties": { "documentId": { "type": "string" } }, "required": ["documentId"] },
+      "scopes_required": ["read:documents"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 350
+    },
+    {
+      "name": "upload_document",
+      "description": "Upload a document to a project. Stored in the project-ops-documents bucket.",
+      "input_schema": { "type": "object", "properties": { "projectId": { "type": "string" }, "filename": { "type": "string" }, "contentBase64": { "type": "string" } }, "required": ["projectId", "filename", "contentBase64"] },
+      "scopes_required": ["write:documents"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 1200
+    },
+    {
+      "name": "get_recent_activity",
+      "description": "Return the caller's recent activity across projects and tasks (audit feed).",
+      "input_schema": { "type": "object", "properties": { "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } } },
+      "scopes_required": ["read:activity"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 250
+    }
+  ],
+  "resources": [
+    { "uri_template": "projects://list", "description": "Overview of the caller's projects" },
+    { "uri_template": "projects://{project_id}", "description": "Single project with tasks and documents" }
+  ],
+  "rate_limits": {
+    "per_user_per_minute": 60,
+    "per_user_per_hour": 1000
+  },
+  "contact": "aaron@magicunicorn.tech"
+}
