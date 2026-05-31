@@ -111,8 +111,8 @@ services:
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-project-ops}
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
       KEYCLOAK_CALLBACK_URL: https://${API_DOMAIN}/api/v1/auth/keycloak/callback
-      MINIO_ENDPOINT: project-ops-minio
-      MINIO_PORT: 9000
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-unicorn-garage}
+      MINIO_PORT: ${MINIO_PORT:-3900}
       MINIO_USE_SSL: "false"
       MINIO_ACCESS_KEY: ${MINIO_APP_USER:-projectops}
       MINIO_SECRET_KEY: ${MINIO_APP_PASSWORD}

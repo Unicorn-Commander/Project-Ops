@@ -47,8 +47,9 @@ export class McpService {
         },
         instructions:
           'Project Ops MCP server. Tools let an agent read projects, tasks, ' +
-          'and recent activity for the calling user, and post task comments. ' +
-          'All operations enforce the same RBAC as the Project Ops UI.',
+          'and recent activity for the calling user, post task comments, and ' +
+          'create projects/tasks/organizations. All operations enforce the ' +
+          'same RBAC as the Project Ops UI.',
       },
     );
 
@@ -154,6 +155,97 @@ export class McpService {
     // ─── Write tools ────────────────────────────────────────────────
 
     server.registerTool(
+      'list_organizations',
+      {
+        title: 'List organizations',
+        description:
+          'Return organizations visible to the caller. Optional filters: ' +
+          'type (AGENCY/BUSINESS/INDIVIDUAL/PARTNER), isActive (default ' +
+          'returns both). CLIENT-role users only see their own org.',
+        inputSchema: {
+          type: z.string().optional(),
+          isActive: z.boolean().optional(),
+          limit: z.number().int().min(1).max(100).optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.listOrganizations(user, args)),
+    );
+
+    server.registerTool(
+      'get_organization',
+      {
+        title: 'Get an organization by id',
+        description:
+          'Return full detail for one organization, including parent, ' +
+          'children, and counts of projects + contacts.',
+        inputSchema: {
+          id: z.string().min(1),
+        },
+      },
+      async (args: any) => wrap(await tools.getOrganization(user, args)),
+    );
+
+    server.registerTool(
+      'update_organization',
+      {
+        title: 'Update an organization',
+        description:
+          'Patch an organization. Required: id. Only the fields you pass are ' +
+          'updated. Set isActive=false to soft-delete (hides from default ' +
+          'listings). parentOrgId reassigns hierarchy (pass null to detach). ' +
+          'ADMIN/MANAGER only.',
+        inputSchema: {
+          id: z.string().min(1),
+          name: z.string().min(1).max(200).optional(),
+          type: z.string().optional(),
+          taxId: z.string().nullable().optional(),
+          industry: z.string().nullable().optional(),
+          website: z.string().nullable().optional(),
+          address: z.string().nullable().optional(),
+          city: z.string().nullable().optional(),
+          state: z.string().nullable().optional(),
+          zipCode: z.string().nullable().optional(),
+          country: z.string().nullable().optional(),
+          parentOrgId: z.string().nullable().optional(),
+          portalAccessEnabled: z.boolean().optional(),
+          isActive: z.boolean().optional(),
+          notes: z.string().nullable().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.updateOrganization(user, args)),
+    );
+
+    server.registerTool(
+      'create_organization',
+      {
+        title: 'Create an organization',
+        description:
+          'Create a new organization. Required: name + type ' +
+          '(AGENCY / BUSINESS / INDIVIDUAL / PARTNER). Optional: taxId, ' +
+          'industry, website, address fields, parentOrgId (for hierarchy), ' +
+          'portalAccessEnabled, notes. Country defaults to USA, ' +
+          'portalAccessEnabled defaults to false. Only ADMIN and MANAGER ' +
+          'roles can call this.',
+        inputSchema: {
+          name: z.string().min(1).max(200),
+          type: z.string().min(1),
+          taxId: z.string().optional(),
+          industry: z.string().optional(),
+          website: z.string().optional(),
+          address: z.string().optional(),
+          city: z.string().optional(),
+          state: z.string().optional(),
+          zipCode: z.string().optional(),
+          country: z.string().optional(),
+          parentOrgId: z.string().optional(),
+          portalAccessEnabled: z.boolean().optional(),
+          notes: z.string().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.createOrganization(user, args)),
+    );
+
+    server.registerTool(
       'create_project',
       {
         title: 'Create a project',
@@ -189,6 +281,53 @@ export class McpService {
         },
       },
       async (args: any) => wrap(await tools.updateProjectStatus(user, args)),
+    );
+
+    server.registerTool(
+      'update_project',
+      {
+        title: 'Update a project',
+        description:
+          'Patch a project. Identify by id or projectNumber. Only the fields ' +
+          'you pass are updated. organizationId reassigns the project to a ' +
+          'different organization (pass null to detach). CLIENT-role users ' +
+          'cannot call this.',
+        inputSchema: {
+          id: z.string().optional(),
+          projectNumber: z.string().optional(),
+          title: z.string().min(1).max(200).optional(),
+          description: z.string().optional(),
+          clientName: z.string().min(1).max(200).optional(),
+          organizationId: z.string().nullable().optional(),
+          priority: z.string().optional(),
+          dueDate: z.string().nullable().optional(),
+          assignedToId: z.string().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.updateProject(user, args)),
+    );
+
+    server.registerTool(
+      'update_task',
+      {
+        title: 'Update a task',
+        description:
+          'Patch a task. Required: taskId. Only fields passed are updated. ' +
+          'projectId or projectNumber reparents the task to a different ' +
+          'project the caller can see. CLIENT-role users cannot call this.',
+        inputSchema: {
+          taskId: z.string().min(1),
+          title: z.string().min(1).max(200).optional(),
+          description: z.string().optional(),
+          type: z.string().optional(),
+          priority: z.string().optional(),
+          dueDate: z.string().nullable().optional(),
+          assignedToId: z.string().optional(),
+          projectId: z.string().optional(),
+          projectNumber: z.string().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.updateTask(user, args)),
     );
 
     server.registerTool(
