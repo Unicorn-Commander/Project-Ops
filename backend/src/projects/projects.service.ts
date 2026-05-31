@@ -15,6 +15,29 @@ export class ProjectsService {
     private auditService: AuditService,
   ) {}
 
+  /**
+   * Coerce ISO date *strings* (e.g. "2026-06-01" from an <input type="date">)
+   * into Date objects before they reach Prisma. The DTOs validate these with
+   * @IsDateString(), which accepts date-only strings, but Prisma's DateTime
+   * columns reject a string without a time component and throw a 500. Convert
+   * any present date field to a real Date so every write path is safe.
+   */
+  private coerceDateFields<T extends Record<string, any>>(data: T): T {
+    const dateFields = [
+      'dueDate',
+      'billingDate',
+      'paymentDueDate',
+      'paymentReceivedDate',
+    ] as const;
+    for (const field of dateFields) {
+      const value = data[field];
+      if (typeof value === 'string' && value.length > 0) {
+        (data as Record<string, any>)[field] = new Date(value);
+      }
+    }
+    return data;
+  }
+
   async create(createProjectDto: CreateProjectDto, userId: string): Promise<Project> {
     const projectNumber = await this.generateProjectNumber();
 
@@ -28,7 +51,7 @@ export class ProjectsService {
 
     const projectData = await this.prisma.project.create({
       data: {
-        ...projectDataFields,
+        ...this.coerceDateFields(projectDataFields),
         metadata,
         projectNumber,
         createdById: userId,
@@ -195,7 +218,7 @@ export class ProjectsService {
     const projectData = await this.prisma.project.update({
       where: { id },
       data: {
-        ...projectDataFields,
+        ...this.coerceDateFields(projectDataFields),
         ...(metadata !== undefined && { metadata }),
       },
       include: {
