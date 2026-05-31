@@ -276,6 +276,234 @@ export class ProjectOpsTools {
     }
   }
 
+  // Org creation mirrors the REST endpoint's @Roles(ADMIN, MANAGER) guard.
+  assertCanManageOrgs(user: User) {
+    if (user.role !== UserRole.ADMIN && user.role !== UserRole.MANAGER) {
+      throw new Error("Only ADMIN or MANAGER roles can create organizations.");
+    }
+  }
+
+  async listOrganizations(
+    user: User,
+    args: { type?: string; isActive?: boolean; limit?: number },
+  ) {
+    const where: Prisma.OrganizationWhereInput = {
+      ...(args.type ? { type: args.type.toUpperCase() as any } : {}),
+      ...(args.isActive !== undefined ? { isActive: args.isActive } : {}),
+    };
+    // CLIENTs only see orgs they're a contact in (matches REST org tree filter).
+    if (user.role === UserRole.CLIENT) {
+      const contact = await this.prisma.contact.findFirst({
+        where: { userId: user.id },
+        select: { organizationId: true },
+      });
+      if (!contact?.organizationId) return { organizations: [], count: 0 };
+      where.id = contact.organizationId;
+    }
+    const organizations = await this.prisma.organization.findMany({
+      where,
+      take: Math.min(args.limit ?? 50, 100),
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        isActive: true,
+        parentOrgId: true,
+        portalAccessEnabled: true,
+        createdAt: true,
+        _count: { select: { projects: true, childOrgs: true } },
+      },
+    });
+    return { organizations, count: organizations.length };
+  }
+
+  async getOrganization(user: User, args: { id: string }) {
+    if (!args.id) throw new Error("'id' is required.");
+    if (user.role === UserRole.CLIENT) {
+      const contact = await this.prisma.contact.findFirst({
+        where: { userId: user.id, organizationId: args.id },
+        select: { id: true },
+      });
+      if (!contact) throw new Error("Organization not found or no access.");
+    }
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: args.id },
+      include: {
+        parentOrg: { select: { id: true, name: true, type: true } },
+        childOrgs: { select: { id: true, name: true, type: true, isActive: true } },
+        createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+        _count: { select: { projects: true, contacts: true } },
+      },
+    });
+    if (!organization) throw new Error('Organization not found.');
+    return organization;
+  }
+
+  async updateOrganization(
+    user: User,
+    args: {
+      id: string;
+      name?: string;
+      type?: string;
+      taxId?: string | null;
+      industry?: string | null;
+      website?: string | null;
+      address?: string | null;
+      city?: string | null;
+      state?: string | null;
+      zipCode?: string | null;
+      country?: string | null;
+      parentOrgId?: string | null;
+      portalAccessEnabled?: boolean;
+      isActive?: boolean;
+      notes?: string | null;
+    },
+  ) {
+    this.assertCanManageOrgs(user);
+    if (!args.id) throw new Error("'id' is required.");
+
+    const existing = await this.prisma.organization.findUnique({
+      where: { id: args.id },
+      select: { id: true },
+    });
+    if (!existing) throw new Error(`Organization '${args.id}' not found.`);
+
+    if (args.type) {
+      const validTypes = ['AGENCY', 'BUSINESS', 'INDIVIDUAL', 'PARTNER'];
+      if (!validTypes.includes(args.type.toUpperCase())) {
+        throw new Error(
+          `Invalid type '${args.type}'. Must be one of: ${validTypes.join(', ')}.`,
+        );
+      }
+    }
+
+    if (args.parentOrgId) {
+      if (args.parentOrgId === args.id) {
+        throw new Error('Organization cannot be its own parent.');
+      }
+      const parent = await this.prisma.organization.findUnique({
+        where: { id: args.parentOrgId },
+        select: { id: true },
+      });
+      if (!parent) {
+        throw new Error(`Parent organization '${args.parentOrgId}' not found.`);
+      }
+    }
+
+    const data: Prisma.OrganizationUpdateInput = {};
+    if (args.name !== undefined) data.name = args.name;
+    if (args.type !== undefined) data.type = args.type.toUpperCase() as any;
+    if (args.taxId !== undefined) data.taxId = args.taxId;
+    if (args.industry !== undefined) data.industry = args.industry;
+    if (args.website !== undefined) data.website = args.website;
+    if (args.address !== undefined) data.address = args.address;
+    if (args.city !== undefined) data.city = args.city;
+    if (args.state !== undefined) data.state = args.state;
+    if (args.zipCode !== undefined) data.zipCode = args.zipCode;
+    if (args.country !== undefined) data.country = args.country;
+    if (args.parentOrgId !== undefined) {
+      data.parentOrg = args.parentOrgId
+        ? { connect: { id: args.parentOrgId } }
+        : { disconnect: true };
+    }
+    if (args.portalAccessEnabled !== undefined) {
+      data.portalAccessEnabled = args.portalAccessEnabled;
+    }
+    if (args.isActive !== undefined) data.isActive = args.isActive;
+    if (args.notes !== undefined) data.notes = args.notes;
+
+    const updated = await this.prisma.organization.update({
+      where: { id: args.id },
+      data,
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        isActive: true,
+        parentOrgId: true,
+        portalAccessEnabled: true,
+        updatedAt: true,
+      },
+    });
+    this.logger.log(
+      `MCP update_organization: user=${user.email} org=${updated.id}`,
+    );
+    return updated;
+  }
+
+  async createOrganization(
+    user: User,
+    args: {
+      name: string;
+      type: string;
+      taxId?: string;
+      industry?: string;
+      website?: string;
+      address?: string;
+      city?: string;
+      state?: string;
+      zipCode?: string;
+      country?: string;
+      parentOrgId?: string;
+      portalAccessEnabled?: boolean;
+      notes?: string;
+    },
+  ) {
+    this.assertCanManageOrgs(user);
+
+    const validTypes = ['AGENCY', 'BUSINESS', 'INDIVIDUAL', 'PARTNER'];
+    const type = (args.type || '').toUpperCase();
+    if (!validTypes.includes(type)) {
+      throw new Error(
+        `Invalid type '${args.type}'. Must be one of: ${validTypes.join(', ')}.`,
+      );
+    }
+
+    if (args.parentOrgId) {
+      const parent = await this.prisma.organization.findUnique({
+        where: { id: args.parentOrgId },
+        select: { id: true },
+      });
+      if (!parent) {
+        throw new Error(`Parent organization '${args.parentOrgId}' not found.`);
+      }
+    }
+
+    const organization = await this.prisma.organization.create({
+      data: {
+        name: args.name,
+        type: type as any,
+        taxId: args.taxId,
+        industry: args.industry,
+        website: args.website,
+        address: args.address,
+        city: args.city,
+        state: args.state,
+        zipCode: args.zipCode,
+        country: args.country ?? 'USA',
+        parentOrgId: args.parentOrgId,
+        portalAccessEnabled: args.portalAccessEnabled ?? false,
+        notes: args.notes,
+        createdById: user.id,
+      },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        parentOrgId: true,
+        portalAccessEnabled: true,
+        isActive: true,
+        createdAt: true,
+      },
+    });
+
+    this.logger.log(
+      `MCP create_organization: user=${user.email} org=${organization.id} type=${organization.type}`,
+    );
+    return organization;
+  }
+
   async createProject(
     user: User,
     args: {
@@ -290,12 +518,13 @@ export class ProjectOpsTools {
   ) {
     this.assertCanWrite(user);
     const last = await this.prisma.project.findFirst({
+      where: { projectNumber: { startsWith: 'P-' } },
       orderBy: { projectNumber: 'desc' },
       select: { projectNumber: true },
     });
     const next =
-      last?.projectNumber?.match(/P-(\d+)/)?.[1] !== undefined
-        ? parseInt(last!.projectNumber!.match(/P-(\d+)/)![1], 10) + 1
+      last?.projectNumber?.match(/^P-(\d+)$/)?.[1] !== undefined
+        ? parseInt(last!.projectNumber!.match(/^P-(\d+)$/)![1], 10) + 1
         : 1;
     const projectNumber = `P-${String(next).padStart(5, '0')}`;
     const project = await this.prisma.project.create({
@@ -350,6 +579,159 @@ export class ProjectOpsTools {
       select: { id: true, projectNumber: true, status: true, completedAt: true },
     });
     this.logger.log(`MCP update_project_status: user=${user.email} project=${updated.projectNumber} → ${updated.status}`);
+    return updated;
+  }
+
+  async updateProject(
+    user: User,
+    args: {
+      id?: string;
+      projectNumber?: string;
+      title?: string;
+      description?: string;
+      clientName?: string;
+      organizationId?: string | null;
+      priority?: string;
+      dueDate?: string | null;
+      assignedToId?: string;
+    },
+  ) {
+    this.assertCanWrite(user);
+    if (!args.id && !args.projectNumber) {
+      throw new Error('Either id or projectNumber must be provided');
+    }
+    const found = await this.prisma.project.findFirst({
+      where: {
+        ...buildVisibilityFilter(user),
+        ...(args.id ? { id: args.id } : { projectNumber: args.projectNumber! }),
+      },
+      select: { id: true, projectNumber: true },
+    });
+    if (!found) {
+      throw new Error('Project not found or no access');
+    }
+
+    if (args.organizationId) {
+      const org = await this.prisma.organization.findUnique({
+        where: { id: args.organizationId },
+        select: { id: true },
+      });
+      if (!org) {
+        throw new Error(`Organization '${args.organizationId}' not found.`);
+      }
+    }
+
+    const data: Prisma.ProjectUpdateInput = {};
+    if (args.title !== undefined) data.title = args.title;
+    if (args.description !== undefined) data.description = args.description;
+    if (args.clientName !== undefined) data.clientName = args.clientName;
+    if (args.organizationId !== undefined) {
+      data.organization = args.organizationId
+        ? { connect: { id: args.organizationId } }
+        : { disconnect: true };
+    }
+    if (args.priority !== undefined) data.priority = args.priority as any;
+    if (args.dueDate !== undefined) {
+      data.dueDate = args.dueDate ? new Date(args.dueDate) : null;
+    }
+    if (args.assignedToId !== undefined) {
+      data.assignedTo = { connect: { id: args.assignedToId } };
+    }
+
+    const updated = await this.prisma.project.update({
+      where: { id: found.id },
+      data,
+      select: {
+        id: true,
+        projectNumber: true,
+        title: true,
+        clientName: true,
+        priority: true,
+        dueDate: true,
+        organization: { select: { id: true, name: true } },
+        assignedTo: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+    this.logger.log(
+      `MCP update_project: user=${user.email} project=${updated.projectNumber}`,
+    );
+    return updated;
+  }
+
+  async updateTask(
+    user: User,
+    args: {
+      taskId: string;
+      title?: string;
+      description?: string;
+      type?: string;
+      priority?: string;
+      dueDate?: string | null;
+      assignedToId?: string;
+      projectId?: string;
+      projectNumber?: string;
+    },
+  ) {
+    this.assertCanWrite(user);
+    const found = await this.prisma.task.findFirst({
+      where: {
+        id: args.taskId,
+        project: buildVisibilityFilter(user),
+      },
+      select: { id: true, projectId: true },
+    });
+    if (!found) {
+      throw new Error('Task not found or no access');
+    }
+
+    let targetProjectId: string | undefined;
+    if (args.projectId || args.projectNumber) {
+      const target = await this.prisma.project.findFirst({
+        where: {
+          ...buildVisibilityFilter(user),
+          ...(args.projectId
+            ? { id: args.projectId }
+            : { projectNumber: args.projectNumber! }),
+        },
+        select: { id: true },
+      });
+      if (!target) {
+        throw new Error('Target project not found or no access');
+      }
+      targetProjectId = target.id;
+    }
+
+    const data: Prisma.TaskUpdateInput = {};
+    if (args.title !== undefined) data.title = args.title;
+    if (args.description !== undefined) data.description = args.description;
+    if (args.type !== undefined) data.type = args.type as any;
+    if (args.priority !== undefined) data.priority = args.priority as any;
+    if (args.dueDate !== undefined) {
+      data.dueDate = args.dueDate ? new Date(args.dueDate) : null;
+    }
+    if (args.assignedToId !== undefined) {
+      data.assignedTo = { connect: { id: args.assignedToId } };
+    }
+    if (targetProjectId !== undefined) {
+      data.project = { connect: { id: targetProjectId } };
+    }
+
+    const updated = await this.prisma.task.update({
+      where: { id: found.id },
+      data,
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        priority: true,
+        dueDate: true,
+        project: { select: { id: true, projectNumber: true, title: true } },
+        assignedTo: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+    this.logger.log(
+      `MCP update_task: user=${user.email} task=${updated.id} project=${updated.project.projectNumber}`,
+    );
     return updated;
   }
 
