@@ -510,7 +510,7 @@ export default function Home() {
           </div>
           <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
             <a
-              href="https://git.unicorncommander.ai/MagicUnicorn/Project-Ops/src/branch/deploy/magicunicorn-projectops/CHANGELOG.md"
+              href="https://git.unicorncommander.ai/MagicUnicorn/Project-Ops/src/branch/main/CHANGELOG.md"
               className="transition-colors hover:text-foreground"
               target="_blank"
               rel="noreferrer"

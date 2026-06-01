@@ -93,9 +93,8 @@ Changelog: [`CHANGELOG.md`](CHANGELOG.md)
 | MU/UC internal | `projectops.magicunicorn.dev` | Magic Unicorn / Unicorn Commander team work |
 
 Federates to the Keycloak `uchub` realm at `auth.unicorncommander.ai`.
-The deployment branch is `deploy/magicunicorn-projectops` (carries the
-brand-specific logo, theme, landing copy, and Keycloak client). `main`
-stays generic — never deploy from `main` directly.
+Deployment carries brand-specific logo, theme, landing copy, and Keycloak
+client wired through `infrastructure/docker/.env`.
 
 Compose lives at `infrastructure/docker/docker-compose.yml`; deployment is
 `docker compose up -d --build` from that directory after a `git pull`.
