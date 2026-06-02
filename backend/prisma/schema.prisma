@@ -141,10 +141,50 @@ model User {
   createdTasks        Task[]        @relation("TaskCreator")
   auditLogs           AuditLog[]
 
+  // Relations - Personal Access Tokens (MCP / API access)
+  personalAccessTokens PersonalAccessToken[]
+
   @@index([email])
   @@index([keycloakId])
   @@index([role])
   @@map("users")
+}
+
+// ============================================================
+// PERSONAL ACCESS TOKENS
+// ============================================================
+//
+// Long-lived bearer tokens a user can mint to use Project-Ops with
+// their own MCP client (Claude Code, ChatGPT, custom integration)
+// without going through the Brigade federation broker.
+//
+// The plaintext token is shown to the user exactly once at creation
+// time and never persisted; only a bcrypt hash is stored. Token
+// format: `po_pat_<base64url(32 random bytes)>`. The `po_pat_` prefix
+// lets the auth pipeline short-circuit JWT parsing as soon as the
+// header lands.
+//
+// Scopes are stored as plain strings (e.g. "read:projects",
+// "write:tasks"). v1 enforces them only on the /api/v1/mcp tool
+// dispatch path; other endpoints honor the owning user's full RBAC.
+model PersonalAccessToken {
+  id          String    @id @default(uuid())
+  userId      String
+  name        String    // human label, e.g. "Claude Code on Aaron's Mac"
+  prefix      String    @default("po_pat_")
+  tokenHash   String    @unique
+  scopes      String[]
+  lastUsedAt  DateTime?
+  expiresAt   DateTime? // null = no expiry (allowed; surface a warning)
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([revokedAt])
+  @@map("personal_access_tokens")
 }
 
 // ============================================================
