@@ -188,8 +188,20 @@ export class AuthService {
       // when an existing local user is present, and works for both
       // sub=keycloakUuid (Keycloak branch) and sub=email (Brigade
       // transitional) because the email-fallback path covers both.
+      //
+      // Brigade's mint_app_jwt does not currently emit an `email` claim
+      // (the customer identity lives in `sub` as a transitional choice
+      // per project_brigade_federation_identity_model). When the email
+      // claim is absent and `sub` looks like an email, treat sub as the
+      // profile email so the access-list + findByEmail path still
+      // resolves. This is harmless for Keycloak realm tokens (which DO
+      // emit email) and harmless for the long-term opaque-sub Brigade
+      // model (Brigade will emit email separately in that case).
+      const subLooksLikeEmail =
+        typeof payload.sub === 'string' && payload.sub.includes('@');
       const profile = {
-        email: payload.email,
+        email:
+          payload.email ?? (subLooksLikeEmail ? payload.sub : undefined),
         preferred_username: payload.preferred_username,
         given_name: payload.given_name,
         family_name: payload.family_name,
