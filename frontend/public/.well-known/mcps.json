@@ -13,7 +13,7 @@
       "trusted_issuer": "https://brigade.unicorncommander.ai",
       "jwks_url": "https://brigade.unicorncommander.ai/.well-known/jwks.json",
       "expected_audience": "project-ops",
-      "signing_algorithm": "ed25519"
+      "signing_algorithm": "RS256"
     }
   },
   "tools": [

@@ -162,21 +162,32 @@ export class AuthService {
   }
 
   async validateJwtPayload(payload: any): Promise<User> {
-    // Disambiguate locally-signed (browser) vs Keycloak realm-signed
-    // (federation) JWTs. Locally-signed payloads carry our own `sub`
-    // (project-ops user id) and no `iss`. Keycloak realm tokens carry
-    // an `iss` like `https://auth.unicorncommander.ai/realms/uchub`,
-    // a `sub` that is the Keycloak userId, plus `email` and the usual
-    // OIDC profile claims.
+    // Disambiguate by `iss` claim across three branches:
+    //
+    //   1. Keycloak realm-signed (uchub SSO browser flow):
+    //      `iss` contains `/realms/`, `sub` = Keycloak userId.
+    //   2. Brigade federation-signed (cross-app MCP via the broker):
+    //      `iss` listed in BRIGADE_TRUSTED_ISSUERS env (defaults to the
+    //      prod broker at https://brigade.unicorncommander.ai), `sub`
+    //      currently = customer email (transitional; opaque uchub sub
+    //      upgrade is parked). Both Keycloak and Brigade tokens route
+    //      through validateKeycloakUser so JIT-provisioning, the access
+    //      list gate, and email-fallback linking all apply uniformly.
+    //   3. Locally-signed (browser session token, HS256):
+    //      no `iss`, `sub` = project-ops user id.
     const issuer: string | undefined = payload?.iss;
     const isKeycloakRealmToken =
       typeof issuer === 'string' && issuer.includes('/realms/');
+    const isBrigadeFederationToken =
+      typeof issuer === 'string' && AuthService.brigadeTrustedIssuers().includes(issuer);
 
-    if (isKeycloakRealmToken) {
+    if (isKeycloakRealmToken || isBrigadeFederationToken) {
       // Reuse the same JIT-provisioning + access-list gate as the
       // /auth/keycloak browser callback so cross-app federation cannot
       // bypass policy. validateKeycloakUser handles linking by email
-      // when an existing local user is present.
+      // when an existing local user is present, and works for both
+      // sub=keycloakUuid (Keycloak branch) and sub=email (Brigade
+      // transitional) because the email-fallback path covers both.
       const profile = {
         email: payload.email,
         preferred_username: payload.preferred_username,
@@ -192,6 +203,23 @@ export class AuthService {
       throw new UnauthorizedException('User not found or inactive');
     }
     return user;
+  }
+
+  /**
+   * Parse the BRIGADE_TRUSTED_ISSUERS env var (comma-separated). Defaults
+   * to the customer-facing prod broker. Set to "" to disable the federation
+   * branch entirely. Read each call rather than cached so test/runtime env
+   * changes take effect without a process restart.
+   */
+  private static brigadeTrustedIssuers(): readonly string[] {
+    const raw = process.env.BRIGADE_TRUSTED_ISSUERS;
+    if (raw === undefined || raw === null) {
+      return ['https://brigade.unicorncommander.ai'];
+    }
+    return raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
 
   async changePassword(userId: string, currentPassword: string, newPassword: string) {

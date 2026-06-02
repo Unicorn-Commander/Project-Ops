@@ -128,6 +128,11 @@ services:
       BRIGADE_URL: ${BRIGADE_URL:-https://brigade.magicunicorn.dev}
       BRIGADE_API_KEY: ${BRIGADE_API_KEY}
       BRIGADE_AGENT_ID: ${BRIGADE_AGENT_ID:-project-ops-assistant}
+      # Brigade federation broker issuers PO trusts (comma-separated).
+      # Defaults to the customer-facing prod broker. Set "" to disable
+      # the federation auth branch. Add dogfood here for internal testing:
+      # BRIGADE_TRUSTED_ISSUERS=https://brigade.unicorncommander.ai,https://brigade.magicunicorn.dev
+      BRIGADE_TRUSTED_ISSUERS: ${BRIGADE_TRUSTED_ISSUERS:-https://brigade.unicorncommander.ai}
       # SSO access allowlist (v1.6.24) — controls who can JIT-provision a
       # Project-Ops account from the shared uchub Keycloak realm + at what
       # role. Without this var the backend falls back to admitting only
