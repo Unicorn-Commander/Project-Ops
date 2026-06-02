@@ -8,28 +8,31 @@ import { AuthService, JwtPayload } from '../auth.service';
 import { User } from '@prisma/client';
 
 /**
- * Dual-token JWT strategy.
+ * Multi-token JWT strategy.
  *
- * Accepts BOTH:
+ * Accepts:
  * 1. Locally-signed HS256 JWTs (existing browser flow — issued by
  *    AuthService after the user logs in via Keycloak OIDC callback).
  * 2. Keycloak realm-signed RS256 JWTs (cross-app federation flow — used
- *    by other ecosystem services that forward the user's realm token
- *    server-to-server, eg meeting-ops linking to project-ops projects).
+ *    by other ecosystem services that forward the user's realm token).
+ * 3. Brigade federation broker RS256 JWTs (Brigade-brokered MCP calls
+ *    from customer-facing clients via brigade.unicorncommander.ai).
  *
- * The token's `alg` header chooses the validation key:
- *   HS256 -> ConfigService.get('JWT_SECRET')           (existing)
- *   RS256 -> jwksClient.getSigningKey(kid).publicKey   (new)
+ * The signing key resolves by `iss` + `alg` inspection at request time:
+ *   HS256                            -> ConfigService.get('JWT_SECRET')
+ *   RS256 + iss in BRIGADE_TRUSTED   -> Brigade JWKS (per-issuer client)
+ *   RS256 (other)                    -> Keycloak realm JWKS
  *
- * AuthService.validateJwtPayload disambiguates the two payload shapes by
- * the `iss` claim and JIT-provisions a project-ops User row when a
- * Keycloak token arrives without one (gated by access-list, same rules
- * as the existing /auth/keycloak browser callback).
+ * AuthService.validateJwtPayload then disambiguates payload shapes by
+ * the `iss` claim and JIT-provisions a project-ops User row when needed
+ * (gated by access-list, same rules as the /auth/keycloak browser
+ * callback).
  */
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   private readonly logger = new Logger(JwtStrategy.name);
   private readonly jwks?: JwksClient;
+  private readonly brigadeJwksByIss: Map<string, JwksClient>;
   private readonly localSecret: string;
 
   constructor(
@@ -38,6 +41,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   ) {
     const localSecret = configService.get<string>('JWT_SECRET') || '';
     const realmJwksUri = JwtStrategy.buildJwksUri(configService);
+    const brigadeJwksByIss = JwtStrategy.buildBrigadeJwksClients(configService);
 
     let jwks: JwksClient | undefined;
     if (realmJwksUri) {
@@ -54,7 +58,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       // secretOrKeyProvider runs per-request; we inspect the JWT header
-      // and resolve the right key on the fly. Provider must call done(err, key).
+      // + payload and resolve the right key on the fly. Provider must
+      // call done(err, key).
       secretOrKeyProvider: (
         _request: any,
         rawJwtToken: any,
@@ -68,7 +73,22 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           const decoded: any = jsonwebtoken.decode(token, { complete: true });
           const alg = decoded?.header?.alg;
           const kid = decoded?.header?.kid;
+          const iss: string | undefined = decoded?.payload?.iss;
 
+          // RS256 + Brigade-trusted-issuer -> per-issuer Brigade JWKS
+          if (alg === 'RS256' && kid && iss && brigadeJwksByIss.has(iss)) {
+            const client = brigadeJwksByIss.get(iss)!;
+            client.getSigningKey(kid, (err, key) => {
+              if (err || !key) {
+                done(err || new Error('Brigade signing key not found'));
+                return;
+              }
+              done(null, key.getPublicKey());
+            });
+            return;
+          }
+
+          // RS256 + valid kid -> Keycloak realm JWKS (default RS256 branch)
           if (alg === 'RS256' && kid && jwks) {
             jwks.getSigningKey(kid, (err, key) => {
               if (err || !key) {
@@ -89,6 +109,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     this.localSecret = localSecret;
     this.jwks = jwks;
+    this.brigadeJwksByIss = brigadeJwksByIss;
+
     if (realmJwksUri) {
       this.logger.log(
         `Keycloak realm JWT validation enabled via ${realmJwksUri}`,
@@ -98,6 +120,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         'Keycloak realm JWT validation disabled (KEYCLOAK_URL/KEYCLOAK_REALM not set)',
       );
     }
+    if (brigadeJwksByIss.size > 0) {
+      this.logger.log(
+        `Brigade federation JWT validation enabled for ${brigadeJwksByIss.size} issuer(s): ${[...brigadeJwksByIss.keys()].join(', ')}`,
+      );
+    } else {
+      this.logger.log(
+        'Brigade federation JWT validation disabled (BRIGADE_TRUSTED_ISSUERS unset)',
+      );
+    }
   }
 
   private static buildJwksUri(config: ConfigService): string | null {
@@ -105,6 +136,41 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const realm = config.get<string>('KEYCLOAK_REALM');
     if (!base || !realm) return null;
     return `${base}/realms/${encodeURIComponent(realm)}/protocol/openid-connect/certs`;
+  }
+
+  /**
+   * Build a per-issuer JWKS client map from BRIGADE_TRUSTED_ISSUERS.
+   * Each issuer's JWKS is fetched from `<iss>/.well-known/jwks.json` by
+   * convention (matches the Brigade federation spec). Default is the
+   * customer-facing prod broker. Set the env to "" to disable.
+   */
+  private static buildBrigadeJwksClients(
+    config: ConfigService,
+  ): Map<string, JwksClient> {
+    const raw = config.get<string>('BRIGADE_TRUSTED_ISSUERS');
+    const source =
+      raw === undefined || raw === null
+        ? 'https://brigade.unicorncommander.ai'
+        : raw;
+    const issuers = source
+      .split(',')
+      .map((s) => s.trim().replace(/\/$/, ''))
+      .filter(Boolean);
+
+    const map = new Map<string, JwksClient>();
+    for (const iss of issuers) {
+      map.set(
+        iss,
+        jwksClient({
+          jwksUri: `${iss}/.well-known/jwks.json`,
+          cache: true,
+          cacheMaxAge: 10 * 60 * 1000, // 10 minutes
+          rateLimit: true,
+          jwksRequestsPerMinute: 12,
+        }),
+      );
+    }
+    return map;
   }
 
   async validate(payload: any): Promise<User> {
