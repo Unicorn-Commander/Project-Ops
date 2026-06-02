@@ -19,6 +19,7 @@ import {
   Loader2,
 } from "lucide-react";
 import Link from "next/link";
+import { ApiTokensCard } from "./api-tokens-card";
 
 export default function SettingsPage() {
   const { user, setUser } = useAuthStore();
@@ -170,6 +171,9 @@ export default function SettingsPage() {
           </div>
         </div>
       </Card>
+
+      {/* API tokens — Personal Access Tokens for the customer's own MCP clients. */}
+      <ApiTokensCard />
 
       {/* Notifications — placeholder honest about not yet being wired. */}
       <Card className="p-6">
