@@ -181,6 +181,28 @@ export class AuthService {
     const isBrigadeFederationToken =
       typeof issuer === 'string' && AuthService.brigadeTrustedIssuers().includes(issuer);
 
+    if (isBrigadeFederationToken) {
+      // Audience-binding enforcement: a JWT minted for a different
+      // federated app MUST be rejected here, otherwise a Meeting-Ops
+      // token (or any other audience) could be replayed against PO.
+      // This is the single most important security property of the
+      // federation broker and is non-negotiable.
+      const expectedAudience =
+        process.env.BRIGADE_EXPECTED_AUDIENCE || 'project-ops';
+      const aud = payload?.aud;
+      const audMatches =
+        aud === expectedAudience ||
+        (Array.isArray(aud) && aud.includes(expectedAudience));
+      if (!audMatches) {
+        this.logger.warn(
+          `Brigade JWT audience mismatch: token aud=${JSON.stringify(aud)}, expected '${expectedAudience}'`,
+        );
+        throw new UnauthorizedException(
+          'Token audience does not match this app',
+        );
+      }
+    }
+
     if (isKeycloakRealmToken || isBrigadeFederationToken) {
       // Reuse the same JIT-provisioning + access-list gate as the
       // /auth/keycloak browser callback so cross-app federation cannot
