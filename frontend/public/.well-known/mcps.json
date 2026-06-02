@@ -8,6 +8,18 @@
     "type": "pat",
     "prefix": "po_pat_",
     "mint_url": "https://projectops.magicunicorn.dev/dashboard/settings",
+    "available_scopes": [
+      "read:projects",
+      "write:projects",
+      "read:tasks",
+      "write:tasks",
+      "read:documents",
+      "write:documents",
+      "read:activity",
+      "read:organizations",
+      "write:organizations",
+      "write:billing"
+    ],
     "federated_auth": {
       "type": "brigade_jwt",
       "trusted_issuer": "https://brigade.unicorncommander.ai",
