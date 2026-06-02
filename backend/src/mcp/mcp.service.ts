@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
 import { MinioService } from '../documents/minio.service';
 import { ProjectOpsTools } from './mcp.tools';
+import { MCP_TOOL_SCOPE_MAP } from '../auth/pat/pat.constants';
 
 @Injectable()
 export class McpService {
@@ -32,8 +33,19 @@ export class McpService {
    * Imports the SDK lazily to keep the cold-start path simple — the SDK ships
    * dual CJS/ESM and `require()` resolution into the cjs/ folder is fine, but
    * we still pay the resolve cost only when MCP is actually called.
+   *
+   * `grantedScopes`:
+   *   - `null`/`undefined` -> caller is JWT-auth'd (browser session,
+   *     Keycloak realm token, or Brigade federation JWT). The user's
+   *     role-based RBAC inside ProjectOpsTools is the only gate; every
+   *     registered tool is exposed.
+   *   - `string[]` -> caller is PAT-auth'd. We wrap every tool handler
+   *     so the call fails closed if the tool's required scope (per
+   *     MCP_TOOL_SCOPE_MAP) is not in the granted list. Both the
+   *     manifest-declared tools and the additional tools registered on
+   *     the server are covered; an unknown tool name fails closed.
    */
-  async createServerForUser(user: User) {
+  async createServerForUser(user: User, grantedScopes?: string[] | null) {
     const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 
     const server = new McpServer(
@@ -53,6 +65,34 @@ export class McpService {
       },
     );
 
+    // Wrap registerTool so every tool call is automatically scope-gated
+    // when the caller is PAT-auth'd. JWT-auth'd callers pass straight
+    // through (grantedScopes == null), preserving existing behavior.
+    const grantedSet = grantedScopes ? new Set(grantedScopes) : null;
+    const rawRegister = server.registerTool.bind(server);
+    server.registerTool = (
+      name: string,
+      schema: unknown,
+      handler: (args: any) => Promise<any> | any,
+    ) => {
+      const gated = async (args: any) => {
+        if (grantedSet) {
+          const required = MCP_TOOL_SCOPE_MAP[name];
+          if (!required) {
+            this.logger.warn(
+              `MCP tool "${name}" has no scope mapping; refusing PAT-auth invocation`,
+            );
+            return scopeDenied(name, undefined, [...grantedSet]);
+          }
+          if (!grantedSet.has(required)) {
+            return scopeDenied(name, required, [...grantedSet]);
+          }
+        }
+        return handler(args);
+      };
+      return rawRegister(name, schema, gated);
+    };
+
     const tools = new ProjectOpsTools(this.prisma, this.minio, this.logger);
 
     server.registerTool(
@@ -60,9 +100,9 @@ export class McpService {
       {
         title: 'List my projects',
         description:
-          "Return the projects the calling user can see, newest first. " +
+          'Return the projects the calling user can see, newest first. ' +
           "Optional 'status' filters by ProjectStatus (NEW, IN_PROGRESS, " +
-          "UNDER_REVIEW, COMPLETED, ARCHIVED, ON_HOLD).",
+          'UNDER_REVIEW, COMPLETED, ARCHIVED, ON_HOLD).',
         inputSchema: {
           status: z.string().optional(),
           limit: z.number().int().min(1).max(100).optional(),
@@ -131,8 +171,7 @@ export class McpService {
           limit: z.number().int().min(1).max(50).optional(),
         },
       },
-      async (args: { limit?: number }) =>
-        wrap(await tools.getRecentActivity(user, args)),
+      async (args: { limit?: number }) => wrap(await tools.getRecentActivity(user, args)),
     );
 
     server.registerTool(
@@ -140,7 +179,7 @@ export class McpService {
       {
         title: 'Add a comment to a task',
         description:
-          'Post a comment to a task on the user\'s behalf. Use sparingly — ' +
+          "Post a comment to a task on the user's behalf. Use sparingly — " +
           'only when the user has explicitly asked the assistant to log ' +
           'something, not for ambient narration.',
         inputSchema: {
@@ -271,7 +310,7 @@ export class McpService {
       {
         title: 'Update project status',
         description:
-          'Change a project\'s status. Identify by id or projectNumber. ' +
+          "Change a project's status. Identify by id or projectNumber. " +
           'Status: NEW / IN_PROGRESS / UNDER_REVIEW / COMPLETED / ARCHIVED / ' +
           'ON_HOLD. Setting COMPLETED also stamps completedAt.',
         inputSchema: {
@@ -357,7 +396,7 @@ export class McpService {
       {
         title: 'Update a task status',
         description:
-          'Change a task\'s status. Status: PENDING / IN_PROGRESS / ' +
+          "Change a task's status. Status: PENDING / IN_PROGRESS / " +
           'WAITING_FOR_CLIENT / COMPLETED / CANCELLED. Setting COMPLETED ' +
           'also stamps completedAt.',
         inputSchema: {
@@ -387,7 +426,7 @@ export class McpService {
     server.registerTool(
       'get_document_content',
       {
-        title: 'Read a document\'s text content',
+        title: "Read a document's text content",
         description:
           'Fetch a document the user can see and return its text content. ' +
           'Identify by documentId, or by fileName + projectNumber. Text-friendly ' +
@@ -402,11 +441,8 @@ export class McpService {
           projectNumber: z.string().optional(),
         },
       },
-      async (args: {
-        documentId?: string;
-        fileName?: string;
-        projectNumber?: string;
-      }) => wrap(await tools.getDocumentContent(user, args)),
+      async (args: { documentId?: string; fileName?: string; projectNumber?: string }) =>
+        wrap(await tools.getDocumentContent(user, args)),
     );
 
     server.registerTool(
@@ -475,6 +511,31 @@ function wrap(payload: unknown) {
       {
         type: 'text' as const,
         text: JSON.stringify(payload, null, 2),
+      },
+    ],
+  };
+}
+
+/**
+ * Standardized "this PAT can't call this tool" response. Returned
+ * with `isError: true` so MCP clients surface it as a tool error
+ * rather than a normal result, and includes the granted+required
+ * scopes so the human operator can fix their token mint.
+ */
+function scopeDenied(toolName: string, required: string | undefined, granted: string[]) {
+  const detail = {
+    error: 'scope_denied',
+    tool: toolName,
+    required_scope: required ?? '(no mapping — refusing fail-open)',
+    granted_scopes: granted,
+    hint: 'Mint a new Personal Access Token at /dashboard/settings with the required scope.',
+  };
+  return {
+    isError: true,
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(detail, null, 2),
       },
     ],
   };

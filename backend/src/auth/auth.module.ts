@@ -6,6 +6,9 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { KeycloakStrategy } from './strategies/keycloak.strategy';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { PatController } from './pat/pat.controller';
+import { PatService } from './pat/pat.service';
 import { UsersModule } from '../users/users.module';
 import { EmailModule } from '../email/email.module';
 
@@ -25,8 +28,8 @@ import { EmailModule } from '../email/email.module';
       inject: [ConfigService],
     }),
   ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, KeycloakStrategy],
-  exports: [AuthService, JwtModule],
+  controllers: [AuthController, PatController],
+  providers: [AuthService, JwtStrategy, KeycloakStrategy, JwtAuthGuard, PatService],
+  exports: [AuthService, JwtModule, PatService, JwtAuthGuard],
 })
 export class AuthModule {}

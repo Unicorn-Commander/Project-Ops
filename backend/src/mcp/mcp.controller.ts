@@ -9,20 +9,13 @@
  * per call, so we don't need to track sessions on our side.
  */
 
-import {
-  All,
-  Controller,
-  Logger,
-  Req,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
+import { All, Controller, Logger, Req, Res, UseGuards } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { McpService } from './mcp.service';
-import { User } from '@prisma/client';
+import { User, PersonalAccessToken } from '@prisma/client';
 
 @ApiTags('mcp')
 @ApiBearerAuth()
@@ -49,6 +42,14 @@ export class McpController {
       return;
     }
 
+    // If the caller authenticated with a Personal Access Token, the
+    // JwtAuthGuard stashed the resolved row on the request. The MCP
+    // server builder uses the token's `scopes` list to gate which
+    // tools the agent can invoke; JWT-auth'd callers (no `pat` on the
+    // request) get the full RBAC-gated tool set.
+    const pat = (req as any).pat as PersonalAccessToken | undefined;
+    const grantedScopes = pat ? pat.scopes : null;
+
     const {
       StreamableHTTPServerTransport,
     } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
@@ -63,14 +64,12 @@ export class McpController {
     });
 
     try {
-      const server = await this.mcp.createServerForUser(user);
+      const server = await this.mcp.createServerForUser(user, grantedScopes);
       await server.connect(transport);
       // body has already been parsed by express.json — pass it through.
       await transport.handleRequest(req, res, (req as any).body);
     } catch (err) {
-      this.logger.error(
-        `MCP request failed (user=${user.email}): ${(err as Error).message}`,
-      );
+      this.logger.error(`MCP request failed (user=${user.email}): ${(err as Error).message}`);
       if (!res.headersSent) {
         res.status(500).json({ error: 'mcp_internal_error' });
       }
