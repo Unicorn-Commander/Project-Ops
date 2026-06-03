@@ -138,6 +138,22 @@ services:
       # role. Without this var the backend falls back to admitting only
       # Aaron + Shafen as ADMIN and rejects everyone else.
       PROJECT_OPS_ACCESS_LIST: ${PROJECT_OPS_ACCESS_LIST:-}
+      # --- Suite tenancy (PROJ-2026-000023, Phase 1: additive/inert) ---
+      # DEFAULT_WORKSPACE_ID: the single bootstrap/dogfood workspace id new
+      # rows resolve to until per-membership resolution drives it. Defaults to
+      # the id seeded by the suite_tenancy_rls_roles migration. uc-registry
+      # owns real ids; PO never mints.
+      DEFAULT_WORKSPACE_ID: ${DEFAULT_WORKSPACE_ID:-0190a000-7e57-7000-8000-00000000b007}
+      # PROJECT_OPS_TENANCY_ENABLED: master switch for the membership gate.
+      # DEFAULT OFF == today's behavior (no membership required, RLS inert
+      # because the runtime still connects as the table owner). Do NOT enable
+      # this until the runtime DATABASE_URL is flipped to the NOBYPASSRLS
+      # project_ops_app role (a later rollout phase).
+      PROJECT_OPS_TENANCY_ENABLED: ${PROJECT_OPS_TENANCY_ENABLED:-false}
+      # BRIGADE_EXPECTED_AUDIENCE: the `aud` a Brigade federation token must
+      # carry to be accepted by PO. Tokens minted for other apps are rejected
+      # (audience-binding fence, SUITE-IDENTITY §9.4).
+      BRIGADE_EXPECTED_AUDIENCE: ${BRIGADE_EXPECTED_AUDIENCE:-project-ops}
       # Sentry / Glitchtip — opt-in. SDK is a no-op when DSN is empty.
       # Production points at the self-hosted Glitchtip on bigboy. Reports
       # 5xx errors + uncaught exceptions only (4xx is the user's problem

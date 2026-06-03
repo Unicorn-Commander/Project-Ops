@@ -31,3 +31,19 @@ export function billableRollupLive(getEnv: EnvGetter = defaultGetter): boolean {
   // Default OFF: the live AO call needs AO entitlement + Brigade mint wired.
   return truthy(getEnv('BILLABLE_ROLLUP_LIVE'), false);
 }
+
+/**
+ * Suite tenancy master switch (SUITE-IDENTITY / PROJ-2026-000023).
+ *
+ * Default OFF == today's behavior: workspace routes do NOT require a
+ * Membership row, the membership gate is a no-op, and rows resolve to
+ * DEFAULT_WORKSPACE_ID. RLS exists in the DB but is inert because the runtime
+ * still connects as the table owner.
+ *
+ * When ON (a later rollout phase, alongside flipping the runtime DATABASE_URL
+ * to the NOBYPASSRLS project_ops_app role): workspace routes 403 without an
+ * active Membership, and the membership-derived workspace drives the RLS GUC.
+ */
+export function tenancyEnabled(getEnv: EnvGetter = defaultGetter): boolean {
+  return truthy(getEnv('PROJECT_OPS_TENANCY_ENABLED'), false);
+}

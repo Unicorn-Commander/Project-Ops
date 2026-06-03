@@ -24,8 +24,14 @@ import { User } from '@prisma/client';
 // DEFAULT_WORKSPACE_ID explicitly per node.
 export const DEFAULT_WORKSPACE_FALLBACK = '00000000-0000-0000-0000-000000000000';
 
-// `User` augmented by JwtStrategy.validate with the validated workspace claim.
-export type WithWorkspaceClaim = User & { __workspaceClaim?: string | null };
+// `User` augmented by JwtStrategy.validate with the validated workspace claim
+// (`__workspaceClaim` = the token's `workspace_id`/`tenant_id`) and the acting
+// uchub subject (`__ucUid` = the token `sub`, used for `app.uc_uid` attribution
+// and as the Membership key). Both are non-persistent, request-scoped only.
+export type WithWorkspaceClaim = User & {
+  __workspaceClaim?: string | null;
+  __ucUid?: string | null;
+};
 
 /**
  * Resolve the active workspace id for a request/user.
@@ -40,6 +46,18 @@ export function resolveWorkspaceId(
     return claim.trim();
   }
   return defaultWorkspaceId;
+}
+
+/**
+ * The acting user's uchub `sub` for `app.uc_uid` attribution. Prefers the
+ * validated token `sub` (surfaced as `__ucUid` by JwtStrategy), then the linked
+ * `keycloakId`, then the local user id. Always returns a string ('' if none).
+ */
+export function ucUidOf(
+  user: Partial<WithWorkspaceClaim> | null | undefined,
+): string {
+  const u = user as WithWorkspaceClaim | undefined;
+  return (u?.__ucUid?.trim() || u?.keycloakId || u?.id || '') as string;
 }
 
 /** The configured default workspace, read from the environment. */

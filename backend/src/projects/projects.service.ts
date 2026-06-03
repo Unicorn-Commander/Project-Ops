@@ -191,7 +191,13 @@ export class ProjectsService {
   }
 
   async findByProjectNumber(projectNumber: string): Promise<Project> {
-    const projectData = await this.prisma.project.findUnique({
+    // projectNumber is unique PER WORKSPACE now (@@unique([workspaceId,
+    // projectNumber])), not globally, so it is no longer a findUnique key.
+    // In Phase 1 there is a single bootstrap workspace, so findFirst returns
+    // the same row; when tenancy goes live this lookup runs inside the
+    // workspace-scoped RLS transaction (withWorkspace), which fences it to the
+    // active workspace — keeping the result unambiguous without a param change.
+    const projectData = await this.prisma.project.findFirst({
       where: { projectNumber },
       include: {
         createdBy: true,

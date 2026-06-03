@@ -34,6 +34,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   private readonly jwks?: JwksClient;
   private readonly brigadeJwksByIss: Map<string, JwksClient>;
   private readonly localSecret: string;
+  private readonly brigadeTrustedIssuers: Set<string>;
+  private readonly brigadeExpectedAudience: string;
 
   constructor(
     configService: ConfigService,
@@ -42,6 +44,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const localSecret = configService.get<string>('JWT_SECRET') || '';
     const realmJwksUri = JwtStrategy.buildJwksUri(configService);
     const brigadeJwksByIss = JwtStrategy.buildBrigadeJwksClients(configService);
+    // Audience-binding inputs (ported from the retired BrigadeJwtVerifier):
+    // PO only accepts a federation token minted FOR project-ops. A token whose
+    // `aud` is some other app (accounting-ops, meeting-ops, …) is rejected even
+    // if its signature + issuer verify — see validate().
+    const brigadeExpectedAudience =
+      configService.get<string>('BRIGADE_EXPECTED_AUDIENCE') || 'project-ops';
 
     let jwks: JwksClient | undefined;
     if (realmJwksUri) {
@@ -110,6 +118,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     this.localSecret = localSecret;
     this.jwks = jwks;
     this.brigadeJwksByIss = brigadeJwksByIss;
+    this.brigadeTrustedIssuers = new Set(brigadeJwksByIss.keys());
+    this.brigadeExpectedAudience = brigadeExpectedAudience;
 
     if (realmJwksUri) {
       this.logger.log(
@@ -173,15 +183,50 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return map;
   }
 
+  /**
+   * Audience-binding check (ported from the retired BrigadeJwtVerifier's
+   * `validateClaims`). A federation token minted for another app
+   * (`aud=accounting-ops`, etc.) MUST be rejected by Project-Ops even though
+   * its signature + issuer verify — this is the cross-app fence in
+   * SUITE-IDENTITY §9.4. `aud` may be a string or an array (RFC 7519).
+   */
+  static audienceMatches(aud: unknown, expected: string): boolean {
+    if (Array.isArray(aud)) return aud.includes(expected);
+    return aud === expected;
+  }
+
   async validate(payload: any): Promise<User> {
     try {
+      // Brigade federation tokens are bound to a single app by `aud`. We only
+      // reach validate() after the signature + issuer already verified, so any
+      // token whose `iss` is a trusted Brigade broker is a federation token:
+      // enforce that its audience is THIS app before resolving the user. (Local
+      // HS256 + Keycloak-realm tokens have a non-Brigade `iss` and are
+      // unaffected — they carry no app-scoped `aud`.)
+      const issuer: string | undefined = payload?.iss;
+      if (typeof issuer === 'string' && this.brigadeTrustedIssuers.has(issuer)) {
+        if (!JwtStrategy.audienceMatches(payload?.aud, this.brigadeExpectedAudience)) {
+          this.logger.warn(
+            `Rejected Brigade token: aud=${JSON.stringify(payload?.aud)} != ${this.brigadeExpectedAudience}`,
+          );
+          throw new UnauthorizedException('Token audience is not project-ops');
+        }
+      }
+
       const user = await this.authService.validateJwtPayload(payload as JwtPayload);
       // Surface the suite-canonical workspace/tenant claim (if any) on the
       // resolved user so the tenancy seam (WorkspaceContextService /
       // @CurrentWorkspace) can scope rows without trusting an HTTP header.
       // Tokens that don't carry it fall back to DEFAULT_WORKSPACE_ID.
-      (user as User & { __workspaceClaim?: string | null }).__workspaceClaim =
+      const augmented = user as User & {
+        __workspaceClaim?: string | null;
+        __ucUid?: string | null;
+      };
+      augmented.__workspaceClaim =
         payload?.workspace_id ?? payload?.tenant_id ?? null;
+      // The acting uchub subject for app.uc_uid attribution + Membership key.
+      augmented.__ucUid =
+        typeof payload?.sub === 'string' ? payload.sub : null;
       return user;
     } catch (error) {
       this.logger.warn(

@@ -4,6 +4,7 @@ import { AuditModule } from '../audit/audit.module';
 import { DocumentsModule } from '../documents/documents.module';
 
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
+import { MembershipService } from '../common/workspace/membership.service';
 import { TimeTrackingEnabledGuard } from '../common/workspace/time-tracking-enabled.guard';
 
 import { RoundingService } from './rounding.service';
@@ -44,6 +45,7 @@ import { HttpAccountingOpsClient } from './billing/http-accounting-ops.client';
   ],
   providers: [
     WorkspaceContextService,
+    MembershipService,
     TimeTrackingEnabledGuard,
     RoundingService,
     RateResolverService,
@@ -61,6 +63,7 @@ import { HttpAccountingOpsClient } from './billing/http-accounting-ops.client';
   ],
   exports: [
     WorkspaceContextService,
+    MembershipService,
     TimerService,
     TimeEntryService,
     BillingRateService,

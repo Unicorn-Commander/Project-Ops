@@ -38,5 +38,6 @@ lerna-debug.log*
 .env.*.local
 
 # Prisma
-prisma/migrations/*
-!prisma/migrations/.gitkeep
+# Migrations ARE tracked: PO moved from `prisma db push` to Prisma Migrate as of
+# the suite-tenancy-foundation change (versioned SQL is the source of truth for
+# RLS, role grants, and backfills). Do NOT re-add `prisma/migrations/*` here.
