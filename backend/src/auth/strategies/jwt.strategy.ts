@@ -175,7 +175,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   async validate(payload: any): Promise<User> {
     try {
-      return await this.authService.validateJwtPayload(payload as JwtPayload);
+      const user = await this.authService.validateJwtPayload(payload as JwtPayload);
+      // Surface the suite-canonical workspace/tenant claim (if any) on the
+      // resolved user so the tenancy seam (WorkspaceContextService /
+      // @CurrentWorkspace) can scope rows without trusting an HTTP header.
+      // Tokens that don't carry it fall back to DEFAULT_WORKSPACE_ID.
+      (user as User & { __workspaceClaim?: string | null }).__workspaceClaim =
+        payload?.workspace_id ?? payload?.tenant_id ?? null;
+      return user;
     } catch (error) {
       this.logger.warn(
         `JWT validation failed: ${(error as Error).message ?? 'unknown'}`,

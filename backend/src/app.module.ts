@@ -23,6 +23,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { McpModule } from './mcp/mcp.module';
 import { AssistantModule } from './assistant/assistant.module';
+import { TimeTrackingModule } from './time-tracking/time-tracking.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { AssistantModule } from './assistant/assistant.module';
     OrganizationsModule,
     McpModule,
     AssistantModule,
+    TimeTrackingModule,
   ],
   providers: [
     // Enable rate limiting globally via guard

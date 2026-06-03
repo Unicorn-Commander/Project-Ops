@@ -12,7 +12,31 @@ import { Prisma, User, UserRole } from '@prisma/client';
 import { MinioService } from '../documents/minio.service';
 import { v4 as uuidv4 } from 'uuid';
 
+// Type-only imports: the time-tracking services import buildVisibilityFilter
+// FROM this file, so importing their *values* here would create a runtime
+// cycle. `import type` is erased at compile time, so it's safe.
+import type { TimerService } from '../time-tracking/timer.service';
+import type { TimeEntryService } from '../time-tracking/time-entry.service';
+import type { TimesheetService } from '../time-tracking/timesheet.service';
+import type { ReportsService } from '../time-tracking/reports.service';
+import type { BillableRollupService } from '../time-tracking/billing/billable-rollup.service';
+import type { WorkspaceContextService } from '../common/workspace/workspace-context.service';
+
 type Logger = { log: (msg: string) => void; warn: (msg: string) => void };
+
+/**
+ * Time-tracking service surface injected into ProjectOpsTools so the MCP tools
+ * delegate to the exact same code paths as the REST controllers (one source of
+ * truth for rate resolution, rounding, approval, and the AO rollup).
+ */
+export interface TimeTrackingDeps {
+  timer: TimerService;
+  timeEntry: TimeEntryService;
+  timesheet: TimesheetService;
+  reports: ReportsService;
+  rollup: BillableRollupService;
+  workspace: WorkspaceContextService;
+}
 
 // Mime types whose bytes can be returned as text. Office formats are
 // included so the LLM at least gets the (often-readable) raw stream;
@@ -70,7 +94,111 @@ export class ProjectOpsTools {
     private readonly prisma: PrismaService,
     private readonly minio: MinioService,
     private readonly logger: Logger = console,
+    private readonly tt?: TimeTrackingDeps,
+    private readonly bearerToken: string | null = null,
   ) {}
+
+  // ── Time tracking tools ──────────────────────────────────
+  // Delegate to the time-tracking services so MCP and REST share one code
+  // path. Services enforce RBAC, workspace scoping, lock/bill immutability,
+  // and rate/rounding rules; they throw on violation (surfaced as tool errors).
+
+  private requireTt(): TimeTrackingDeps {
+    if (!this.tt) throw new Error('Time tracking is not enabled on this server');
+    return this.tt;
+  }
+
+  private workspaceFor(user: User): string {
+    return this.requireTt().workspace.resolve(user);
+  }
+
+  async startTimer(user: User, args: { projectId?: string; taskId?: string; description?: string }) {
+    const tt = this.requireTt();
+    const res = await tt.timer.startTimer(this.workspaceFor(user), user, args);
+    this.logger.log(`MCP start_timer: user=${user.email}`);
+    return res;
+  }
+
+  async stopTimer(user: User, _args: Record<string, never>) {
+    const tt = this.requireTt();
+    const res = await tt.timer.stopTimer(this.workspaceFor(user), user);
+    this.logger.log(`MCP stop_timer: user=${user.email}`);
+    return res;
+  }
+
+  async logTime(
+    user: User,
+    args: {
+      projectId?: string;
+      taskId?: string;
+      description?: string;
+      startedAt?: string;
+      endedAt?: string;
+      durationMinutes?: number;
+      billable?: boolean;
+    },
+  ) {
+    const tt = this.requireTt();
+    const res = await tt.timeEntry.logTime(this.workspaceFor(user), user, args as any);
+    this.logger.log(`MCP log_time: user=${user.email}`);
+    return res;
+  }
+
+  async updateTimeEntry(user: User, args: { id: string } & Record<string, any>) {
+    const { id, ...rest } = args;
+    if (!id) throw new Error('id is required');
+    const tt = this.requireTt();
+    return tt.timeEntry.update(this.workspaceFor(user), user, id, rest as any);
+  }
+
+  async listTimeEntries(user: User, args: Record<string, any>) {
+    const tt = this.requireTt();
+    return tt.timeEntry.list(this.workspaceFor(user), user, (args ?? {}) as any);
+  }
+
+  async submitTimesheet(user: User, args: { periodStart?: string }) {
+    const tt = this.requireTt();
+    const res = await tt.timesheet.submit(this.workspaceFor(user), user, args ?? {});
+    this.logger.log(`MCP submit_timesheet: user=${user.email}`);
+    return res;
+  }
+
+  async approveTime(user: User, args: { timesheetPeriodId?: string; timeEntryIds?: string[] }) {
+    const tt = this.requireTt();
+    const res = await tt.timesheet.approve(this.workspaceFor(user), user, args ?? {});
+    this.logger.log(`MCP approve_time: user=${user.email}`);
+    return res;
+  }
+
+  async getUtilization(user: User, args: { from?: string; to?: string; userId?: string }) {
+    const tt = this.requireTt();
+    return tt.reports.getUtilization(this.workspaceFor(user), user, args ?? {});
+  }
+
+  async createBillableDraft(
+    user: User,
+    args: {
+      projectId?: string;
+      clientId?: string;
+      periodStart?: string;
+      periodEnd?: string;
+      groupBy?: string;
+      autoSend?: boolean;
+    },
+  ) {
+    const tt = this.requireTt();
+    const res = await tt.rollup.createBillableDraft(this.workspaceFor(user), user, args as any, {
+      bearerToken: this.bearerToken,
+      actingUser: { id: user.id, email: user.email },
+    });
+    this.logger.log(`MCP create_billable_draft: user=${user.email} status=${(res as any).status}`);
+    return res;
+  }
+
+  async syncInvoiceStatus(user: User, _args: Record<string, never>) {
+    const tt = this.requireTt();
+    return tt.rollup.syncInvoiceStatuses(this.bearerToken);
+  }
 
   async listMyProjects(
     user: User,
