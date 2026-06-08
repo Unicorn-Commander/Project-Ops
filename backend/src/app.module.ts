@@ -20,6 +20,7 @@ import { HealthModule } from './health/health.module';
 import { WebSocketModule } from './websocket/websocket.module';
 import { EmailModule } from './email/email.module';
 import { TasksModule } from './tasks/tasks.module';
+import { TriageModule } from './triage/triage.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { McpModule } from './mcp/mcp.module';
 import { AssistantModule } from './assistant/assistant.module';
@@ -68,6 +69,7 @@ import { AssistantModule } from './assistant/assistant.module';
     WebSocketModule,
     EmailModule,
     TasksModule,
+    TriageModule,
     OrganizationsModule,
     McpModule,
     AssistantModule,

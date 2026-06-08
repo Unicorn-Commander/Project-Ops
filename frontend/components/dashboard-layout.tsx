@@ -35,6 +35,7 @@ import {
   CalendarRange,
   ChevronDown,
   Search,
+  Inbox,
 } from "lucide-react";
 
 interface NavItem {
@@ -48,6 +49,7 @@ interface NavItem {
 const navigation: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, group: "Workspace" },
   { name: "My Tasks", href: "/dashboard/my-tasks", icon: CheckSquare, group: "Workspace" },
+  { name: "Triage", href: "/dashboard/triage", icon: Inbox, group: "Workspace" },
   { name: "Projects", href: "/dashboard/projects", icon: FileText, group: "Workspace" },
   { name: "Kanban Board", href: "/dashboard/kanban", icon: LayoutGrid, group: "Workspace" },
   { name: "Schedule", href: "/dashboard/schedule", icon: CalendarRange, group: "Workspace" },
@@ -72,6 +74,7 @@ function pageTitleFor(pathname: string | null): string {
   const map: Record<string, string> = {
     "/dashboard": "Dashboard",
     "/dashboard/my-tasks": "My tasks",
+    "/dashboard/triage": "Triage",
     "/dashboard/projects": "Projects",
     "/dashboard/kanban": "Kanban board",
     "/dashboard/documents": "Documents",

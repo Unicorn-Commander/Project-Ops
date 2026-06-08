@@ -12,6 +12,10 @@ import { Prisma, User, UserRole } from '@prisma/client';
 import { MinioService } from '../documents/minio.service';
 import { v4 as uuidv4 } from 'uuid';
 
+// Type-only import: erased at compile time, so it's safe even if the triage
+// service imports helpers back from this file.
+import type { TriageService } from '../triage/triage.service';
+
 type Logger = { log: (msg: string) => void; warn: (msg: string) => void };
 
 // Mime types whose bytes can be returned as text. Office formats are
@@ -70,6 +74,7 @@ export class ProjectOpsTools {
     private readonly prisma: PrismaService,
     private readonly minio: MinioService,
     private readonly logger: Logger = console,
+    private readonly triage?: TriageService,
   ) {}
 
   async listMyProjects(
@@ -786,6 +791,36 @@ export class ProjectOpsTools {
     });
     this.logger.log(`MCP create_task: user=${user.email} project=${project.projectNumber} task=${task.id}`);
     return task;
+  }
+
+  /**
+   * Ingest candidate action items from an external agent (Meeting-Ops, etc.)
+   * into the PO triage agent. Propose-only: the TriageService writes
+   * TriageProposal rows for human review — no tasks/projects are created
+   * here. Idempotent on (sourceType, sourceActionItemId). CLIENT-role users
+   * cannot call this.
+   */
+  async submitCandidateActionItems(
+    user: User,
+    args: {
+      items: Array<{ text: string; owner?: string; sourceActionItemId?: string }>;
+      sourceType?: string;
+    },
+  ) {
+    this.assertCanWrite(user);
+    if (!this.triage) {
+      throw new Error('Triage is not enabled on this server');
+    }
+    const items = (args.items ?? []).map((it) => ({
+      text: it.text,
+      owner: it.owner,
+      sourceActionItemId: it.sourceActionItemId,
+      sourceType: args.sourceType,
+    }));
+    this.logger.log(
+      `MCP submit_candidate_action_items: user=${user.email} items=${items.length} sourceType=${args.sourceType ?? 'MANUAL'}`,
+    );
+    return this.triage.ingestCandidates(items, user.id);
   }
 
   async updateTaskStatus(
