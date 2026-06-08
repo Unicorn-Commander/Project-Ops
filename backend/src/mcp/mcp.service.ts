@@ -16,6 +16,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MinioService } from '../documents/minio.service';
 import { ProjectOpsTools } from './mcp.tools';
 import { MCP_TOOL_SCOPE_MAP } from '../auth/pat/pat.constants';
+import { TriageService } from '../triage/triage.service';
 
 @Injectable()
 export class McpService {
@@ -24,6 +25,7 @@ export class McpService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly minio: MinioService,
+    private readonly triage: TriageService,
   ) {}
 
   /**
@@ -93,7 +95,12 @@ export class McpService {
       return rawRegister(name, schema, gated);
     };
 
-    const tools = new ProjectOpsTools(this.prisma, this.minio, this.logger);
+    const tools = new ProjectOpsTools(
+      this.prisma,
+      this.minio,
+      this.logger,
+      this.triage,
+    );
 
     server.registerTool(
       'list_my_projects',
@@ -389,6 +396,30 @@ export class McpService {
         },
       },
       async (args: any) => wrap(await tools.createTask(user, args)),
+    );
+
+    server.registerTool(
+      'submit_candidate_action_items',
+      {
+        title: 'Submit candidate action items to triage',
+        description:
+          'Submit candidate action items (from Meeting-Ops or any source) to the ' +
+          'PO triage agent. Propose-only: each item is routed to a best-fit project ' +
+          'and written as a TriageProposal for human review — no tasks/projects are ' +
+          'created until a human approves. Idempotent on (sourceType, ' +
+          'sourceActionItemId). CLIENT-role users cannot call this.',
+        inputSchema: {
+          items: z.array(
+            z.object({
+              text: z.string(),
+              owner: z.string().optional(),
+              sourceActionItemId: z.string().optional(),
+            }),
+          ),
+          sourceType: z.string().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.submitCandidateActionItems(user, args)),
     );
 
     server.registerTool(

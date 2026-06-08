@@ -120,6 +120,15 @@
       "expected_latency_ms": 400
     },
     {
+      "name": "submit_candidate_action_items",
+      "description": "Submit a batch of candidate action items (e.g. extracted from a meeting transcript) for triage into tasks. Each item carries the action text plus optional owner and source linkage.",
+      "input_schema": { "type": "object", "properties": { "items": { "type": "array", "items": { "type": "object", "properties": { "text": { "type": "string" }, "owner": { "type": "string" }, "sourceActionItemId": { "type": "string" } }, "required": ["text"] } }, "sourceType": { "type": "string" } }, "required": ["items"] },
+      "scopes_required": ["write:tasks"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 500
+    },
+    {
       "name": "list_project_documents",
       "description": "List documents attached to a project.",
       "input_schema": { "type": "object", "properties": { "projectId": { "type": "string" } }, "required": ["projectId"] },

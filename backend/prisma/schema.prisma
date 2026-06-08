@@ -85,6 +85,14 @@ enum TaskType {
   OTHER
 }
 
+enum TriageStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  APPLIED
+  DROPPED
+}
+
 enum OrgType {
   AGENCY      // An agency or service firm
   BUSINESS    // A business client with multiple contacts
@@ -387,6 +395,7 @@ model Project {
   documents           Document[]
   tasks               Task[]
   auditLogs           AuditLog[]
+  triageProposals     TriageProposal[] @relation("TriageProposalProject")
 
   @@index([projectNumber])
   @@index([status])
@@ -535,4 +544,55 @@ model TaskComment {
   @@index([taskId])
   @@index([authorId])
   @@map("task_comments")
+}
+
+// ============================================================
+// TRIAGE AGENT (PO-owned; Meeting-Ops & other sources -> routed tasks)
+// ============================================================
+//
+// One row per candidate action item. The agent proposes (keep / route / dedup);
+// nothing becomes a Task until a human approves. The "Unassigned / needs a
+// project" inbox is: agentKeep = true AND proposedProjectId = null AND
+// dedupeNote = null AND status = PENDING_REVIEW -> from there a user assigns it
+// to an existing project or creates a new one (createProjectFromUnassigned).
+// Idempotent on (sourceType, sourceActionItemId) so a re-finalized meeting
+// never double-proposes.
+model TriageProposal {
+  id String @id @default(uuid())
+
+  // Source provenance + idempotency
+  sourceType         String  @default("MANUAL") // MEETING_OPS | MANUAL | WEBHOOK | IMPORT
+  sourceActionItemId String? // stable id from the source (e.g. meeting-ops action_items.id)
+  sourceRef          Json?
+  rawText            String  @db.Text
+  owner              String? // free-text owner from the source (e.g. a diarized speaker label)
+
+  // Agent decision
+  agentKeep         Boolean      @default(true)
+  proposedProjectId String?
+  proposedProject   Project?     @relation("TriageProposalProject", fields: [proposedProjectId], references: [id], onDelete: SetNull)
+  proposedTitle     String
+  proposedPriority  TaskPriority @default(MEDIUM)
+  dedupeNote        String? // set when the agent flags this as a duplicate
+  matchScore        Decimal?     @db.Decimal(6, 4)
+  alternatives      Json? // other candidate projects, for the reviewer to pick from
+  reasoning         String?      @db.Text
+
+  // Review lifecycle
+  status          TriageStatus @default(PENDING_REVIEW)
+  createdById     String // user the agent acted for
+  reviewedById    String?
+  rejectionReason String?
+  createdTaskId   String? // Task created on approval (soft link, no FK)
+  appliedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sourceType, sourceActionItemId])
+  @@index([status])
+  @@index([proposedProjectId])
+  @@index([sourceType])
+  @@index([createdById])
+  @@map("triage_proposals")
 }
