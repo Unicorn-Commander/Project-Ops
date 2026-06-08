@@ -5,6 +5,41 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] — 2026-06-08
+
+First tagged release since v1.6.58; rolls up everything merged to `main` since.
+
+### Added
+
+**Project-Ops Triage Agent (PO-owned).** A source-agnostic intake that turns
+candidate action items (from Meeting-Ops finalize, or any caller) into routed,
+deduped task *proposals* for human review — nothing becomes a task without an
+approval. Backend module at `backend/src/triage/` (per-item embeddings + rerank
+on Infinity, reasoning on a local Qwen, all over the LAN); endpoints under
+`/api/v1/triage` (`ingest`, `inbox`, `proposals`, `proposals/:id/approve`,
+`proposals/:id/reject`, `create-project`), each guarded by `JwtAuthGuard` +
+`Roles(ADMIN|MANAGER|STAFF)`. New `submit_candidate_action_items` MCP tool
+(scope `write:tasks`) in the manifest so Brigade and other suite apps can submit
+candidates. New review UI at `/dashboard/triage` (Needs-a-project / Routed /
+Possible-duplicates / Set-aside, with approve/reject, project override, and
+create-project-from-unassigned). New `triage_proposals` table.
+
+**Brigade federation + Personal Access Tokens.** Federation broker + manifest
+(RS256 signing); `JwtStrategy` resolves Brigade-issued JWTs via Brigade JWKS and
+SSO; Personal Access Tokens for direct MCP-client integration (PAT service +
+Settings "API tokens" UI + scope-gated MCP); MCP organization tools
+(list/get/update/create + project org reassignment); Garage object-storage
+cutover via env.
+
+### Fixed
+
+- Auth: enforce audience-binding on Brigade-issued JWTs; fall back to
+  `sub`-as-email for Brigade tokens missing an email claim; dual-token strategy
+  accepts Keycloak realm tokens.
+- MCP `create_project` project-number collision when `P-XXXXX` and
+  `PROJ-YYYY-XXXXXX` formats coexisted.
+- Coerce date-only strings to `DateTime` before Prisma writes.
+
 ## [1.6.59] — 2026-05-13
 
 ### Fixed
