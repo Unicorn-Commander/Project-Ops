@@ -14,9 +14,16 @@ import { User } from '@prisma/client';
 import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
 import { MinioService } from '../documents/minio.service';
-import { ProjectOpsTools } from './mcp.tools';
+import { ProjectOpsTools, TimeTrackingDeps } from './mcp.tools';
 import { MCP_TOOL_SCOPE_MAP } from '../auth/pat/pat.constants';
 import { TriageService } from '../triage/triage.service';
+import { timeTrackingEnabled } from '../common/workspace/feature-flags';
+import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
+import { TimerService } from '../time-tracking/timer.service';
+import { TimeEntryService } from '../time-tracking/time-entry.service';
+import { TimesheetService } from '../time-tracking/timesheet.service';
+import { ReportsService } from '../time-tracking/reports.service';
+import { BillableRollupService } from '../time-tracking/billing/billable-rollup.service';
 
 @Injectable()
 export class McpService {
@@ -26,6 +33,12 @@ export class McpService {
     private readonly prisma: PrismaService,
     private readonly minio: MinioService,
     private readonly triage: TriageService,
+    private readonly workspace: WorkspaceContextService,
+    private readonly timer: TimerService,
+    private readonly timeEntry: TimeEntryService,
+    private readonly timesheet: TimesheetService,
+    private readonly reports: ReportsService,
+    private readonly rollup: BillableRollupService,
   ) {}
 
   /**
@@ -47,7 +60,11 @@ export class McpService {
    *     manifest-declared tools and the additional tools registered on
    *     the server are covered; an unknown tool name fails closed.
    */
-  async createServerForUser(user: User, grantedScopes?: string[] | null) {
+  async createServerForUser(
+    user: User,
+    grantedScopes?: string[] | null,
+    bearerToken?: string | null,
+  ) {
     const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 
     const server = new McpServer(
@@ -95,11 +112,21 @@ export class McpService {
       return rawRegister(name, schema, gated);
     };
 
+    const ttDeps: TimeTrackingDeps = {
+      timer: this.timer,
+      timeEntry: this.timeEntry,
+      timesheet: this.timesheet,
+      reports: this.reports,
+      rollup: this.rollup,
+      workspace: this.workspace,
+    };
     const tools = new ProjectOpsTools(
       this.prisma,
       this.minio,
       this.logger,
       this.triage,
+      ttDeps,
+      bearerToken ?? null,
     );
 
     server.registerTool(
@@ -531,6 +558,178 @@ export class McpService {
       },
       async (args: any) => wrap(await tools.updateBillingFields(user, args)),
     );
+
+    // ── Time tracking tools (gated by TIME_TRACKING_ENABLED) ──
+    if (timeTrackingEnabled()) {
+      server.registerTool(
+        'start_timer',
+        {
+          title: 'Start a work timer',
+          description:
+            'Start a running timer for the caller against a project or task. Any existing ' +
+            'running timer is stopped first. Provide projectId or taskId. CLIENT users cannot.',
+          inputSchema: {
+            projectId: z.string().optional(),
+            taskId: z.string().optional(),
+            description: z.string().optional(),
+          },
+        },
+        async (args: any) => wrap(await tools.startTimer(user, args)),
+      );
+
+      server.registerTool(
+        'stop_timer',
+        {
+          title: 'Stop the running timer',
+          description:
+            "Stop the caller's running timer. Computes duration, applies rounding, resolves the " +
+            'bill rate, and stores the billable amount.',
+          inputSchema: {},
+        },
+        async (args: any) => wrap(await tools.stopTimer(user, args)),
+      );
+
+      server.registerTool(
+        'log_time',
+        {
+          title: 'Log a manual time entry',
+          description:
+            'Create a manual time entry. Provide startedAt+endedAt, startedAt+durationMinutes, ' +
+            'endedAt+durationMinutes, or just durationMinutes. Identify work by projectId or taskId. ' +
+            'billable defaults to the task/project policy. CLIENT users cannot.',
+          inputSchema: {
+            projectId: z.string().optional(),
+            taskId: z.string().optional(),
+            description: z.string().optional(),
+            startedAt: z.string().optional(),
+            endedAt: z.string().optional(),
+            durationMinutes: z.number().min(0).optional(),
+            billable: z.boolean().optional(),
+          },
+        },
+        async (args: any) => wrap(await tools.logTime(user, args)),
+      );
+
+      server.registerTool(
+        'update_time_entry',
+        {
+          title: 'Update a time entry',
+          description:
+            'Patch a DRAFT, unlocked, unbilled time entry (id required). Locked or billed entries ' +
+            'are immutable. Only supplied fields change.',
+          inputSchema: {
+            id: z.string().min(1),
+            description: z.string().optional(),
+            taskId: z.string().optional(),
+            startedAt: z.string().optional(),
+            endedAt: z.string().optional(),
+            durationMinutes: z.number().min(0).optional(),
+            billable: z.boolean().optional(),
+          },
+        },
+        async (args: any) => wrap(await tools.updateTimeEntry(user, args)),
+      );
+
+      server.registerTool(
+        'list_time_entries',
+        {
+          title: 'List time entries',
+          description:
+            'List the caller-visible time entries, newest first, paginated. Filters: userId, ' +
+            'projectId, taskId, from, to (ISO dates), billable, billed, approvalStatus ' +
+            '(DRAFT/SUBMITTED/APPROVED/REJECTED). CLIENT callers never see cost rates.',
+          inputSchema: {
+            userId: z.string().optional(),
+            projectId: z.string().optional(),
+            taskId: z.string().optional(),
+            from: z.string().optional(),
+            to: z.string().optional(),
+            billable: z.boolean().optional(),
+            billed: z.boolean().optional(),
+            approvalStatus: z.string().optional(),
+            page: z.number().int().min(1).optional(),
+            limit: z.number().int().min(1).max(200).optional(),
+          },
+        },
+        async (args: any) => wrap(await tools.listTimeEntries(user, args)),
+      );
+
+      server.registerTool(
+        'submit_timesheet',
+        {
+          title: 'Submit a weekly timesheet',
+          description:
+            "Submit the caller's DRAFT entries for the week containing periodStart (default: this " +
+            'week) for approval. Groups them into a timesheet period set to SUBMITTED.',
+          inputSchema: { periodStart: z.string().optional() },
+        },
+        async (args: any) => wrap(await tools.submitTimesheet(user, args)),
+      );
+
+      server.registerTool(
+        'approve_time',
+        {
+          title: 'Approve submitted time',
+          description:
+            'Approve a whole submitted period (timesheetPeriodId) or specific entries ' +
+            '(timeEntryIds). Approved entries lock against edits. MANAGER/ADMIN only.',
+          inputSchema: {
+            timesheetPeriodId: z.string().optional(),
+            timeEntryIds: z.array(z.string()).optional(),
+          },
+        },
+        async (args: any) => wrap(await tools.approveTime(user, args)),
+      );
+
+      server.registerTool(
+        'get_utilization',
+        {
+          title: 'Utilization report',
+          description:
+            'Billable vs total hours per user over an optional period (from/to ISO dates). ' +
+            'Optionally narrow to one userId.',
+          inputSchema: {
+            from: z.string().optional(),
+            to: z.string().optional(),
+            userId: z.string().optional(),
+          },
+        },
+        async (args: any) => wrap(await tools.getUtilization(user, args)),
+      );
+
+      server.registerTool(
+        'create_billable_draft',
+        {
+          title: 'Create a billable draft (→ Accounting-Ops invoice)',
+          description:
+            'Roll up APPROVED, billable, unbilled time for a projectId or clientId (optional ' +
+            'periodStart/periodEnd) into invoice line items (groupBy TASK/ROLE/DAY/NONE). When ' +
+            'Accounting-Ops is connected + entitled, creates the invoice (idempotent) and marks ' +
+            'entries billed; otherwise returns a draft + PDF preview. MANAGER/ADMIN only.',
+          inputSchema: {
+            projectId: z.string().optional(),
+            clientId: z.string().optional(),
+            periodStart: z.string().optional(),
+            periodEnd: z.string().optional(),
+            groupBy: z.string().optional(),
+            autoSend: z.boolean().optional(),
+          },
+        },
+        async (args: any) => wrap(await tools.createBillableDraft(user, args)),
+      );
+
+      server.registerTool(
+        'sync_invoice_status',
+        {
+          title: 'Sync invoice status from Accounting-Ops',
+          description:
+            'Pull current status (sent/partial/paid/overdue) for billed entries from Accounting-Ops ' +
+            'and mirror it onto the linked projects. Uses the caller\'s token.',
+          inputSchema: {},
+        },
+        async (args: any) => wrap(await tools.syncInvoiceStatus(user, args)),
+      );
+    }
 
     return server;
   }

@@ -5,6 +5,49 @@ All notable changes to Project Ops live here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+**Time Tracking + Billable Rollup — the professional-services spine.**
+Logged work now becomes billable amounts that flow to Accounting-Ops
+for invoicing. Backend-complete and tested; the React surfaces and the
+app-wide RLS hardening follow. Lands on `feat/time-tracking-billable-rollup`
+behind `TIME_TRACKING_ENABLED` (default on) and `BILLABLE_ROLLUP_LIVE`
+(default off).
+
+- **Data model** (`backend/prisma/schema.prisma`): `TimeEntry`,
+  `BillingRate` (multi-scope rates), `TimesheetPeriod`, plus policy fields
+  on `Project` (`billByDefault`, `defaultBillRate`, `budgetHours`,
+  `budgetAmount`, rounding) and `Task` (`billable`, `billRate`). Every new
+  row carries a NOT NULL `workspaceId` (suite-canonical tenancy seam; the
+  app-wide FORCE-RLS hardening is the dedicated tenancy effort's job). The
+  "at most one running timer per user" invariant is a partial unique index
+  applied in `PrismaService.onModuleInit` (Prisma can't express it) **and**
+  enforced in the service.
+- **Engine** (`backend/src/time-tracking/`): deterministic rate resolution
+  (Task override → TASK → TASK_TYPE → PROJECT → project default → CONTACT →
+  USER_PROJECT → USER → ROLE → ORG; cost rate resolved independently and
+  never shown to CLIENT), configurable rounding (raw + rounded both stored),
+  timer lifecycle, manual entry with overlap guard, lock/billed immutability,
+  and a weekly submit → approve/reject approval flow that locks on approval.
+- **Billable rollup → Accounting-Ops**: a source-agnostic assembler groups
+  approved, billable, unbilled entries into invoice line items with a
+  deterministic, retry-safe `external_ref` (hash of the source-id set — never
+  double-bills). The live call hits AO's REST AR API forwarding the caller's
+  bearer; on a not-entitled / unreachable / disabled result it degrades to a
+  draft + PDF preview ("connect Accounting-Ops to invoice"). AO has no
+  webhooks, so a `@Cron` poller mirrors invoice status onto the project
+  billing fields.
+- **Surfaces**: REST controllers (time entries, timesheets, billing rates,
+  reports, billing), 10 MCP tools (`start_timer`, `stop_timer`, `log_time`,
+  `update_time_entry`, `list_time_entries`, `submit_timesheet`,
+  `approve_time`, `get_utilization`, `create_billable_draft`,
+  `sync_invoice_status`) with new `read:time` / `write:time` scopes, websocket
+  events (incl. a new per-user room for the timer widget), and `AuditLog`
+  on every mutation. Reports cover utilization, realization, WIP, and CSV
+  export.
+
 ## [1.7.0] — 2026-06-08
 
 First tagged release since v1.6.58; rolls up everything merged to `main` since.

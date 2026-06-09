@@ -94,10 +94,10 @@ enum TriageStatus {
 }
 
 enum OrgType {
-  AGENCY      // An agency or service firm
-  BUSINESS    // A business client with multiple contacts
-  INDIVIDUAL  // Individual client
-  PARTNER     // Partner organization
+  AGENCY // An agency or service firm
+  BUSINESS // A business client with multiple contacts
+  INDIVIDUAL // Individual client
+  PARTNER // Partner organization
 }
 
 enum ContactMethod {
@@ -107,50 +107,159 @@ enum ContactMethod {
   PORTAL
 }
 
+// ── Time tracking & billing ──────────────────────────────
+
+enum TimeEntrySource {
+  TIMER
+  MANUAL
+  IMPORTED
+}
+
+enum ApprovalStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+// Scope at which a BillingRate applies. Resolution precedence,
+// most-specific first: TASK > TASK_TYPE > PROJECT > CONTACT >
+// USER_PROJECT > USER > ROLE > ORG.
+enum RateScopeType {
+  TASK
+  TASK_TYPE
+  PROJECT
+  CONTACT
+  USER_PROJECT
+  USER
+  ROLE
+  ORG
+}
+
+enum RoundingMode {
+  NONE
+  NEAREST
+  UP
+  DOWN
+}
+
+// ── Suite tenancy (SUITE-IDENTITY.md §2) ─────────────────
+//
+// The canonical suite roles + membership lifecycle. Roles rank
+// viewer < member < manager < admin < owner (SUITE-IDENTITY §7).
+enum WorkspaceRole {
+  VIEWER
+  MEMBER
+  MANAGER
+  ADMIN
+  OWNER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
+// ============================================================
+// SUITE TENANCY (SUITE-IDENTITY.md §2 — verbatim)
+// ============================================================
+//
+// Phase 1 of the suite tenancy foundation (PROJ-2026-000023). These two
+// models + a nullable `workspaceId` on every tenant-scoped model land the
+// DB-enforced tenancy boundary additively: RLS is created-but-inert for the
+// running app until the runtime DATABASE_URL is flipped to `project_ops_app`
+// (a later phase). Nothing here changes the running app's behavior.
+
+/// Thin mirror of the uc-registry workspace record. PO NEVER mints workspace_id.
+model Workspace {
+  id                String       @id // == uc-registry workspace_id (uuidv7). NO @default.
+  slug              String       @unique
+  displayName       String
+  parentWorkspaceId String?
+  isolationMode     String       @default("standard") // 'strict'|'standard'|'open'  (TEXT+CHECK, §5)
+  isolationTier     String       @default("shared") // 'shared'|'premium'|'enterprise'|'dedicated'
+  hipaaMode         Boolean      @default(false)
+  gdprMode          Boolean      @default(false)
+  dataResidency     String?      @default("us-east")
+  status            String       @default("active") // active|suspended|archived|deleting
+  entitlementCache  Json? // offline/dedicated only; null on shared SaaS
+  syncedAt          DateTime     @default(now())
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  memberships       Membership[]
+
+  @@index([slug])
+  @@index([status])
+  @@map("workspaces")
+}
+
+model Membership {
+  userKey     String // == User.keycloakId == uchub sub
+  workspaceId String
+  role        WorkspaceRole    @default(MEMBER)
+  status      MembershipStatus @default(ACTIVE)
+  isDefault   Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([userKey, workspaceId])
+  @@index([userKey])
+  @@index([workspaceId])
+  @@map("memberships")
+}
+
 // ============================================================
 // CORE MODELS
 // ============================================================
 
 model User {
-  id                  String        @id @default(uuid())
-  email               String        @unique
-  username            String        @unique
+  id                  String    @id @default(uuid())
+  email               String    @unique
+  username            String    @unique
   firstName           String
   lastName            String
-  role                UserRole      @default(CLIENT)
-  keycloakId          String?       @unique
-  isActive            Boolean       @default(true)
+  role                UserRole  @default(CLIENT)
+  keycloakId          String?   @unique
+  isActive            Boolean   @default(true)
   lastLoginAt         DateTime?
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
   password            String?
-  forcePasswordChange Boolean?      @default(false)
+  forcePasswordChange Boolean?  @default(false)
 
   // Relations - Projects
-  assignedProjects    Project[]     @relation("ProjectAssignee")
-  createdProjects     Project[]     @relation("ProjectCreator")
+  assignedProjects Project[] @relation("ProjectAssignee")
+  createdProjects  Project[] @relation("ProjectCreator")
 
   // Relations - Contacts
-  createdContacts     Contact[]     @relation("ContactCreator")
-  contactProfile      Contact?      @relation("ContactPortalUser")
+  createdContacts Contact[] @relation("ContactCreator")
+  contactProfile  Contact?  @relation("ContactPortalUser")
 
   // Relations - Organizations
   organizationsCreated Organization[] @relation("OrganizationCreator")
 
   // Relations - Organization Contacts
-  orgContactsCreated  OrganizationContact[] @relation("OrgContactCreator")
-  orgContact          OrganizationContact?  @relation("OrgContactUser")
+  orgContactsCreated OrganizationContact[] @relation("OrgContactCreator")
+  orgContact         OrganizationContact?  @relation("OrgContactUser")
 
   // Relations - Activity
-  comments            Comment[]
-  documents           Document[]
-  taskComments        TaskComment[] @relation("TaskCommentAuthor")
-  assignedTasks       Task[]        @relation("TaskAssignee")
-  createdTasks        Task[]        @relation("TaskCreator")
-  auditLogs           AuditLog[]
+  comments      Comment[]
+  documents     Document[]
+  taskComments  TaskComment[] @relation("TaskCommentAuthor")
+  assignedTasks Task[]        @relation("TaskAssignee")
+  createdTasks  Task[]        @relation("TaskCreator")
+  auditLogs     AuditLog[]
 
   // Relations - Personal Access Tokens (MCP / API access)
   personalAccessTokens PersonalAccessToken[]
+
+  // Relations - Time tracking
+  timeEntries         TimeEntry[]       @relation("TimeEntryUser")
+  approvedTimeEntries TimeEntry[]       @relation("TimeEntryApprover")
+  timesheetPeriods    TimesheetPeriod[] @relation("TimesheetPeriodUser")
+  approvedTimesheets  TimesheetPeriod[] @relation("TimesheetPeriodApprover")
+  billingRatesCreated BillingRate[]     @relation("BillingRateCreator")
 
   @@index([email])
   @@index([keycloakId])
@@ -176,16 +285,16 @@ model User {
 // "write:tasks"). v1 enforces them only on the /api/v1/mcp tool
 // dispatch path; other endpoints honor the owning user's full RBAC.
 model PersonalAccessToken {
-  id          String    @id @default(uuid())
-  userId      String
-  name        String    // human label, e.g. "Claude Code on Aaron's Mac"
-  prefix      String    @default("po_pat_")
-  tokenHash   String    @unique
-  scopes      String[]
-  lastUsedAt  DateTime?
-  expiresAt   DateTime? // null = no expiry (allowed; surface a warning)
-  createdAt   DateTime  @default(now())
-  revokedAt   DateTime?
+  id         String    @id @default(uuid())
+  userId     String
+  name       String // human label, e.g. "Claude Code on Aaron's Mac"
+  prefix     String    @default("po_pat_")
+  tokenHash  String    @unique
+  scopes     String[]
+  lastUsedAt DateTime?
+  expiresAt  DateTime? // null = no expiry (allowed; surface a warning)
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -200,28 +309,32 @@ model PersonalAccessToken {
 // ============================================================
 
 model Organization {
-  id              String   @id @default(uuid())
-  name            String
-  type            OrgType
-  taxId           String?  // EIN or identifier
+  id          String  @id @default(uuid())
+  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
+  // PO Organization is the operator's CLIENT record, NEVER the tenancy
+  // boundary — that is `workspaceId`. (SUITE-IDENTITY §2.)
+  workspaceId String?
+  name        String
+  type        OrgType
+  taxId       String? // EIN or identifier
 
   // Business information
-  industry        String?
-  website         String?
-  annualRevenue   Decimal? @db.Decimal(15, 2)
-  employeeCount   Int?
+  industry      String?
+  website       String?
+  annualRevenue Decimal? @db.Decimal(15, 2)
+  employeeCount Int?
 
   // Address
-  address         String?
-  city            String?
-  state           String?
-  zipCode         String?
-  country         String?  @default("USA")
+  address String?
+  city    String?
+  state   String?
+  zipCode String?
+  country String? @default("USA")
 
   // Hierarchy (self-referential for multi-level structure)
-  parentOrgId     String?
-  parentOrg       Organization?  @relation("OrgHierarchy", fields: [parentOrgId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  childOrgs       Organization[] @relation("OrgHierarchy")
+  parentOrgId String?
+  parentOrg   Organization?  @relation("OrgHierarchy", fields: [parentOrgId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  childOrgs   Organization[] @relation("OrgHierarchy")
 
   // Primary Contact
   primaryContactId String?  @unique
@@ -229,22 +342,22 @@ model Organization {
 
   // Portal & Access
   portalAccessEnabled Boolean @default(false)
-  isActive        Boolean @default(true)
+  isActive            Boolean @default(true)
 
   // Metadata
-  notes           String? @db.Text
-  metadata        Json?
+  notes    String? @db.Text
+  metadata Json?
 
   // Relationships
   organizationContacts OrganizationContact[]
-  contacts        Contact[]  @relation("OrganizationContacts")
-  projects        Project[]
+  contacts             Contact[]             @relation("OrganizationContacts")
+  projects             Project[]
 
   // Audit
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  createdById     String
-  createdBy       User     @relation("OrganizationCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+  createdBy   User     @relation("OrganizationCreator", fields: [createdById], references: [id])
 
   @@index([type])
   @@index([parentOrgId])
@@ -252,73 +365,81 @@ model Organization {
   @@index([createdById])
   @@index([name])
   @@index([taxId])
+  @@index([workspaceId])
+  @@index([workspaceId, isActive])
   @@map("organizations")
 }
 
 model OrganizationContact {
-  id              String   @id @default(uuid())
+  id String @id @default(uuid())
+
+  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
+  workspaceId String?
 
   // Personal information
-  firstName       String
-  lastName        String
-  email           String   @unique
-  phone           String?
-  mobilePhone     String?
-  title           String?
-  department      String?
+  firstName   String
+  lastName    String
+  email       String  @unique
+  phone       String?
+  mobilePhone String?
+  title       String?
+  department  String?
 
   // Organization link
-  organizationId  String?
-  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   // Portal access (optional - not all contacts need login)
-  userId          String?  @unique
-  user            User?    @relation("OrgContactUser", fields: [userId], references: [id], onDelete: SetNull)
+  userId String? @unique
+  user   User?   @relation("OrgContactUser", fields: [userId], references: [id], onDelete: SetNull)
 
   // Contact preferences
-  isPrimaryContact Boolean  @default(false)
-  portalAccessEnabled Boolean @default(false)
+  isPrimaryContact       Boolean        @default(false)
+  portalAccessEnabled    Boolean        @default(false)
   preferredContactMethod ContactMethod? @default(EMAIL)
-  notificationsEnabled Boolean @default(true)
+  notificationsEnabled   Boolean        @default(true)
 
   // Metadata
-  notes           String?  @db.Text
-  metadata        Json?
+  notes    String? @db.Text
+  metadata Json?
 
   // Audit
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  createdById     String
-  createdBy       User     @relation("OrgContactCreator", fields: [createdById], references: [id])
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+  createdBy   User     @relation("OrgContactCreator", fields: [createdById], references: [id])
 
   @@index([email])
   @@index([organizationId])
   @@index([userId])
   @@index([isPrimaryContact])
   @@index([lastName])
+  @@index([workspaceId])
   @@map("organization_contacts")
 }
 
 model Contact {
-  id                  String    @id @default(uuid())
-  firstName           String
-  lastName            String
-  email               String    @unique
-  phone               String?
-  company             String?
-  address             String?
-  city                String?
-  state               String?
-  zipCode             String?
-  taxId               String?
-  notes               String?
-  isActive            Boolean   @default(true)
+  id          String  @id @default(uuid())
+  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
+  workspaceId String?
+  firstName   String
+  lastName    String
+  email       String  @unique
+  phone       String?
+  company     String?
+  address     String?
+  city        String?
+  state       String?
+  zipCode     String?
+  taxId       String?
+  notes       String?
+  isActive    Boolean @default(true)
 
   // Organization link
-  organizationId      String?
-  organization        Organization? @relation("OrganizationContacts", fields: [organizationId], references: [id], onDelete: SetNull)
-  primaryOrgOf        Organization? @relation("OrganizationPrimaryContact")
+  organizationId String?
+  organization   Organization? @relation("OrganizationContacts", fields: [organizationId], references: [id], onDelete: SetNull)
+  primaryOrgOf   Organization? @relation("OrganizationPrimaryContact")
 
   // Portal access
   userId              String?   @unique
@@ -327,77 +448,90 @@ model Contact {
   invitationToken     String?   @unique
 
   // Relationships
-  projects            Project[]
+  projects Project[]
 
   // Audit
-  createdById         String
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  createdBy           User      @relation("ContactCreator", fields: [createdById], references: [id])
-  user                User?     @relation("ContactPortalUser", fields: [userId], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   User     @relation("ContactCreator", fields: [createdById], references: [id])
+  user        User?    @relation("ContactPortalUser", fields: [userId], references: [id])
 
   @@index([email])
   @@index([lastName])
   @@index([company])
   @@index([organizationId])
   @@index([createdById])
+  @@index([workspaceId])
   @@map("contacts")
 }
 
 model Project {
-  id                  String           @id @default(uuid())
-  projectNumber       String           @unique
-  title               String
-  description         String?
-  status              ProjectStatus    @default(NEW)
-  priority            ProjectPriority  @default(MEDIUM)
-  category            String?
-  tags                Json?
+  id            String          @id @default(uuid())
+  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
+  workspaceId   String?
+  // projectNumber is unique PER WORKSPACE (see @@unique below), not globally.
+  projectNumber String
+  title         String
+  description   String?
+  status        ProjectStatus   @default(NEW)
+  priority      ProjectPriority @default(MEDIUM)
+  category      String?
+  tags          Json?
 
   // Contact information
-  clientName          String
-  clientEmail         String?
-  clientPhone         String?
-  contactId           String?
+  clientName  String
+  clientEmail String?
+  clientPhone String?
+  contactId   String?
 
   // Organization link
-  organizationId      String?
-  organization        Organization? @relation(fields: [organizationId], references: [id])
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
 
   // Timeline
-  dueDate             DateTime?
-  completedAt         DateTime?
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  dueDate     DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   // Assignment
-  createdById         String
-  assignedToId        String?
+  createdById  String
+  assignedToId String?
 
   // Billing & Invoicing
   invoiceNumber       String?
-  billingAmount       Decimal?      @db.Decimal(10, 2)
-  amountPaid          Decimal?      @default(0.00) @db.Decimal(10, 2)
+  billingAmount       Decimal?       @db.Decimal(10, 2)
+  amountPaid          Decimal?       @default(0.00) @db.Decimal(10, 2)
   paymentStatus       PaymentStatus? @default(UNPAID)
   billingDate         DateTime?
   paymentDueDate      DateTime?
   paymentReceivedDate DateTime?
   billingNotes        String?
 
+  // Time-tracking & billing policy
+  billByDefault            Boolean       @default(true)
+  defaultBillRate          Decimal?      @db.Decimal(12, 4)
+  budgetHours              Decimal?      @db.Decimal(10, 2)
+  budgetAmount             Decimal?      @db.Decimal(12, 2)
+  roundingIncrementMinutes Int?
+  roundingMode             RoundingMode?
+
   // Metadata
-  metadata            Json?
+  metadata Json?
 
   // Relations
-  contact             Contact?      @relation(fields: [contactId], references: [id])
-  assignedTo          User?         @relation("ProjectAssignee", fields: [assignedToId], references: [id])
-  createdBy           User          @relation("ProjectCreator", fields: [createdById], references: [id])
-  comments            Comment[]
-  documents           Document[]
-  tasks               Task[]
-  auditLogs           AuditLog[]
-  triageProposals     TriageProposal[] @relation("TriageProposalProject")
+  contact         Contact?         @relation(fields: [contactId], references: [id])
+  assignedTo      User?            @relation("ProjectAssignee", fields: [assignedToId], references: [id])
+  createdBy       User             @relation("ProjectCreator", fields: [createdById], references: [id])
+  comments        Comment[]
+  documents       Document[]
+  tasks           Task[]
+  auditLogs       AuditLog[]
+  triageProposals TriageProposal[] @relation("TriageProposalProject")
+  timeEntries     TimeEntry[]
 
-  @@index([projectNumber])
+  @@unique([workspaceId, projectNumber])
   @@index([status])
   @@index([priority])
   @@index([contactId])
@@ -407,11 +541,16 @@ model Project {
   @@index([dueDate])
   @@index([paymentStatus])
   @@index([billingDate])
+  @@index([workspaceId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, assignedToId])
   @@map("projects")
 }
 
 model Document {
   id           String         @id @default(uuid())
+  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
+  workspaceId  String?
   projectId    String?
   uploadedById String
   fileName     String
@@ -432,45 +571,52 @@ model Document {
   @@index([uploadedById])
   @@index([status])
   @@index([s3Key])
+  @@index([workspaceId])
   @@map("documents")
 }
 
 model Comment {
-  id         String   @id @default(uuid())
-  projectId  String
-  authorId   String
-  content    String
-  isInternal Boolean  @default(false)
-  metadata   Json?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  author     User     @relation(fields: [authorId], references: [id])
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id          String   @id @default(uuid())
+  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
+  workspaceId String?
+  projectId   String
+  authorId    String
+  content     String
+  isInternal  Boolean  @default(false)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  author      User     @relation(fields: [authorId], references: [id])
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([authorId])
   @@index([createdAt])
+  @@index([workspaceId])
   @@map("comments")
 }
 
 model AuditLog {
-  id         String      @id @default(uuid())
-  userId     String?
-  projectId  String?
-  action     AuditAction
-  resource   String
-  resourceId String?
-  details    Json?
-  ipAddress  String?
-  userAgent  String?
-  timestamp  DateTime    @default(now())
-  project    Project?    @relation(fields: [projectId], references: [id])
-  user       User?       @relation(fields: [userId], references: [id])
+  id          String      @id @default(uuid())
+  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
+  workspaceId String?
+  userId      String?
+  projectId   String?
+  action      AuditAction
+  resource    String
+  resourceId  String?
+  details     Json?
+  ipAddress   String?
+  userAgent   String?
+  timestamp   DateTime    @default(now())
+  project     Project?    @relation(fields: [projectId], references: [id])
+  user        User?       @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([projectId])
   @@index([action])
   @@index([timestamp])
+  @@index([workspaceId])
   @@map("audit_logs")
 }
 
@@ -504,6 +650,8 @@ model EmailConfig {
 
 model Task {
   id           String        @id @default(uuid())
+  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
+  workspaceId  String?
   projectId    String
   title        String
   description  String?
@@ -515,9 +663,13 @@ model Task {
   createdById  String
   assignedToId String?
   metadata     Json?
+  // Time-tracking policy overrides (null = inherit from project)
+  billable     Boolean?
+  billRate     Decimal?      @db.Decimal(12, 4)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   comments     TaskComment[]
+  timeEntries  TimeEntry[]
   assignedTo   User?         @relation("TaskAssignee", fields: [assignedToId], references: [id])
   project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdBy    User          @relation("TaskCreator", fields: [createdById], references: [id])
@@ -528,21 +680,27 @@ model Task {
   @@index([dueDate])
   @@index([createdById])
   @@index([priority])
+  @@index([workspaceId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, assignedToId])
   @@map("tasks")
 }
 
 model TaskComment {
-  id        String   @id @default(uuid())
-  taskId    String
-  authorId  String
-  content   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  author    User     @relation("TaskCommentAuthor", fields: [authorId], references: [id])
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  id          String   @id @default(uuid())
+  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
+  workspaceId String?
+  taskId      String
+  authorId    String
+  content     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  author      User     @relation("TaskCommentAuthor", fields: [authorId], references: [id])
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([taskId])
   @@index([authorId])
+  @@index([workspaceId])
   @@map("task_comments")
 }
 
@@ -595,4 +753,146 @@ model TriageProposal {
   @@index([sourceType])
   @@index([createdById])
   @@map("triage_proposals")
+}
+
+// ============================================================
+// TIME TRACKING & BILLABLE ROLLUP
+// ============================================================
+
+// A single block of logged work. The spine of the professional-services
+// tier: approved + billable + unbilled entries roll up into an Accounting-Ops
+// invoice draft. Money is always Decimal, never float. Entries with lockedAt
+// set or billed = true are immutable (enforced in service).
+//
+// INVARIANT: at most ONE running entry (endedAt IS NULL) per user. Enforced
+// in TimerService AND by a partial unique index created in PrismaService
+// (Prisma `db push` can't express `WHERE endedAt IS NULL`):
+//   CREATE UNIQUE INDEX uq_time_entry_one_running
+//     ON "time_entries"("userId") WHERE "endedAt" IS NULL;
+model TimeEntry {
+  id          String @id @default(uuid())
+  workspaceId String
+
+  userId String
+  user   User   @relation("TimeEntryUser", fields: [userId], references: [id])
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  taskId String?
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  description String?
+
+  startedAt              DateTime
+  endedAt                DateTime?
+  durationSeconds        Int? // raw elapsed seconds, derived on stop
+  roundingAppliedSeconds Int? // billable seconds after rounding
+
+  source TimeEntrySource @default(MANUAL)
+
+  billable   Boolean   @default(true)
+  billed     Boolean   @default(false)
+  invoiceRef String? // AO invoice id once billed
+  lockedAt   DateTime? // set when approved-locked or billed -> immutable
+
+  billRateApplied Decimal? @db.Decimal(12, 4)
+  costRateApplied Decimal? @db.Decimal(12, 4) // margin only — NEVER exposed to CLIENT
+  currency        String   @default("USD")
+  billableAmount  Decimal? @db.Decimal(12, 2)
+
+  approvalStatus  ApprovalStatus @default(DRAFT)
+  approvedById    String?
+  approvedBy      User?          @relation("TimeEntryApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt      DateTime?
+  rejectionReason String?
+
+  timesheetPeriodId String?
+  timesheetPeriod   TimesheetPeriod? @relation(fields: [timesheetPeriodId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([projectId])
+  @@index([taskId])
+  @@index([approvalStatus])
+  @@index([billable, billed])
+  @@index([startedAt])
+  @@index([timesheetPeriodId])
+  @@map("time_entries")
+}
+
+// Bill + cost rates at multiple scopes. Resolution picks the most-specific
+// effective rate for (user, project, task, date) — see RateScopeType. Only
+// the scope columns relevant to scopeType are populated; the resolver matches
+// on them in precedence order. costRate drives margin reporting and is never
+// returned on a CLIENT-visible path.
+model BillingRate {
+  id          String @id @default(uuid())
+  workspaceId String
+
+  scopeType      RateScopeType
+  userId         String?
+  projectId      String?
+  contactId      String?
+  taskId         String?
+  taskType       TaskType?
+  role           UserRole?
+  organizationId String?
+
+  billRate Decimal  @db.Decimal(12, 4)
+  costRate Decimal? @db.Decimal(12, 4) // margin only — NEVER exposed to CLIENT
+  currency String   @default("USD")
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  createdById String
+  createdBy   User     @relation("BillingRateCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@index([scopeType])
+  @@index([userId])
+  @@index([projectId])
+  @@index([contactId])
+  @@index([taskId])
+  @@index([organizationId])
+  @@index([effectiveFrom, effectiveTo])
+  @@map("billing_rates")
+}
+
+// Weekly approval grouping. submit -> SUBMITTED; approve/reject per entry or
+// bulk; APPROVED locks entries against edit; REJECTED returns entries to DRAFT
+// with a reason.
+model TimesheetPeriod {
+  id          String @id @default(uuid())
+  workspaceId String
+
+  userId String
+  user   User   @relation("TimesheetPeriodUser", fields: [userId], references: [id])
+
+  periodStart DateTime
+  periodEnd   DateTime
+
+  status          ApprovalStatus @default(DRAFT)
+  submittedAt     DateTime?
+  approvedById    String?
+  approvedBy      User?          @relation("TimesheetPeriodApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt      DateTime?
+  rejectionReason String?
+
+  entries TimeEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, userId, periodStart])
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([status])
+  @@map("timesheet_periods")
 }

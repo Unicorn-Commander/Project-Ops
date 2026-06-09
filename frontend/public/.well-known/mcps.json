@@ -18,7 +18,9 @@
       "read:activity",
       "read:organizations",
       "write:organizations",
-      "write:billing"
+      "write:billing",
+      "read:time",
+      "write:time"
     ],
     "federated_auth": {
       "type": "brigade_jwt",
@@ -163,6 +165,96 @@
       "tier_required": "free",
       "read_only": true,
       "expected_latency_ms": 250
+    },
+    {
+      "name": "start_timer",
+      "description": "Start a running work timer for the caller on a project or task. Stops any existing running timer first.",
+      "input_schema": { "type": "object", "properties": { "projectId": { "type": "string" }, "taskId": { "type": "string" }, "description": { "type": "string" } } },
+      "scopes_required": ["write:time"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 400
+    },
+    {
+      "name": "stop_timer",
+      "description": "Stop the caller's running timer. Computes duration, rounding, rate, and billable amount.",
+      "input_schema": { "type": "object", "properties": {} },
+      "scopes_required": ["write:time"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 400
+    },
+    {
+      "name": "log_time",
+      "description": "Log a manual time entry. Provide startedAt+endedAt, startedAt+durationMinutes, endedAt+durationMinutes, or durationMinutes. Identify by projectId or taskId.",
+      "input_schema": { "type": "object", "properties": { "projectId": { "type": "string" }, "taskId": { "type": "string" }, "description": { "type": "string" }, "startedAt": { "type": "string" }, "endedAt": { "type": "string" }, "durationMinutes": { "type": "number" }, "billable": { "type": "boolean" } } },
+      "scopes_required": ["write:time"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 500
+    },
+    {
+      "name": "update_time_entry",
+      "description": "Update a DRAFT, unlocked, unbilled time entry (id required). Locked/billed entries are immutable.",
+      "input_schema": { "type": "object", "properties": { "id": { "type": "string" }, "description": { "type": "string" }, "taskId": { "type": "string" }, "startedAt": { "type": "string" }, "endedAt": { "type": "string" }, "durationMinutes": { "type": "number" }, "billable": { "type": "boolean" } }, "required": ["id"] },
+      "scopes_required": ["write:time"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 450
+    },
+    {
+      "name": "list_time_entries",
+      "description": "List visible time entries, newest first, paginated. Filters: userId, projectId, taskId, from, to, billable, billed, approvalStatus. CLIENT never sees cost rates.",
+      "input_schema": { "type": "object", "properties": { "userId": { "type": "string" }, "projectId": { "type": "string" }, "taskId": { "type": "string" }, "from": { "type": "string" }, "to": { "type": "string" }, "billable": { "type": "boolean" }, "billed": { "type": "boolean" }, "approvalStatus": { "type": "string" }, "page": { "type": "integer", "minimum": 1 }, "limit": { "type": "integer", "minimum": 1, "maximum": 200 } } },
+      "scopes_required": ["read:time"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 250
+    },
+    {
+      "name": "submit_timesheet",
+      "description": "Submit the caller's weekly DRAFT entries for approval (week containing periodStart; default this week).",
+      "input_schema": { "type": "object", "properties": { "periodStart": { "type": "string" } } },
+      "scopes_required": ["write:time"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 400
+    },
+    {
+      "name": "approve_time",
+      "description": "Approve a submitted period (timesheetPeriodId) or specific entries (timeEntryIds). Locks approved entries. MANAGER/ADMIN only.",
+      "input_schema": { "type": "object", "properties": { "timesheetPeriodId": { "type": "string" }, "timeEntryIds": { "type": "array", "items": { "type": "string" } } } },
+      "scopes_required": ["write:time"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 450
+    },
+    {
+      "name": "get_utilization",
+      "description": "Billable vs total hours per user over an optional period (from/to). Optionally narrow to one userId.",
+      "input_schema": { "type": "object", "properties": { "from": { "type": "string" }, "to": { "type": "string" }, "userId": { "type": "string" } } },
+      "scopes_required": ["read:time"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 350
+    },
+    {
+      "name": "create_billable_draft",
+      "description": "Roll up APPROVED, billable, unbilled time for a projectId or clientId into invoice line items and (when Accounting-Ops is connected + entitled) create the invoice idempotently; otherwise return a draft + PDF preview. MANAGER/ADMIN only.",
+      "input_schema": { "type": "object", "properties": { "projectId": { "type": "string" }, "clientId": { "type": "string" }, "periodStart": { "type": "string" }, "periodEnd": { "type": "string" }, "groupBy": { "type": "string" }, "autoSend": { "type": "boolean" } } },
+      "scopes_required": ["write:billing"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 1500
+    },
+    {
+      "name": "sync_invoice_status",
+      "description": "Pull invoice status (sent/partial/paid/overdue) from Accounting-Ops for billed entries and mirror it onto the linked projects.",
+      "input_schema": { "type": "object", "properties": {} },
+      "scopes_required": ["write:billing"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 1500
     }
   ],
   "resources": [

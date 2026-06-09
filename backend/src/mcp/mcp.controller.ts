@@ -50,6 +50,12 @@ export class McpController {
     const pat = (req as any).pat as PersonalAccessToken | undefined;
     const grantedScopes = pat ? pat.scopes : null;
 
+    // Forward the caller's bearer so cross-app tools (e.g. the billable
+    // rollup → Accounting-Ops) can act on the user's behalf.
+    const authHeader = req.headers.authorization;
+    const bearerToken =
+      authHeader && /^Bearer\s+/i.test(authHeader) ? authHeader.replace(/^Bearer\s+/i, '') : null;
+
     const {
       StreamableHTTPServerTransport,
     } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
@@ -64,7 +70,7 @@ export class McpController {
     });
 
     try {
-      const server = await this.mcp.createServerForUser(user, grantedScopes);
+      const server = await this.mcp.createServerForUser(user, grantedScopes, bearerToken);
       await server.connect(transport);
       // body has already been parsed by express.json — pass it through.
       await transport.handleRequest(req, res, (req as any).body);

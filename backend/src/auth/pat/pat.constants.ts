@@ -31,6 +31,8 @@ export const PAT_AVAILABLE_SCOPES = [
   'read:organizations',
   'write:organizations',
   'write:billing',
+  'read:time',
+  'write:time',
 ] as const;
 
 export type PatScope = (typeof PAT_AVAILABLE_SCOPES)[number];
@@ -74,4 +76,17 @@ export const MCP_TOOL_SCOPE_MAP: Record<string, PatScope> = {
   // write:organizations
   create_organization: 'write:organizations',
   update_organization: 'write:organizations',
+  // time tracking — read:time
+  list_time_entries: 'read:time',
+  get_utilization: 'read:time',
+  // time tracking — write:time
+  start_timer: 'write:time',
+  stop_timer: 'write:time',
+  log_time: 'write:time',
+  update_time_entry: 'write:time',
+  submit_timesheet: 'write:time',
+  approve_time: 'write:time',
+  // billable rollup — write:billing
+  create_billable_draft: 'write:billing',
+  sync_invoice_status: 'write:billing',
 };
