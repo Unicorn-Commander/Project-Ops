@@ -29,7 +29,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "ts-node prisma/seed.ts"
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "seed:phase2": "ts-node scripts/seed-phase2-tenancy.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
