@@ -84,12 +84,17 @@ ON CONFLICT (id) DO NOTHING;
 --      * aaron@magicunicorn.tech  -> OWNER   of Magic Unicorn      (default)
 --      * shafenkhan@users.noreply.github.com   -> MANAGER of Brightwater Labs  (default)
 --
---    NOTE: Phase 1 already seeded BOTH operators as OWNER of the bootstrap
---    workspace (now Magic Unicorn) with isDefault=true. For Shafen we must flip
---    his Magic Unicorn membership's isDefault to false so GFL is his primary;
---    the seed script does this explicitly. Here we only ADD rows
---    (ON CONFLICT DO NOTHING), so a pre-existing Shafen@MagicUnicorn row is left
---    intact and the seed script performs the authoritative reconciliation.
+--    STRICT ISOLATION (R6): Phase 1 seeded BOTH operators as OWNER of the
+--    bootstrap workspace (now Magic Unicorn) with isDefault=true. Merely flipping
+--    Shafen's Magic Unicorn membership to isDefault=false is NOT enough — an
+--    ACTIVE membership (even non-default) still passes resolveAndAuthorize's
+--    membership gate, so Shafen could switch via X-Workspace-Id into Magic Unicorn
+--    and read Aaron's data. We therefore REVOKE (status=REVOKED) every membership
+--    Shafen holds OUTSIDE Brightwater Labs (esp. the Phase 1 Magic Unicorn OWNER
+--    row), leaving him EXACTLY ONE active membership: MANAGER@GFL, isDefault=true.
+--    listActiveMemberships filters status=ACTIVE, so a REVOKED row disappears from
+--    both the default-resolution path and the switcher. Section 4 below performs
+--    the revoke; section 3 only ADDS the two authoritative rows.
 -- ----------------------------------------------------------------------------
 
 -- 3a. aaron@magicunicorn.tech -> OWNER of Magic Unicorn (default primary).
@@ -107,3 +112,29 @@ FROM "users" u
 WHERE u."keycloakId" IS NOT NULL
   AND lower(u.email) = 'shafenkhan@users.noreply.github.com'
 ON CONFLICT ("userKey", "workspaceId") DO NOTHING;
+
+-- ----------------------------------------------------------------------------
+-- 4. STRICT ISOLATION revoke (R6). Shafen must end up with EXACTLY ONE active
+--    membership (MANAGER@GFL). Demoting isDefault is insufficient: an ACTIVE
+--    non-default membership still satisfies resolveAndAuthorize's membership
+--    gate, so a leftover Phase 1 OWNER@Magic-Unicorn row would let Shafen switch
+--    (X-Workspace-Id) into Aaron's data. REVOKE every Shafen membership whose
+--    workspace is NOT Brightwater Labs (esp. the Magic Unicorn bootstrap row).
+--    listActiveMemberships filters status=ACTIVE, so REVOKED rows vanish from
+--    both default-resolution and the switcher. We do NOT delete the rows (audit
+--    trail; the GFL upsert above stays untouched).
+--
+--    userKey match: a Shafen membership may be keyed by his keycloakId (the
+--    Phase 1 migration path) OR — if he was never SSO-linked at seed time — by
+--    his local users.id (the seed script's `keycloakId ?? id` fallback, matching
+--    MembershipService.membershipKey). Match BOTH candidate keys so the revoke
+--    catches whichever row exists. Idempotent (re-revoking a REVOKED row is a
+--    no-op set).
+-- ----------------------------------------------------------------------------
+UPDATE "memberships" m
+  SET status = 'REVOKED', "isDefault" = false
+FROM "users" u
+WHERE lower(u.email) = 'shafenkhan@users.noreply.github.com'
+  AND m."userKey" IN (u."keycloakId", u.id)
+  AND m."workspaceId" <> '01924a3c-0000-7f1a-beef-67f1ab5c0001'
+  AND m.status <> 'REVOKED';

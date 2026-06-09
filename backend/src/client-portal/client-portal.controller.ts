@@ -14,11 +14,19 @@ import {
 import { ClientPortalService } from './client-portal.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { CurrentWorkspace } from '../common/workspace/current-workspace.decorator';
+import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
 import { User, UserRole } from '@prisma/client';
 
+/**
+ * Suite tenancy (Phase 2, G3): every route resolves the active workspace via
+ * @CurrentWorkspace + WorkspaceMembershipGuard and passes (workspaceId, user)
+ * into the service, which runs all DB access inside that workspace's RLS tx.
+ * The existing CLIENT-role gate (verifyClientRole) is preserved on top.
+ */
 @ApiTags('client-portal')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, WorkspaceMembershipGuard)
 @Controller('client-portal')
 export class ClientPortalController {
   constructor(private readonly clientPortalService: ClientPortalService) {}
@@ -34,9 +42,12 @@ export class ClientPortalController {
   @ApiResponse({ status: 200, description: 'Dashboard data retrieved' })
   @ApiResponse({ status: 403, description: 'Access denied - not a client' })
   @ApiResponse({ status: 404, description: 'Client profile not found' })
-  getDashboard(@CurrentUser() user: User) {
+  getDashboard(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+  ) {
     this.verifyClientRole(user);
-    return this.clientPortalService.getDashboard(user.id);
+    return this.clientPortalService.getDashboard(workspaceId, user);
   }
 
   @Get('projects')
@@ -44,9 +55,12 @@ export class ClientPortalController {
   @ApiResponse({ status: 200, description: 'List of projects' })
   @ApiResponse({ status: 403, description: 'Access denied - not a client' })
   @ApiResponse({ status: 404, description: 'Client profile not found' })
-  getProjects(@CurrentUser() user: User) {
+  getProjects(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+  ) {
     this.verifyClientRole(user);
-    return this.clientPortalService.getProjects(user.id);
+    return this.clientPortalService.getProjects(workspaceId, user);
   }
 
   @Get('projects/:id')
@@ -54,9 +68,13 @@ export class ClientPortalController {
   @ApiResponse({ status: 200, description: 'Project details' })
   @ApiResponse({ status: 403, description: 'Access denied - not a client or project owner' })
   @ApiResponse({ status: 404, description: 'Project or client profile not found' })
-  getProjectDetails(@Param('id') id: string, @CurrentUser() user: User) {
+  getProjectDetails(
+    @Param('id') id: string,
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+  ) {
     this.verifyClientRole(user);
-    return this.clientPortalService.getProjectDetails(user.id, id);
+    return this.clientPortalService.getProjectDetails(workspaceId, user, id);
   }
 
   @Get('documents')
@@ -64,8 +82,11 @@ export class ClientPortalController {
   @ApiResponse({ status: 200, description: 'List of documents' })
   @ApiResponse({ status: 403, description: 'Access denied - not a client' })
   @ApiResponse({ status: 404, description: 'Client profile not found' })
-  getDocuments(@CurrentUser() user: User) {
+  getDocuments(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+  ) {
     this.verifyClientRole(user);
-    return this.clientPortalService.getDocuments(user.id);
+    return this.clientPortalService.getDocuments(workspaceId, user);
   }
 }

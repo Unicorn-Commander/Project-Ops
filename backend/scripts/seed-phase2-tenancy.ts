@@ -17,8 +17,18 @@
  *      PROJECT_OPS_ACCESS_LIST — R6):
  *        * aaron@magicunicorn.tech  -> OWNER   of Magic Unicorn      (isDefault)
  *        * shafenkhan@users.noreply.github.com   -> MANAGER of Brightwater Labs  (isDefault)
- *      and reconciles each user's OTHER memberships so exactly one isDefault
- *      remains (the primary above).
+ *      and enforces STRICT workspace ISOLATION: each operator ends up with
+ *      EXACTLY ONE active membership (the primary above). Every OTHER membership
+ *      for that user is REVOKED (status=REVOKED), not merely demoted.
+ *
+ *   WHY REVOKE, NOT JUST DEMOTE (R6): an ACTIVE non-default membership still
+ *   passes resolveAndAuthorize's membership gate, so a leftover Phase 1
+ *   OWNER@Magic-Unicorn row would let shafenkhan@users.noreply.github.com switch
+ *   (X-Workspace-Id) into Magic Unicorn and read Aaron's data. Setting
+ *   status=REVOKED drops the row from listActiveMemberships (which filters
+ *   status=ACTIVE), removing it from BOTH default-resolution and the switcher.
+ *   Net effect: Shafen has no Magic Unicorn access, Aaron has no GFL access.
+ *   We REVOKE (audit trail) rather than DELETE.
  *
  * SUITE-IDENTITY: PO MUST NOT runtime-mint workspace ids — uc-registry owns real
  * ids. The Brightwater Labs id is a dogfood SEED literal to be RECONCILED with
@@ -148,23 +158,32 @@ async function main(): Promise<void> {
       },
     });
 
-    // Reconcile: exactly ONE default per user. Demote every OTHER membership
-    // (e.g. the Phase 1 bootstrap OWNER row Shafen got on Magic Unicorn) so the
-    // primary above is the one resolveAndAuthorize returns with no explicit
-    // workspace. We never delete the other memberships — the user keeps access
-    // to them in the switcher, they are just not the default landing workspace.
-    await prisma.membership.updateMany({
+    // STRICT ISOLATION reconcile (R6): the authoritative row above is this
+    // user's SOLE intended workspace, so REVOKE every OTHER membership for the
+    // same userKey (e.g. the Phase 1 bootstrap OWNER row shafenkhan@users.noreply.github.com
+    // got on Magic Unicorn). Demoting isDefault alone is NOT enough — an ACTIVE
+    // non-default membership still passes resolveAndAuthorize's membership gate,
+    // which would let Shafen switch into Magic Unicorn (Aaron's data). Setting
+    // status=REVOKED removes the row from listActiveMemberships (status=ACTIVE
+    // filter), so it disappears from both default-resolution and the switcher.
+    // We REVOKE rather than DELETE (audit trail). Idempotent: re-running only
+    // touches rows that are not already REVOKED. Result: each operator has
+    // EXACTLY ONE active membership (the primary above).
+    const revoked = await prisma.membership.updateMany({
       where: {
         userKey,
-        isDefault: true,
         workspaceId: { not: m.workspaceId },
+        status: { not: MembershipStatus.REVOKED },
       },
-      data: { isDefault: false },
+      data: { status: MembershipStatus.REVOKED, isDefault: false },
     });
 
     console.log(
       `[seed:phase2] Membership: ${m.email} (userKey=${userKey}) -> ` +
-        `${m.role}@${m.workspaceLabel} [default]`,
+        `${m.role}@${m.workspaceLabel} [default]` +
+        (revoked.count > 0
+          ? ` (revoked ${revoked.count} other membership(s) for strict isolation)`
+          : ''),
     );
   }
 

@@ -153,6 +153,7 @@ export class McpService {
       this.triage,
       ttDeps,
       bearerToken ?? null,
+      this.workspace,
     );
 
     server.registerTool(
