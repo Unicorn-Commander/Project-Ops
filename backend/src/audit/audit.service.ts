@@ -1,13 +1,33 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { CreateAuditLogDto } from './dto/create-audit-log.dto';
-import { AuditLog, Prisma } from '@prisma/client';
+import { AuditLog, Prisma, User } from '@prisma/client';
 
+/**
+ * Audit log store + read surface.
+ *
+ * SUITE TENANCY (Phase 2, B8): every audit-log READ runs inside
+ * `WorkspaceContextService.runForUser(user, tx => ..., workspaceId)` so the DB
+ * RLS GUC scopes it to the active workspace; all read DB access goes through the
+ * passed `tx`, never `this.prisma`. `audit_logs` is one of the 9 RLS-scoped
+ * wire-through tables (workspaceId column + index + workspace_isolation policy).
+ *
+ * The `log()` WRITE path is the sanctioned exception (blueprint A1): callers
+ * pass `workspaceId` in the DTO and it persists via the BYPASSRLS owner
+ * connection so audit logging can never be silenced by RLS or break the calling
+ * request's flow. Additive + inert while PROJECT_OPS_TENANCY_ENABLED is off
+ * (membership resolution is a no-op and withWorkspace runs under the BYPASSRLS
+ * owner connection).
+ */
 @Injectable()
 export class AuditService {
   private readonly logger = new Logger(AuditService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly workspaceContext: WorkspaceContextService,
+  ) {}
 
   async log(createAuditLogDto: CreateAuditLogDto): Promise<AuditLog | null> {
     try {
@@ -27,99 +47,143 @@ export class AuditService {
     }
   }
 
-  async findAll(params?: {
-    skip?: number;
-    take?: number;
-    where?: Prisma.AuditLogWhereInput;
-    orderBy?: Prisma.AuditLogOrderByWithRelationInput;
-  }): Promise<{ logs: AuditLog[]; total: number }> {
+  async findAll(
+    workspaceId: string,
+    user: User,
+    params?: {
+      skip?: number;
+      take?: number;
+      where?: Prisma.AuditLogWhereInput;
+      orderBy?: Prisma.AuditLogOrderByWithRelationInput;
+    },
+  ): Promise<{ logs: AuditLog[]; total: number }> {
     const { skip, take, where, orderBy } = params || {};
 
-    const [logs, total] = await Promise.all([
-      this.prisma.auditLog.findMany({
-        skip,
-        take,
-        where,
-        orderBy,
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              firstName: true,
-              lastName: true,
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const [logs, total] = await Promise.all([
+          tx.auditLog.findMany({
+            skip,
+            take,
+            where,
+            orderBy,
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+              project: {
+                select: {
+                  id: true,
+                  projectNumber: true,
+                  title: true,
+                },
+              },
+            },
+          }),
+          tx.auditLog.count({ where }),
+        ]);
+
+        return { logs, total };
+      },
+      workspaceId,
+    );
+  }
+
+  async findByUser(
+    workspaceId: string,
+    user: User,
+    userId: string,
+    limit: number = 50,
+  ): Promise<AuditLog[]> {
+    return this.workspaceContext.runForUser(
+      user,
+      (tx) =>
+        tx.auditLog.findMany({
+          where: { userId },
+          orderBy: { timestamp: 'desc' },
+          take: limit,
+          include: {
+            project: {
+              select: {
+                id: true,
+                projectNumber: true,
+                title: true,
+              },
             },
           },
-          project: {
-            select: {
-              id: true,
-              projectNumber: true,
-              title: true,
+        }),
+      workspaceId,
+    );
+  }
+
+  async findByProject(
+    workspaceId: string,
+    user: User,
+    projectId: string,
+  ): Promise<AuditLog[]> {
+    return this.workspaceContext.runForUser(
+      user,
+      (tx) =>
+        tx.auditLog.findMany({
+          where: { projectId },
+          orderBy: { timestamp: 'desc' },
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
             },
           },
-        },
-      }),
-      this.prisma.auditLog.count({ where }),
-    ]);
-
-    return { logs, total };
+        }),
+      workspaceId,
+    );
   }
 
-  async findByUser(userId: string, limit: number = 50): Promise<AuditLog[]> {
-    return this.prisma.auditLog.findMany({
-      where: { userId },
-      orderBy: { timestamp: 'desc' },
-      take: limit,
-      include: {
-        project: {
-          select: {
-            id: true,
-            projectNumber: true,
-            title: true,
+  async findByResource(
+    workspaceId: string,
+    user: User,
+    resource: string,
+    resourceId: string,
+  ): Promise<AuditLog[]> {
+    return this.workspaceContext.runForUser(
+      user,
+      (tx) =>
+        tx.auditLog.findMany({
+          where: {
+            resource,
+            resourceId,
           },
-        },
-      },
-    });
-  }
-
-  async findByProject(projectId: string): Promise<AuditLog[]> {
-    return this.prisma.auditLog.findMany({
-      where: { projectId },
-      orderBy: { timestamp: 'desc' },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
+          orderBy: { timestamp: 'desc' },
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
           },
-        },
-      },
-    });
+        }),
+      workspaceId,
+    );
   }
 
-  async findByResource(resource: string, resourceId: string): Promise<AuditLog[]> {
-    return this.prisma.auditLog.findMany({
-      where: {
-        resource,
-        resourceId,
-      },
-      orderBy: { timestamp: 'desc' },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
-    });
-  }
-
-  async getStatsByAction(startDate?: Date, endDate?: Date): Promise<any> {
+  async getStatsByAction(
+    workspaceId: string,
+    user: User,
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<any> {
     const where: any = {};
 
     if (startDate || endDate) {
@@ -128,19 +192,30 @@ export class AuditService {
       if (endDate) where.timestamp.lte = endDate;
     }
 
-    const stats = await this.prisma.auditLog.groupBy({
-      by: ['action'],
-      where,
-      _count: true,
-    });
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const stats = await tx.auditLog.groupBy({
+          by: ['action'],
+          where,
+          _count: true,
+        });
 
-    return stats.reduce((acc, stat) => {
-      acc[stat.action] = stat._count;
-      return acc;
-    }, {});
+        return stats.reduce((acc, stat) => {
+          acc[stat.action] = stat._count;
+          return acc;
+        }, {});
+      },
+      workspaceId,
+    );
   }
 
-  async getStatsByResource(startDate?: Date, endDate?: Date): Promise<any> {
+  async getStatsByResource(
+    workspaceId: string,
+    user: User,
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<any> {
     const where: any = {};
 
     if (startDate || endDate) {
@@ -149,15 +224,21 @@ export class AuditService {
       if (endDate) where.timestamp.lte = endDate;
     }
 
-    const stats = await this.prisma.auditLog.groupBy({
-      by: ['resource'],
-      where,
-      _count: true,
-    });
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const stats = await tx.auditLog.groupBy({
+          by: ['resource'],
+          where,
+          _count: true,
+        });
 
-    return stats.reduce((acc, stat) => {
-      acc[stat.resource] = stat._count;
-      return acc;
-    }, {});
+        return stats.reduce((acc, stat) => {
+          acc[stat.resource] = stat._count;
+          return acc;
+        }, {});
+      },
+      workspaceId,
+    );
   }
 }

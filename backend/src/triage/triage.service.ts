@@ -434,11 +434,10 @@ export class TriageService {
    * `createProjectFromUnassigned` so both run in ONE workspace-scoped
    * transaction (and one membership authorization).
    *
-   * NOTE: `this.tasks.create(...)` is called with its current (pre-B2)
-   * signature `(dto, userId)`; it does not yet accept/scope workspaceId. When
-   * B2 (Tasks wire-through) lands, thread `workspaceId` + `user` through here so
-   * the created Task is workspace-scoped too. Until then the Task inherits the
-   * single bootstrap workspace, matching today's behavior.
+   * The Task is created via `this.tasks.createInTx(tx, workspaceId, user, dto)`
+   * (B2 landed), so it is created inside THIS workspace tx — one transaction,
+   * one membership authorization, and the row is stamped with the active
+   * workspaceId rather than inheriting a default.
    */
   private async approveInTx(
     tx: WorkspaceTxClient,
@@ -458,15 +457,12 @@ export class TriageService {
       throw new BadRequestException(
         'no project resolved: assign one or use create-project-from-unassigned',
       );
-    const task = await this.tasks.create(
-      {
-        projectId,
-        title: p.proposedTitle,
-        description: p.rawText,
-        priority: p.proposedPriority,
-      } as any,
-      user.id,
-    );
+    const task = await this.tasks.createInTx(tx, workspaceId, user, {
+      projectId,
+      title: p.proposedTitle,
+      description: p.rawText,
+      priority: p.proposedPriority,
+    } as any);
     return tx.triageProposal.update({
       where: { id: proposalId },
       data: {
@@ -515,11 +511,16 @@ export class TriageService {
     return this.workspaceContext.runForUser(
       user,
       async (tx) => {
-        // NOTE: `this.projects.create(...)` is called with its current (pre-B1)
-        // signature `(dto, userId)`; it does not yet accept/scope workspaceId.
-        // When B1 (Projects wire-through) lands, thread `workspaceId` + `user`
-        // through here so the new Project is workspace-scoped too.
-        const project = await this.projects.create(projectInput as any, user.id);
+        // B1 landed: create the Project inside THIS workspace tx via the
+        // tx-accepting variant, so the new Project (and its project-number
+        // sequence) is scoped to the active workspace and shares the single
+        // runForUser/membership authorization with the proposals applied below.
+        const project = await this.projects.createInTx(
+          tx,
+          workspaceId,
+          user,
+          projectInput as any,
+        );
         const applied: string[] = [];
         for (const id of proposalIds) {
           try {

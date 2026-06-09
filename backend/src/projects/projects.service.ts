@@ -1,11 +1,26 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
+import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { AssignProjectDto } from './dto/assign-project.dto';
 import { Project, Prisma, ProjectStatus, User, UserRole } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 
+/**
+ * SUITE TENANCY (Phase 2, B1): every project read/write runs inside
+ * `WorkspaceContextService.runForUser(user, tx => ..., workspaceId)` so the DB
+ * RLS GUC scopes it to the active workspace. All project DB access goes through
+ * the passed `tx`, never `this.prisma`, or it bypasses the GUC chokepoint.
+ * `workspaceId` is stamped onto every created Project and carried into every
+ * `audit.log()` call. Additive + inert while PROJECT_OPS_TENANCY_ENABLED is off
+ * (membership resolution is a no-op and withWorkspace runs under the BYPASSRLS
+ * owner connection).
+ *
+ * Both `findOne` and `findByProjectNumber` are workspace-scoped (blueprint R1,
+ * approved): a project from another workspace 404s rather than leaking, which
+ * is the fail-closed behavior once RLS is live.
+ */
 @Injectable()
 export class ProjectsService {
   private readonly logger = new Logger(ProjectsService.name);
@@ -13,6 +28,7 @@ export class ProjectsService {
   constructor(
     private prisma: PrismaService,
     private auditService: AuditService,
+    private readonly workspaceContext: WorkspaceContextService,
   ) {}
 
   /**
@@ -38,8 +54,41 @@ export class ProjectsService {
     return data;
   }
 
-  async create(createProjectDto: CreateProjectDto, userId: string): Promise<Project> {
-    const projectNumber = await this.generateProjectNumber();
+  /**
+   * Create a project for the acting user's active workspace. Opens the
+   * workspace RLS transaction and delegates to {@link createInTx}, which runs
+   * the project-number count + create together inside that single tx.
+   */
+  async create(
+    workspaceId: string,
+    user: User,
+    createProjectDto: CreateProjectDto,
+  ): Promise<Project> {
+    return this.workspaceContext.runForUser(
+      user,
+      (tx) => this.createInTx(tx, workspaceId, user, createProjectDto),
+      workspaceId,
+    );
+  }
+
+  /**
+   * Create a project inside an EXISTING workspace tx. Shared by {@link create}
+   * and by other modules (e.g. triage's createProjectFromUnassigned) that
+   * already hold a workspace-scoped transaction — calling this instead of
+   * `create()` keeps the work in ONE runForUser (one membership authorization,
+   * one GUC scope) and avoids a nested transaction.
+   *
+   * The project-number count runs in the SAME `tx` as the insert so the
+   * sequence is computed against the workspace-scoped row set (under live RLS)
+   * and is consistent with the row being created.
+   */
+  async createInTx(
+    tx: WorkspaceTxClient,
+    workspaceId: string,
+    user: User,
+    createProjectDto: CreateProjectDto,
+  ): Promise<Project> {
+    const projectNumber = await this.generateProjectNumber(tx);
 
     // Extract projectType from DTO (it's not a direct Prisma field)
     const { projectType, ...projectDataFields } = createProjectDto;
@@ -49,12 +98,13 @@ export class ProjectsService {
       ? { ...createProjectDto.metadata, projectType }
       : createProjectDto.metadata;
 
-    const projectData = await this.prisma.project.create({
+    const projectData = await tx.project.create({
       data: {
         ...this.coerceDateFields(projectDataFields),
         metadata,
         projectNumber,
-        createdById: userId,
+        workspaceId,
+        createdById: user.id,
       },
       include: {
         contact: {
@@ -73,7 +123,8 @@ export class ProjectsService {
     });
 
     await this.auditService.log({
-      userId,
+      workspaceId,
+      userId: user.id,
       projectId: projectData.id,
       action: 'CREATE',
       resource: 'Project',
@@ -81,246 +132,331 @@ export class ProjectsService {
       details: { projectNumber: projectData.projectNumber },
     });
 
-    this.logger.log(`Project created: ${projectData.projectNumber} by user ${userId}`);
+    this.logger.log(
+      `Project created: ${projectData.projectNumber} by user ${user.id} ws=${workspaceId}`,
+    );
     return projectData;
   }
 
-  async findAll(params?: {
-    skip?: number;
-    take?: number;
-    where?: Prisma.ProjectWhereInput;
-    orderBy?: Prisma.ProjectOrderByWithRelationInput;
-  }): Promise<{ projects: Project[]; total: number }> {
+  async findAll(
+    workspaceId: string,
+    user: User,
+    params?: {
+      skip?: number;
+      take?: number;
+      where?: Prisma.ProjectWhereInput;
+      orderBy?: Prisma.ProjectOrderByWithRelationInput;
+    },
+  ): Promise<{ projects: Project[]; total: number }> {
     const { skip, take, where, orderBy } = params || {};
 
-    const [projects, total] = await Promise.all([
-      this.prisma.project.findMany({
-        skip,
-        take,
-        where,
-        orderBy,
-        include: {
-          contact: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-              phone: true,
-              company: true,
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const [projects, total] = await Promise.all([
+          tx.project.findMany({
+            skip,
+            take,
+            where,
+            orderBy,
+            include: {
+              contact: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                  phone: true,
+                  company: true,
+                },
+              },
+              createdBy: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+              assignedTo: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+              _count: {
+                select: {
+                  documents: true,
+                  comments: true,
+                },
+              },
             },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              email: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
-          assignedTo: {
-            select: {
-              id: true,
-              email: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
-          _count: {
-            select: {
-              documents: true,
-              comments: true,
-            },
-          },
-        },
-      }),
-      this.prisma.project.count({ where }),
-    ]);
+          }),
+          tx.project.count({ where }),
+        ]);
 
-    return { projects, total };
+        return { projects, total };
+      },
+      workspaceId,
+    );
   }
 
-  async findOne(id: string): Promise<Project> {
-    const projectData = await this.prisma.project.findUnique({
-      where: { id },
-      include: {
-        contact: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            phone: true,
-            company: true,
-          },
-        },
-        createdBy: true,
-        assignedTo: true,
-        documents: {
-          orderBy: { uploadedAt: 'desc' },
-          take: 10,
-        },
-        comments: {
-          orderBy: { createdAt: 'desc' },
-          take: 10,
+  async findOne(workspaceId: string, user: User, id: string): Promise<Project> {
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const projectData = await tx.project.findUnique({
+          where: { id },
           include: {
-            author: {
+            contact: {
               select: {
                 id: true,
                 firstName: true,
                 lastName: true,
                 email: true,
+                phone: true,
+                company: true,
+              },
+            },
+            createdBy: true,
+            assignedTo: true,
+            documents: {
+              orderBy: { uploadedAt: 'desc' },
+              take: 10,
+            },
+            comments: {
+              orderBy: { createdAt: 'desc' },
+              take: 10,
+              include: {
+                author: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    email: true,
+                  },
+                },
+              },
+            },
+            _count: {
+              select: {
+                documents: true,
+                comments: true,
               },
             },
           },
-        },
-        _count: {
-          select: {
-            documents: true,
-            comments: true,
-          },
-        },
+        });
+
+        if (!projectData) {
+          throw new NotFoundException(`Project with ID ${id} not found`);
+        }
+
+        return projectData;
       },
-    });
-
-    if (!projectData) {
-      throw new NotFoundException(`Project with ID ${id} not found`);
-    }
-
-    return projectData;
+      workspaceId,
+    );
   }
 
-  async findByProjectNumber(projectNumber: string): Promise<Project> {
-    // projectNumber is unique PER WORKSPACE now (@@unique([workspaceId,
+  async findByProjectNumber(
+    workspaceId: string,
+    user: User,
+    projectNumber: string,
+  ): Promise<Project> {
+    // projectNumber is unique PER WORKSPACE (@@unique([workspaceId,
     // projectNumber])), not globally, so it is no longer a findUnique key.
-    // In Phase 1 there is a single bootstrap workspace, so findFirst returns
-    // the same row; when tenancy goes live this lookup runs inside the
-    // workspace-scoped RLS transaction (withWorkspace), which fences it to the
-    // active workspace — keeping the result unambiguous without a param change.
-    const projectData = await this.prisma.project.findFirst({
-      where: { projectNumber },
-      include: {
-        createdBy: true,
-        assignedTo: true,
+    // Running inside runForUser pins the workspace RLS GUC, so once tenancy is
+    // live this findFirst is fenced to the active workspace; in Phase 1's
+    // single bootstrap workspace it returns the same row. Scoped per R1.
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const projectData = await tx.project.findFirst({
+          where: { projectNumber },
+          include: {
+            createdBy: true,
+            assignedTo: true,
+          },
+        });
+
+        if (!projectData) {
+          throw new NotFoundException(`Project ${projectNumber} not found`);
+        }
+
+        return projectData;
       },
-    });
-
-    if (!projectData) {
-      throw new NotFoundException(`Project ${projectNumber} not found`);
-    }
-
-    return projectData;
+      workspaceId,
+    );
   }
 
-  async update(id: string, updateProjectDto: UpdateProjectDto, userId: string): Promise<Project> {
-    // Extract projectType from DTO (it's not a direct Prisma field)
-    const { projectType, ...projectDataFields } = updateProjectDto;
+  async update(
+    workspaceId: string,
+    user: User,
+    id: string,
+    updateProjectDto: UpdateProjectDto,
+  ): Promise<Project> {
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        // Extract projectType from DTO (it's not a direct Prisma field)
+        const { projectType, ...projectDataFields } = updateProjectDto;
 
-    // If projectType is being updated, merge it into metadata
-    const metadata = projectType !== undefined
-      ? { ...updateProjectDto.metadata, projectType }
-      : updateProjectDto.metadata;
+        // If projectType is being updated, merge it into metadata
+        const metadata =
+          projectType !== undefined
+            ? { ...updateProjectDto.metadata, projectType }
+            : updateProjectDto.metadata;
 
-    const projectData = await this.prisma.project.update({
-      where: { id },
-      data: {
-        ...this.coerceDateFields(projectDataFields),
-        ...(metadata !== undefined && { metadata }),
+        const projectData = await tx.project.update({
+          where: { id },
+          data: {
+            ...this.coerceDateFields(projectDataFields),
+            ...(metadata !== undefined && { metadata }),
+          },
+          include: {
+            createdBy: true,
+            assignedTo: true,
+          },
+        });
+
+        await this.auditService.log({
+          workspaceId,
+          userId: user.id,
+          projectId: id,
+          action: 'UPDATE',
+          resource: 'Project',
+          resourceId: id,
+          details: updateProjectDto,
+        });
+
+        this.logger.log(
+          `Project updated: ${projectData.projectNumber} by user ${user.id} ws=${workspaceId}`,
+        );
+        return projectData;
       },
-      include: {
-        createdBy: true,
-        assignedTo: true,
-      },
-    });
-
-    await this.auditService.log({
-      userId,
-      projectId: id,
-      action: 'UPDATE',
-      resource: 'Project',
-      resourceId: id,
-      details: updateProjectDto,
-    });
-
-    this.logger.log(`Project updated: ${projectData.projectNumber} by user ${userId}`);
-    return projectData;
+      workspaceId,
+    );
   }
 
-  async updateStatus(id: string, status: ProjectStatus, userId: string): Promise<Project> {
-    const updateData: any = { status };
+  async updateStatus(
+    workspaceId: string,
+    user: User,
+    id: string,
+    status: ProjectStatus,
+  ): Promise<Project> {
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const updateData: any = { status };
 
-    if (status === ProjectStatus.COMPLETED) {
-      updateData.completedAt = new Date();
-    }
+        if (status === ProjectStatus.COMPLETED) {
+          updateData.completedAt = new Date();
+        }
 
-    const projectData = await this.prisma.project.update({
-      where: { id },
-      data: updateData,
-      include: {
-        createdBy: true,
-        assignedTo: true,
+        const projectData = await tx.project.update({
+          where: { id },
+          data: updateData,
+          include: {
+            createdBy: true,
+            assignedTo: true,
+          },
+        });
+
+        await this.auditService.log({
+          workspaceId,
+          userId: user.id,
+          projectId: id,
+          action: 'UPDATE',
+          resource: 'Project',
+          resourceId: id,
+          details: { status, previousStatus: projectData.status },
+        });
+
+        this.logger.log(
+          `Project status updated: ${projectData.projectNumber} to ${status} ws=${workspaceId}`,
+        );
+        return projectData;
       },
-    });
-
-    await this.auditService.log({
-      userId,
-      projectId: id,
-      action: 'UPDATE',
-      resource: 'Project',
-      resourceId: id,
-      details: { status, previousStatus: projectData.status },
-    });
-
-    this.logger.log(`Project status updated: ${projectData.projectNumber} to ${status}`);
-    return projectData;
+      workspaceId,
+    );
   }
 
-  async assignProject(id: string, assignProjectDto: AssignProjectDto, userId: string): Promise<Project> {
-    const projectData = await this.prisma.project.update({
-      where: { id },
-      data: {
-        assignedToId: assignProjectDto.assignedToId,
-      },
-      include: {
-        createdBy: true,
-        assignedTo: true,
-      },
-    });
+  async assignProject(
+    workspaceId: string,
+    user: User,
+    id: string,
+    assignProjectDto: AssignProjectDto,
+  ): Promise<Project> {
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const projectData = await tx.project.update({
+          where: { id },
+          data: {
+            assignedToId: assignProjectDto.assignedToId,
+          },
+          include: {
+            createdBy: true,
+            assignedTo: true,
+          },
+        });
 
-    await this.auditService.log({
-      userId,
-      projectId: id,
-      action: 'UPDATE',
-      resource: 'Project',
-      resourceId: id,
-      details: { assignedTo: assignProjectDto.assignedToId },
-    });
+        await this.auditService.log({
+          workspaceId,
+          userId: user.id,
+          projectId: id,
+          action: 'UPDATE',
+          resource: 'Project',
+          resourceId: id,
+          details: { assignedTo: assignProjectDto.assignedToId },
+        });
 
-    this.logger.log(`Project assigned: ${projectData.projectNumber} to user ${assignProjectDto.assignedToId}`);
-    return projectData;
+        this.logger.log(
+          `Project assigned: ${projectData.projectNumber} to user ${assignProjectDto.assignedToId} ws=${workspaceId}`,
+        );
+        return projectData;
+      },
+      workspaceId,
+    );
   }
 
-  async remove(id: string, userId: string): Promise<Project> {
-    const projectData = await this.prisma.project.delete({
-      where: { id },
-    });
+  async remove(workspaceId: string, user: User, id: string): Promise<Project> {
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const projectData = await tx.project.delete({
+          where: { id },
+        });
 
-    await this.auditService.log({
-      userId,
-      projectId: id,
-      action: 'DELETE',
-      resource: 'Project',
-      resourceId: id,
-      details: { projectNumber: projectData.projectNumber },
-    });
+        await this.auditService.log({
+          workspaceId,
+          userId: user.id,
+          projectId: id,
+          action: 'DELETE',
+          resource: 'Project',
+          resourceId: id,
+          details: { projectNumber: projectData.projectNumber },
+        });
 
-    this.logger.log(`Project deleted: ${projectData.projectNumber} by user ${userId}`);
-    return projectData;
+        this.logger.log(
+          `Project deleted: ${projectData.projectNumber} by user ${user.id} ws=${workspaceId}`,
+        );
+        return projectData;
+      },
+      workspaceId,
+    );
   }
 
-  private async generateProjectNumber(): Promise<string> {
+  /**
+   * Generate the next project number. Runs on the passed workspace `tx` so the
+   * count is computed against the workspace-scoped row set (under live RLS) and
+   * is consistent with the create it precedes — callers MUST invoke this inside
+   * the same runForUser tx as the insert (see {@link createInTx}).
+   */
+  private async generateProjectNumber(tx: WorkspaceTxClient): Promise<string> {
     const year = new Date().getFullYear();
-    const count = await this.prisma.project.count({
+    const count = await tx.project.count({
       where: {
         createdAt: {
           gte: new Date(`${year}-01-01`),
@@ -332,34 +468,46 @@ export class ProjectsService {
     return `PROJ-${year}-${sequence}`;
   }
 
-  async getStatsByStatus(user: User): Promise<any> {
+  async getStatsByStatus(workspaceId: string, user: User): Promise<any> {
     const where = this.buildRoleBasedWhere(user);
 
-    const stats = await this.prisma.project.groupBy({
-      by: ['status'],
-      where,
-      _count: true,
-    });
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const stats = await tx.project.groupBy({
+          by: ['status'],
+          where,
+          _count: true,
+        });
 
-    return stats.reduce((acc, stat) => {
-      acc[stat.status] = stat._count;
-      return acc;
-    }, {});
+        return stats.reduce((acc, stat) => {
+          acc[stat.status] = stat._count;
+          return acc;
+        }, {});
+      },
+      workspaceId,
+    );
   }
 
-  async getStatsByPriority(user: User): Promise<any> {
+  async getStatsByPriority(workspaceId: string, user: User): Promise<any> {
     const where = this.buildRoleBasedWhere(user);
 
-    const stats = await this.prisma.project.groupBy({
-      by: ['priority'],
-      where,
-      _count: true,
-    });
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const stats = await tx.project.groupBy({
+          by: ['priority'],
+          where,
+          _count: true,
+        });
 
-    return stats.reduce((acc, stat) => {
-      acc[stat.priority] = stat._count;
-      return acc;
-    }, {});
+        return stats.reduce((acc, stat) => {
+          acc[stat.priority] = stat._count;
+          return acc;
+        }, {});
+      },
+      workspaceId,
+    );
   }
 
   /**

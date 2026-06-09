@@ -26,11 +26,18 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { CurrentWorkspace } from '../common/workspace/current-workspace.decorator';
+import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
 import { User, UserRole } from '@prisma/client';
 
+/**
+ * Suite tenancy (Phase 2, B6): every route resolves the active workspace via
+ * @CurrentWorkspace + WorkspaceMembershipGuard and passes (workspaceId, user)
+ * into the service, which runs all DB access inside that workspace's RLS tx.
+ */
 @ApiTags('contacts')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, WorkspaceMembershipGuard)
 @Controller('contacts')
 export class ContactsController {
   constructor(private readonly contactsService: ContactsService) {}
@@ -40,8 +47,12 @@ export class ContactsController {
   @ApiOperation({ summary: 'Create a new contact' })
   @ApiResponse({ status: 201, description: 'Contact created successfully' })
   @ApiResponse({ status: 409, description: 'Contact with email already exists' })
-  create(@Body() createContactDto: CreateContactDto, @CurrentUser() user: User) {
-    return this.contactsService.create(createContactDto, user.id);
+  create(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Body() createContactDto: CreateContactDto,
+  ) {
+    return this.contactsService.create(workspaceId, user, createContactDto);
   }
 
   @Get()
@@ -53,6 +64,8 @@ export class ContactsController {
   @ApiQuery({ name: 'isActive', required: false, type: Boolean })
   @ApiResponse({ status: 200, description: 'List of contacts' })
   findAll(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
     @Query('skip', new DefaultValuePipe(0), ParseIntPipe) skip?: number,
     @Query('take', new DefaultValuePipe(50), ParseIntPipe) take?: number,
     @Query('search') search?: string,
@@ -61,7 +74,7 @@ export class ContactsController {
     const isActiveBoolean =
       isActive === 'true' ? true : isActive === 'false' ? false : undefined;
 
-    return this.contactsService.findAll({
+    return this.contactsService.findAll(workspaceId, user, {
       skip,
       take,
       search,
@@ -73,8 +86,11 @@ export class ContactsController {
   @SkipThrottle({ short: true, long: true })
   @ApiOperation({ summary: 'Get contact statistics for dashboard' })
   @ApiResponse({ status: 200, description: 'Contact statistics' })
-  getStats() {
-    return this.contactsService.getContactStats();
+  getStats(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.contactsService.getContactStats(workspaceId, user);
   }
 
   @Get(':id')
@@ -82,8 +98,12 @@ export class ContactsController {
   @ApiOperation({ summary: 'Get contact by ID' })
   @ApiResponse({ status: 200, description: 'Contact details' })
   @ApiResponse({ status: 404, description: 'Contact not found' })
-  findOne(@Param('id') id: string) {
-    return this.contactsService.findOne(id);
+  findOne(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+  ) {
+    return this.contactsService.findOne(workspaceId, user, id);
   }
 
   @Patch(':id')
@@ -92,8 +112,13 @@ export class ContactsController {
   @ApiResponse({ status: 200, description: 'Contact updated successfully' })
   @ApiResponse({ status: 404, description: 'Contact not found' })
   @ApiResponse({ status: 409, description: 'Email already exists' })
-  update(@Param('id') id: string, @Body() updateContactDto: UpdateContactDto, @CurrentUser() user: User) {
-    return this.contactsService.update(id, updateContactDto, user.id);
+  update(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Body() updateContactDto: UpdateContactDto,
+  ) {
+    return this.contactsService.update(workspaceId, user, id, updateContactDto);
   }
 
   @Delete(':id')
@@ -101,8 +126,12 @@ export class ContactsController {
   @ApiOperation({ summary: 'Delete contact (soft delete)' })
   @ApiResponse({ status: 200, description: 'Contact deleted successfully' })
   @ApiResponse({ status: 404, description: 'Contact not found' })
-  remove(@Param('id') id: string, @CurrentUser() user: User) {
-    return this.contactsService.remove(id, user.id);
+  remove(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+  ) {
+    return this.contactsService.remove(workspaceId, user, id);
   }
 
   @Get(':id/projects')
@@ -113,11 +142,16 @@ export class ContactsController {
   @ApiResponse({ status: 200, description: 'List of projects for contact' })
   @ApiResponse({ status: 404, description: 'Contact not found' })
   findContactProjects(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
     @Param('id') id: string,
     @Query('skip', new DefaultValuePipe(0), ParseIntPipe) skip?: number,
     @Query('take', new DefaultValuePipe(50), ParseIntPipe) take?: number,
   ) {
-    return this.contactsService.findContactProjects(id, { skip, take });
+    return this.contactsService.findContactProjects(workspaceId, user, id, {
+      skip,
+      take,
+    });
   }
 
   @Get(':id/billing')
@@ -125,8 +159,12 @@ export class ContactsController {
   @ApiOperation({ summary: 'Get billing summary for a contact' })
   @ApiResponse({ status: 200, description: 'Billing summary for contact' })
   @ApiResponse({ status: 404, description: 'Contact not found' })
-  getContactBilling(@Param('id') id: string) {
-    return this.contactsService.getContactBillingSummary(id);
+  getContactBilling(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+  ) {
+    return this.contactsService.getContactBillingSummary(workspaceId, user, id);
   }
 
   @Post(':id/invite')
@@ -135,7 +173,11 @@ export class ContactsController {
   @ApiResponse({ status: 200, description: 'Invitation sent successfully' })
   @ApiResponse({ status: 404, description: 'Contact not found' })
   @ApiResponse({ status: 400, description: 'Contact already has portal access' })
-  inviteToPortal(@Param('id') id: string) {
-    return this.contactsService.inviteToPortal(id);
+  inviteToPortal(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+  ) {
+    return this.contactsService.inviteToPortal(workspaceId, user, id);
   }
 }

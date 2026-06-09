@@ -1,48 +1,43 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
+import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
-import { Comment, Prisma } from '@prisma/client';
+import { Comment, Prisma, User } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 
+/**
+ * Comments service.
+ *
+ * SUITE TENANCY (Phase 2, B3): every Comment read/write runs inside
+ * `WorkspaceContextService.runForUser(user, tx => ..., workspaceId)` so the DB
+ * RLS GUC scopes it to the active workspace. All comment-owned DB access goes
+ * through the passed `tx`, never `this.prisma`. New rows stamp `workspaceId`.
+ * The `workspaceId` is also threaded into every `audit.log()` call (R3) and the
+ * emitted WebSocket events (so the realtime gateway can scope its broadcasts).
+ * Additive + inert while PROJECT_OPS_TENANCY_ENABLED is off (membership
+ * resolution is a no-op and withWorkspace runs under the BYPASSRLS owner
+ * connection).
+ *
+ * NOTE: the `comment.created/updated/deleted` listeners (websocket gateway)
+ * only relay the already-fetched payload to a room; they do NOT re-query the
+ * DB, so no unscoped read escapes the workspace tx.
+ */
 @Injectable()
 export class CommentsService {
   private readonly logger = new Logger(CommentsService.name);
 
   constructor(
     private prisma: PrismaService,
+    private workspaceContext: WorkspaceContextService,
     private auditService: AuditService,
     private eventEmitter: EventEmitter2,
   ) {}
 
-  async create(createCommentDto: CreateCommentDto, userId: string): Promise<any> {
-    const comment = await this.prisma.comment.create({
-      data: {
-        ...createCommentDto,
-        authorId: userId,
-      },
-      include: {
-        author: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-        project: {
-          select: {
-            id: true,
-            projectNumber: true,
-            title: true,
-          },
-        },
-      },
-    });
-
-    // Transform to match frontend expectations
-    const transformedComment = {
+  /** Shape a raw Comment (with author) into the frontend contract. */
+  private transform(comment: any) {
+    return {
       id: comment.id,
       projectId: comment.projectId,
       userId: comment.authorId,
@@ -56,15 +51,56 @@ export class CommentsService {
         email: comment.author.email,
       },
     };
+  }
 
-    // Emit event for WebSocket broadcast
+  async create(
+    workspaceId: string,
+    user: User,
+    createCommentDto: CreateCommentDto,
+  ): Promise<any> {
+    const comment = await this.workspaceContext.runForUser(
+      user,
+      (tx) =>
+        tx.comment.create({
+          data: {
+            ...createCommentDto,
+            workspaceId,
+            authorId: user.id,
+          },
+          include: {
+            author: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+            project: {
+              select: {
+                id: true,
+                projectNumber: true,
+                title: true,
+              },
+            },
+          },
+        }),
+      workspaceId,
+    );
+
+    // Transform to match frontend expectations
+    const transformedComment = this.transform(comment);
+
+    // Emit event for WebSocket broadcast (workspace-scoped; listener only relays)
     this.eventEmitter.emit('comment.created', {
+      workspaceId,
       projectId: comment.projectId,
       comment: transformedComment,
     });
 
     await this.auditService.log({
-      userId,
+      workspaceId,
+      userId: user.id,
       projectId: createCommentDto.projectId,
       action: 'CREATE',
       resource: 'Comment',
@@ -72,66 +108,82 @@ export class CommentsService {
       details: { content: comment.content.substring(0, 100) },
     });
 
-    this.logger.log(`Comment created on project ${createCommentDto.projectId} by user ${userId}`);
+    this.logger.log(
+      `Comment created on project ${createCommentDto.projectId} by user ${user.id} ws=${workspaceId}`,
+    );
     return transformedComment;
   }
 
-  async findAll(params?: {
-    skip?: number;
-    take?: number;
-    where?: Prisma.CommentWhereInput;
-    orderBy?: Prisma.CommentOrderByWithRelationInput;
-  }): Promise<{ comments: any[]; total: number }> {
+  async findAll(
+    workspaceId: string,
+    user: User,
+    params?: {
+      skip?: number;
+      take?: number;
+      where?: Prisma.CommentWhereInput;
+      orderBy?: Prisma.CommentOrderByWithRelationInput;
+    },
+  ): Promise<{ comments: any[]; total: number }> {
     const { skip, take, where, orderBy } = params || {};
 
-    const [comments, total] = await Promise.all([
-      this.prisma.comment.findMany({
-        skip,
-        take,
-        where,
-        orderBy,
-        include: {
-          author: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
+    const { comments, total } = await this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const [rows, count] = await Promise.all([
+          tx.comment.findMany({
+            skip,
+            take,
+            where,
+            orderBy,
+            include: {
+              author: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                },
+              },
+              project: {
+                select: {
+                  id: true,
+                  projectNumber: true,
+                  title: true,
+                },
+              },
             },
-          },
-          project: {
-            select: {
-              id: true,
-              projectNumber: true,
-              title: true,
-            },
-          },
-        },
-      }),
-      this.prisma.comment.count({ where }),
-    ]);
+          }),
+          tx.comment.count({ where }),
+        ]);
+        return { comments: rows, total: count };
+      },
+      workspaceId,
+    );
 
     // Transform to match frontend expectations
-    const transformedComments = comments.map((comment) => ({
-      id: comment.id,
-      projectId: comment.projectId,
-      userId: comment.authorId,
-      content: comment.content,
-      isInternal: comment.isInternal,
-      createdAt: comment.createdAt,
-      updatedAt: comment.updatedAt,
-      user: {
-        id: comment.author.id,
-        name: `${comment.author.firstName} ${comment.author.lastName}`,
-        email: comment.author.email,
-      },
-    }));
+    const transformedComments = comments.map((comment) => this.transform(comment));
 
     return { comments: transformedComments, total };
   }
 
-  async findOne(id: string): Promise<Comment> {
-    const comment = await this.prisma.comment.findUnique({
+  async findOne(workspaceId: string, user: User, id: string): Promise<Comment> {
+    return this.workspaceContext.runForUser(
+      user,
+      (tx) => this.findOneInTx(tx, id),
+      workspaceId,
+    );
+  }
+
+  /**
+   * Load one comment inside an existing workspace tx. Shared by `findOne` and
+   * `remove` so the delete runs in ONE workspace-scoped transaction (and one
+   * membership authorization). Reads via the passed `tx` → RLS-scoped.
+   */
+  private async findOneInTx(
+    tx: WorkspaceTxClient,
+    id: string,
+  ): Promise<Comment> {
+    const comment = await tx.comment.findUnique({
       where: { id },
       include: {
         author: true,
@@ -146,86 +198,81 @@ export class CommentsService {
     return comment;
   }
 
-  async findByProjectId(projectId: string): Promise<any[]> {
-    const comments = await this.prisma.comment.findMany({
-      where: { projectId },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        author: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
+  async findByProjectId(
+    workspaceId: string,
+    user: User,
+    projectId: string,
+  ): Promise<any[]> {
+    const comments = await this.workspaceContext.runForUser(
+      user,
+      (tx) =>
+        tx.comment.findMany({
+          where: { projectId },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            author: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
           },
-        },
-      },
-    });
+        }),
+      workspaceId,
+    );
 
     // Transform to match frontend expectations
-    return comments.map((comment) => ({
-      id: comment.id,
-      projectId: comment.projectId,
-      userId: comment.authorId,
-      content: comment.content,
-      isInternal: comment.isInternal,
-      createdAt: comment.createdAt,
-      updatedAt: comment.updatedAt,
-      user: {
-        id: comment.author.id,
-        name: `${comment.author.firstName} ${comment.author.lastName}`,
-        email: comment.author.email,
-      },
-    }));
+    return comments.map((comment) => this.transform(comment));
   }
 
-  async update(id: string, updateCommentDto: UpdateCommentDto, userId: string): Promise<any> {
-    const comment = await this.prisma.comment.update({
-      where: { id },
-      data: updateCommentDto,
-      include: {
-        author: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
+  async update(
+    workspaceId: string,
+    user: User,
+    id: string,
+    updateCommentDto: UpdateCommentDto,
+  ): Promise<any> {
+    const comment = await this.workspaceContext.runForUser(
+      user,
+      (tx) =>
+        tx.comment.update({
+          where: { id },
+          data: updateCommentDto,
+          include: {
+            author: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+            project: {
+              select: {
+                id: true,
+                projectNumber: true,
+                title: true,
+              },
+            },
           },
-        },
-        project: {
-          select: {
-            id: true,
-            projectNumber: true,
-            title: true,
-          },
-        },
-      },
-    });
+        }),
+      workspaceId,
+    );
 
     // Transform to match frontend expectations
-    const transformedComment = {
-      id: comment.id,
-      projectId: comment.projectId,
-      userId: comment.authorId,
-      content: comment.content,
-      isInternal: comment.isInternal,
-      createdAt: comment.createdAt,
-      updatedAt: comment.updatedAt,
-      user: {
-        id: comment.author.id,
-        name: `${comment.author.firstName} ${comment.author.lastName}`,
-        email: comment.author.email,
-      },
-    };
+    const transformedComment = this.transform(comment);
 
-    // Emit event for WebSocket broadcast
+    // Emit event for WebSocket broadcast (workspace-scoped; listener only relays)
     this.eventEmitter.emit('comment.updated', {
+      workspaceId,
       projectId: comment.projectId,
       comment: transformedComment,
     });
 
     await this.auditService.log({
-      userId,
+      workspaceId,
+      userId: user.id,
       projectId: comment.projectId,
       action: 'UPDATE',
       resource: 'Comment',
@@ -233,32 +280,43 @@ export class CommentsService {
       details: updateCommentDto,
     });
 
-    this.logger.log(`Comment ${id} updated by user ${userId}`);
+    this.logger.log(`Comment ${id} updated by user ${user.id} ws=${workspaceId}`);
     return transformedComment;
   }
 
-  async remove(id: string, userId: string): Promise<Comment> {
-    const comment = await this.findOne(id);
+  async remove(workspaceId: string, user: User, id: string): Promise<Comment> {
+    const deletedComment = await this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        // Load (and existence-check) + delete in ONE workspace tx so both run
+        // under the same RLS scope and membership authorization.
+        const comment = await this.findOneInTx(tx, id);
+        const deleted = await tx.comment.delete({
+          where: { id },
+        });
 
-    const deletedComment = await this.prisma.comment.delete({
-      where: { id },
-    });
+        // Emit event for WebSocket broadcast (workspace-scoped; listener only relays)
+        this.eventEmitter.emit('comment.deleted', {
+          workspaceId,
+          projectId: comment.projectId,
+          commentId: id,
+        });
 
-    // Emit event for WebSocket broadcast
-    this.eventEmitter.emit('comment.deleted', {
-      projectId: comment.projectId,
-      commentId: id,
-    });
+        await this.auditService.log({
+          workspaceId,
+          userId: user.id,
+          projectId: comment.projectId,
+          action: 'DELETE',
+          resource: 'Comment',
+          resourceId: id,
+        });
 
-    await this.auditService.log({
-      userId,
-      projectId: comment.projectId,
-      action: 'DELETE',
-      resource: 'Comment',
-      resourceId: id,
-    });
+        return deleted;
+      },
+      workspaceId,
+    );
 
-    this.logger.log(`Comment ${id} deleted by user ${userId}`);
+    this.logger.log(`Comment ${id} deleted by user ${user.id} ws=${workspaceId}`);
     return deletedComment;
   }
 }

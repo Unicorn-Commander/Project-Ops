@@ -19,11 +19,18 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { CurrentWorkspace } from '../common/workspace/current-workspace.decorator';
+import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
 import { UserRole, OrgType, User } from '@prisma/client';
 
+/**
+ * Suite tenancy (Phase 2, B5): every route resolves the active workspace via
+ * @CurrentWorkspace + WorkspaceMembershipGuard and passes (workspaceId, user)
+ * into the service, which runs all DB access inside that workspace's RLS tx.
+ */
 @ApiTags('organizations')
 @Controller('organizations')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, WorkspaceMembershipGuard)
 @ApiBearerAuth('JWT-auth')
 export class OrganizationsController {
   constructor(private readonly organizationsService: OrganizationsService) {}
@@ -34,8 +41,12 @@ export class OrganizationsController {
   @ApiResponse({ status: 201, description: 'Organization created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request - validation error or circular reference' })
   @ApiResponse({ status: 404, description: 'Parent organization not found' })
-  create(@Body() createOrganizationDto: CreateOrganizationDto, @CurrentUser() user: User) {
-    return this.organizationsService.create(createOrganizationDto, user.id);
+  create(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Body() createOrganizationDto: CreateOrganizationDto,
+  ) {
+    return this.organizationsService.create(workspaceId, user, createOrganizationDto);
   }
 
   @Get()
@@ -47,12 +58,13 @@ export class OrganizationsController {
   @ApiQuery({ name: 'search', required: false, type: String })
   @ApiResponse({ status: 200, description: 'Returns list of organizations' })
   async findAll(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
     @Query('page', new ParseIntPipe({ optional: true })) page: number = 1,
     @Query('limit', new ParseIntPipe({ optional: true })) limit: number = 20,
     @Query('type') type?: OrgType,
     @Query('isActive') isActive?: string,
     @Query('search') search?: string,
-    @CurrentUser() user?: User,
   ) {
     const skip = (page - 1) * limit;
     const where: any = {};
@@ -67,7 +79,7 @@ export class OrganizationsController {
       ];
     }
 
-    const { organizations, total } = await this.organizationsService.findAll({
+    const { organizations, total } = await this.organizationsService.findAll(workspaceId, user, {
       skip,
       take: limit,
       where,
@@ -91,32 +103,44 @@ export class OrganizationsController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiOperation({ summary: 'Get organization statistics for dashboard' })
   @ApiResponse({ status: 200, description: 'Returns organization statistics' })
-  getStats() {
-    return this.organizationsService.getStats();
+  getStats(@CurrentWorkspace() workspaceId: string, @CurrentUser() user: User) {
+    return this.organizationsService.getStats(workspaceId, user);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get organization by ID' })
   @ApiResponse({ status: 200, description: 'Returns organization details' })
   @ApiResponse({ status: 404, description: 'Organization not found' })
-  findOne(@Param('id') id: string) {
-    return this.organizationsService.findOne(id);
+  findOne(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+  ) {
+    return this.organizationsService.findOne(workspaceId, user, id);
   }
 
   @Get(':id/hierarchy')
   @ApiOperation({ summary: 'Get organization with full child hierarchy' })
   @ApiResponse({ status: 200, description: 'Returns organization with complete hierarchy tree' })
   @ApiResponse({ status: 404, description: 'Organization not found' })
-  getHierarchy(@Param('id') id: string) {
-    return this.organizationsService.getHierarchy(id);
+  getHierarchy(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+  ) {
+    return this.organizationsService.getHierarchy(workspaceId, user, id);
   }
 
   @Get(':id/contacts')
   @ApiOperation({ summary: 'Get all contacts for organization' })
   @ApiResponse({ status: 200, description: 'Returns list of contacts' })
   @ApiResponse({ status: 404, description: 'Organization not found' })
-  getContacts(@Param('id') id: string) {
-    return this.organizationsService.getContacts(id);
+  getContacts(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+  ) {
+    return this.organizationsService.getContacts(workspaceId, user, id);
   }
 
   @Get(':id/projects')
@@ -125,10 +149,12 @@ export class OrganizationsController {
   @ApiResponse({ status: 200, description: 'Returns list of projects' })
   @ApiResponse({ status: 404, description: 'Organization not found' })
   getProjects(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
     @Param('id') id: string,
     @Query('includeChildren', new ParseBoolPipe({ optional: true })) includeChildren?: boolean,
   ) {
-    return this.organizationsService.getProjects(id, includeChildren || false);
+    return this.organizationsService.getProjects(workspaceId, user, id, includeChildren || false);
   }
 
   @Patch(':id')
@@ -137,8 +163,13 @@ export class OrganizationsController {
   @ApiResponse({ status: 200, description: 'Organization updated successfully' })
   @ApiResponse({ status: 400, description: 'Bad request - validation error or circular reference' })
   @ApiResponse({ status: 404, description: 'Organization not found' })
-  update(@Param('id') id: string, @Body() updateOrganizationDto: UpdateOrganizationDto) {
-    return this.organizationsService.update(id, updateOrganizationDto);
+  update(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Body() updateOrganizationDto: UpdateOrganizationDto,
+  ) {
+    return this.organizationsService.update(workspaceId, user, id, updateOrganizationDto);
   }
 
   @Patch(':id/portal-access')
@@ -146,8 +177,13 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Toggle portal access for organization' })
   @ApiResponse({ status: 200, description: 'Portal access updated successfully' })
   @ApiResponse({ status: 404, description: 'Organization not found' })
-  togglePortalAccess(@Param('id') id: string, @Body() body: { enabled: boolean }) {
-    return this.organizationsService.togglePortalAccess(id, body.enabled);
+  togglePortalAccess(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Body() body: { enabled: boolean },
+  ) {
+    return this.organizationsService.togglePortalAccess(workspaceId, user, id, body.enabled);
   }
 
   @Delete(':id')
@@ -155,7 +191,11 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Soft delete organization (sets isActive to false)' })
   @ApiResponse({ status: 200, description: 'Organization deleted successfully' })
   @ApiResponse({ status: 404, description: 'Organization not found' })
-  remove(@Param('id') id: string) {
-    return this.organizationsService.remove(id);
+  remove(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+  ) {
+    return this.organizationsService.remove(workspaceId, user, id);
   }
 }
