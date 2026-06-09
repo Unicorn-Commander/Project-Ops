@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuthStore } from "@/lib/store";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { AssistantPanel } from "@/components/assistant-panel";
 import { CommandPalette } from "@/components/command-palette";
 import { roleBadgeClass } from "@/lib/badge-styles";
@@ -288,6 +289,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <Search className="h-5 w-5" />
           </Button>
           <AssistantPanel />
+          <WorkspaceSwitcher />
           <ThemeToggle />
 
           {/* User menu */}

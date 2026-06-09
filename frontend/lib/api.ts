@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { WORKSPACE_HEADER_NAME, getStoredWorkspaceId } from './workspace';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
@@ -9,7 +10,11 @@ export const api = axios.create({
   },
 });
 
-// Request interceptor for adding auth token
+// Request interceptor: inject the auth token, then chain the active-workspace
+// header AFTER it (D4 precedence — the `X-Workspace-Id` header is read by the
+// backend WorkspaceMembershipGuard). axios is the single HTTP transport for
+// the app, so adding the header here decorates every API request. (A matching
+// window.fetch override in WorkspaceProvider covers any incidental raw fetch.)
 api.interceptors.request.use(
   (config) => {
     // Only access localStorage if we're in the browser
@@ -17,6 +22,10 @@ api.interceptors.request.use(
       const token = localStorage.getItem('access_token');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+      }
+      const workspaceId = getStoredWorkspaceId();
+      if (workspaceId && !config.headers[WORKSPACE_HEADER_NAME]) {
+        config.headers[WORKSPACE_HEADER_NAME] = workspaceId;
       }
     }
     return config;

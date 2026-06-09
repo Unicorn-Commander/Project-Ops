@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { User, Project } from '@/types';
+import { clearWorkspaceStorage } from '@/lib/workspace';
 
 interface AuthState {
   user: User | null;
@@ -16,6 +17,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
+    // Drop the selected/cached workspace so the next user never inherits it.
+    clearWorkspaceStorage();
     set({ user: null, isAuthenticated: false });
   },
 }));
