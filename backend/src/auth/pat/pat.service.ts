@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PersonalAccessToken, User } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MembershipService } from '../../common/workspace/membership.service';
 import { PAT_AVAILABLE_SCOPES, PAT_PREFIX, PatScope } from './pat.constants';
 import { generatePat, isPatToken, verifyPat } from './pat.util';
 
@@ -8,6 +9,12 @@ export interface CreatePatInput {
   name: string;
   scopes?: string[];
   expiresAt?: Date | null;
+  /**
+   * Workspace to bind the token to. When provided it MUST be a workspace the
+   * caller is an active member of (enforced via MembershipService); when
+   * omitted the token binds to the caller's default-membership workspace.
+   */
+  workspaceId?: string | null;
 }
 
 export interface CreatePatResult {
@@ -16,6 +23,7 @@ export interface CreatePatResult {
   prefix: string;
   name: string;
   scopes: string[];
+  workspaceId: string | null;
   expiresAt: Date | null;
   createdAt: Date;
 }
@@ -29,6 +37,7 @@ export interface PatMetadata {
   name: string;
   prefix: string;
   scopes: string[];
+  workspaceId: string | null;
   lastUsedAt: Date | null;
   expiresAt: Date | null;
   createdAt: Date;
@@ -38,19 +47,36 @@ export interface PatMetadata {
 export interface PatResolution {
   user: User;
   token: PersonalAccessToken;
+  /**
+   * The workspace this PAT is bound to (PersonalAccessToken.workspaceId). The
+   * auth chokepoint enforces that the request's resolved workspace equals this
+   * value; the MCP layer threads it so tool calls fail closed on a mismatch.
+   * May be null for tokens minted before workspace-scoping landed.
+   */
+  workspaceId: string | null;
 }
 
 @Injectable()
 export class PatService {
   private readonly logger = new Logger(PatService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly membership: MembershipService,
+  ) {}
 
   /**
    * Create a PAT for a user. Returns the plaintext token exactly once;
    * callers MUST surface it to the user and never persist it again.
+   *
+   * The token is bound to a single workspace: the explicit `workspaceId` when
+   * supplied (validated to be one the caller is an ACTIVE member of), else the
+   * caller's default-membership workspace. Resolution + membership enforcement
+   * go through MembershipService so the behavior matches every other workspace
+   * gate — a no-op echo while PROJECT_OPS_TENANCY_ENABLED is off, a hard 403 on
+   * a non-member workspace when it is on.
    */
-  async create(userId: string, input: CreatePatInput): Promise<CreatePatResult> {
+  async create(user: User, input: CreatePatInput): Promise<CreatePatResult> {
     const name = (input.name ?? '').trim();
     if (!name) {
       throw new BadRequestException('Token name is required');
@@ -61,13 +87,22 @@ export class PatService {
 
     const scopes = this.normalizeScopes(input.scopes);
     const expiresAt = this.normalizeExpiry(input.expiresAt);
+    // Resolve + authorize the bound workspace. With tenancy off this echoes the
+    // requested id (or the configured default) and never throws; with tenancy
+    // on it 403s unless `user` is an active member of the target workspace, and
+    // picks their default membership when no explicit target was given.
+    const workspaceId = await this.membership.resolveAndAuthorize(
+      user,
+      input.workspaceId ?? null,
+    );
 
     const { plaintext, hash: hashPromise } = generatePat();
     const tokenHash = await hashPromise;
 
     const row = await this.prisma.personalAccessToken.create({
       data: {
-        userId,
+        userId: user.id,
+        workspaceId,
         name,
         prefix: PAT_PREFIX,
         tokenHash,
@@ -77,7 +112,7 @@ export class PatService {
     });
 
     this.logger.log(
-      `Minted PAT ${row.id} for user ${userId} (scopes=[${scopes.join(',')}], expiresAt=${expiresAt?.toISOString() ?? 'never'})`,
+      `Minted PAT ${row.id} for user ${user.id} (workspace=${workspaceId}, scopes=[${scopes.join(',')}], expiresAt=${expiresAt?.toISOString() ?? 'never'})`,
     );
 
     return {
@@ -86,6 +121,7 @@ export class PatService {
       prefix: row.prefix,
       name: row.name,
       scopes: row.scopes,
+      workspaceId: row.workspaceId,
       expiresAt: row.expiresAt,
       createdAt: row.createdAt,
     };
@@ -140,7 +176,8 @@ export class PatService {
       // Strip the relation from the returned token shape so callers
       // can't accidentally lean on `token.user` (we already return it).
       const { user, ...bare } = token;
-      return { user, token: bare as PersonalAccessToken };
+      const bareToken = bare as PersonalAccessToken;
+      return { user, token: bareToken, workspaceId: bareToken.workspaceId };
     }
 
     return null;
@@ -161,6 +198,7 @@ export class PatService {
       name: r.name,
       prefix: r.prefix,
       scopes: r.scopes,
+      workspaceId: r.workspaceId,
       lastUsedAt: r.lastUsedAt,
       expiresAt: r.expiresAt,
       createdAt: r.createdAt,
@@ -186,6 +224,7 @@ export class PatService {
         name: existing.name,
         prefix: existing.prefix,
         scopes: existing.scopes,
+        workspaceId: existing.workspaceId,
         lastUsedAt: existing.lastUsedAt,
         expiresAt: existing.expiresAt,
         createdAt: existing.createdAt,
@@ -202,6 +241,7 @@ export class PatService {
       name: updated.name,
       prefix: updated.prefix,
       scopes: updated.scopes,
+      workspaceId: updated.workspaceId,
       lastUsedAt: updated.lastUsedAt,
       expiresAt: updated.expiresAt,
       createdAt: updated.createdAt,

@@ -6,7 +6,12 @@ import {
 } from '@nestjs/common';
 import { User } from '@prisma/client';
 import { MembershipService } from './membership.service';
-import { resolveWorkspaceId, defaultWorkspaceId, WithWorkspaceClaim } from './workspace.util';
+import {
+  resolveWorkspaceId,
+  defaultWorkspaceId,
+  explicitRequestedWorkspaceId,
+  WithWorkspaceClaim,
+} from './workspace.util';
 
 /**
  * Gate for workspace-scoped routes (SUITE-IDENTITY §D4/§D5).
@@ -38,10 +43,10 @@ export class WorkspaceMembershipGuard implements CanActivate {
       throw new ForbiddenException('Authentication required.');
     }
 
+    // D4 precedence: explicit path param / X-Workspace-Id header wins; else
+    // fall back to the validated token claim (then DEFAULT_WORKSPACE_ID).
     const requested =
-      req?.params?.workspaceId ??
-      req?.params?.workspace_id ??
-      req?.headers?.['x-workspace-id'] ??
+      explicitRequestedWorkspaceId(req) ??
       resolveWorkspaceId(user, defaultWorkspaceId());
 
     const resolved = await this.membership.resolveAndAuthorize(user, requested);

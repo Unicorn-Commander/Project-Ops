@@ -43,9 +43,10 @@ export class PatController {
   @ApiResponse({ status: 400, description: 'Invalid name, scopes, or expiresAt' })
   @ApiResponse({ status: 401, description: 'Unauthenticated' })
   async create(@CurrentUser() user: User, @Body() dto: CreatePatDto) {
-    return this.pats.create(user.id, {
+    return this.pats.create(user, {
       name: dto.name,
       scopes: dto.scopes,
+      workspaceId: dto.workspaceId ?? null,
       expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
     });
   }

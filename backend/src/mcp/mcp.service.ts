@@ -59,11 +59,21 @@ export class McpService {
    *     MCP_TOOL_SCOPE_MAP) is not in the granted list. Both the
    *     manifest-declared tools and the additional tools registered on
    *     the server are covered; an unknown tool name fails closed.
+   *
+   * `patWorkspaceId`:
+   *   - When the caller is PAT-auth'd and the token is workspace-bound,
+   *     this is the PAT's workspace. The guard already rejected any
+   *     explicit X-Workspace-Id that disagreed with it; here we add a
+   *     belt-and-suspenders chokepoint: every tool call asserts the
+   *     acting user's resolved workspace still equals the PAT workspace
+   *     and fails closed otherwise, so a workspace drift can never let a
+   *     PAT act outside its bound workspace.
    */
   async createServerForUser(
     user: User,
     grantedScopes?: string[] | null,
     bearerToken?: string | null,
+    patWorkspaceId?: string | null,
   ) {
     const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 
@@ -85,9 +95,11 @@ export class McpService {
     );
 
     // Wrap registerTool so every tool call is automatically scope-gated
-    // when the caller is PAT-auth'd. JWT-auth'd callers pass straight
-    // through (grantedScopes == null), preserving existing behavior.
+    // when the caller is PAT-auth'd, AND fails closed on a workspace drift
+    // for a workspace-bound PAT. JWT-auth'd callers (grantedScopes == null,
+    // patWorkspaceId == null) pass straight through, preserving behavior.
     const grantedSet = grantedScopes ? new Set(grantedScopes) : null;
+    const boundWorkspaceId = patWorkspaceId ?? null;
     const rawRegister = server.registerTool.bind(server);
     server.registerTool = (
       name: string,
@@ -95,6 +107,20 @@ export class McpService {
       handler: (args: any) => Promise<any> | any,
     ) => {
       const gated = async (args: any) => {
+        // Workspace chokepoint: if this PAT is bound to a workspace, the
+        // acting user's resolved workspace MUST still equal it. The guard
+        // resolves them in lock-step, so a mismatch here means something
+        // mutated the claim mid-flight — fail closed rather than let a tool
+        // run against the wrong tenant.
+        if (boundWorkspaceId) {
+          const effective = this.workspace.resolve(user);
+          if (effective !== boundWorkspaceId) {
+            this.logger.warn(
+              `MCP tool "${name}" workspace mismatch: PAT bound to ${boundWorkspaceId} but acting workspace resolved to ${effective}; refusing`,
+            );
+            return workspaceDenied(name, boundWorkspaceId, effective);
+          }
+        }
         if (grantedSet) {
           const required = MCP_TOOL_SCOPE_MAP[name];
           if (!required) {
@@ -759,6 +785,30 @@ function scopeDenied(toolName: string, required: string | undefined, granted: st
     required_scope: required ?? '(no mapping — refusing fail-open)',
     granted_scopes: granted,
     hint: 'Mint a new Personal Access Token at /dashboard/settings with the required scope.',
+  };
+  return {
+    isError: true,
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(detail, null, 2),
+      },
+    ],
+  };
+}
+
+/**
+ * "This PAT is scoped to a different workspace" response — the MCP-layer
+ * mirror of the JwtAuthGuard 403. Returned with `isError: true` so clients
+ * surface it as a tool error. A PAT for W1 can never act on W2.
+ */
+function workspaceDenied(toolName: string, bound: string, resolved: string) {
+  const detail = {
+    error: 'workspace_denied',
+    tool: toolName,
+    pat_workspace: bound,
+    resolved_workspace: resolved,
+    hint: 'This token is scoped to a single workspace. Mint a PAT for the target workspace, or omit the X-Workspace-Id header.',
   };
   return {
     isError: true,

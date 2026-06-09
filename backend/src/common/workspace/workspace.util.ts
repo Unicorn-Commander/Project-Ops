@@ -67,3 +67,24 @@ export function defaultWorkspaceId(
   const v = getEnv('DEFAULT_WORKSPACE_ID');
   return v && v.trim() ? v.trim() : DEFAULT_WORKSPACE_FALLBACK;
 }
+
+/**
+ * The EXPLICIT requested workspace for a request, per the SUITE-IDENTITY §D4
+ * addressing precedence — path param `workspaceId`/`workspace_id` then the
+ * `X-Workspace-Id` header. Returns null when neither is present (the caller
+ * then falls back to the token/PAT/claim-derived workspace). This is the
+ * single source of truth for the path>header half of D4 so the JWT guard and
+ * the PAT chokepoint can never drift apart.
+ */
+export function explicitRequestedWorkspaceId(req: {
+  params?: Record<string, any>;
+  headers?: Record<string, any>;
+}): string | null {
+  const raw =
+    req?.params?.workspaceId ??
+    req?.params?.workspace_id ??
+    req?.headers?.['x-workspace-id'];
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}

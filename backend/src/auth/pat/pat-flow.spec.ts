@@ -13,12 +13,24 @@
  * future refactor can't quietly weaken it.
  */
 
-import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { ModuleRef, Reflector } from '@nestjs/core';
 import { PersonalAccessToken, User, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MembershipService } from '../../common/workspace/membership.service';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PatService } from './pat.service';
+
+const BOOTSTRAP_WS = '0190a000-7e57-7000-8000-00000000b007';
+
+/** Tenancy-OFF MembershipService stub: echo requested else bootstrap. */
+function makeMembership(): MembershipService {
+  return {
+    resolveAndAuthorize: jest.fn(
+      async (_user: User, requested?: string | null) => requested?.trim() || BOOTSTRAP_WS,
+    ),
+  } as unknown as MembershipService;
+}
 
 // Reuse the FakePrisma from the service spec by inlining a minimal
 // version here — keeping the two specs independently runnable matters
@@ -83,9 +95,16 @@ function makeUser(): User {
   } as User;
 }
 
-function makeContext(authHeader?: string): ExecutionContext {
+function makeContext(
+  authHeader?: string,
+  extra?: { headers?: Record<string, any>; params?: Record<string, any> },
+): ExecutionContext {
   const req: any = {
-    headers: authHeader ? { authorization: authHeader } : {},
+    headers: {
+      ...(authHeader ? { authorization: authHeader } : {}),
+      ...(extra?.headers ?? {}),
+    },
+    params: extra?.params ?? {},
   };
   return {
     switchToHttp: () => ({ getRequest: () => req }) as any,
@@ -118,11 +137,11 @@ describe('PAT auth flow', () => {
     prisma = new FakePrisma();
     user = makeUser();
     prisma.users.set(user.id, user);
-    service = new PatService(prisma as unknown as PrismaService);
+    service = new PatService(prisma as unknown as PrismaService, makeMembership());
   });
 
   it('mint -> use -> success (user attached to request)', async () => {
-    const created = await service.create(user.id, {
+    const created = await service.create(user,{
       name: 'Claude Code',
       scopes: ['read:projects'],
     });
@@ -133,10 +152,51 @@ describe('PAT auth flow', () => {
     const req: any = ctx.switchToHttp().getRequest();
     expect(req.user.id).toBe(user.id);
     expect(req.pat.scopes).toEqual(['read:projects']);
+    // The PAT's workspace becomes the request's effective claim + resolved id
+    // so the GUC chokepoint scopes every query to it.
+    expect(req.user.__workspaceClaim).toBe(BOOTSTRAP_WS);
+    expect(req.workspaceId).toBe(BOOTSTRAP_WS);
+  });
+
+  // ── Acceptance 9.6: a PAT for W1 cannot act on W2 ────────────────────────
+  it('PAT bound to W1 + matching X-Workspace-Id header -> allowed', async () => {
+    const created = await service.create(user, { name: 'W1', workspaceId: BOOTSTRAP_WS });
+    const guard = makeGuard(service);
+    const ctx = makeContext(`Bearer ${created.plaintext}`, {
+      headers: { 'x-workspace-id': BOOTSTRAP_WS },
+    });
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    expect((ctx.switchToHttp().getRequest() as any).workspaceId).toBe(BOOTSTRAP_WS);
+  });
+
+  it('PAT bound to W1 + X-Workspace-Id header for W2 -> 403', async () => {
+    const created = await service.create(user, { name: 'W1', workspaceId: BOOTSTRAP_WS });
+    const guard = makeGuard(service);
+    const ctx = makeContext(`Bearer ${created.plaintext}`, {
+      headers: { 'x-workspace-id': 'ws-2-other' },
+    });
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('PAT bound to W1 + path param workspaceId=W2 -> 403 (path precedence)', async () => {
+    const created = await service.create(user, { name: 'W1', workspaceId: BOOTSTRAP_WS });
+    const guard = makeGuard(service);
+    const ctx = makeContext(`Bearer ${created.plaintext}`, {
+      params: { workspaceId: 'ws-2-other' },
+    });
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('PAT with no explicit workspace target -> binds to its own workspace', async () => {
+    const created = await service.create(user, { name: 'W1', workspaceId: BOOTSTRAP_WS });
+    const guard = makeGuard(service);
+    const ctx = makeContext(`Bearer ${created.plaintext}`);
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    expect((ctx.switchToHttp().getRequest() as any).user.__workspaceClaim).toBe(BOOTSTRAP_WS);
   });
 
   it('mint -> revoke -> use -> 401', async () => {
-    const created = await service.create(user.id, { name: 'X' });
+    const created = await service.create(user,{ name: 'X' });
     await service.revoke(user.id, created.id);
     const guard = makeGuard(service);
     const ctx = makeContext(`Bearer ${created.plaintext}`);
@@ -144,7 +204,7 @@ describe('PAT auth flow', () => {
   });
 
   it('mint -> expire -> use -> 401', async () => {
-    const created = await service.create(user.id, {
+    const created = await service.create(user,{
       name: 'X',
       expiresAt: new Date(Date.now() + 60_000),
     });
@@ -156,7 +216,7 @@ describe('PAT auth flow', () => {
   });
 
   it('wrong PAT plaintext -> 401', async () => {
-    await service.create(user.id, { name: 'X' });
+    await service.create(user,{ name: 'X' });
     const guard = makeGuard(service);
     const ctx = makeContext('Bearer po_pat_obviously-wrong-value');
     await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);

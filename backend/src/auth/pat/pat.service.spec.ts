@@ -1,8 +1,28 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PersonalAccessToken, User, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MembershipService } from '../../common/workspace/membership.service';
 import { PatService } from './pat.service';
 import { PAT_PREFIX } from './pat.constants';
+
+const BOOTSTRAP_WS = '0190a000-7e57-7000-8000-00000000b007';
+
+/**
+ * Minimal MembershipService stub mirroring the tenancy-OFF posture (the test
+ * default): resolveAndAuthorize echoes the requested workspace, else falls back
+ * to the bootstrap workspace, and never throws. Lets us assert the bound
+ * workspaceId without standing up the real membership/RLS machinery.
+ */
+function makeMembership(
+  resolver: (user: User, requested?: string | null) => Promise<string> = async (
+    _user,
+    requested,
+  ) => requested?.trim() || BOOTSTRAP_WS,
+): MembershipService {
+  return {
+    resolveAndAuthorize: jest.fn(resolver),
+  } as unknown as MembershipService;
+}
 
 /**
  * Hand-rolled in-memory Prisma stub.
@@ -95,12 +115,12 @@ describe('PatService', () => {
     prisma = new FakePrisma();
     user = makeUser();
     prisma.users.set(user.id, user);
-    service = new PatService(prisma as unknown as PrismaService);
+    service = new PatService(prisma as unknown as PrismaService, makeMembership());
   });
 
   describe('create', () => {
     it('returns a plaintext token with the canonical prefix and stores the hash', async () => {
-      const result = await service.create(user.id, {
+      const result = await service.create(user,{
         name: 'Claude Code',
         scopes: ['read:projects'],
         expiresAt: new Date(Date.now() + 86_400_000),
@@ -112,25 +132,25 @@ describe('PatService', () => {
     });
 
     it('defaults to a read-only scope set when none is provided', async () => {
-      const result = await service.create(user.id, { name: 'Defaults' });
+      const result = await service.create(user,{ name: 'Defaults' });
       expect(result.scopes.every((s) => s.startsWith('read:'))).toBe(true);
       expect(result.scopes.length).toBeGreaterThan(0);
     });
 
     it('rejects an empty name', async () => {
-      await expect(service.create(user.id, { name: '' })).rejects.toThrow(BadRequestException);
-      await expect(service.create(user.id, { name: '   ' })).rejects.toThrow(BadRequestException);
+      await expect(service.create(user,{ name: '' })).rejects.toThrow(BadRequestException);
+      await expect(service.create(user,{ name: '   ' })).rejects.toThrow(BadRequestException);
     });
 
     it('rejects unknown scopes', async () => {
       await expect(
-        service.create(user.id, { name: 'X', scopes: ['read:projects', 'pwn:everything'] }),
+        service.create(user,{ name: 'X', scopes: ['read:projects', 'pwn:everything'] }),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('rejects an expiry in the past', async () => {
       await expect(
-        service.create(user.id, {
+        service.create(user,{
           name: 'X',
           expiresAt: new Date(Date.now() - 1000),
         }),
@@ -138,14 +158,52 @@ describe('PatService', () => {
     });
 
     it('accepts a null expiry as never-expiring', async () => {
-      const result = await service.create(user.id, { name: 'X', expiresAt: null });
+      const result = await service.create(user,{ name: 'X', expiresAt: null });
       expect(result.expiresAt).toBeNull();
+    });
+  });
+
+  describe('workspace scoping', () => {
+    it('binds the token to the default workspace when none is supplied', async () => {
+      const result = await service.create(user, { name: 'X' });
+      expect(result.workspaceId).toBe(BOOTSTRAP_WS);
+      expect(prisma.tokens.get(result.id)!.workspaceId).toBe(BOOTSTRAP_WS);
+    });
+
+    it('binds the token to the supplied workspace and routes it through MembershipService', async () => {
+      const resolver = jest.fn(async (_u: User, requested?: string | null) => requested!);
+      service = new PatService(
+        prisma as unknown as PrismaService,
+        makeMembership(resolver),
+      );
+      const result = await service.create(user, { name: 'W1', workspaceId: 'ws-1' });
+      expect(result.workspaceId).toBe('ws-1');
+      expect(resolver).toHaveBeenCalledWith(user, 'ws-1');
+    });
+
+    it('propagates a MembershipService 403 (non-member workspace, tenancy on)', async () => {
+      const denying = makeMembership(async () => {
+        throw new ForbiddenException('Not a member of the requested workspace.');
+      });
+      service = new PatService(prisma as unknown as PrismaService, denying);
+      await expect(
+        service.create(user, { name: 'nope', workspaceId: 'ws-foreign' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('surfaces the bound workspaceId on findByPlaintext + list', async () => {
+      const created = await service.create(user, { name: 'X' });
+      const resolved = await service.findByPlaintext(created.plaintext);
+      expect(resolved?.workspaceId).toBe(BOOTSTRAP_WS);
+      expect(resolved?.token.workspaceId).toBe(BOOTSTRAP_WS);
+      const [meta] = await service.list(user.id);
+      expect(meta.workspaceId).toBe(BOOTSTRAP_WS);
     });
   });
 
   describe('findByPlaintext', () => {
     it('resolves the owning user when the token matches', async () => {
-      const { plaintext } = await service.create(user.id, { name: 'X' });
+      const { plaintext } = await service.create(user,{ name: 'X' });
       const resolved = await service.findByPlaintext(plaintext);
       expect(resolved?.user.id).toBe(user.id);
       expect(resolved?.token.name).toBe('X');
@@ -157,13 +215,13 @@ describe('PatService', () => {
     });
 
     it('returns null when no stored hash matches the plaintext', async () => {
-      await service.create(user.id, { name: 'X' });
+      await service.create(user,{ name: 'X' });
       const resolved = await service.findByPlaintext(`${PAT_PREFIX}wrong-token`);
       expect(resolved).toBeNull();
     });
 
     it('returns null for revoked tokens', async () => {
-      const created = await service.create(user.id, { name: 'X' });
+      const created = await service.create(user,{ name: 'X' });
       await service.revoke(user.id, created.id);
       const resolved = await service.findByPlaintext(created.plaintext);
       expect(resolved).toBeNull();
@@ -171,7 +229,7 @@ describe('PatService', () => {
 
     it('returns null for expired tokens', async () => {
       // Create with a near-future expiry, then force-expire in storage
-      const created = await service.create(user.id, {
+      const created = await service.create(user,{
         name: 'X',
         expiresAt: new Date(Date.now() + 60_000),
       });
@@ -182,14 +240,14 @@ describe('PatService', () => {
     });
 
     it('returns null when the owning user is inactive', async () => {
-      const created = await service.create(user.id, { name: 'X' });
+      const created = await service.create(user,{ name: 'X' });
       prisma.users.set(user.id, { ...user, isActive: false });
       const resolved = await service.findByPlaintext(created.plaintext);
       expect(resolved).toBeNull();
     });
 
     it('bumps lastUsedAt on a successful resolution', async () => {
-      const created = await service.create(user.id, { name: 'X' });
+      const created = await service.create(user,{ name: 'X' });
       expect(prisma.tokens.get(created.id)!.lastUsedAt).toBeNull();
       await service.findByPlaintext(created.plaintext);
       // The bump is fire-and-forget; await a microtask flush.
@@ -200,8 +258,8 @@ describe('PatService', () => {
 
   describe('list', () => {
     it('returns metadata only (no plaintext, no hash)', async () => {
-      await service.create(user.id, { name: 'A' });
-      await service.create(user.id, { name: 'B' });
+      await service.create(user,{ name: 'A' });
+      await service.create(user,{ name: 'B' });
       const rows = await service.list(user.id);
       expect(rows).toHaveLength(2);
       for (const row of rows) {
@@ -213,8 +271,8 @@ describe('PatService', () => {
     it('omits other users tokens', async () => {
       const other = makeUser({ id: 'user-2', email: 'b@example.com' });
       prisma.users.set(other.id, other);
-      await service.create(user.id, { name: 'mine' });
-      await service.create(other.id, { name: 'not mine' });
+      await service.create(user,{ name: 'mine' });
+      await service.create(other,{ name: 'not mine' });
       const rows = await service.list(user.id);
       expect(rows.map((r) => r.name)).toEqual(['mine']);
     });
@@ -222,7 +280,7 @@ describe('PatService', () => {
 
   describe('revoke', () => {
     it('soft-deletes and is idempotent', async () => {
-      const created = await service.create(user.id, { name: 'X' });
+      const created = await service.create(user,{ name: 'X' });
       const first = await service.revoke(user.id, created.id);
       expect(first.revokedAt).not.toBeNull();
       const firstRevokedAt = first.revokedAt!;
@@ -234,7 +292,7 @@ describe('PatService', () => {
     it("rejects revoking another user's token", async () => {
       const other = makeUser({ id: 'user-2', email: 'b@example.com' });
       prisma.users.set(other.id, other);
-      const created = await service.create(user.id, { name: 'X' });
+      const created = await service.create(user,{ name: 'X' });
       await expect(service.revoke(other.id, created.id)).rejects.toThrow(NotFoundException);
     });
 

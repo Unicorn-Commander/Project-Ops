@@ -1,9 +1,16 @@
-import { ExecutionContext, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ModuleRef, Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { isPatToken } from '../pat/pat.util';
 import { PatService } from '../pat/pat.service';
+import { explicitRequestedWorkspaceId } from '../../common/workspace/workspace.util';
 
 /**
  * Auth chokepoint for every protected route.
@@ -16,6 +23,17 @@ import { PatService } from '../pat/pat.service';
  *      the request, and return true. A PAT-shaped value that doesn't
  *      resolve is a hard 401 (we never fall through to JWT parsing
  *      because a PAT can never be a valid JWT).
+ *
+ *      WORKSPACE SCOPING (SUITE-IDENTITY §D4, blueprint C1): a PAT is
+ *      bound to exactly one workspace. We resolve the request workspace
+ *      with the SAME D4 precedence WorkspaceMembershipGuard uses — path
+ *      param `workspaceId`/`workspace_id` > `X-Workspace-Id` header >
+ *      the PAT's own `workspaceId` — and 403 if an explicit path/header
+ *      target disagrees with the PAT's workspace (a PAT for W1 can never
+ *      act on W2). On success we stamp the PAT's workspace as the
+ *      request's `__workspaceClaim` + `req.workspaceId` so the GUC
+ *      chokepoint (WorkspaceContextService.runForUser) and the MCP tool
+ *      layer scope every query to the PAT's workspace, failing closed.
  *   3. Otherwise we delegate to Passport's JWT strategy, which keeps
  *      the three existing JWT branches working unchanged (local HS256
  *      session token, Keycloak realm RS256, and the Brigade federation
@@ -61,6 +79,33 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       if (!resolved) {
         throw new UnauthorizedException('Invalid token');
       }
+
+      // Enforce PAT workspace scoping (acceptance 9.6: a PAT for W1 cannot act
+      // on W2). D4 precedence: an explicit path param / X-Workspace-Id header
+      // is the addressed workspace; it MUST equal the PAT's bound workspace.
+      // When the PAT carries no workspace (legacy token minted before scoping
+      // landed) there is nothing to fence against — preserve prior behavior.
+      const patWorkspaceId = resolved.workspaceId;
+      if (patWorkspaceId) {
+        const requested = explicitRequestedWorkspaceId(request);
+        if (requested && requested !== patWorkspaceId) {
+          this.logger.warn(
+            `403 PAT workspace scope: token bound to ${patWorkspaceId} but request addressed ${requested} (user=${resolved.user.email})`,
+          );
+          throw new ForbiddenException(
+            'This token is not scoped to the requested workspace.',
+          );
+        }
+        // Make the PAT's workspace the request's effective claim so the GUC
+        // chokepoint + @CurrentWorkspace resolve to it (a PAT has no JWT
+        // claim of its own), and stash it where WorkspaceMembershipGuard
+        // publishes the resolved workspace.
+        (resolved.user as any).__workspaceClaim = patWorkspaceId;
+        (request as any).workspaceId = patWorkspaceId;
+      }
+
+      (resolved.user as any).__ucUid =
+        resolved.user.keycloakId ?? resolved.user.id;
       (request as any).user = resolved.user;
       (request as any).pat = resolved.token;
       return true;

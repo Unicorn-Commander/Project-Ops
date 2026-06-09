@@ -19,6 +19,20 @@ export class CreatePatDto {
   name: string;
 
   @ApiProperty({
+    example: '0190a000-7e57-7000-8000-00000000b007',
+    required: false,
+    description:
+      'Workspace this token is scoped to. Must be a workspace the caller is an ' +
+      'ACTIVE member of. Omit to bind the token to your default workspace. The ' +
+      'minted PAT can ONLY act inside this single workspace — cross-workspace ' +
+      'calls are rejected at the auth chokepoint.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  workspaceId?: string;
+
+  @ApiProperty({
     example: ['read:projects', 'write:tasks'],
     required: false,
     description:

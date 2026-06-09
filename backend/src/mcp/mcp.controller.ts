@@ -49,6 +49,11 @@ export class McpController {
     // request) get the full RBAC-gated tool set.
     const pat = (req as any).pat as PersonalAccessToken | undefined;
     const grantedScopes = pat ? pat.scopes : null;
+    // The PAT's bound workspace. The guard already 403'd any explicit
+    // X-Workspace-Id that disagreed with it; we thread it into the MCP
+    // server so every tool call additionally fails closed if the acting
+    // user's resolved workspace ever drifts from the PAT's workspace.
+    const patWorkspaceId = pat ? (pat.workspaceId ?? null) : null;
 
     // Forward the caller's bearer so cross-app tools (e.g. the billable
     // rollup → Accounting-Ops) can act on the user's behalf.
@@ -70,7 +75,12 @@ export class McpController {
     });
 
     try {
-      const server = await this.mcp.createServerForUser(user, grantedScopes, bearerToken);
+      const server = await this.mcp.createServerForUser(
+        user,
+        grantedScopes,
+        bearerToken,
+        patWorkspaceId,
+      );
       await server.connect(transport);
       // body has already been parsed by express.json — pass it through.
       await transport.handleRequest(req, res, (req as any).body);
