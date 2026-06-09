@@ -30,6 +30,7 @@ class FakePrisma {
     create: async ({ data }: any) => {
       const row: PersonalAccessToken = {
         id: `pat-${this.tokens.size + 1}`,
+        workspaceId: data.workspaceId ?? null,
         userId: data.userId,
         name: data.name,
         prefix: data.prefix ?? 'po_pat_',
