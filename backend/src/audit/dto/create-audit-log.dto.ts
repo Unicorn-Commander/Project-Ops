@@ -4,6 +4,10 @@ import { AuditAction } from '@prisma/client';
 export class CreateAuditLogDto {
   @IsString()
   @IsOptional()
+  workspaceId?: string;
+
+  @IsString()
+  @IsOptional()
   userId?: string;
 
   @IsString()

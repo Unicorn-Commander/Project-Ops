@@ -286,6 +286,8 @@ model User {
 // dispatch path; other endpoints honor the owning user's full RBAC.
 model PersonalAccessToken {
   id         String    @id @default(uuid())
+  // Suite tenancy: nullable in Phase 2 (additive). App-enforced (no RLS).
+  workspaceId String?
   userId     String
   name       String // human label, e.g. "Claude Code on Aaron's Mac"
   prefix     String    @default("po_pat_")
@@ -301,6 +303,7 @@ model PersonalAccessToken {
   @@index([userId])
   @@index([tokenHash])
   @@index([revokedAt])
+  @@index([workspaceId])
   @@map("personal_access_tokens")
 }
 
@@ -425,7 +428,7 @@ model Contact {
   workspaceId String?
   firstName   String
   lastName    String
-  email       String  @unique
+  email       String
   phone       String?
   company     String?
   address     String?
@@ -457,6 +460,7 @@ model Contact {
   createdBy   User     @relation("ContactCreator", fields: [createdById], references: [id])
   user        User?    @relation("ContactPortalUser", fields: [userId], references: [id])
 
+  @@unique([workspaceId, email])
   @@index([email])
   @@index([lastName])
   @@index([company])
@@ -718,6 +722,9 @@ model TaskComment {
 model TriageProposal {
   id String @id @default(uuid())
 
+  // Suite tenancy: nullable in Phase 2 (additive), NOT NULL after backfill.
+  workspaceId String?
+
   // Source provenance + idempotency
   sourceType         String  @default("MANUAL") // MEETING_OPS | MANUAL | WEBHOOK | IMPORT
   sourceActionItemId String? // stable id from the source (e.g. meeting-ops action_items.id)
@@ -747,11 +754,12 @@ model TriageProposal {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([sourceType, sourceActionItemId])
+  @@unique([workspaceId, sourceType, sourceActionItemId])
   @@index([status])
   @@index([proposedProjectId])
   @@index([sourceType])
   @@index([createdById])
+  @@index([workspaceId])
   @@map("triage_proposals")
 }
 

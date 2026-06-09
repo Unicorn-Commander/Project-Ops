@@ -23,8 +23,11 @@ export class ContactsService {
   ) {}
 
   async create(createContactDto: CreateContactDto, createdById: string) {
-    // Check if email already exists
-    const existingContact = await this.prisma.contact.findUnique({
+    // Check if email already exists.
+    // NOTE: email is no longer globally unique (now @@unique([workspaceId, email]));
+    // use findFirst to preserve the existing global pre-flight check. Phase B (B6)
+    // re-scopes this lookup to the active workspace.
+    const existingContact = await this.prisma.contact.findFirst({
       where: { email: createContactDto.email },
     });
 
@@ -173,9 +176,12 @@ export class ContactsService {
     // Check if contact exists
     await this.findOne(id);
 
-    // If email is being updated, check for conflicts
+    // If email is being updated, check for conflicts.
+    // NOTE: email is no longer globally unique (now @@unique([workspaceId, email]));
+    // use findFirst to preserve the existing global pre-flight check. Phase B (B6)
+    // re-scopes this lookup to the active workspace.
     if (updateContactDto.email) {
-      const existingContact = await this.prisma.contact.findUnique({
+      const existingContact = await this.prisma.contact.findFirst({
         where: { email: updateContactDto.email },
       });
 
