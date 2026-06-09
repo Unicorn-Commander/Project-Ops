@@ -9,6 +9,10 @@ import { ClientSignupDto } from './dto/client-signup.dto';
 import { User, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { resolveUserAccess, describeAccessList } from './access-list';
+import {
+  MembershipService,
+  ActiveWorkspaceMembership,
+} from '../common/workspace/membership.service';
 
 export interface JwtPayload {
   sub: string;
@@ -27,6 +31,7 @@ export class AuthService {
     private configService: ConfigService,
     private prisma: PrismaService,
     private emailService: EmailService,
+    private membershipService: MembershipService,
   ) {
     // Boot-time visibility into the active SSO access list — operator
     // can `docker logs project-ops-backend | grep "SSO access list"` to
@@ -43,6 +48,22 @@ export class AuthService {
       return null;
     }
     return user;
+  }
+
+  /**
+   * The caller's active workspace memberships for the frontend switcher
+   * (Phase C2 / C3). Lives in the JSON response body of login / SSO token
+   * issuance / profile — NEVER in the JWT (token claims are unchanged).
+   *
+   * While `PROJECT_OPS_TENANCY_ENABLED` is OFF, no Membership rows exist for
+   * most users, so this returns `[]` and the frontend keeps its single-tenant
+   * behavior. Once tenancy is on (and memberships are seeded), each entry is
+   * `{ workspaceId, slug, displayName, role, isDefault }`, default-first.
+   */
+  private async workspacesForUser(
+    user: User,
+  ): Promise<ActiveWorkspaceMembership[]> {
+    return this.membershipService.listActiveWorkspaces(user);
   }
 
   async login(loginDto: LoginDto) {
@@ -82,6 +103,30 @@ export class AuthService {
         role: user.role,
         forcePasswordChange: user.forcePasswordChange || false,
       },
+      workspaces: await this.workspacesForUser(user),
+    };
+  }
+
+  /**
+   * Build the `/api/auth/profile` response body, including the caller's active
+   * workspace memberships for the switcher (same `workspaces[]` shape as
+   * login). On a fresh page load the frontend hydrates from this endpoint
+   * (the login response is not persisted), so it must carry `workspaces[]`
+   * too or the switcher would be empty after reload.
+   */
+  async getProfile(user: User) {
+    return {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      isActive: user.isActive,
+      forcePasswordChange: user.forcePasswordChange || false,
+      lastLoginAt: user.lastLoginAt,
+      createdAt: user.createdAt,
+      workspaces: await this.workspacesForUser(user),
     };
   }
 
@@ -158,6 +203,7 @@ export class AuthService {
         role: user.role,
         forcePasswordChange: user.forcePasswordChange || false,
       },
+      workspaces: await this.workspacesForUser(user),
     };
   }
 
@@ -407,6 +453,9 @@ export class AuthService {
         lastName: user.lastName,
         role: user.role,
       },
+      // A brand-new CLIENT has no memberships yet (returns []), but keeping the
+      // key present makes every auth response shape-uniform for the frontend.
+      workspaces: await this.workspacesForUser(user),
     };
   }
 }

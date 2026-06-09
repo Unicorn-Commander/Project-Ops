@@ -36,18 +36,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Returns user profile' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getProfile(@CurrentUser() user: User) {
-    return {
-      id: user.id,
-      email: user.email,
-      username: user.username,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      role: user.role,
-      isActive: user.isActive,
-      forcePasswordChange: user.forcePasswordChange || false,
-      lastLoginAt: user.lastLoginAt,
-      createdAt: user.createdAt,
-    };
+    return this.authService.getProfile(user);
   }
 
   @Post('change-password')

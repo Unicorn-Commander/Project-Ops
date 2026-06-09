@@ -7,6 +7,22 @@ import { tenancyEnabled } from './feature-flags';
 import { DEFAULT_WORKSPACE_FALLBACK } from './workspace.util';
 
 /**
+ * A single switcher-ready entry describing one workspace the caller actively
+ * belongs to. This is the canonical shape the frontend workspace switcher
+ * (Phase C3, mirroring Meeting-Ops' OrgContext) consumes: it joins the
+ * membership (role / isDefault) with the workspace identity (slug /
+ * displayName). It is returned ONLY in JSON response bodies (login / profile)
+ * — never embedded in the JWT.
+ */
+export interface ActiveWorkspaceMembership {
+  workspaceId: string;
+  slug: string;
+  displayName: string;
+  role: WorkspaceRole;
+  isDefault: boolean;
+}
+
+/**
  * Workspace membership resolution + gating (SUITE-IDENTITY §3, §D5).
  *
  * The cross-app contract: a valid uchub token JIT-provisions the User row, but
@@ -57,6 +73,50 @@ export class MembershipService {
       where: { userKey, status: MembershipStatus.ACTIVE },
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
     });
+  }
+
+  /**
+   * The caller's ACTIVE memberships, enriched with workspace identity for the
+   * frontend switcher: `{ workspaceId, slug, displayName, role, isDefault }`.
+   *
+   * Built on top of `listActiveMemberships` (which already applies the
+   * default-first ordering), then joined to the local Workspace rows in a
+   * single batch query (no N+1). A membership whose Workspace row is not
+   * present locally is dropped — without a slug/displayName it cannot be
+   * rendered as a switcher entry, and surfacing a half-populated entry would
+   * break the switcher's slug-keyed lookup. The default-first ordering from
+   * `listActiveMemberships` is preserved.
+   */
+  async listActiveWorkspaces(
+    user: Pick<User, 'id' | 'keycloakId'>,
+  ): Promise<ActiveWorkspaceMembership[]> {
+    const memberships = await this.listActiveMemberships(user);
+    if (memberships.length === 0) return [];
+
+    const workspaces = await this.prisma.workspace.findMany({
+      where: { id: { in: memberships.map((m) => m.workspaceId) } },
+      select: { id: true, slug: true, displayName: true },
+    });
+    const byId = new Map(workspaces.map((w) => [w.id, w]));
+
+    const result: ActiveWorkspaceMembership[] = [];
+    for (const m of memberships) {
+      const ws = byId.get(m.workspaceId);
+      if (!ws) {
+        this.logger.warn(
+          `Skipping switcher entry for ${MembershipService.membershipKey(user)}: workspace ${m.workspaceId} not present locally`,
+        );
+        continue;
+      }
+      result.push({
+        workspaceId: m.workspaceId,
+        slug: ws.slug,
+        displayName: ws.displayName,
+        role: m.role,
+        isDefault: m.isDefault,
+      });
+    }
+    return result;
   }
 
   /** True iff the user has an ACTIVE membership in `workspaceId`. */
