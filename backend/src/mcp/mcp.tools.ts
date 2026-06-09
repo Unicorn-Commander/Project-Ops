@@ -22,6 +22,10 @@ import type { TimesheetService } from '../time-tracking/timesheet.service';
 import type { ReportsService } from '../time-tracking/reports.service';
 import type { BillableRollupService } from '../time-tracking/billing/billable-rollup.service';
 import type { WorkspaceContextService } from '../common/workspace/workspace-context.service';
+import {
+  resolveWorkspaceId,
+  defaultWorkspaceId,
+} from '../common/workspace/workspace.util';
 
 type Logger = { log: (msg: string) => void; warn: (msg: string) => void };
 
@@ -945,7 +949,11 @@ export class ProjectOpsTools {
     this.logger.log(
       `MCP submit_candidate_action_items: user=${user.email} items=${items.length} sourceType=${args.sourceType ?? 'MANUAL'}`,
     );
-    return this.triage.ingestCandidates(items, user.id);
+    // Resolve the active workspace the same way @CurrentWorkspace does (claim →
+    // default); triage's runForUser re-authorizes membership for this user.
+    // Resolved here (not via workspaceFor) so triage works without time-tracking.
+    const workspaceId = resolveWorkspaceId(user, defaultWorkspaceId());
+    return this.triage.ingestCandidates(workspaceId, user, items);
   }
 
   async updateTaskStatus(
