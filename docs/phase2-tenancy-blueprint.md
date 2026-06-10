@@ -55,3 +55,22 @@ R6 membership seed vs access-list · R7 frontend double fetch-wrap · R8 multipl
 ## Deploy sequence
 Build → flip + verify on magicunicorn.dev (internal/testing; Magic Unicorn + Brightwater Labs tenants) →
 onboard Shafen (MANAGER@GFL) → deploy uc-registry + wire (Phase E) → promote to unicorncommander.ai (prod SaaS).
+
+## STATUS — 2026-06-10 (everything below is LIVE + verified on dogfood)
+- **Phases A–D: DONE.** Flipped 2026-06-09: runtime = `project_ops_app` (NOBYPASSRLS),
+  `PROJECT_OPS_TENANCY_ENABLED=true`. §9 suite (8 invariants incl. fail-closed write) green as the
+  app role on a from-scratch DB via `tests/integration/rls/run.sh` (`npm run test:rls:run`).
+- **Round 2:** time-tracking fully GUC-wired + re-enabled; client-portal/signup made RLS-correct via
+  the provisional `invite:<token>` membership (no runtime BYPASSRLS, PO never mints workspace ids);
+  membership guard resolves claimless requests to the caller's default membership (never a fabricated
+  default). PAT table RLS-OFF is INTENTIONAL (pre-GUC lookup; app-layer W1→W2=403) — do not "fix".
+- **v1.8.0 federation-trust:** `POST /triage/ingest` accepts a trusted sibling-app Brigade token
+  (actor = `act.client_id`, allow-listed via `PROJECT_OPS_FEDERATION_ACTORS`, route-scoped,
+  propose-only, `runInWorkspace`). MO v0.6.0 pushes with an exchanged `aud=project-ops` +
+  `workspace_id` token via the dogfood broker (`brigade.magicunicorn.dev`). E2E-proven both tenants.
+- **MU canonical re-key (`20260610090000_mu_canonical_rekey`):** Magic Unicorn re-keyed
+  `0190a000-7e57-7000-8000-00000000b007` → **`019e50a3-d995-723f-ab66-0f765f92c0f4`** (the id MO +
+  CO already shared; PO was the 3-way outlier). GFL stays `01924a3c-0000-7f1a-beef-67f1ab5c0001`
+  and is now set on the MO org too. DEFAULT_WORKSPACE_ID defaults updated everywhere.
+- **Remaining:** Phase E (uc-registry) + the prod promote to unicorncommander.ai — both flag-gated;
+  this branch is inert on any node with default env (tenancy off, federation actors empty).
