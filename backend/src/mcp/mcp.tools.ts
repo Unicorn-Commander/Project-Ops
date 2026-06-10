@@ -432,7 +432,7 @@ export class ProjectOpsTools {
     user: User,
     args: { taskId: string; content: string },
   ) {
-    const comment = await this.runScoped(user, async (tx) => {
+    const comment = await this.runScoped(user, async (tx, workspaceId) => {
       const task = await tx.task.findFirst({
         where: {
           id: args.taskId,
@@ -446,6 +446,10 @@ export class ProjectOpsTools {
       const created = await tx.taskComment.create({
         data: {
           taskId: task.id,
+          // Stamp the active workspace — RLS WITH CHECK rejects a NULL
+          // workspaceId row (this was the one MCP create missing it; caught
+          // live by the fence on 2026-06-10).
+          workspaceId,
           authorId: user.id,
           content: args.content,
         },

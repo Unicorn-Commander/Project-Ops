@@ -13,12 +13,16 @@ import { AuditLog, Prisma, User } from '@prisma/client';
  * passed `tx`, never `this.prisma`. `audit_logs` is one of the 9 RLS-scoped
  * wire-through tables (workspaceId column + index + workspace_isolation policy).
  *
- * The `log()` WRITE path is the sanctioned exception (blueprint A1): callers
- * pass `workspaceId` in the DTO and it persists via the BYPASSRLS owner
- * connection so audit logging can never be silenced by RLS or break the calling
- * request's flow. Additive + inert while PROJECT_OPS_TENANCY_ENABLED is off
- * (membership resolution is a no-op and withWorkspace runs under the BYPASSRLS
- * owner connection).
+ * The `log()` WRITE path: callers pass `workspaceId` in the DTO (every caller
+ * does — grep-verified) and the create runs inside that workspace's GUC via
+ * `runInWorkspace`, so the row satisfies the RLS WITH CHECK under the
+ * NOBYPASSRLS runtime role. (The original A1 note assumed a BYPASSRLS owner
+ * connection — the runtime flipped to project_ops_app on 2026-06-09 and bare
+ * creates were silently rejected by WITH CHECK until this fix; the catch's
+ * never-throw contract hid it. 0 rows landed 06-09→06-10.) A DTO without a
+ * workspaceId falls back to a bare create: correct while tenancy is off
+ * (owner connection), and correctly fail-closed (logged, never thrown) if a
+ * future unstamped caller appears under RLS.
  */
 @Injectable()
 export class AuditService {
@@ -31,9 +35,17 @@ export class AuditService {
 
   async log(createAuditLogDto: CreateAuditLogDto): Promise<AuditLog | null> {
     try {
-      const auditLog = await this.prisma.auditLog.create({
-        data: createAuditLogDto,
-      });
+      // Under the NOBYPASSRLS runtime role the WITH CHECK policy requires the
+      // row's workspaceId to equal the GUC — so the write must run inside the
+      // DTO's workspace context. runInWorkspace performs no membership check
+      // (audit is a system write, already authorized by the calling request).
+      const auditLog = createAuditLogDto.workspaceId
+        ? await this.workspaceContext.runInWorkspace(
+            createAuditLogDto.workspaceId,
+            createAuditLogDto.userId ?? '',
+            (tx) => tx.auditLog.create({ data: createAuditLogDto }),
+          )
+        : await this.prisma.auditLog.create({ data: createAuditLogDto });
 
       this.logger.debug(
         `Audit log created: ${createAuditLogDto.action} on ${createAuditLogDto.resource}`,
