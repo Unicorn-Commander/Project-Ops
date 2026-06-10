@@ -5,7 +5,7 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
-import { User } from '@prisma/client';
+import { User, WorkspaceRole, MembershipStatus } from '@prisma/client';
 import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { EmailService } from '../email/email.service';
@@ -571,6 +571,27 @@ export class ContactsService {
             invitationToken: token,
             invitationSentAt: new Date(),
             portalAccessEnabled: true,
+          },
+        });
+
+        // Provisional control-plane membership binding token → workspace. The
+        // memberships table is RLS-OFF, so clientSignup can read this row with
+        // no GUC and learn which workspace the (FORCE-RLS) Contact lives in —
+        // resolving the chicken-and-egg. Reconciled to the real user key at
+        // signup; consumed there so the token can't be replayed. CLIENT →
+        // VIEWER (suite role map). Keyed on (userKey, workspaceId) so re-invite
+        // is idempotent.
+        await tx.membership.upsert({
+          where: {
+            userKey_workspaceId: { userKey: `invite:${token}`, workspaceId },
+          },
+          update: {},
+          create: {
+            userKey: `invite:${token}`,
+            workspaceId,
+            role: WorkspaceRole.VIEWER,
+            status: MembershipStatus.ACTIVE,
+            isDefault: true,
           },
         });
 

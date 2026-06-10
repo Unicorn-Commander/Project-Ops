@@ -6,13 +6,19 @@ import { defaultWorkspaceId, resolveWorkspaceId } from './workspace.util';
  *
  *   create(@CurrentWorkspace() workspaceId: string, @CurrentUser() user: User)
  *
- * Resolves from the validated JWT claim that JwtStrategy attached to
- * `req.user.__workspaceClaim`, falling back to DEFAULT_WORKSPACE_ID. Never
- * reads an HTTP header (the suite model forbids trusting one for tenancy).
+ * Prefers the workspace the WorkspaceMembershipGuard already resolved AND
+ * authorized onto `req.workspaceId` (the membership-checked id). For routes that
+ * read the workspace without that guard, it falls back to the validated JWT
+ * claim (`req.user.__workspaceClaim`) then DEFAULT_WORKSPACE_ID. Never reads an
+ * HTTP header itself (the suite model forbids trusting one for tenancy; only the
+ * guard consumes X-Workspace-Id, after a membership check).
  */
 export const CurrentWorkspace = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): string => {
     const request = ctx.switchToHttp().getRequest();
-    return resolveWorkspaceId(request?.user, defaultWorkspaceId());
+    return (
+      request?.workspaceId ??
+      resolveWorkspaceId(request?.user, defaultWorkspaceId())
+    );
   },
 );

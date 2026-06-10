@@ -6,7 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { LoginDto } from './dto/login.dto';
 import { ClientSignupDto } from './dto/client-signup.dto';
-import { User, UserRole } from '@prisma/client';
+import { User, UserRole, WorkspaceRole, MembershipStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { resolveUserAccess, describeAccessList } from './access-list';
 import {
@@ -394,44 +394,89 @@ export class AuthService {
       throw new BadRequestException('Passwords do not match');
     }
 
-    // Find contact by invitation token
-    const contact = await this.prisma.contact.findUnique({
-      where: { invitationToken: token },
+    // Resolve the workspace from the provisional invite membership. Memberships
+    // are a control-plane table (RLS-OFF), so this row is readable with NO GUC.
+    // That is what breaks the chicken-and-egg: the invited Contact lives behind
+    // FORCE-RLS and cannot be read until we already know its workspace. The
+    // `invite:<token>` membership was written at invite time (inviteToPortal),
+    // inside the operator's authorized workspace, precisely as that binding.
+    const invite = await this.prisma.membership.findFirst({
+      where: { userKey: `invite:${token}`, status: MembershipStatus.ACTIVE },
     });
-
-    if (!contact) {
+    if (!invite) {
       throw new NotFoundException('Invalid invitation token');
     }
-
-    if (contact.userId) {
-      throw new BadRequestException('Contact already signed up');
-    }
+    const workspaceId = invite.workspaceId;
 
     // Hash password
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    // Create user account
-    const user = await this.prisma.user.create({
-      data: {
-        email: contact.email,
-        username: contact.email,
-        password: hashedPassword,
-        firstName: contact.firstName,
-        lastName: contact.lastName,
-        role: 'CLIENT',
-        isActive: true,
-      },
-    });
+    // Everything touching contacts (FORCE-RLS) runs inside the workspace GUC.
+    const user = await this.prisma.withWorkspace(
+      workspaceId,
+      null,
+      async (tx) => {
+        const contact = await tx.contact.findUnique({
+          where: { invitationToken: token },
+        });
+        if (!contact) {
+          throw new NotFoundException('Invalid invitation token');
+        }
+        if (contact.userId) {
+          throw new BadRequestException('Contact already signed up');
+        }
 
-    // Link contact to user and clear invitation token
-    await this.prisma.contact.update({
-      where: { id: contact.id },
-      data: {
-        userId: user.id,
-        invitationToken: null, // Clear token after use
-        portalAccessEnabled: true,
+        // Create user account (users is RLS-OFF; on tx for atomicity).
+        const created = await tx.user.create({
+          data: {
+            email: contact.email,
+            username: contact.email,
+            password: hashedPassword,
+            firstName: contact.firstName,
+            lastName: contact.lastName,
+            role: 'CLIENT',
+            isActive: true,
+          },
+        });
+
+        // Link contact to user and clear invitation token.
+        await tx.contact.update({
+          where: { id: contact.id },
+          data: {
+            userId: created.id,
+            invitationToken: null, // Clear token after use
+            portalAccessEnabled: true,
+          },
+        });
+
+        // Reconcile the provisional invite membership onto the real user key.
+        // A CLIENT has no keycloakId, so membershipKey() == created.id.
+        const finalUserKey = MembershipService.membershipKey(created);
+        await tx.membership.upsert({
+          where: {
+            userKey_workspaceId: { userKey: finalUserKey, workspaceId },
+          },
+          update: {
+            status: MembershipStatus.ACTIVE,
+            role: WorkspaceRole.VIEWER,
+            isDefault: true,
+          },
+          create: {
+            userKey: finalUserKey,
+            workspaceId,
+            role: WorkspaceRole.VIEWER, // CLIENT → VIEWER (suite role map)
+            status: MembershipStatus.ACTIVE,
+            isDefault: true,
+          },
+        });
+        // Consume the provisional row so the token can't be replayed.
+        await tx.membership.deleteMany({
+          where: { userKey: `invite:${token}` },
+        });
+
+        return created;
       },
-    });
+    );
 
     this.logger.log(`Client ${user.email} signed up successfully with invitation token`);
 
@@ -453,8 +498,7 @@ export class AuthService {
         lastName: user.lastName,
         role: user.role,
       },
-      // A brand-new CLIENT has no memberships yet (returns []), but keeping the
-      // key present makes every auth response shape-uniform for the frontend.
+      // The reconciled VIEWER membership now resolves to the client's workspace.
       workspaces: await this.workspacesForUser(user),
     };
   }

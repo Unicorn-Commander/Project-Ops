@@ -7,8 +7,6 @@ import {
 import { User } from '@prisma/client';
 import { MembershipService } from './membership.service';
 import {
-  resolveWorkspaceId,
-  defaultWorkspaceId,
   explicitRequestedWorkspaceId,
   WithWorkspaceClaim,
 } from './workspace.util';
@@ -43,11 +41,14 @@ export class WorkspaceMembershipGuard implements CanActivate {
       throw new ForbiddenException('Authentication required.');
     }
 
-    // D4 precedence: explicit path param / X-Workspace-Id header wins; else
-    // fall back to the validated token claim (then DEFAULT_WORKSPACE_ID).
+    // D4 precedence: explicit path param / X-Workspace-Id header wins; else the
+    // validated token claim. When NEITHER is present we pass null (NOT
+    // DEFAULT_WORKSPACE_ID) so resolveAndAuthorize falls to the user's DEFAULT
+    // membership — a claimless client/operator lands in their OWN workspace,
+    // never a fabricated default they may not belong to (e.g. Shafen → GFL, a
+    // portal CLIENT → their workspace), which previously 403'd.
     const requested =
-      explicitRequestedWorkspaceId(req) ??
-      resolveWorkspaceId(user, defaultWorkspaceId());
+      explicitRequestedWorkspaceId(req) ?? user.__workspaceClaim ?? null;
 
     const resolved = await this.membership.resolveAndAuthorize(user, requested);
     // Stash for downstream handlers + the withWorkspace GUC chokepoint.
