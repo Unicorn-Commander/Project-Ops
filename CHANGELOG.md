@@ -7,6 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tenancy: claimless MCP/PAT callers now resolve to their default membership.**
+  The MCP/PAT workspace chokepoint resolved a caller carrying no explicit
+  `workspace_id` token claim to the global `DEFAULT_WORKSPACE_ID`, then authorized
+  membership against it — so any user whose only active membership is some other
+  workspace (e.g. a partner in their own org) was 403'd on every tool with "Not a
+  member of the requested workspace". `WorkspaceContextService.resolveAuthorized`
+  and the MCP `runScoped` + `workspaceFor` chokepoints now pass the addressing
+  precedence straight down (explicit request → the token's own claim → the user's
+  default membership), never substituting the env default as the requested
+  workspace. Tenancy-off behavior is unchanged; on dogfood the only user whose
+  resolution changes is the one whose default membership wasn't the env default.
+  (`backend/src/common/workspace/workspace-context.service.ts`,
+  `backend/src/mcp/mcp.tools.ts`; regression specs in
+  `workspace-context.service.spec.ts`.)
+
 ### Added
 
 **Time Tracking + Billable Rollup — the professional-services spine.**
