@@ -130,24 +130,28 @@ export class ProjectOpsTools {
   }
 
   /**
-   * Resolve the caller's active workspace (claim → default) and run `fn`
-   * inside its RLS transaction. Mirrors the canonical service shape
-   * `runForUser(user, tx => …, workspaceId)`: we resolve the id explicitly so
-   * it is identical to what `@CurrentWorkspace`/the PAT chokepoint resolved,
-   * and pass it back so `runForUser` re-authorizes membership against that
-   * same workspace.
+   * Resolve the caller's active workspace (explicit token claim → the user's
+   * DEFAULT MEMBERSHIP) and run `fn` inside its RLS transaction. We resolve +
+   * authorize the id explicitly — identical to what `@CurrentWorkspace`/the PAT
+   * chokepoint resolves — and pass it back so `runForUser` re-authorizes
+   * membership against that same workspace.
    *
    * The resolved `workspaceId` is also handed to `fn` so write tools can stamp
    * it onto new rows (the scoped columns are NOT NULL with no DB default — the
    * canonical services likewise set `workspaceId` explicitly on create), which
    * also satisfies the RLS WITH CHECK once the flag is on.
    */
-  private runScoped<T>(
+  private async runScoped<T>(
     user: User,
     fn: (tx: WorkspaceTxClient, workspaceId: string) => Promise<T>,
   ): Promise<T> {
     const ws = this.requireWorkspace();
-    const workspaceId = ws.resolve(user);
+    // A claimless human PAT (no `workspace_id` token claim) must resolve to the
+    // user's DEFAULT MEMBERSHIP — not the global DEFAULT_WORKSPACE_ID, which
+    // 403'd partner users (e.g. Shafen, whose only active membership is Genesis
+    // Flow Labs) with "Not a member of the requested workspace". resolveAuthorized
+    // authorizes membership and returns the id we pin as the RLS GUC.
+    const workspaceId = await ws.resolveAuthorized(user);
     return ws.runForUser(user, (tx) => fn(tx, workspaceId), workspaceId);
   }
 
@@ -161,20 +165,25 @@ export class ProjectOpsTools {
     return this.tt;
   }
 
-  private workspaceFor(user: User): string {
-    return this.requireTt().workspace.resolve(user);
+  private workspaceFor(user: User): Promise<string> {
+    // Membership-aware, same chokepoint as runScoped / the REST layer: an
+    // explicit token claim wins, else the user's DEFAULT MEMBERSHIP — never the
+    // global DEFAULT_WORKSPACE_ID. Keeps the time-tracking MCP tools consistent
+    // with the read/write tools for partner users (e.g. Shafen in Genesis Flow
+    // Labs, whose default membership isn't the env default).
+    return this.requireTt().workspace.resolveAuthorized(user);
   }
 
   async startTimer(user: User, args: { projectId?: string; taskId?: string; description?: string }) {
     const tt = this.requireTt();
-    const res = await tt.timer.startTimer(this.workspaceFor(user), user, args);
+    const res = await tt.timer.startTimer(await this.workspaceFor(user), user, args);
     this.logger.log(`MCP start_timer: user=${user.email}`);
     return res;
   }
 
   async stopTimer(user: User, _args: Record<string, never>) {
     const tt = this.requireTt();
-    const res = await tt.timer.stopTimer(this.workspaceFor(user), user);
+    const res = await tt.timer.stopTimer(await this.workspaceFor(user), user);
     this.logger.log(`MCP stop_timer: user=${user.email}`);
     return res;
   }
@@ -192,7 +201,7 @@ export class ProjectOpsTools {
     },
   ) {
     const tt = this.requireTt();
-    const res = await tt.timeEntry.logTime(this.workspaceFor(user), user, args as any);
+    const res = await tt.timeEntry.logTime(await this.workspaceFor(user), user, args as any);
     this.logger.log(`MCP log_time: user=${user.email}`);
     return res;
   }
@@ -201,31 +210,31 @@ export class ProjectOpsTools {
     const { id, ...rest } = args;
     if (!id) throw new Error('id is required');
     const tt = this.requireTt();
-    return tt.timeEntry.update(this.workspaceFor(user), user, id, rest as any);
+    return tt.timeEntry.update(await this.workspaceFor(user), user, id, rest as any);
   }
 
   async listTimeEntries(user: User, args: Record<string, any>) {
     const tt = this.requireTt();
-    return tt.timeEntry.list(this.workspaceFor(user), user, (args ?? {}) as any);
+    return tt.timeEntry.list(await this.workspaceFor(user), user, (args ?? {}) as any);
   }
 
   async submitTimesheet(user: User, args: { periodStart?: string }) {
     const tt = this.requireTt();
-    const res = await tt.timesheet.submit(this.workspaceFor(user), user, args ?? {});
+    const res = await tt.timesheet.submit(await this.workspaceFor(user), user, args ?? {});
     this.logger.log(`MCP submit_timesheet: user=${user.email}`);
     return res;
   }
 
   async approveTime(user: User, args: { timesheetPeriodId?: string; timeEntryIds?: string[] }) {
     const tt = this.requireTt();
-    const res = await tt.timesheet.approve(this.workspaceFor(user), user, args ?? {});
+    const res = await tt.timesheet.approve(await this.workspaceFor(user), user, args ?? {});
     this.logger.log(`MCP approve_time: user=${user.email}`);
     return res;
   }
 
   async getUtilization(user: User, args: { from?: string; to?: string; userId?: string }) {
     const tt = this.requireTt();
-    return tt.reports.getUtilization(this.workspaceFor(user), user, args ?? {});
+    return tt.reports.getUtilization(await this.workspaceFor(user), user, args ?? {});
   }
 
   async createBillableDraft(
@@ -240,7 +249,7 @@ export class ProjectOpsTools {
     },
   ) {
     const tt = this.requireTt();
-    const res = await tt.rollup.createBillableDraft(this.workspaceFor(user), user, args as any, {
+    const res = await tt.rollup.createBillableDraft(await this.workspaceFor(user), user, args as any, {
       bearerToken: this.bearerToken,
       actingUser: { id: user.id, email: user.email },
     });
@@ -251,7 +260,7 @@ export class ProjectOpsTools {
   async syncInvoiceStatus(user: User, _args: Record<string, never>) {
     const tt = this.requireTt();
     return tt.rollup.syncInvoiceStatuses(this.bearerToken, {
-      workspaceId: this.workspaceFor(user),
+      workspaceId: await this.workspaceFor(user),
       user,
     });
   }

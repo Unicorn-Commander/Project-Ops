@@ -51,7 +51,20 @@ export class WorkspaceContextService {
     user: User & Partial<WithWorkspaceClaim>,
     requestedWorkspaceId?: string | null,
   ): Promise<string> {
-    const claim = requestedWorkspaceId ?? this.resolve(user);
+    // Addressing precedence (SUITE-IDENTITY §D4): an explicit request (path /
+    // header / federation claim) wins, then the token's OWN workspace claim
+    // (`workspace_id`/`tenant_id`, surfaced as `__workspaceClaim`). When the
+    // caller carries NEITHER, pass `null` so MembershipService resolves the
+    // user's DEFAULT MEMBERSHIP — NOT the global DEFAULT_WORKSPACE_ID. A user
+    // whose only active membership is some other workspace (e.g. a partner in
+    // their own org, like Shafen in Brightwater Labs) is correctly not a member
+    // of the env default and must not be forced through it. With tenancy OFF,
+    // resolveAndAuthorize still falls back to the configured default, preserving
+    // today's single-tenant behavior.
+    const claim =
+      requestedWorkspaceId?.trim() ||
+      (user as WithWorkspaceClaim).__workspaceClaim?.trim() ||
+      null;
     return this.membership.resolveAndAuthorize(user, claim);
   }
 
