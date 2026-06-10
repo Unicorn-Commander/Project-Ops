@@ -70,9 +70,10 @@ export class WorkspaceContextService {
     user: User & Partial<WithWorkspaceClaim>,
     fn: (tx: WorkspaceTxClient) => Promise<T>,
     requestedWorkspaceId?: string | null,
+    options?: { maxWait?: number; timeout?: number },
   ): Promise<T> {
     const workspaceId = await this.resolveAuthorized(user, requestedWorkspaceId);
-    return this.prisma.withWorkspace(workspaceId, ucUidOf(user), fn);
+    return this.prisma.withWorkspace(workspaceId, ucUidOf(user), fn, options);
   }
 
   /**
@@ -83,7 +84,8 @@ export class WorkspaceContextService {
     workspaceId: string,
     ucUid: string | null | undefined,
     fn: (tx: WorkspaceTxClient) => Promise<T>,
+    options?: { maxWait?: number; timeout?: number },
   ): Promise<T> {
-    return this.prisma.withWorkspace(workspaceId, ucUid, fn);
+    return this.prisma.withWorkspace(workspaceId, ucUid, fn, options);
   }
 }

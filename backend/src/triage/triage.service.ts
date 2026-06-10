@@ -385,9 +385,16 @@ export class TriageService {
     // performs. Every human keeps the full runForUser (D5) path. `user.id` for
     // the actor is the synthetic `federation:<app>` id (stamped on
     // createdById + app.uc_uid for attribution).
+    // Triage runs an embed + rerank + LLM (qwenDecide) pass PER item; on the
+    // local GPU that exceeds Prisma's 5s default interactive-transaction
+    // timeout (the proposal writes happen at the END of the pass, so the whole
+    // pass must fit inside the tx window). Give the ingest a generous window so
+    // the TriageProposal rows commit instead of hitting "transaction already
+    // closed". All other workspace transactions keep the tight 5s default.
+    const txOpts = { maxWait: 20000, timeout: 300000 };
     return opts?.federationActor
-      ? this.workspaceContext.runInWorkspace(workspaceId, user.id, ingest)
-      : this.workspaceContext.runForUser(user, ingest, workspaceId);
+      ? this.workspaceContext.runInWorkspace(workspaceId, user.id, ingest, txOpts)
+      : this.workspaceContext.runForUser(user, ingest, workspaceId, txOpts);
   }
 
   /** The "Unassigned / needs a project" inbox: kept, no project, not a dup, still pending. */
