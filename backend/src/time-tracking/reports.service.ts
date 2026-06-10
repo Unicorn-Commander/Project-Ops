@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, User, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { buildTimeEntryVisibilityFilter } from '../common/workspace/time-entry-visibility';
 import { decToNum } from './serialize';
 
@@ -15,7 +16,10 @@ function hours(seconds: number | null | undefined): number {
 
 @Injectable()
 export class ReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly workspaceContext: WorkspaceContextService,
+  ) {}
 
   private periodWhere(user: User, workspaceId: string, period: Period): Prisma.TimeEntryWhereInput {
     const where: Prisma.TimeEntryWhereInput = {
@@ -36,22 +40,29 @@ export class ReportsService {
     const where = this.periodWhere(user, workspaceId, period);
     if (period.userId) where.userId = period.userId;
 
-    const [totals, billables] = await Promise.all([
-      this.prisma.timeEntry.groupBy({ by: ['userId'], where, _sum: { durationSeconds: true } }),
-      this.prisma.timeEntry.groupBy({
-        by: ['userId'],
-        where: { ...where, billable: true },
-        _sum: { durationSeconds: true },
-      }),
-    ]);
+    const { totals, billableByUser, userById } = await this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const [totalsRows, billables] = await Promise.all([
+          tx.timeEntry.groupBy({ by: ['userId'], where, _sum: { durationSeconds: true } }),
+          tx.timeEntry.groupBy({
+            by: ['userId'],
+            where: { ...where, billable: true },
+            _sum: { durationSeconds: true },
+          }),
+        ]);
 
-    const billableByUser = new Map(billables.map((b) => [b.userId, b._sum.durationSeconds || 0]));
-    const userIds = totals.map((t) => t.userId);
-    const users = await this.prisma.user.findMany({
-      where: { id: { in: userIds } },
-      select: { id: true, firstName: true, lastName: true, email: true },
-    });
-    const userById = new Map(users.map((u) => [u.id, u]));
+        const billableMap = new Map(billables.map((b) => [b.userId, b._sum.durationSeconds || 0]));
+        const userIds = totalsRows.map((t) => t.userId);
+        const users = await tx.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        });
+        const usersById = new Map(users.map((u) => [u.id, u]));
+        return { totals: totalsRows, billableByUser: billableMap, userById: usersById };
+      },
+      workspaceId,
+    );
 
     const rows = totals.map((t) => {
       const totalSeconds = t._sum.durationSeconds || 0;
@@ -74,16 +85,21 @@ export class ReportsService {
   async getRealization(workspaceId: string, user: User, period: Period) {
     const where = this.periodWhere(user, workspaceId, period);
 
-    const [billable, billed] = await Promise.all([
-      this.prisma.timeEntry.aggregate({
-        where: { ...where, billable: true },
-        _sum: { billableAmount: true },
-      }),
-      this.prisma.timeEntry.aggregate({
-        where: { ...where, billable: true, billed: true },
-        _sum: { billableAmount: true },
-      }),
-    ]);
+    const [billable, billed] = await this.workspaceContext.runForUser(
+      user,
+      (tx) =>
+        Promise.all([
+          tx.timeEntry.aggregate({
+            where: { ...where, billable: true },
+            _sum: { billableAmount: true },
+          }),
+          tx.timeEntry.aggregate({
+            where: { ...where, billable: true, billed: true },
+            _sum: { billableAmount: true },
+          }),
+        ]),
+      workspaceId,
+    );
 
     const billableAmount = decToNum(billable._sum.billableAmount) || 0;
     const billedAmount = decToNum(billed._sum.billableAmount) || 0;
@@ -104,17 +120,23 @@ export class ReportsService {
       billed: false,
     };
 
-    const grouped = await this.prisma.timeEntry.groupBy({
-      by: ['projectId'],
-      where,
-      _sum: { billableAmount: true, roundingAppliedSeconds: true },
-    });
+    const { grouped, byId } = await this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const groupedRows = await tx.timeEntry.groupBy({
+          by: ['projectId'],
+          where,
+          _sum: { billableAmount: true, roundingAppliedSeconds: true },
+        });
 
-    const projects = await this.prisma.project.findMany({
-      where: { id: { in: grouped.map((g) => g.projectId) } },
-      select: { id: true, projectNumber: true, title: true, clientName: true },
-    });
-    const byId = new Map(projects.map((p) => [p.id, p]));
+        const projects = await tx.project.findMany({
+          where: { id: { in: groupedRows.map((g) => g.projectId) } },
+          select: { id: true, projectNumber: true, title: true, clientName: true },
+        });
+        return { grouped: groupedRows, byId: new Map(projects.map((p) => [p.id, p])) };
+      },
+      workspaceId,
+    );
 
     const rows = grouped.map((g) => ({
       projectId: g.projectId,
@@ -132,15 +154,20 @@ export class ReportsService {
     const where = this.periodWhere(user, workspaceId, period);
     if (period.projectId) where.projectId = period.projectId;
 
-    const entries = await this.prisma.timeEntry.findMany({
-      where,
-      orderBy: { startedAt: 'asc' },
-      include: {
-        user: { select: { firstName: true, lastName: true, email: true } },
-        project: { select: { projectNumber: true, title: true } },
-        task: { select: { title: true } },
-      },
-    });
+    const entries = await this.workspaceContext.runForUser(
+      user,
+      (tx) =>
+        tx.timeEntry.findMany({
+          where,
+          orderBy: { startedAt: 'asc' },
+          include: {
+            user: { select: { firstName: true, lastName: true, email: true } },
+            project: { select: { projectNumber: true, title: true } },
+            task: { select: { title: true } },
+          },
+        }),
+      workspaceId,
+    );
 
     const headers = [
       'Date',

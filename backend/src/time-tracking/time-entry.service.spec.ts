@@ -31,12 +31,19 @@ function makeService(fakes: {
   const audit = { log: async () => null };
   const events = { emit: () => true };
   const config = { get: (k: string, d?: string) => fakes.config?.[k] ?? d };
+  // Tenancy: services now wrap bodies in workspaceContext.runForUser(user, fn,
+  // wsId). The fake invokes fn with the fake prisma standing in for the tx, so
+  // the wrapped logic runs against the same fakes as before.
+  const workspaceContext = {
+    runForUser: async (_user: any, fn: (tx: any) => any) => fn(prisma),
+  };
   return new TimeEntryService(
     prisma as any,
     financials as any,
     audit as any,
     events as any,
     config as any,
+    workspaceContext as any,
   );
 }
 

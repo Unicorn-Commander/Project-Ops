@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, TaskType, UserRole, BillingRate } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 
 export interface RateResolutionInput {
   workspaceId: string;
@@ -60,10 +60,14 @@ export class RateResolverService {
    * Resolve the most-specific effective bill + cost rate for the given
    * (user, project, task, date). costRate drives margin reporting only and
    * must never be surfaced to a CLIENT.
+   *
+   * Runs on the caller's workspace `tx` (SUITE-IDENTITY §6): the BillingRate
+   * read MUST share the same RLS transaction as the entry being priced, so it
+   * is scoped to the active workspace under live RLS. Never opens its own tx.
    */
-  async resolve(input: RateResolutionInput): Promise<ResolvedRate> {
+  async resolve(tx: WorkspaceTxClient, input: RateResolutionInput): Promise<ResolvedRate> {
     const defaultCurrency = input.currency || 'USD';
-    const rows = await this.findCandidateRows(input);
+    const rows = await this.findCandidateRows(tx, input);
 
     // Best (lowest-rank) rate row for the bill rate; ties broken by the most
     // recent effectiveFrom so newer rates win.
@@ -110,7 +114,10 @@ export class RateResolverService {
     };
   }
 
-  private async findCandidateRows(input: RateResolutionInput): Promise<BillingRate[]> {
+  private async findCandidateRows(
+    tx: WorkspaceTxClient,
+    input: RateResolutionInput,
+  ): Promise<BillingRate[]> {
     const scopeMatches: Prisma.BillingRateWhereInput[] = [];
     if (input.taskId) scopeMatches.push({ scopeType: 'TASK', taskId: input.taskId });
     if (input.taskType) scopeMatches.push({ scopeType: 'TASK_TYPE', taskType: input.taskType });
@@ -127,7 +134,7 @@ export class RateResolverService {
 
     if (scopeMatches.length === 0) return [];
 
-    return this.prisma.billingRate.findMany({
+    return tx.billingRate.findMany({
       where: {
         workspaceId: input.workspaceId,
         effectiveFrom: { lte: input.date },

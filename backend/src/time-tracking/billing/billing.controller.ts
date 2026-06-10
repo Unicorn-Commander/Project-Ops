@@ -7,6 +7,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CurrentWorkspace } from '../../common/workspace/current-workspace.decorator';
 import { TimeTrackingEnabledGuard } from '../../common/workspace/time-tracking-enabled.guard';
+import { WorkspaceMembershipGuard } from '../../common/workspace/workspace-membership.guard';
 import { BillableRollupService } from './billable-rollup.service';
 import { CreateBillableDraftDto } from '../dto/create-billable-draft.dto';
 
@@ -18,7 +19,7 @@ function bearerFrom(authHeader?: string): string | null {
 
 @ApiTags('billing')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard, TimeTrackingEnabledGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TimeTrackingEnabledGuard, WorkspaceMembershipGuard)
 @Roles(UserRole.ADMIN, UserRole.MANAGER)
 @Controller('billing')
 export class BillingController {
@@ -42,7 +43,11 @@ export class BillingController {
 
   @Post('sync-invoice-status')
   @ApiOperation({ summary: 'Pull invoice status from Accounting-Ops and mirror onto projects' })
-  syncStatus(@CurrentUser() user: User, @Headers('authorization') auth?: string) {
-    return this.rollup.syncInvoiceStatuses(bearerFrom(auth));
+  syncStatus(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Headers('authorization') auth?: string,
+  ) {
+    return this.rollup.syncInvoiceStatuses(bearerFrom(auth), { workspaceId, user });
   }
 }

@@ -7,12 +7,13 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentWorkspace } from '../common/workspace/current-workspace.decorator';
 import { TimeTrackingEnabledGuard } from '../common/workspace/time-tracking-enabled.guard';
+import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
 import { TimesheetService } from './timesheet.service';
 import { SubmitTimesheetDto, ApproveTimeDto, RejectTimeDto } from './dto/timesheet.dto';
 
 @ApiTags('timesheets')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard, TimeTrackingEnabledGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TimeTrackingEnabledGuard, WorkspaceMembershipGuard)
 @Controller('timesheets')
 export class TimesheetsController {
   constructor(private readonly timesheets: TimesheetService) {}

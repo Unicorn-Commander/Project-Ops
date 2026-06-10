@@ -8,7 +8,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { User, UserRole, TimeEntry } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
+import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { AuditService } from '../audit/audit.service';
 import { EntryFinancialsService } from './entry-financials.service';
 import { buildVisibilityFilter } from '../mcp/mcp.tools';
@@ -30,6 +31,7 @@ export class TimerService {
     private readonly audit: AuditService,
     private readonly events: EventEmitter2,
     private readonly config: ConfigService,
+    private readonly workspaceContext: WorkspaceContextService,
   ) {}
 
   private assertCanWrite(user: Pick<User, 'role'>) {
@@ -47,50 +49,66 @@ export class TimerService {
   }
 
   async getRunning(workspaceId: string, user: Pick<User, 'id'>) {
-    const entry = await this.prisma.timeEntry.findFirst({
-      where: { workspaceId, userId: user.id, endedAt: null },
-      include: ENTRY_INCLUDE,
-    });
-    return entry ? serializeTimeEntry(entry, (user as User).role) : null;
+    return this.workspaceContext.runForUser(
+      user as User,
+      async (tx) => {
+        const entry = await tx.timeEntry.findFirst({
+          where: { workspaceId, userId: user.id, endedAt: null },
+          include: ENTRY_INCLUDE,
+        });
+        return entry ? serializeTimeEntry(entry, (user as User).role) : null;
+      },
+      workspaceId,
+    );
   }
 
   async startTimer(workspaceId: string, user: User, dto: StartTimerDto) {
     this.assertCanWrite(user);
 
-    const policy = await this.financials.resolveBillablePolicy(dto.projectId, dto.taskId);
-    await this.assertProjectAccess(user, policy.projectId);
+    // Whole start sequence (policy lookup → access check → stop any running →
+    // create) runs in ONE workspace tx so the single-running-timer invariant is
+    // enforced atomically and every read/write is RLS-scoped on the same tx.
+    const created = await this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const policy = await this.financials.resolveBillablePolicy(tx, dto.projectId, dto.taskId);
+        await this.assertProjectAccess(tx, user, policy.projectId);
 
-    // Enforce the single-running-timer invariant (also guarded by a partial
-    // unique index). Stop the existing one, or reject, per config.
-    const running = await this.prisma.timeEntry.findFirst({
-      where: { workspaceId, userId: user.id, endedAt: null },
-    });
-    if (running) {
-      if (this.startStopsRunning) {
-        await this.finishEntry(running, new Date(), user);
-      } else {
-        throw new BadRequestException(
-          'A timer is already running. Stop it before starting a new one.',
-        );
-      }
-    }
+        // Enforce the single-running-timer invariant (also guarded by a partial
+        // unique index). Stop the existing one, or reject, per config.
+        const running = await tx.timeEntry.findFirst({
+          where: { workspaceId, userId: user.id, endedAt: null },
+        });
+        if (running) {
+          if (this.startStopsRunning) {
+            await this.finishEntry(tx, running, new Date(), user);
+          } else {
+            throw new BadRequestException(
+              'A timer is already running. Stop it before starting a new one.',
+            );
+          }
+        }
 
-    const created = await this.prisma.timeEntry.create({
-      data: {
-        workspaceId,
-        userId: user.id,
-        projectId: policy.projectId,
-        taskId: dto.taskId ?? null,
-        description: dto.description ?? null,
-        startedAt: new Date(),
-        endedAt: null,
-        source: 'TIMER',
-        billable: policy.billable,
+        return tx.timeEntry.create({
+          data: {
+            workspaceId,
+            userId: user.id,
+            projectId: policy.projectId,
+            taskId: dto.taskId ?? null,
+            description: dto.description ?? null,
+            startedAt: new Date(),
+            endedAt: null,
+            source: 'TIMER',
+            billable: policy.billable,
+          },
+          include: ENTRY_INCLUDE,
+        });
       },
-      include: ENTRY_INCLUDE,
-    });
+      workspaceId,
+    );
 
     await this.audit.log({
+      workspaceId,
       userId: user.id,
       projectId: created.projectId,
       action: 'CREATE',
@@ -107,14 +125,19 @@ export class TimerService {
   async stopTimer(workspaceId: string, user: User) {
     this.assertCanWrite(user);
 
-    const running = await this.prisma.timeEntry.findFirst({
-      where: { workspaceId, userId: user.id, endedAt: null },
-    });
-    if (!running) {
-      throw new NotFoundException('No running timer to stop');
-    }
-
-    const stopped = await this.finishEntry(running, new Date(), user);
+    const stopped = await this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const running = await tx.timeEntry.findFirst({
+          where: { workspaceId, userId: user.id, endedAt: null },
+        });
+        if (!running) {
+          throw new NotFoundException('No running timer to stop');
+        }
+        return this.finishEntry(tx, running, new Date(), user);
+      },
+      workspaceId,
+    );
     this.logger.log(`stop_timer: user=${user.email} entry=${stopped.id}`);
     return serializeTimeEntry(stopped, user.role);
   }
@@ -122,9 +145,18 @@ export class TimerService {
   /**
    * Close a running entry at `endedAt`, computing duration, rounding, rates and
    * billable amount. Shared by stopTimer and the start-stops-running path.
+   *
+   * Runs on the caller's workspace `tx`: the financials compute (which reads
+   * project/task/rate rows) and the entry update share ONE RLS transaction with
+   * the caller, so they are workspace-scoped and atomic. Never opens its own tx.
    */
-  private async finishEntry(entry: TimeEntry, endedAt: Date, user: User): Promise<TimeEntry> {
-    const fin = await this.financials.compute({
+  private async finishEntry(
+    tx: WorkspaceTxClient,
+    entry: TimeEntry,
+    endedAt: Date,
+    user: User,
+  ): Promise<TimeEntry> {
+    const fin = await this.financials.compute(tx, {
       workspaceId: entry.workspaceId,
       userId: entry.userId,
       role: user.role,
@@ -135,7 +167,7 @@ export class TimerService {
       billable: entry.billable,
     });
 
-    const updated = await this.prisma.timeEntry.update({
+    const updated = await tx.timeEntry.update({
       where: { id: entry.id },
       data: {
         endedAt,
@@ -150,6 +182,7 @@ export class TimerService {
     });
 
     await this.audit.log({
+      workspaceId: entry.workspaceId,
       userId: user.id,
       projectId: updated.projectId,
       action: 'UPDATE',
@@ -161,8 +194,8 @@ export class TimerService {
     return updated;
   }
 
-  private async assertProjectAccess(user: User, projectId: string) {
-    const project = await this.prisma.project.findFirst({
+  private async assertProjectAccess(tx: WorkspaceTxClient, user: User, projectId: string) {
+    const project = await tx.project.findFirst({
       where: { id: projectId, ...buildVisibilityFilter(user) },
       select: { id: true },
     });

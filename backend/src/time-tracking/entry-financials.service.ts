@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, RoundingMode, UserRole } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { RateResolverService } from './rate-resolver.service';
 import { RoundingService, RoundingConfig } from './rounding.service';
 
@@ -34,6 +34,12 @@ export interface BillablePolicy {
  * Shared financial computation for time entries: rounding + rate resolution +
  * billableAmount. Used by the timer (on stop), manual entry, and edits so the
  * math is identical everywhere. All money is Decimal, rounded HALF_UP to cents.
+ *
+ * SUITE TENANCY: this is a helper that runs INSIDE the caller's workspace RLS
+ * transaction — every method takes the `tx` (WorkspaceTxClient) and does all DB
+ * access through it, never `this.prisma`. It never opens its own runForUser /
+ * $transaction (a nested transaction would be a savepoint, risking the GUC on a
+ * savepoint rollback and wasting a connection). Callers must already hold the tx.
  */
 @Injectable()
 export class EntryFinancialsService {
@@ -49,6 +55,7 @@ export class EntryFinancialsService {
    * (resolved from a task when only taskId is supplied).
    */
   async resolveBillablePolicy(
+    tx: WorkspaceTxClient,
     projectId?: string | null,
     taskId?: string | null,
   ): Promise<BillablePolicy> {
@@ -56,7 +63,7 @@ export class EntryFinancialsService {
     let taskBillable: boolean | null = null;
 
     if (taskId) {
-      const task = await this.prisma.task.findUnique({
+      const task = await tx.task.findUnique({
         where: { id: taskId },
         select: { projectId: true, billable: true },
       });
@@ -73,7 +80,7 @@ export class EntryFinancialsService {
       return { projectId: resolvedProjectId, billable: taskBillable };
     }
 
-    const project = await this.prisma.project.findUnique({
+    const project = await tx.project.findUnique({
       where: { id: resolvedProjectId },
       select: { billByDefault: true },
     });
@@ -83,13 +90,13 @@ export class EntryFinancialsService {
     return { projectId: resolvedProjectId, billable: project.billByDefault };
   }
 
-  async compute(input: ComputeInput): Promise<ComputedFinancials> {
+  async compute(tx: WorkspaceTxClient, input: ComputeInput): Promise<ComputedFinancials> {
     const rawSeconds = Math.max(
       0,
       Math.floor((input.endedAt.getTime() - input.startedAt.getTime()) / 1000),
     );
 
-    const project = await this.prisma.project.findUnique({
+    const project = await tx.project.findUnique({
       where: { id: input.projectId },
       select: {
         defaultBillRate: true,
@@ -106,7 +113,7 @@ export class EntryFinancialsService {
     let taskBillRate: Prisma.Decimal | null = null;
     let taskType: any = null;
     if (input.taskId) {
-      const task = await this.prisma.task.findUnique({
+      const task = await tx.task.findUnique({
         where: { id: input.taskId },
         select: { billRate: true, type: true },
       });
@@ -114,10 +121,10 @@ export class EntryFinancialsService {
       taskType = task?.type ?? null;
     }
 
-    const roundingConfig = await this.resolveRoundingConfig(project);
+    const roundingConfig = await this.resolveRoundingConfig(tx, project);
     const roundedSeconds = this.rounding.apply(rawSeconds, roundingConfig);
 
-    const rate = await this.rateResolver.resolve({
+    const rate = await this.rateResolver.resolve(tx, {
       workspaceId: input.workspaceId,
       date: input.startedAt,
       userId: input.userId,
@@ -150,10 +157,13 @@ export class EntryFinancialsService {
   }
 
   /** Project rounding policy → tenant default (SystemConfig) → NONE. */
-  private async resolveRoundingConfig(project: {
-    roundingMode: RoundingMode | null;
-    roundingIncrementMinutes: number | null;
-  }): Promise<RoundingConfig> {
+  private async resolveRoundingConfig(
+    tx: WorkspaceTxClient,
+    project: {
+      roundingMode: RoundingMode | null;
+      roundingIncrementMinutes: number | null;
+    },
+  ): Promise<RoundingConfig> {
     if (project.roundingMode && project.roundingMode !== RoundingMode.NONE) {
       return {
         mode: project.roundingMode,
@@ -161,7 +171,7 @@ export class EntryFinancialsService {
       };
     }
 
-    const cfg = await this.prisma.systemConfig.findUnique({
+    const cfg = await tx.systemConfig.findUnique({
       where: { key: 'time_tracking.rounding' },
     });
     if (cfg && cfg.value && typeof cfg.value === 'object') {

@@ -17,6 +17,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentWorkspace } from '../common/workspace/current-workspace.decorator';
 import { TimeTrackingEnabledGuard } from '../common/workspace/time-tracking-enabled.guard';
+import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
 import { TimerService } from './timer.service';
 import { TimeEntryService } from './time-entry.service';
 import { StartTimerDto } from './dto/start-timer.dto';
@@ -26,7 +27,7 @@ import { QueryTimeEntriesDto } from './dto/query-time-entries.dto';
 
 @ApiTags('time-entries')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard, TimeTrackingEnabledGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TimeTrackingEnabledGuard, WorkspaceMembershipGuard)
 @Controller('time-entries')
 export class TimeEntriesController {
   constructor(

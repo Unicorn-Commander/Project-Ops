@@ -9,7 +9,8 @@ import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma, User, UserRole, PaymentStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaService, WorkspaceTxClient } from '../../prisma/prisma.service';
+import { WorkspaceContextService } from '../../common/workspace/workspace-context.service';
 import { AuditService } from '../../audit/audit.service';
 import { decToNum } from '../serialize';
 import { BillableDraftAssembler, BillableSource } from './billable-draft.assembler';
@@ -50,6 +51,7 @@ export class BillableRollupService {
     private readonly assembler: BillableDraftAssembler,
     private readonly pdf: InvoicePdfService,
     @Inject(ACCOUNTING_OPS_PORT) private readonly ao: AccountingOpsPort,
+    private readonly workspaceContext: WorkspaceContextService,
   ) {}
 
   async createBillableDraft(
@@ -65,7 +67,21 @@ export class BillableRollupService {
       throw new BadRequestException('Provide projectId or clientId');
     }
 
-    const entries = await this.gatherEntries(workspaceId, dto);
+    // Read phase: gather candidate entries + resolve the customer in ONE short
+    // workspace tx, then CLOSE it before any network/file I/O (MinIO PDF render,
+    // Accounting-Ops HTTP). Holding a tx open across I/O would pin a connection
+    // and risk the SET LOCAL GUC's transaction outliving its purpose. The
+    // write-back (markBilledAndMirror) opens its own SECOND tx after the I/O.
+    const { entries, customer } = await this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const rows = await this.gatherEntries(tx, workspaceId, dto);
+        // resolveCustomer may read a Contact; do it in the same read tx.
+        const cust = await this.resolveCustomer(tx, workspaceId, dto, rows);
+        return { entries: rows, customer: cust };
+      },
+      workspaceId,
+    );
     if (entries.length === 0) {
       throw new BadRequestException(
         'No approved, billable, unbilled time entries match this scope/period',
@@ -97,7 +113,6 @@ export class BillableRollupService {
     }));
 
     const draft = this.assembler.assemble(sources, dto.groupBy ?? BillableGroupBy.TASK);
-    const customer = await this.resolveCustomer(workspaceId, dto, priced);
     const externalRef = buildExternalRef(
       workspaceId,
       { projectId: dto.projectId, clientId: dto.clientId },
@@ -147,7 +162,9 @@ export class BillableRollupService {
     }
 
     if (aoResult && aoResult.ok) {
+      // Write-back phase: SECOND short workspace tx, after the AO I/O completed.
       await this.markBilledAndMirror(
+        user,
         workspaceId,
         draft.sourceIds,
         projectIds,
@@ -156,6 +173,7 @@ export class BillableRollupService {
         draft.total,
       );
       await this.audit.log({
+        workspaceId,
         userId: user.id,
         projectId: singleProject?.id,
         action: 'EXPORT',
@@ -194,6 +212,7 @@ export class BillableRollupService {
         : 'Live Accounting-Ops invoicing is off. Connect Accounting-Ops to invoice.';
 
     await this.audit.log({
+      workspaceId,
       userId: user.id,
       projectId: singleProject?.id,
       action: 'EXPORT',
@@ -218,53 +237,105 @@ export class BillableRollupService {
    * Pull invoice status from AO for billed entries and mirror onto the Project
    * billing fields. AO has no webhooks, so this is poll-driven. Requires a
    * bearer (service token in the poller, or the user's token on demand).
+   *
+   * SUITE TENANCY (§6): the DB reads/writes are workspace-scoped and MUST run on
+   * a workspace RLS tx — under live RLS a cross-workspace scan is illegal. Pass
+   * `scope`:
+   *   - `{ workspaceId, user }` (on-demand REST/MCP) → wrapped in runForUser,
+   *   - `{ workspaceId }` (poller, no request user) → wrapped in withWorkspace.
+   * When `scope` is omitted there is no workspace to fence the query to, so it is
+   * a safe no-op (returns synced:0). Network I/O (AO getInvoice) is done between
+   * short reads/writes, never holding a tx open across the HTTP call.
+   *
+   * NOTE: `bearerToken` stays the FIRST positional arg for backward-compat with
+   * the MCP `sync_invoice_status` tool, which calls `syncInvoiceStatuses(token)`.
    */
-  async syncInvoiceStatuses(bearerToken: string | null | undefined, limit = 100): Promise<{ synced: number }> {
+  async syncInvoiceStatuses(
+    bearerToken: string | null | undefined,
+    scope?: { workspaceId: string; user?: User },
+    limit = 100,
+  ): Promise<{ synced: number }> {
     if (!bearerToken) return { synced: 0 };
+    if (!scope?.workspaceId) {
+      // No workspace context → can't fence the query under RLS; do nothing.
+      this.logger.debug('syncInvoiceStatuses skipped: no workspace scope provided');
+      return { synced: 0 };
+    }
 
-    const refs = await this.prisma.timeEntry.findMany({
-      where: { billed: true, invoiceRef: { not: null } },
-      distinct: ['invoiceRef'],
-      select: { invoiceRef: true },
-      take: limit,
-    });
+    // Read the distinct billed invoice refs for THIS workspace in one short tx.
+    const refs = await this.runScopedSync(scope, (tx) =>
+      tx.timeEntry.findMany({
+        where: { workspaceId: scope.workspaceId, billed: true, invoiceRef: { not: null } },
+        distinct: ['invoiceRef'],
+        select: { invoiceRef: true },
+        take: limit,
+      }),
+    );
 
     let synced = 0;
     for (const r of refs) {
       const invoiceId = r.invoiceRef as string;
+      // Network call OUTSIDE any tx.
       const inv = await this.ao.getInvoice(invoiceId, { bearerToken });
       if (!inv) continue;
 
-      const projects = await this.prisma.timeEntry.findMany({
-        where: { invoiceRef: invoiceId },
-        distinct: ['projectId'],
-        select: { projectId: true },
-      });
       const total = inv.total != null ? Number(inv.total) : null;
       const balance = inv.balanceDue != null ? Number(inv.balanceDue) : null;
       const amountPaid = total != null && balance != null ? Math.max(0, total - balance) : undefined;
       const paymentStatus = mapPaymentStatus(inv.status);
 
-      for (const p of projects) {
-        await this.prisma.project.update({
-          where: { id: p.projectId },
-          data: {
-            paymentStatus,
-            ...(amountPaid !== undefined ? { amountPaid: amountPaid as any } : {}),
-            ...(paymentStatus === PaymentStatus.PAID ? { paymentReceivedDate: new Date() } : {}),
-          },
+      // Read affected projects + mirror onto them in one short workspace tx.
+      const projects = await this.runScopedSync(scope, async (tx) => {
+        const ps = await tx.timeEntry.findMany({
+          where: { workspaceId: scope.workspaceId, invoiceRef: invoiceId },
+          distinct: ['projectId'],
+          select: { projectId: true },
         });
+        for (const p of ps) {
+          await tx.project.update({
+            where: { id: p.projectId },
+            data: {
+              paymentStatus,
+              ...(amountPaid !== undefined ? { amountPaid: amountPaid as any } : {}),
+              ...(paymentStatus === PaymentStatus.PAID ? { paymentReceivedDate: new Date() } : {}),
+            },
+          });
+        }
+        return ps;
+      });
+
+      for (const p of projects) {
         this.events.emit('project.status-changed', { projectId: p.projectId, paymentStatus });
       }
       synced += 1;
     }
-    if (synced) this.logger.log(`syncInvoiceStatuses: updated ${synced} invoice mirror(s)`);
+    if (synced) this.logger.log(`syncInvoiceStatuses: updated ${synced} invoice mirror(s) ws=${scope.workspaceId}`);
     return { synced };
+  }
+
+  /**
+   * Run `fn` inside the right workspace RLS tx for a sync call: runForUser when a
+   * request user is present (re-authorizes membership), else withWorkspace for
+   * the system poller. Kept private so the sync loop can open several short txns
+   * around the AO network I/O instead of one long-held transaction.
+   */
+  private runScopedSync<T>(
+    scope: { workspaceId: string; user?: User },
+    fn: (tx: WorkspaceTxClient) => Promise<T>,
+  ): Promise<T> {
+    if (scope.user) {
+      return this.workspaceContext.runForUser(scope.user, fn, scope.workspaceId);
+    }
+    return this.prisma.withWorkspace(scope.workspaceId, '', fn);
   }
 
   // ── internals ────────────────────────────────────────────
 
-  private async gatherEntries(workspaceId: string, dto: CreateBillableDraftDto) {
+  private async gatherEntries(
+    tx: WorkspaceTxClient,
+    workspaceId: string,
+    dto: CreateBillableDraftDto,
+  ) {
     const where: Prisma.TimeEntryWhereInput = {
       workspaceId,
       approvalStatus: 'APPROVED',
@@ -284,7 +355,7 @@ export class BillableRollupService {
       where.startedAt = range;
     }
 
-    return this.prisma.timeEntry.findMany({
+    return tx.timeEntry.findMany({
       where,
       orderBy: { startedAt: 'asc' },
       include: {
@@ -306,12 +377,13 @@ export class BillableRollupService {
   }
 
   private async resolveCustomer(
+    tx: WorkspaceTxClient,
     workspaceId: string,
     dto: CreateBillableDraftDto,
     priced: any[],
   ): Promise<{ name: string; email?: string | null; contactId?: string | null }> {
     if (dto.clientId) {
-      const contact = await this.prisma.contact.findUnique({ where: { id: dto.clientId } });
+      const contact = await tx.contact.findUnique({ where: { id: dto.clientId } });
       if (contact) {
         const name = `${contact.firstName} ${contact.lastName}`.trim() || contact.company || 'Client';
         return { name, email: contact.email, contactId: contact.id };
@@ -333,6 +405,7 @@ export class BillableRollupService {
   }
 
   private async markBilledAndMirror(
+    user: User,
     workspaceId: string,
     sourceIds: string[],
     projectIds: string[],
@@ -344,37 +417,39 @@ export class BillableRollupService {
     const invoice = aoResult.invoice;
     const paymentStatus = mapPaymentStatus(invoice.status);
 
-    const ops: Prisma.PrismaPromise<any>[] = [
-      this.prisma.timeEntry.updateMany({
-        where: { id: { in: sourceIds }, workspaceId, billed: false },
-        data: { billed: true, invoiceRef: invoice.id, lockedAt: now },
-      }),
-    ];
+    // A $transaction(ARRAY) batch CANNOT carry SET LOCAL, so it would bypass the
+    // RLS GUC under the NOBYPASSRLS runtime role. Rewritten as an interactive
+    // runForUser callback: same atomicity (single tx, all-or-nothing) AND the
+    // GUC is pinned for the duration.
+    await this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        await tx.timeEntry.updateMany({
+          where: { id: { in: sourceIds }, workspaceId, billed: false },
+          data: { billed: true, invoiceRef: invoice.id, lockedAt: now },
+        });
 
-    if (singleProjectId) {
-      ops.push(
-        this.prisma.project.update({
-          where: { id: singleProjectId },
-          data: {
-            invoiceNumber: invoice.invoiceNumber ?? invoice.id,
-            billingAmount: (invoice.total ? Number(invoice.total) : Number(total)) as any,
-            paymentStatus,
-            billingDate: now,
-          },
-        }),
-      );
-    } else {
-      // Multi-project client invoice: stamp the invoice ref on each project,
-      // but don't overwrite per-project billingAmount.
-      ops.push(
-        this.prisma.project.updateMany({
-          where: { id: { in: projectIds } },
-          data: { invoiceNumber: invoice.invoiceNumber ?? invoice.id, billingDate: now },
-        }),
-      );
-    }
-
-    await this.prisma.$transaction(ops);
+        if (singleProjectId) {
+          await tx.project.update({
+            where: { id: singleProjectId },
+            data: {
+              invoiceNumber: invoice.invoiceNumber ?? invoice.id,
+              billingAmount: (invoice.total ? Number(invoice.total) : Number(total)) as any,
+              paymentStatus,
+              billingDate: now,
+            },
+          });
+        } else {
+          // Multi-project client invoice: stamp the invoice ref on each project,
+          // but don't overwrite per-project billingAmount.
+          await tx.project.updateMany({
+            where: { id: { in: projectIds } },
+            data: { invoiceNumber: invoice.invoiceNumber ?? invoice.id, billingDate: now },
+          });
+        }
+      },
+      workspaceId,
+    );
   }
 
   private draftView(draft: { lineItems: any[]; total: string; currency: string; entryCount: number }) {

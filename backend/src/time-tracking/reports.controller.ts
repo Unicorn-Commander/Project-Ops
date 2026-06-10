@@ -6,11 +6,12 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentWorkspace } from '../common/workspace/current-workspace.decorator';
 import { TimeTrackingEnabledGuard } from '../common/workspace/time-tracking-enabled.guard';
+import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
 import { ReportsService } from './reports.service';
 
 @ApiTags('time-reports')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard, TimeTrackingEnabledGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TimeTrackingEnabledGuard, WorkspaceMembershipGuard)
 @Controller('time-reports')
 export class ReportsController {
   constructor(private readonly reports: ReportsService) {}

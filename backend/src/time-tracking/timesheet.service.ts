@@ -8,7 +8,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { User, UserRole } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
+import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { AuditService } from '../audit/audit.service';
 import { SubmitTimesheetDto, ApproveTimeDto, RejectTimeDto } from './dto/timesheet.dto';
 
@@ -21,6 +22,7 @@ export class TimesheetService {
     private readonly audit: AuditService,
     private readonly events: EventEmitter2,
     private readonly config: ConfigService,
+    private readonly workspaceContext: WorkspaceContextService,
   ) {}
 
   private assertApprover(user: Pick<User, 'role'>) {
@@ -38,62 +40,75 @@ export class TimesheetService {
     const anchor = dto.periodStart ? new Date(dto.periodStart) : new Date();
     const { periodStart, periodEnd } = this.weekBounds(anchor);
 
-    const draftEntries = await this.prisma.timeEntry.findMany({
-      where: {
-        workspaceId,
-        userId: user.id,
-        approvalStatus: 'DRAFT',
-        lockedAt: null,
-        billed: false,
-        endedAt: { not: null, gte: periodStart, lte: periodEnd },
-      },
-      select: { id: true },
-    });
-    if (draftEntries.length === 0) {
-      throw new BadRequestException('No draft time entries to submit for this week');
-    }
+    // The draft scan + period upsert + entry updateMany + audit are ONE workspace
+    // tx so they are RLS-scoped and atomic (the upsert and the bulk update can't
+    // diverge across a partial failure).
+    const { period, entryCount } = await this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const draftEntries = await tx.timeEntry.findMany({
+          where: {
+            workspaceId,
+            userId: user.id,
+            approvalStatus: 'DRAFT',
+            lockedAt: null,
+            billed: false,
+            endedAt: { not: null, gte: periodStart, lte: periodEnd },
+          },
+          select: { id: true },
+        });
+        if (draftEntries.length === 0) {
+          throw new BadRequestException('No draft time entries to submit for this week');
+        }
 
-    const period = await this.prisma.timesheetPeriod.upsert({
-      where: {
-        workspaceId_userId_periodStart: { workspaceId, userId: user.id, periodStart },
-      },
-      create: {
-        workspaceId,
-        userId: user.id,
-        periodStart,
-        periodEnd,
-        status: 'SUBMITTED',
-        submittedAt: new Date(),
-      },
-      update: {
-        status: 'SUBMITTED',
-        submittedAt: new Date(),
-        rejectionReason: null,
-      },
-    });
+        const submitted = await tx.timesheetPeriod.upsert({
+          where: {
+            workspaceId_userId_periodStart: { workspaceId, userId: user.id, periodStart },
+          },
+          create: {
+            workspaceId,
+            userId: user.id,
+            periodStart,
+            periodEnd,
+            status: 'SUBMITTED',
+            submittedAt: new Date(),
+          },
+          update: {
+            status: 'SUBMITTED',
+            submittedAt: new Date(),
+            rejectionReason: null,
+          },
+        });
 
-    await this.prisma.timeEntry.updateMany({
-      where: { id: { in: draftEntries.map((e) => e.id) } },
-      data: { timesheetPeriodId: period.id, approvalStatus: 'SUBMITTED' },
-    });
+        await tx.timeEntry.updateMany({
+          where: { id: { in: draftEntries.map((e) => e.id) }, workspaceId },
+          data: { timesheetPeriodId: submitted.id, approvalStatus: 'SUBMITTED' },
+        });
 
-    await this.audit.log({
-      userId: user.id,
-      action: 'UPDATE',
-      resource: 'TimesheetPeriod',
-      resourceId: period.id,
-      details: { action: 'submit_timesheet', entryCount: draftEntries.length },
-    });
+        await this.audit.log({
+          workspaceId,
+          userId: user.id,
+          action: 'UPDATE',
+          resource: 'TimesheetPeriod',
+          resourceId: submitted.id,
+          details: { action: 'submit_timesheet', entryCount: draftEntries.length },
+        });
+
+        return { period: submitted, entryCount: draftEntries.length };
+      },
+      workspaceId,
+    );
+
     this.events.emit('timesheet.submitted', {
       timesheetPeriodId: period.id,
       userId: user.id,
-      entryCount: draftEntries.length,
+      entryCount,
     });
     this.logger.log(
-      `submit_timesheet: user=${user.email} period=${period.id} entries=${draftEntries.length}`,
+      `submit_timesheet: user=${user.email} period=${period.id} entries=${entryCount}`,
     );
 
-    return { ...period, entryCount: draftEntries.length };
+    return { ...period, entryCount };
   }
 
   // ── Approve ──────────────────────────────────────────────
@@ -102,34 +117,52 @@ export class TimesheetService {
     this.assertApprover(approver);
     const now = new Date();
 
-    const entryIds = await this.targetEntryIds(workspaceId, dto.timesheetPeriodId, dto.timeEntryIds, 'SUBMITTED');
-    if (entryIds.length === 0) {
-      throw new BadRequestException('No submitted time entries to approve');
-    }
+    // Target-id resolution + bulk approve + period close + audit are ONE
+    // workspace tx (RLS-scoped, atomic).
+    const count = await this.workspaceContext.runForUser(
+      approver,
+      async (tx) => {
+        const entryIds = await this.targetEntryIds(
+          tx,
+          workspaceId,
+          dto.timesheetPeriodId,
+          dto.timeEntryIds,
+          'SUBMITTED',
+        );
+        if (entryIds.length === 0) {
+          throw new BadRequestException('No submitted time entries to approve');
+        }
 
-    const result = await this.prisma.timeEntry.updateMany({
-      where: { id: { in: entryIds }, workspaceId, approvalStatus: 'SUBMITTED' },
-      data: { approvalStatus: 'APPROVED', approvedById: approver.id, approvedAt: now, lockedAt: now },
-    });
+        const result = await tx.timeEntry.updateMany({
+          where: { id: { in: entryIds }, workspaceId, approvalStatus: 'SUBMITTED' },
+          data: { approvalStatus: 'APPROVED', approvedById: approver.id, approvedAt: now, lockedAt: now },
+        });
 
-    if (dto.timesheetPeriodId) {
-      await this.maybeClosePeriod(workspaceId, dto.timesheetPeriodId, approver.id, now);
-    }
+        if (dto.timesheetPeriodId) {
+          await this.maybeClosePeriod(tx, workspaceId, dto.timesheetPeriodId, approver.id, now);
+        }
 
-    await this.audit.log({
-      userId: approver.id,
-      action: 'UPDATE',
-      resource: 'TimeEntry',
-      details: { action: 'approve_time', count: result.count, periodId: dto.timesheetPeriodId },
-    });
+        await this.audit.log({
+          workspaceId,
+          userId: approver.id,
+          action: 'UPDATE',
+          resource: 'TimeEntry',
+          details: { action: 'approve_time', count: result.count, periodId: dto.timesheetPeriodId },
+        });
+
+        return result.count;
+      },
+      workspaceId,
+    );
+
     this.events.emit('timesheet.approved', {
       timesheetPeriodId: dto.timesheetPeriodId ?? null,
       approvedBy: approver.id,
-      count: result.count,
+      count,
     });
-    this.logger.log(`approve_time: approver=${approver.email} count=${result.count}`);
+    this.logger.log(`approve_time: approver=${approver.email} count=${count}`);
 
-    return { approved: result.count };
+    return { approved: count };
   }
 
   // ── Reject ───────────────────────────────────────────────
@@ -140,62 +173,81 @@ export class TimesheetService {
       throw new BadRequestException('A rejection reason is required');
     }
 
-    const entryIds = await this.targetEntryIds(workspaceId, dto.timesheetPeriodId, dto.timeEntryIds, 'SUBMITTED');
-    if (entryIds.length === 0) {
-      throw new BadRequestException('No submitted time entries to reject');
-    }
+    // Target-id resolution + bulk reject + period status + audit are ONE
+    // workspace tx (RLS-scoped, atomic).
+    const count = await this.workspaceContext.runForUser(
+      approver,
+      async (tx) => {
+        const entryIds = await this.targetEntryIds(
+          tx,
+          workspaceId,
+          dto.timesheetPeriodId,
+          dto.timeEntryIds,
+          'SUBMITTED',
+        );
+        if (entryIds.length === 0) {
+          throw new BadRequestException('No submitted time entries to reject');
+        }
 
-    const result = await this.prisma.timeEntry.updateMany({
-      where: { id: { in: entryIds }, workspaceId, approvalStatus: 'SUBMITTED' },
-      data: { approvalStatus: 'DRAFT', rejectionReason: dto.reason, approvedById: null, approvedAt: null },
-    });
+        const result = await tx.timeEntry.updateMany({
+          where: { id: { in: entryIds }, workspaceId, approvalStatus: 'SUBMITTED' },
+          data: { approvalStatus: 'DRAFT', rejectionReason: dto.reason, approvedById: null, approvedAt: null },
+        });
 
-    if (dto.timesheetPeriodId) {
-      await this.prisma.timesheetPeriod.updateMany({
-        where: { id: dto.timesheetPeriodId, workspaceId },
-        data: { status: 'REJECTED', rejectionReason: dto.reason },
-      });
-    }
+        if (dto.timesheetPeriodId) {
+          await tx.timesheetPeriod.updateMany({
+            where: { id: dto.timesheetPeriodId, workspaceId },
+            data: { status: 'REJECTED', rejectionReason: dto.reason },
+          });
+        }
 
-    await this.audit.log({
-      userId: approver.id,
-      action: 'UPDATE',
-      resource: 'TimeEntry',
-      details: { action: 'reject_time', count: result.count, reason: dto.reason },
-    });
+        await this.audit.log({
+          workspaceId,
+          userId: approver.id,
+          action: 'UPDATE',
+          resource: 'TimeEntry',
+          details: { action: 'reject_time', count: result.count, reason: dto.reason },
+        });
+
+        return result.count;
+      },
+      workspaceId,
+    );
+
     this.events.emit('timesheet.rejected', {
       timesheetPeriodId: dto.timesheetPeriodId ?? null,
       rejectedBy: approver.id,
-      count: result.count,
+      count,
     });
-    this.logger.log(`reject_time: approver=${approver.email} count=${result.count}`);
+    this.logger.log(`reject_time: approver=${approver.email} count=${count}`);
 
-    return { rejected: result.count };
+    return { rejected: count };
   }
 
   // ── internals ────────────────────────────────────────────
 
   /** Resolve the set of entry ids to act on (explicit ids, or all in a period). */
   private async targetEntryIds(
+    tx: WorkspaceTxClient,
     workspaceId: string,
     periodId: string | undefined,
     explicitIds: string[] | undefined,
     requiredStatus: 'SUBMITTED',
   ): Promise<string[]> {
     if (explicitIds && explicitIds.length) {
-      const rows = await this.prisma.timeEntry.findMany({
+      const rows = await tx.timeEntry.findMany({
         where: { id: { in: explicitIds }, workspaceId, approvalStatus: requiredStatus },
         select: { id: true },
       });
       return rows.map((r) => r.id);
     }
     if (periodId) {
-      const period = await this.prisma.timesheetPeriod.findFirst({
+      const period = await tx.timesheetPeriod.findFirst({
         where: { id: periodId, workspaceId },
         select: { id: true },
       });
       if (!period) throw new NotFoundException(`Timesheet period ${periodId} not found`);
-      const rows = await this.prisma.timeEntry.findMany({
+      const rows = await tx.timeEntry.findMany({
         where: { timesheetPeriodId: periodId, workspaceId, approvalStatus: requiredStatus },
         select: { id: true },
       });
@@ -205,12 +257,18 @@ export class TimesheetService {
   }
 
   /** Mark a period APPROVED once it has no remaining SUBMITTED entries. */
-  private async maybeClosePeriod(workspaceId: string, periodId: string, approverId: string, when: Date) {
-    const remaining = await this.prisma.timeEntry.count({
+  private async maybeClosePeriod(
+    tx: WorkspaceTxClient,
+    workspaceId: string,
+    periodId: string,
+    approverId: string,
+    when: Date,
+  ) {
+    const remaining = await tx.timeEntry.count({
       where: { timesheetPeriodId: periodId, workspaceId, approvalStatus: 'SUBMITTED' },
     });
     if (remaining === 0) {
-      await this.prisma.timesheetPeriod.updateMany({
+      await tx.timesheetPeriod.updateMany({
         where: { id: periodId, workspaceId },
         data: { status: 'APPROVED', approvedById: approverId, approvedAt: when },
       });
