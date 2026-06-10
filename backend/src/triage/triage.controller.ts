@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Param,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -14,6 +15,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentWorkspace } from '../common/workspace/current-workspace.decorator';
 import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
+import { FederationActorGuard } from '../common/workspace/federation-actor.guard';
 import { User, UserRole } from '@prisma/client';
 
 /**
@@ -27,7 +29,17 @@ import { User, UserRole } from '@prisma/client';
  */
 @ApiTags('triage')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard, WorkspaceMembershipGuard)
+// Guard order matters: authenticate (JwtAuthGuard) → elevate a trusted
+// federation actor on the propose-only `ingest` route (FederationActorGuard,
+// which then short-circuits the next two) → human role (RolesGuard) → human
+// workspace membership / D5 (WorkspaceMembershipGuard). Non-federation requests
+// flow through the human path exactly as before.
+@UseGuards(
+  JwtAuthGuard,
+  FederationActorGuard,
+  RolesGuard,
+  WorkspaceMembershipGuard,
+)
 @Controller('triage')
 export class TriageController {
   constructor(private readonly triage: TriageService) {}
@@ -39,13 +51,19 @@ export class TriageController {
   ingest(
     @CurrentWorkspace() workspaceId: string,
     @CurrentUser() user: User,
+    @Req() req: { federationActor?: string | null },
     @Body() body: { items: CandidateItem[]; sourceType?: string },
   ) {
     const items = (body.items ?? []).map((it) => ({
       ...it,
       sourceType: it.sourceType ?? body.sourceType,
     }));
-    return this.triage.ingestCandidates(workspaceId, user, items);
+    // req.federationActor is set ONLY by FederationActorGuard after the actor
+    // allow-list check; when present the service uses the membership-free
+    // workspace path (the actor is not a human member).
+    return this.triage.ingestCandidates(workspaceId, user, items, {
+      federationActor: req.federationActor ?? null,
+    });
   }
 
   /** The "Unassigned / needs a project" inbox. */

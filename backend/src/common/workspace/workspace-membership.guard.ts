@@ -41,6 +41,16 @@ export class WorkspaceMembershipGuard implements CanActivate {
       throw new ForbiddenException('Authentication required.');
     }
 
+    // A trusted federation actor has already been authorized by
+    // FederationActorGuard (actor allow-list + route scope), which stamped the
+    // Brigade-vouched tenant onto req.workspaceId. Such an actor is NOT a
+    // member of any workspace (by design — least privilege); skip the human D5
+    // membership check for it. Humans never set req.federationActor, so the
+    // membership path below is unchanged for every real user.
+    if (req.federationActor && req.workspaceId) {
+      return true;
+    }
+
     // D4 precedence: explicit path param / X-Workspace-Id header wins; else the
     // validated token claim. When NEITHER is present we pass null (NOT
     // DEFAULT_WORKSPACE_ID) so resolveAndAuthorize falls to the user's DEFAULT

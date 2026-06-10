@@ -247,6 +247,27 @@ export class AuthService {
           'Token audience does not match this app',
         );
       }
+
+      // Federation ACTOR detection. A Brigade token-exchange minted for a
+      // sibling APP (not a human) carries an RFC-8693 `act.client_id` and a
+      // service `sub` (not an email). Such a token must NOT be forced through
+      // the human access-list (it would 401); resolve a synthetic, non-DB
+      // federation principal instead. WHAT it may do is gated downstream by
+      // FederationActorGuard (actor allow-list + route scope + the
+      // Brigade-vouched workspace claim) — never by a Membership row. A token
+      // that ALSO resolves to a human (email claim / sub looks like an email)
+      // is treated as that human (on-behalf-of-user) so the human's membership
+      // governs, NOT the federation path.
+      const actorClientId =
+        payload?.act && typeof payload.act.client_id === 'string'
+          ? payload.act.client_id.trim()
+          : null;
+      const subIsEmail =
+        typeof payload?.sub === 'string' && payload.sub.includes('@');
+      const hasHumanIdentity = !!payload?.email || subIsEmail;
+      if (actorClientId && !hasHumanIdentity) {
+        return AuthService.buildFederationPrincipal(actorClientId);
+      }
     }
 
     if (isKeycloakRealmToken || isBrigadeFederationToken) {
@@ -283,6 +304,35 @@ export class AuthService {
       throw new UnauthorizedException('User not found or inactive');
     }
     return user;
+  }
+
+  /**
+   * A synthetic, NON-PERSISTENT principal for a trusted sibling-app federation
+   * call (a Brigade token-exchange whose `act.client_id` is the calling app,
+   * e.g. `meeting-ops`). It has no DB row and no human UserRole; it is
+   * authorized ONLY by FederationActorGuard (actor allow-list + route scope +
+   * the Brigade-vouched workspace claim), never by a Membership row. The `id`
+   * is a stable `federation:<app>` string used for the soft, non-FK
+   * `TriageProposal.createdById` attribution and `app.uc_uid`. The marker
+   * fields are read via the WithWorkspaceClaim cast downstream.
+   */
+  static buildFederationPrincipal(actorClientId: string): User {
+    const now = new Date();
+    return {
+      id: `federation:${actorClientId}`,
+      email: null,
+      username: `federation:${actorClientId}`,
+      password: null,
+      firstName: null,
+      lastName: null,
+      role: null,
+      isActive: true,
+      keycloakId: null,
+      createdAt: now,
+      updatedAt: now,
+      __isFederationActor: true,
+      __federationActor: actorClientId,
+    } as unknown as User;
   }
 
   /**

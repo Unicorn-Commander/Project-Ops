@@ -277,12 +277,11 @@ export class TriageService {
     workspaceId: string,
     user: User,
     items: CandidateItem[],
+    opts?: { federationActor?: string | null },
   ) {
     if (!items?.length) return { created: 0, skipped: 0, proposals: [] as any[] };
 
-    return this.workspaceContext.runForUser(
-      user,
-      async (tx) => {
+    const ingest = async (tx: WorkspaceTxClient) => {
         const index = await this.getProjectIndex(tx, workspaceId);
         const itemVecs = await this.embed(items.map((it) => it.text));
         const created: any[] = [];
@@ -378,9 +377,17 @@ export class TriageService {
           `triage: ${created.length} proposals (${skipped} skipped) user=${user.id} ws=${workspaceId}`,
         );
         return { created: created.length, skipped, proposals: created };
-      },
-      workspaceId,
-    );
+    };
+
+    // A trusted federation actor (e.g. Meeting-Ops via a Brigade exchange) is
+    // NOT a workspace member by design (least privilege); run in the
+    // Brigade-vouched workspace WITHOUT the membership re-check runForUser
+    // performs. Every human keeps the full runForUser (D5) path. `user.id` for
+    // the actor is the synthetic `federation:<app>` id (stamped on
+    // createdById + app.uc_uid for attribution).
+    return opts?.federationActor
+      ? this.workspaceContext.runInWorkspace(workspaceId, user.id, ingest)
+      : this.workspaceContext.runForUser(user, ingest, workspaceId);
   }
 
   /** The "Unassigned / needs a project" inbox: kept, no project, not a dup, still pending. */

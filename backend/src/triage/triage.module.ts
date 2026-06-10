@@ -7,6 +7,7 @@ import { TasksModule } from '../tasks/tasks.module';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { MembershipService } from '../common/workspace/membership.service';
 import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
+import { FederationActorGuard } from '../common/workspace/federation-actor.guard';
 
 /**
  * Project-Ops Triage Agent module (PO-owned).
@@ -30,6 +31,7 @@ import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membersh
     WorkspaceContextService,
     MembershipService,
     WorkspaceMembershipGuard,
+    FederationActorGuard,
   ],
   exports: [TriageService],
 })

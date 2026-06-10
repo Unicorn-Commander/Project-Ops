@@ -28,9 +28,19 @@ export const DEFAULT_WORKSPACE_FALLBACK = '00000000-0000-0000-0000-000000000000'
 // (`__workspaceClaim` = the token's `workspace_id`/`tenant_id`) and the acting
 // uchub subject (`__ucUid` = the token `sub`, used for `app.uc_uid` attribution
 // and as the Membership key). Both are non-persistent, request-scoped only.
+//
+// A FEDERATION ACTOR principal (a trusted sibling app calling via a Brigade
+// token-exchange, e.g. Meeting-Ops → triage ingest) is a SYNTHETIC, non-DB
+// principal: `__isFederationActor` is true and `__federationActor` is the
+// calling app's id (the Brigade token's `act.client_id`). It is NOT a human
+// user, carries no UserRole, and is authorized solely by FederationActorGuard
+// (actor allow-list + route scope + the Brigade-vouched `__workspaceClaim`),
+// never by a Membership row. A real human token NEVER sets these.
 export type WithWorkspaceClaim = User & {
   __workspaceClaim?: string | null;
   __ucUid?: string | null;
+  __isFederationActor?: boolean;
+  __federationActor?: string | null;
 };
 
 /**
