@@ -130,24 +130,28 @@ export class ProjectOpsTools {
   }
 
   /**
-   * Resolve the caller's active workspace (claim → default) and run `fn`
-   * inside its RLS transaction. Mirrors the canonical service shape
-   * `runForUser(user, tx => …, workspaceId)`: we resolve the id explicitly so
-   * it is identical to what `@CurrentWorkspace`/the PAT chokepoint resolved,
-   * and pass it back so `runForUser` re-authorizes membership against that
-   * same workspace.
+   * Resolve the caller's active workspace (explicit token claim → the user's
+   * DEFAULT MEMBERSHIP) and run `fn` inside its RLS transaction. We resolve +
+   * authorize the id explicitly — identical to what `@CurrentWorkspace`/the PAT
+   * chokepoint resolves — and pass it back so `runForUser` re-authorizes
+   * membership against that same workspace.
    *
    * The resolved `workspaceId` is also handed to `fn` so write tools can stamp
    * it onto new rows (the scoped columns are NOT NULL with no DB default — the
    * canonical services likewise set `workspaceId` explicitly on create), which
    * also satisfies the RLS WITH CHECK once the flag is on.
    */
-  private runScoped<T>(
+  private async runScoped<T>(
     user: User,
     fn: (tx: WorkspaceTxClient, workspaceId: string) => Promise<T>,
   ): Promise<T> {
     const ws = this.requireWorkspace();
-    const workspaceId = ws.resolve(user);
+    // A claimless human PAT (no `workspace_id` token claim) must resolve to the
+    // user's DEFAULT MEMBERSHIP — not the global DEFAULT_WORKSPACE_ID, which
+    // 403'd partner users (e.g. Shafen, whose only active membership is Genesis
+    // Flow Labs) with "Not a member of the requested workspace". resolveAuthorized
+    // authorizes membership and returns the id we pin as the RLS GUC.
+    const workspaceId = await ws.resolveAuthorized(user);
     return ws.runForUser(user, (tx) => fn(tx, workspaceId), workspaceId);
   }
 
