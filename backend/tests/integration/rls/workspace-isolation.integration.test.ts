@@ -84,13 +84,31 @@ describeOrSkip('SUITE-IDENTITY §9 — RLS workspace isolation (as project_ops_a
     if (prisma) await prisma.$disconnect();
   });
 
-  it('Invariant 1 — NO GUC set => zero rows (fail-closed)', async () => {
+  it('Invariant 1 — NO GUC set => zero rows (fail-closed read)', async () => {
     const { projects, tasks } = await withWorkspace(null, async (tx) => ({
       projects: await tx.project.count(),
       tasks: await tx.task.count(),
     }));
     expect(projects).toBe(0);
     expect(tasks).toBe(0);
+  });
+
+  it('Invariant 1 (write) — NO GUC set => INSERT rejected by WITH CHECK (fail-closed write)', async () => {
+    // Case (a): with no GUC, current_workspace_id() is NULL, so the WITH CHECK
+    // predicate `"workspaceId" = current_workspace_id()` evaluates to NULL (never
+    // TRUE) for ANY supplied workspaceId — the write is rejected. This proves the
+    // fence fails closed on writes too, not only on reads. We even hand it a real
+    // workspace id (MU) to show it is the missing GUC, not a bad id, that rejects.
+    await expect(
+      withWorkspace(null, (tx) =>
+        tx.$executeRaw`
+          INSERT INTO projects
+            (id, "workspaceId", "projectNumber", title, status, priority, "clientName", "createdById", "createdAt", "updatedAt")
+          VALUES
+            (gen_random_uuid(), ${MU}, 'NOGUC-INS-1', 'no-guc insert', 'NEW', 'MEDIUM',
+             'attacker', (SELECT id FROM users LIMIT 1), now(), now())`,
+      ),
+    ).rejects.toThrow(/row-level security/i);
   });
 
   it('Invariant 2 — GUC = Magic Unicorn => sees ONLY the 2 MU projects', async () => {
