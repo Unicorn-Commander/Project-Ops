@@ -14,8 +14,9 @@
  * loudly otherwise (no false green).
  *
  * Prerequisites (provisioned by the Phase D runbook against a THROWAWAY DB):
- *   - schema present (prisma db push) + the three tenancy migrations applied
- *     (roles, GUC chokepoint, RLS enable/force/policies, workspace seed);
+ *   - schema present (prisma db push) + the four tenancy migrations applied
+ *     (roles, GUC chokepoint, RLS enable/force/policies, workspace seed, MU
+ *     canonical re-key);
  *   - the two dogfood workspaces seeded (Magic Unicorn + Brightwater Labs);
  *   - 2 projects + 1 task per workspace, owned by users that exist;
  *   - aaron=OWNER@MU, shafen=MANAGER@GFL, shafen's MU membership REVOKED.
@@ -30,8 +31,9 @@ import { PrismaClient } from '@prisma/client';
 
 const APP_URL = process.env.PROJECT_OPS_APP_DATABASE_URL;
 
-// Known dogfood workspace ids (seed literals; see 20260609120000_phase2_workspace_seed).
-const MU = '0190a000-7e57-7000-8000-00000000b007'; // Magic Unicorn
+// Known dogfood workspace ids (seed literals; MU re-keyed to the suite-canonical
+// id by 20260610090000_mu_canonical_rekey — see 20260609120000_phase2_workspace_seed).
+const MU = '019e50a3-d995-723f-ab66-0f765f92c0f4'; // Magic Unicorn (suite-canonical)
 const GFL = '01924a3c-0000-7f1a-beef-67f1ab5c0001'; // Brightwater Labs
 
 // Skip (don't fail) when the non-bypass role URL isn't provisioned — keeps the

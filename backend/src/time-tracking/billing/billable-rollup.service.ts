@@ -247,8 +247,8 @@ export class BillableRollupService {
    * a safe no-op (returns synced:0). Network I/O (AO getInvoice) is done between
    * short reads/writes, never holding a tx open across the HTTP call.
    *
-   * NOTE: `bearerToken` stays the FIRST positional arg for backward-compat with
-   * the MCP `sync_invoice_status` tool, which calls `syncInvoiceStatuses(token)`.
+   * NOTE: `bearerToken` stays the FIRST positional arg; both the REST route and
+   * the MCP `sync_invoice_status` tool now pass `{ workspaceId, user }` as scope.
    */
   async syncInvoiceStatuses(
     bearerToken: string | null | undefined,

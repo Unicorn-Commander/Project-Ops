@@ -19,7 +19,7 @@ export class CreatePatDto {
   name: string;
 
   @ApiProperty({
-    example: '0190a000-7e57-7000-8000-00000000b007',
+    example: '019e50a3-d995-723f-ab66-0f765f92c0f4',
     required: false,
     description:
       'Workspace this token is scoped to. Must be a workspace the caller is an ' +

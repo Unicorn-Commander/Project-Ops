@@ -250,7 +250,10 @@ export class ProjectOpsTools {
 
   async syncInvoiceStatus(user: User, _args: Record<string, never>) {
     const tt = this.requireTt();
-    return tt.rollup.syncInvoiceStatuses(this.bearerToken);
+    return tt.rollup.syncInvoiceStatuses(this.bearerToken, {
+      workspaceId: this.workspaceFor(user),
+      user,
+    });
   }
 
   async listMyProjects(

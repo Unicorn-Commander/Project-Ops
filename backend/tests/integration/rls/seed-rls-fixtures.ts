@@ -56,8 +56,9 @@ import {
   UserRole,
 } from '@prisma/client';
 
-// --- Known dogfood ids (must match the §9 test + seed migration literals) ----
-const MU = '0190a000-7e57-7000-8000-00000000b007'; // Magic Unicorn
+// --- Known dogfood ids (must match the §9 test literals; MU is the suite-
+// canonical id MO/CO share, established by 20260610090000_mu_canonical_rekey) --
+const MU = '019e50a3-d995-723f-ab66-0f765f92c0f4'; // Magic Unicorn (suite-canonical)
 const GFL = '01924a3c-0000-7f1a-beef-67f1ab5c0001'; // Brightwater Labs
 
 // The ONLY two workspaces this seed is ever allowed to write into.

@@ -141,9 +141,11 @@ services:
       # --- Suite tenancy (PROJ-2026-000023, Phase 1: additive/inert) ---
       # DEFAULT_WORKSPACE_ID: the single bootstrap/dogfood workspace id new
       # rows resolve to until per-membership resolution drives it. Defaults to
-      # the id seeded by the suite_tenancy_rls_roles migration. uc-registry
-      # owns real ids; PO never mints.
-      DEFAULT_WORKSPACE_ID: ${DEFAULT_WORKSPACE_ID:-0190a000-7e57-7000-8000-00000000b007}
+      # the suite-canonical Magic Unicorn id (shared with Meeting-Ops +
+      # Contact-Ops; the mu_canonical_rekey migration re-keys the old
+      # self-minted bootstrap id to it). uc-registry owns real ids; PO never
+      # mints.
+      DEFAULT_WORKSPACE_ID: ${DEFAULT_WORKSPACE_ID:-019e50a3-d995-723f-ab66-0f765f92c0f4}
       # PROJECT_OPS_TENANCY_ENABLED: master switch for the membership gate.
       # DEFAULT OFF == today's behavior (no membership required, RLS inert
       # because the runtime still connects as the table owner). Do NOT enable

@@ -5,7 +5,7 @@
 #
 # Provisions a THROWAWAY Postgres in Docker on a NON-default port (so it never
 # collides with a real local Postgres / another project's container), applies the
-# documented db-push-managed bring-up (prisma db push as superuser -> the three
+# documented db-push-managed bring-up (prisma db push as superuser -> the four
 # tenancy migrations' SQL by hand -> seeds), then runs the §9 acceptance test as
 # the NOBYPASSRLS role `project_ops_app`.
 #
@@ -28,11 +28,12 @@ PG_DB="project_ops"
 PG_IMAGE="postgres:17-alpine"
 
 MIGRATIONS_DIR="prisma/migrations"
-# The three tenancy migrations, IN APPLY ORDER. Each is idempotent.
+# The four tenancy migrations, IN APPLY ORDER. Each is idempotent.
 MIGRATIONS=(
   "20260603051046_suite_tenancy_rls_roles"   # roles, GUC chokepoint, RLS, bootstrap ws
   "20260609000000_phase2_tenancy_cols"       # triage/PAT cols + triage RLS
   "20260609120000_phase2_workspace_seed"     # rebrand MU + add GFL + memberships
+  "20260610090000_mu_canonical_rekey"        # re-key MU bootstrap uuid -> suite-canonical (MO/CO-shared)
 )
 
 # --- Teardown trap: always remove the throwaway container ---------------------
@@ -82,7 +83,7 @@ export DATABASE_URL="postgresql://postgres:${PG_PASSWORD}@localhost:${PG_PORT}/$
 echo "[run.sh] prisma db push (creating schema as superuser)..."
 npx prisma db push --skip-generate
 
-# --- 4. Apply the three RLS migrations' SQL BY HAND, in order ------------------
+# --- 4. Apply the four RLS migrations' SQL BY HAND, in order -------------------
 #   The migrations contain DO $$ ... $$ blocks; piping the file into psql via
 #   `docker exec -i` preserves dollar-quoting. ON_ERROR_STOP aborts on a real
 #   error (the migrations are guarded/idempotent, so re-applying is safe).

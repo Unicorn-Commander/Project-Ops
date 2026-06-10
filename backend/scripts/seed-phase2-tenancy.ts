@@ -2,15 +2,19 @@
  * Phase 2 tenancy dogfood SEED — authoritative, idempotent.
  *
  * Governing spec: SUITE-IDENTITY.md (binding). Implementation brief:
- * docs/phase2-tenancy-blueprint.md (Phase C — C4). Companion to the migration
- * prisma/migrations/20260609120000_phase2_workspace_seed/migration.sql.
+ * docs/phase2-tenancy-blueprint.md (Phase C — C4). Companion to the migrations
+ * prisma/migrations/20260609120000_phase2_workspace_seed/migration.sql and
+ * prisma/migrations/20260610090000_mu_canonical_rekey/migration.sql (re-keys
+ * the self-minted bootstrap MU uuid to the suite-canonical one).
  *
  * Run with: `npm run seed:phase2`
  *
  * WHAT THIS DOES (all upserts — safe to run any number of times):
- *   1. Rebrands the bootstrap workspace 0190a000-…-b007 -> displayName
- *      "Magic Unicorn", slug "magic-unicorn" (it already holds ALL existing
- *      data).
+ *   1. Ensures the Magic Unicorn workspace at the SUITE-CANONICAL id
+ *      019e50a3-…-c0f4 -> displayName "Magic Unicorn", slug "magic-unicorn"
+ *      (it already holds ALL existing data; the former self-minted bootstrap
+ *      0190a000-…-b007 row is re-keyed to this id by the
+ *      20260610090000_mu_canonical_rekey migration).
  *   2. Ensures the second dogfood tenant "Brightwater Labs"
  *      (slug "brightwater-labs") exists at its HARDCODED uuidv7 literal.
  *   3. Pins the two AUTHORITATIVE operator memberships (these override
@@ -48,7 +52,12 @@ import { PrismaClient, MembershipStatus, WorkspaceRole } from '@prisma/client';
 const prisma = new PrismaClient();
 
 // --- Known dogfood ids (see migration header) -------------------------------
-const MAGIC_UNICORN_ID = '0190a000-7e57-7000-8000-00000000b007';
+// Suite-canonical Magic Unicorn workspace id — the SAME id Meeting-Ops +
+// Contact-Ops already share (PO was the 3-way outlier; the self-minted
+// bootstrap 0190a000-…-b007 is re-keyed to this id by the
+// 20260610090000_mu_canonical_rekey migration). Still to be RECONCILED with
+// uc-registry when that ships.
+const MAGIC_UNICORN_ID = '019e50a3-d995-723f-ab66-0f765f92c0f4';
 // PO must NOT runtime-mint per SUITE-IDENTITY — this literal is a dogfood seed
 // to RECONCILE with uc-registry in Phase E. Valid lowercase uuidv7.
 const GENESIS_FLOW_LABS_ID = '01924a3c-0000-7f1a-beef-67f1ab5c0001';
@@ -81,7 +90,8 @@ const AUTHORITATIVE_MEMBERSHIPS: SeedMembership[] = [
 async function main(): Promise<void> {
   console.log('[seed:phase2] Seeding Phase 2 dogfood tenancy...');
 
-  // 1. Rebrand the bootstrap workspace -> "Magic Unicorn".
+  // 1. Ensure the Magic Unicorn workspace at the suite-canonical id (rebrand
+  //    of displayName/slug included).
   //    Use upsert so a fresh DB (no Phase 1 INSERT yet) still gets a valid row.
   const magicUnicorn = await prisma.workspace.upsert({
     where: { id: MAGIC_UNICORN_ID },
