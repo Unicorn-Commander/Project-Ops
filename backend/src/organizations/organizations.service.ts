@@ -509,8 +509,9 @@ export class OrganizationsService {
         let organizationIds = [id];
 
         if (includeChildren) {
-          // Get all descendant organization IDs
-          organizationIds = await this.getDescendantIds(tx, id);
+          // The org's OWN projects PLUS all descendant orgs' projects.
+          // (getDescendantIds returns descendants only, so include `id`.)
+          organizationIds = [id, ...(await this.getDescendantIds(tx, id))];
         }
 
         const projects = await tx.project.findMany({

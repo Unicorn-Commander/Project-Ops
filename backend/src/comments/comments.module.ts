@@ -3,6 +3,7 @@ import { CommentsService } from './comments.service';
 import { CommentsController } from './comments.controller';
 import { AuditModule } from '../audit/audit.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { MembershipService } from '../common/workspace/membership.service';
 import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
@@ -15,7 +16,7 @@ import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membersh
  * PROJECT_OPS_TENANCY_ENABLED is off.
  */
 @Module({
-  imports: [AuditModule, PrismaModule],
+  imports: [AuditModule, PrismaModule, NotificationsModule],
   controllers: [CommentsController],
   providers: [
     CommentsService,

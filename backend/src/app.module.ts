@@ -33,6 +33,8 @@ import { McpModule } from './mcp/mcp.module';
 import { AssistantModule } from './assistant/assistant.module';
 import { TimeTrackingModule } from './time-tracking/time-tracking.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { SavedViewsModule } from './saved-views/saved-views.module';
 
 @Module({
   imports: [
@@ -80,6 +82,8 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
     AssistantModule,
     TimeTrackingModule,
     WorkspacesModule,
+    NotificationsModule,
+    SavedViewsModule,
   ],
   providers: [
     // MembershipService is needed to construct the GLOBAL WorkspaceMembershipGuard

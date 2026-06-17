@@ -135,12 +135,11 @@ describe('OrganizationsService — hierarchy (N+1 fix)', () => {
       expect(result).toBe(projectRows);
       // exactly one descendant query (no per-level N+1)
       expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
-      // PRESERVED behavior: the pre-existing getProjects OVERWRITES [id] with the
-      // descendant ids when includeChildren=true, so it queries the descendant
-      // set (root excluded). The refactor keeps getDescendantIds root-excluding,
-      // so this contract is unchanged. (Latent quirk left as-is — out of scope.)
+      // FIXED (Push B): includeChildren now returns the org's OWN projects PLUS
+      // its descendants' — `id` is unioned with the (root-excluding) descendant
+      // set, so the parent org's own projects are no longer dropped.
       const findManyCalls = tx.project.findMany.mock.calls as any[];
-      expect(findManyCalls[0][0].where.organizationId.in).toEqual(['B', 'C']);
+      expect(findManyCalls[0][0].where.organizationId.in).toEqual(['root', 'B', 'C']);
     });
 
     it('does not run the descendant query when includeChildren is false', async () => {

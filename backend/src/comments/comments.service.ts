@@ -7,6 +7,11 @@ import { UpdateCommentDto } from './dto/update-comment.dto';
 import { Comment, Prisma, User } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { clampLimit, clampOffset } from '../common/pagination/clamp';
+import {
+  NotificationEntityType,
+  NotificationsService,
+} from '../notifications/notifications.service';
+import { ucUidOf } from '../common/workspace/workspace.util';
 
 /**
  * Comments service.
@@ -34,6 +39,7 @@ export class CommentsService {
     private workspaceContext: WorkspaceContextService,
     private auditService: AuditService,
     private eventEmitter: EventEmitter2,
+    private notificationsService: NotificationsService,
   ) {}
 
   /** Shape a raw Comment (with author) into the frontend contract. */
@@ -54,11 +60,7 @@ export class CommentsService {
     };
   }
 
-  async create(
-    workspaceId: string,
-    user: User,
-    createCommentDto: CreateCommentDto,
-  ): Promise<any> {
+  async create(workspaceId: string, user: User, createCommentDto: CreateCommentDto): Promise<any> {
     const comment = await this.workspaceContext.runForUser(
       user,
       (tx) =>
@@ -108,6 +110,23 @@ export class CommentsService {
       resourceId: comment.id,
       details: { content: comment.content.substring(0, 100) },
     });
+
+    // @mention fan-out (Push B). A side effect OUTSIDE the create tx — it opens
+    // its OWN workspace tx — so a slow/failing fan-out never holds or rolls back
+    // the comment write. Author is excluded inside the service.
+    this.notificationsService
+      .createMentionNotifications({
+        workspaceId,
+        content: comment.content,
+        authorId: user.id,
+        entityType: NotificationEntityType.PROJECT,
+        entityId: comment.projectId,
+        title: 'You were mentioned in a project comment',
+        ucUid: ucUidOf(user),
+      })
+      .catch((err) =>
+        this.logger.warn(`Failed to fan out mentions for comment ${comment.id}: ${err.message}`),
+      );
 
     this.logger.log(
       `Comment created on project ${createCommentDto.projectId} by user ${user.id} ws=${workspaceId}`,
@@ -168,11 +187,7 @@ export class CommentsService {
   }
 
   async findOne(workspaceId: string, user: User, id: string): Promise<Comment> {
-    return this.workspaceContext.runForUser(
-      user,
-      (tx) => this.findOneInTx(tx, id),
-      workspaceId,
-    );
+    return this.workspaceContext.runForUser(user, (tx) => this.findOneInTx(tx, id), workspaceId);
   }
 
   /**
@@ -180,10 +195,7 @@ export class CommentsService {
    * `remove` so the delete runs in ONE workspace-scoped transaction (and one
    * membership authorization). Reads via the passed `tx` → RLS-scoped.
    */
-  private async findOneInTx(
-    tx: WorkspaceTxClient,
-    id: string,
-  ): Promise<Comment> {
+  private async findOneInTx(tx: WorkspaceTxClient, id: string): Promise<Comment> {
     const comment = await tx.comment.findUnique({
       where: { id },
       include: {

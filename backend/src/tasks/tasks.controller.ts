@@ -9,20 +9,23 @@ import {
   UseGuards,
   Query,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { CreateTaskCommentDto } from './dto/create-task-comment.dto';
 import { UpdateTaskStatusDto } from './dto/update-task-status.dto';
 import { AssignTaskDto } from './dto/assign-task.dto';
+import { CreateTaskDependencyDto } from './dto/create-task-dependency.dto';
+import { QueryTasksDto } from './dto/query-tasks.dto';
+import { clampLimit } from '../common/pagination/clamp';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentWorkspace } from '../common/workspace/current-workspace.decorator';
 import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
-import { User, UserRole, TaskStatus, TaskPriority } from '@prisma/client';
+import { User, UserRole } from '@prisma/client';
 
 /**
  * Suite tenancy (Phase 2, B2): every route resolves the active workspace via
@@ -51,38 +54,34 @@ export class TasksController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all tasks with optional filters' })
-  @ApiQuery({ name: 'projectId', required: false })
-  @ApiQuery({ name: 'assignedToId', required: false })
-  @ApiQuery({ name: 'createdById', required: false })
-  @ApiQuery({ name: 'status', enum: TaskStatus, required: false })
-  @ApiQuery({ name: 'priority', enum: TaskPriority, required: false })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  @ApiOperation({
+    summary:
+      'List tasks with filters (project/assignee/creator/parent/status/priority), free-text search, due-date window and sort',
+  })
   @ApiResponse({ status: 200, description: 'Tasks retrieved successfully' })
   findAll(
     @CurrentWorkspace() workspaceId: string,
     @CurrentUser() user: User,
-    @Query('projectId') projectId?: string,
-    @Query('assignedToId') assignedToId?: string,
-    @Query('createdById') createdById?: string,
-    @Query('status') status?: TaskStatus,
-    @Query('priority') priority?: TaskPriority,
-    @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string,
+    @Query() query: QueryTasksDto,
   ) {
-    const pageNum = page ? parseInt(page, 10) : 1;
-    const pageSizeNum = pageSize ? parseInt(pageSize, 10) : 50;
-    const skip = (pageNum - 1) * pageSizeNum;
+    const pageNum = query.page ? Math.max(1, parseInt(query.page, 10) || 1) : 1;
+    const pageSize = clampLimit(query.pageSize ? parseInt(query.pageSize, 10) : undefined, 50);
+    const skip = (pageNum - 1) * pageSize;
 
     return this.tasksService.findAll(workspaceId, user, {
-      projectId,
-      assignedToId,
-      createdById,
-      status,
-      priority,
+      projectId: query.projectId,
+      assignedToId: query.assignedToId,
+      createdById: query.createdById,
+      parentTaskId: query.parentTaskId,
+      status: query.status,
+      priority: query.priority,
+      search: query.search,
+      dueBefore: query.dueBefore,
+      dueAfter: query.dueAfter,
+      sortBy: query.sortBy,
+      sortDir: query.sortDir,
       skip,
-      take: pageSizeNum,
+      take: pageSize,
     });
   }
 
@@ -223,5 +222,63 @@ export class TasksController {
     @Param('id') id: string,
   ) {
     return this.tasksService.getTaskComments(workspaceId, user, id);
+  }
+
+  @Get(':id/subtasks')
+  @ApiOperation({ summary: 'Get the direct subtasks of a task' })
+  @ApiResponse({ status: 200, description: 'Subtasks retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Task not found' })
+  getSubtasks(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+  ) {
+    return this.tasksService.getSubtasks(workspaceId, user, id);
+  }
+
+  @Get(':id/dependencies')
+  @ApiOperation({
+    summary: "Get a task's dependencies in both directions (dependsOn + blocks)",
+  })
+  @ApiResponse({ status: 200, description: 'Dependencies retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Task not found' })
+  getDependencies(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+  ) {
+    return this.tasksService.getDependencies(workspaceId, user, id);
+  }
+
+  @Post(':id/dependencies')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
+  @ApiOperation({ summary: 'Create a dependency between this task and another' })
+  @ApiResponse({ status: 201, description: 'Dependency created successfully' })
+  @ApiResponse({
+    status: 400,
+    description: 'Self-dependency, duplicate edge, or would create a cycle',
+  })
+  @ApiResponse({ status: 404, description: 'Task not found' })
+  addDependency(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Body() dto: CreateTaskDependencyDto,
+  ) {
+    return this.tasksService.addDependency(workspaceId, user, id, dto);
+  }
+
+  @Delete(':id/dependencies/:depId')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
+  @ApiOperation({ summary: 'Delete a dependency from this task' })
+  @ApiResponse({ status: 200, description: 'Dependency deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Task or dependency not found' })
+  removeDependency(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Param('depId') depId: string,
+  ) {
+    return this.tasksService.removeDependency(workspaceId, user, id, depId);
   }
 }

@@ -22,6 +22,7 @@ function makeService(findManyImpl: (args: any) => Promise<any[]>) {
     workspaceContext as any,
     { log: async () => null } as any, // audit
     { emit: () => true } as any, // events
+    { createMentionNotifications: async () => [] } as any, // notifications
   );
   return { svc, findMany };
 }

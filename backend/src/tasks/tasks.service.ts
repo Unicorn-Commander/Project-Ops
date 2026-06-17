@@ -1,12 +1,29 @@
-import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { EmailService } from '../email/email.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { CreateTaskCommentDto } from './dto/create-task-comment.dto';
-import { TaskStatus, TaskPriority, UserRole, User } from '@prisma/client';
+import { CreateTaskDependencyDto, DependencyDirection } from './dto/create-task-dependency.dto';
+import { TaskSortBy, TaskSortDir } from './dto/query-tasks.dto';
+import { clampLimit, clampOffset } from '../common/pagination/clamp';
+import {
+  TaskStatus,
+  TaskPriority,
+  TaskDependencyType,
+  UserRole,
+  User,
+  Prisma,
+} from '@prisma/client';
 
 /**
  * SUITE TENANCY (Phase 2, B2): Task + TaskComment are RLS-scoped tables, so
@@ -32,6 +49,7 @@ export class TasksService {
     private workspaceContext: WorkspaceContextService,
     private emailService: EmailService,
     private configService: ConfigService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -67,6 +85,25 @@ export class TasksService {
 
       if (!assigneeExists) {
         throw new NotFoundException(`User with ID ${createTaskDto.assignedToId} not found`);
+      }
+    }
+
+    // Verify parent task if creating a subtask. The read runs inside the
+    // workspace RLS tx, so a parent in another workspace is simply invisible
+    // here (resolves to not-found) — that enforces same-workspace. We then
+    // explicitly require the SAME project (subtasks don't cross projects).
+    if (createTaskDto.parentTaskId) {
+      const parent = await tx.task.findUnique({
+        where: { id: createTaskDto.parentTaskId },
+        select: { id: true, projectId: true },
+      });
+
+      if (!parent) {
+        throw new NotFoundException(`Parent task with ID ${createTaskDto.parentTaskId} not found`);
+      }
+
+      if (parent.projectId !== createTaskDto.projectId) {
+        throw new BadRequestException('Parent task must belong to the same project as the subtask');
       }
     }
 
@@ -123,7 +160,30 @@ export class TasksService {
   }
 
   /**
-   * Find all tasks with optional filters
+   * Map the validated (sortBy, sortDir) into a Prisma orderBy. When the caller
+   * supplies an explicit sort we honor it (with a stable `id` tiebreaker);
+   * otherwise we keep the historical default (priority desc, dueDate asc,
+   * createdAt desc) so existing list behavior is unchanged. `priority`/`status`
+   * are enums, sorted by their schema-declared order — so priority `desc` puts
+   * URGENT first, which is the intuitive "most important first".
+   */
+  private buildOrderBy(
+    sortBy?: TaskSortBy,
+    sortDir?: TaskSortDir,
+  ): Prisma.TaskOrderByWithRelationInput[] {
+    if (!sortBy) {
+      return [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }];
+    }
+    const dir: Prisma.SortOrder = sortDir === TaskSortDir.asc ? 'asc' : 'desc';
+    return [{ [sortBy]: dir }, { id: 'asc' }];
+  }
+
+  /**
+   * Find all tasks with optional filters, free-text search, due-date window and
+   * sort. The result rows carry a `_count.subtasks` (and `_count.comments`) so
+   * the UI can show counts without an N+1 follow-up query. `take` is clamped to
+   * a max of 100 (audit cap); the controller normally clamps it too, but this
+   * defends any other caller.
    */
   async findAll(
     workspaceId: string,
@@ -132,20 +192,60 @@ export class TasksService {
       projectId?: string;
       assignedToId?: string;
       createdById?: string;
+      parentTaskId?: string;
       status?: TaskStatus;
       priority?: TaskPriority;
+      search?: string;
+      dueBefore?: string;
+      dueAfter?: string;
+      sortBy?: TaskSortBy;
+      sortDir?: TaskSortDir;
       skip?: number;
       take?: number;
     },
   ) {
-    const { projectId, assignedToId, createdById, status, priority, skip = 0, take = 50 } = params;
+    const {
+      projectId,
+      assignedToId,
+      createdById,
+      parentTaskId,
+      status,
+      priority,
+      search,
+      dueBefore,
+      dueAfter,
+      sortBy,
+      sortDir,
+    } = params;
 
-    const where: any = {};
+    const take = clampLimit(params.take, 50);
+    const skip = clampOffset(params.skip);
+
+    const where: Prisma.TaskWhereInput = {};
     if (projectId) where.projectId = projectId;
     if (assignedToId) where.assignedToId = assignedToId;
     if (createdById) where.createdById = createdById;
+    if (parentTaskId) where.parentTaskId = parentTaskId;
     if (status) where.status = status;
     if (priority) where.priority = priority;
+
+    // Case-insensitive substring (ILIKE) over title OR description.
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    // Due-date window [dueAfter, dueBefore). Tasks with a null dueDate are
+    // naturally excluded once either bound is set (Prisma filters them out).
+    if (dueBefore || dueAfter) {
+      where.dueDate = {};
+      if (dueBefore) where.dueDate.lt = new Date(dueBefore);
+      if (dueAfter) where.dueDate.gte = new Date(dueAfter);
+    }
+
+    const orderBy = this.buildOrderBy(sortBy, sortDir);
 
     return this.workspaceContext.runForUser(
       user,
@@ -155,11 +255,7 @@ export class TasksService {
             where,
             skip,
             take,
-            orderBy: [
-              { priority: 'desc' },
-              { dueDate: 'asc' },
-              { createdAt: 'desc' },
-            ],
+            orderBy,
             include: {
               project: {
                 select: {
@@ -188,6 +284,7 @@ export class TasksService {
               _count: {
                 select: {
                   comments: true,
+                  subtasks: true,
                 },
               },
             },
@@ -460,9 +557,7 @@ export class TasksService {
           taskUrl,
         )
         .catch((err) =>
-          this.logger.warn(
-            `Failed to send task-assigned email for task ${id}: ${err.message}`,
-          ),
+          this.logger.warn(`Failed to send task-assigned email for task ${id}: ${err.message}`),
         );
     }
 
@@ -531,7 +626,11 @@ export class TasksService {
   }
 
   /**
-   * Add a comment to a task
+   * Add a comment to a task. After the row is committed we emit the
+   * `task.comment.created` domain event so another module (notifications) can
+   * fan out @mentions. The emit is OUTSIDE the workspace tx so a listener that
+   * re-queries the DB sees a committed row and a slow/failing listener can never
+   * hold or roll back the comment write. We do NOT implement notifications here.
    */
   async addComment(
     workspaceId: string,
@@ -539,7 +638,7 @@ export class TasksService {
     taskId: string,
     createCommentDto: CreateTaskCommentDto,
   ) {
-    return this.workspaceContext.runForUser(
+    const comment = await this.workspaceContext.runForUser(
       user,
       async (tx) => {
         const task = await tx.task.findUnique({
@@ -550,7 +649,7 @@ export class TasksService {
           throw new NotFoundException(`Task with ID ${taskId} not found`);
         }
 
-        const comment = await tx.taskComment.create({
+        const created = await tx.taskComment.create({
           data: {
             taskId,
             workspaceId,
@@ -571,10 +670,21 @@ export class TasksService {
         });
 
         this.logger.log(`Comment added to task ${taskId} by user ${user.id}`);
-        return comment;
+        return created;
       },
       workspaceId,
     );
+
+    // Domain event for downstream @mention fan-out (notifications module).
+    this.eventEmitter.emit('task.comment.created', {
+      workspaceId,
+      taskId,
+      commentId: comment.id,
+      authorId: user.id,
+      content: comment.content,
+    });
+
+    return comment;
   }
 
   /**
@@ -621,11 +731,7 @@ export class TasksService {
       (tx) =>
         tx.task.findMany({
           where: { projectId },
-          orderBy: [
-            { priority: 'desc' },
-            { dueDate: 'asc' },
-            { createdAt: 'desc' },
-          ],
+          orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
           include: {
             createdBy: {
               select: {
@@ -663,11 +769,7 @@ export class TasksService {
       (tx) =>
         tx.task.findMany({
           where: { assignedToId: userId },
-          orderBy: [
-            { priority: 'desc' },
-            { dueDate: 'asc' },
-            { createdAt: 'desc' },
-          ],
+          orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
           include: {
             project: {
               select: {
@@ -714,10 +816,7 @@ export class TasksService {
               notIn: [TaskStatus.COMPLETED, TaskStatus.CANCELLED],
             },
           },
-          orderBy: [
-            { priority: 'desc' },
-            { dueDate: 'asc' },
-          ],
+          orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }],
           include: {
             project: {
               select: {
@@ -744,6 +843,282 @@ export class TasksService {
             },
           },
         }),
+      workspaceId,
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Subtasks
+  // ───────────────────────────────────────────────────────────────────────
+
+  /**
+   * Get the direct subtasks of a task. 404s if the parent task isn't visible in
+   * the active workspace. Each subtask carries `_count.subtasks`/`_count.comments`
+   * so the UI can render nested counts without an N+1 follow-up.
+   */
+  async getSubtasks(workspaceId: string, user: User, parentTaskId: string) {
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const parent = await tx.task.findUnique({
+          where: { id: parentTaskId },
+          select: { id: true },
+        });
+        if (!parent) {
+          throw new NotFoundException(`Task with ID ${parentTaskId} not found`);
+        }
+
+        return tx.task.findMany({
+          where: { parentTaskId },
+          orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
+          include: {
+            assignedTo: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+            createdBy: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+            _count: {
+              select: {
+                comments: true,
+                subtasks: true,
+              },
+            },
+          },
+        });
+      },
+      workspaceId,
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Dependencies
+  // ───────────────────────────────────────────────────────────────────────
+
+  /**
+   * Resolve (predecessorId, successorId) from the URL task `:id` + the body's
+   * direction. Semantics: successor depends on predecessor.
+   *   DEPENDS_ON → the URL task depends on the other task (other = predecessor).
+   *   BLOCKS     → the URL task blocks the other task (URL task = predecessor).
+   */
+  private resolveDependencyEdge(
+    taskId: string,
+    otherTaskId: string,
+    direction: DependencyDirection = DependencyDirection.DEPENDS_ON,
+  ): { predecessorId: string; successorId: string } {
+    if (direction === DependencyDirection.BLOCKS) {
+      return { predecessorId: taskId, successorId: otherTaskId };
+    }
+    return { predecessorId: otherTaskId, successorId: taskId };
+  }
+
+  /**
+   * Would adding the edge `predecessorId → successorId` (successor depends on
+   * predecessor) create a cycle? It does iff the predecessor is ALREADY
+   * (transitively) dependent on the successor — i.e. starting at `predecessorId`
+   * and walking the "depends on" direction (successor → its predecessors) we can
+   * reach `successorId`. A self-edge (predecessor === successor) is the trivial
+   * cycle. The walk runs inside the caller's workspace tx, so it only ever sees
+   * this workspace's edges.
+   */
+  private async wouldCreateCycle(
+    tx: WorkspaceTxClient,
+    predecessorId: string,
+    successorId: string,
+  ): Promise<boolean> {
+    if (predecessorId === successorId) {
+      return true;
+    }
+
+    // BFS over the dependency graph following "what does X depend on": for a
+    // node X (a successor), its parents are the predecessors of edges where
+    // successorId === X. If we reach `successorId` from `predecessorId`, the new
+    // edge closes a loop.
+    const visited = new Set<string>();
+    let frontier: string[] = [predecessorId];
+
+    while (frontier.length > 0) {
+      const edges = await tx.taskDependency.findMany({
+        where: { successorId: { in: frontier } },
+        select: { predecessorId: true },
+      });
+
+      const next: string[] = [];
+      for (const edge of edges) {
+        const dep = edge.predecessorId;
+        if (dep === successorId) {
+          return true;
+        }
+        if (!visited.has(dep)) {
+          visited.add(dep);
+          next.push(dep);
+        }
+      }
+      frontier = next;
+    }
+
+    return false;
+  }
+
+  /**
+   * Create a dependency between the URL task `:id` and another task. Stamps
+   * workspaceId + createdById from context, requires BOTH tasks to be visible in
+   * the active workspace (RLS scopes the reads), rejects self-dependency, and
+   * walks the graph to reject any edge that would create a cycle. The
+   * unique(predecessorId, successorId) is respected — a duplicate edge surfaces
+   * as a 400 rather than a raw Prisma error.
+   */
+  async addDependency(
+    workspaceId: string,
+    user: User,
+    taskId: string,
+    dto: CreateTaskDependencyDto,
+  ) {
+    const { predecessorId, successorId } = this.resolveDependencyEdge(
+      taskId,
+      dto.taskId,
+      dto.direction,
+    );
+
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        // Both endpoints must exist in this workspace (RLS fences the reads).
+        const [predecessor, successor] = await Promise.all([
+          tx.task.findUnique({ where: { id: predecessorId }, select: { id: true } }),
+          tx.task.findUnique({ where: { id: successorId }, select: { id: true } }),
+        ]);
+        if (!predecessor) {
+          throw new NotFoundException(`Task with ID ${predecessorId} not found`);
+        }
+        if (!successor) {
+          throw new NotFoundException(`Task with ID ${successorId} not found`);
+        }
+
+        if (predecessorId === successorId) {
+          throw new BadRequestException('A task cannot depend on itself');
+        }
+
+        if (await this.wouldCreateCycle(tx, predecessorId, successorId)) {
+          throw new BadRequestException('This dependency would create a cycle in the task graph');
+        }
+
+        try {
+          return await tx.taskDependency.create({
+            data: {
+              workspaceId,
+              predecessorId,
+              successorId,
+              type: dto.type ?? TaskDependencyType.FINISH_TO_START,
+              createdById: user.id,
+            },
+            include: {
+              predecessor: {
+                select: { id: true, title: true, status: true, projectId: true },
+              },
+              successor: {
+                select: { id: true, title: true, status: true, projectId: true },
+              },
+            },
+          });
+        } catch (e) {
+          // Unique(predecessorId, successorId) violation → the edge already exists.
+          if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+            throw new BadRequestException('This dependency already exists between these two tasks');
+          }
+          throw e;
+        }
+      },
+      workspaceId,
+    );
+  }
+
+  /**
+   * Delete a dependency by its id. The dependency must belong to the URL task
+   * `:id` (as predecessor or successor) so the route is self-consistent; RLS
+   * additionally fences it to the active workspace.
+   */
+  async removeDependency(workspaceId: string, user: User, taskId: string, dependencyId: string) {
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const dep = await tx.taskDependency.findUnique({
+          where: { id: dependencyId },
+          select: { id: true, predecessorId: true, successorId: true },
+        });
+
+        if (!dep) {
+          throw new NotFoundException(`Dependency with ID ${dependencyId} not found`);
+        }
+
+        if (dep.predecessorId !== taskId && dep.successorId !== taskId) {
+          throw new NotFoundException(
+            `Dependency ${dependencyId} does not belong to task ${taskId}`,
+          );
+        }
+
+        await tx.taskDependency.delete({ where: { id: dependencyId } });
+        this.logger.log(
+          `Dependency ${dependencyId} removed from task ${taskId} by user ${user.id}`,
+        );
+        return { message: 'Dependency deleted successfully' };
+      },
+      workspaceId,
+    );
+  }
+
+  /**
+   * Get a task's dependencies in BOTH directions:
+   *   dependsOn — edges where this task is the SUCCESSOR (the predecessors it
+   *               waits on), with the predecessor task summary.
+   *   blocks    — edges where this task is the PREDECESSOR (the successors
+   *               waiting on it), with the successor task summary.
+   */
+  async getDependencies(workspaceId: string, user: User, taskId: string) {
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const task = await tx.task.findUnique({
+          where: { id: taskId },
+          select: { id: true },
+        });
+        if (!task) {
+          throw new NotFoundException(`Task with ID ${taskId} not found`);
+        }
+
+        const taskSummary = {
+          id: true,
+          title: true,
+          status: true,
+          priority: true,
+          projectId: true,
+        } as const;
+
+        const [dependsOn, blocks] = await Promise.all([
+          tx.taskDependency.findMany({
+            where: { successorId: taskId },
+            orderBy: { createdAt: 'asc' },
+            include: { predecessor: { select: taskSummary } },
+          }),
+          tx.taskDependency.findMany({
+            where: { predecessorId: taskId },
+            orderBy: { createdAt: 'asc' },
+            include: { successor: { select: taskSummary } },
+          }),
+        ]);
+
+        return { dependsOn, blocks };
+      },
       workspaceId,
     );
   }

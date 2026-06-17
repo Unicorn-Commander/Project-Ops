@@ -15,7 +15,7 @@ export class CreateTaskDto {
 
   @ApiProperty({
     example: 'Review the latest design mockups and provide feedback',
-    required: false
+    required: false,
   })
   @IsString()
   @IsOptional()
@@ -24,7 +24,7 @@ export class CreateTaskDto {
   @ApiProperty({
     enum: TaskType,
     example: TaskType.TASK,
-    required: false
+    required: false,
   })
   @IsEnum(TaskType)
   @IsOptional()
@@ -33,7 +33,7 @@ export class CreateTaskDto {
   @ApiProperty({
     enum: TaskStatus,
     example: TaskStatus.PENDING,
-    required: false
+    required: false,
   })
   @IsEnum(TaskStatus)
   @IsOptional()
@@ -42,7 +42,7 @@ export class CreateTaskDto {
   @ApiProperty({
     enum: TaskPriority,
     example: TaskPriority.HIGH,
-    required: false
+    required: false,
   })
   @IsEnum(TaskPriority)
   @IsOptional()
@@ -50,7 +50,7 @@ export class CreateTaskDto {
 
   @ApiProperty({
     example: '2025-10-15T00:00:00Z',
-    required: false
+    required: false,
   })
   @IsDateString()
   @IsOptional()
@@ -58,11 +58,21 @@ export class CreateTaskDto {
 
   @ApiProperty({
     example: 'uuid-of-user',
-    required: false
+    required: false,
   })
   @IsString()
   @IsOptional()
   assignedToId?: string;
+
+  @ApiProperty({
+    description:
+      'Parent task id, to create this task as a subtask. The parent must be in the same workspace AND the same project.',
+    example: 'uuid-of-parent-task',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  parentTaskId?: string;
 
   @ApiProperty({
     example: {
@@ -70,7 +80,7 @@ export class CreateTaskDto {
       checklistItems: ['Review layout', 'Check responsiveness'],
     },
     required: false,
-    type: 'object'
+    type: 'object',
   })
   @IsObject()
   @IsOptional()
