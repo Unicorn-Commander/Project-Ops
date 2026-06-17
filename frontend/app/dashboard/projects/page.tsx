@@ -29,8 +29,6 @@ import {
 import { projectColorClasses } from "@/lib/project-colors";
 import { ListToolbar, FilterOption } from "@/components/ui/list-toolbar";
 import {
-  compareValues,
-  priorityRank,
   withinDateRange,
   DateRangePreset,
   DATE_RANGE_OPTIONS,
@@ -121,15 +119,19 @@ const PRIORITY_OPTIONS: FilterOption[] = [
   { value: "LOW", label: "Low", dot: "bg-emerald-500" },
 ];
 
+// Sort fields the backend GET /projects supports (sortBy ∈ these, with a
+// separate sortDir asc|desc). Server-side now, so the list always reflects
+// the full, correctly-ordered result set rather than a client re-sort of the
+// fetched page.
 const SORT_OPTIONS = [
-  { value: "createdAt-desc", label: "Newest first" },
-  { value: "createdAt-asc", label: "Oldest first" },
-  { value: "updatedAt-desc", label: "Recently updated" },
-  { value: "dueDate-asc", label: "Due soon" },
-  { value: "priority-desc", label: "Priority (highest)" },
-  { value: "title-asc", label: "Title A–Z" },
-  { value: "projectNumber-asc", label: "Project number" },
+  { value: "createdAt", label: "Date created" },
+  { value: "title", label: "Title" },
+  { value: "status", label: "Status" },
+  { value: "priority", label: "Priority" },
+  { value: "dueDate", label: "Due date" },
 ];
+
+type SortDir = "asc" | "desc";
 
 export default function ProjectsPage() {
   const router = useRouter();
@@ -143,7 +145,8 @@ export default function ProjectsPage() {
   const [filterPriority, setFilterPriority] = useState("ALL");
   const [filterAssignee, setFilterAssignee] = useState("ALL");
   const [filterCreatedRange, setFilterCreatedRange] = useState<DateRangePreset | "ALL">("ALL");
-  const [sortBy, setSortBy] = useState("createdAt-desc");
+  const [sortBy, setSortBy] = useState("createdAt");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -154,9 +157,19 @@ export default function ProjectsPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchProjects();
     fetchUserRole();
   }, []);
+
+  // Refetch from the server whenever the server-driven controls change:
+  // search (debounced by the toolbar before it reaches `searchTerm`), sort
+  // field, and sort direction. The other filters (status/priority/assignee/
+  // created-range) stay client-side over the returned set. `fetchProjects`
+  // is intentionally not a dependency — it's recreated each render and reads
+  // current state via closure; listing it would refetch on every render.
+  useEffect(() => {
+    fetchProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, sortBy, sortDir]);
 
   // Cmd+K palette can deep-link to the New Project modal via ?new=1.
   // Reading window.location.search (instead of useSearchParams) avoids the
@@ -182,7 +195,18 @@ export default function ProjectsPage() {
 
   const fetchProjects = async () => {
     try {
-      const response = await api.get("/projects?page=1&limit=500");
+      // Server-side search + sort (Push B). The other narrowing controls
+      // (status / priority / assignee / created-range) remain client-side
+      // over this result set. `search` is the toolbar-debounced term.
+      const params = new URLSearchParams({
+        page: "1",
+        limit: "500",
+        sortBy,
+        sortDir,
+      });
+      const q = searchTerm.trim();
+      if (q) params.set("search", q);
+      const response = await api.get(`/projects?${params.toString()}`);
       setProjects(response.data.data || []);
       setTotalAvailable(response.data.meta?.total ?? response.data.data?.length ?? 0);
       setLoading(false);
@@ -301,30 +325,21 @@ export default function ProjectsPage() {
     ];
   })();
 
-  const filteredProjects = projects
-    .filter((c) => {
-      const matchesSearch =
-        searchTerm === "" ||
-        c.projectNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (c.clientName ?? "").toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesStatus = filterStatus === "ALL" || c.status === filterStatus;
-      const matchesPriority = filterPriority === "ALL" || c.priority === filterPriority;
-      const matchesAssignee =
-        filterAssignee === "ALL" ||
-        (filterAssignee === "UNASSIGNED" ? !c.assignedToId : c.assignedToId === filterAssignee);
-      const matchesCreated =
-        filterCreatedRange === "ALL" ||
-        withinDateRange(c.createdAt, filterCreatedRange as DateRangePreset);
-      return matchesSearch && matchesStatus && matchesPriority && matchesAssignee && matchesCreated;
-    })
-    .sort((a, b) => {
-      const [field, dir] = sortBy.split("-") as [string, "asc" | "desc"];
-      if (field === "priority") return (priorityRank(b.priority) - priorityRank(a.priority)) * (dir === "desc" ? 1 : -1);
-      const av = (a as any)[field];
-      const bv = (b as any)[field];
-      return compareValues(av, bv, dir);
-    });
+  // Search + sort are handled server-side (see fetchProjects). The remaining
+  // narrowing controls — status / priority / assignee / created-range — stay
+  // client-side over the returned, already-sorted set, so we don't re-sort
+  // here (that would override the server order).
+  const filteredProjects = projects.filter((c) => {
+    const matchesStatus = filterStatus === "ALL" || c.status === filterStatus;
+    const matchesPriority = filterPriority === "ALL" || c.priority === filterPriority;
+    const matchesAssignee =
+      filterAssignee === "ALL" ||
+      (filterAssignee === "UNASSIGNED" ? !c.assignedToId : c.assignedToId === filterAssignee);
+    const matchesCreated =
+      filterCreatedRange === "ALL" ||
+      withinDateRange(c.createdAt, filterCreatedRange as DateRangePreset);
+    return matchesStatus && matchesPriority && matchesAssignee && matchesCreated;
+  });
 
   const dateRangeOptions: FilterOption[] = DATE_RANGE_OPTIONS.map((o) => ({
     value: o.value,
@@ -572,11 +587,9 @@ export default function ProjectsPage() {
           Status filter still lives on the stat cards above for the
           big-button glance pattern, but it's also reachable here. */}
       <ListToolbar
-        search={{
-          value: searchTerm,
-          onChange: setSearchTerm,
-          placeholder: "Search by project number, title, or client…",
-        }}
+        search={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="Search by project number, title, or client…"
         filters={[
           {
             key: "status",
@@ -608,10 +621,12 @@ export default function ProjectsPage() {
             options: dateRangeOptions,
           },
         ]}
-        sort={{
-          value: sortBy,
-          onChange: setSortBy,
-          options: SORT_OPTIONS,
+        sortBy={sortBy}
+        sortDir={sortDir}
+        sortOptions={SORT_OPTIONS}
+        onSortChange={(by, dir) => {
+          setSortBy(by);
+          setSortDir(dir);
         }}
         views={{
           scope: "projects",
@@ -621,13 +636,32 @@ export default function ProjectsPage() {
             filterAssignee,
             filterCreatedRange,
             sortBy,
+            sortDir,
           },
           onApply: (state) => {
             if (state.filterStatus !== undefined) setFilterStatus(state.filterStatus);
             if (state.filterPriority !== undefined) setFilterPriority(state.filterPriority);
             if (state.filterAssignee !== undefined) setFilterAssignee(state.filterAssignee);
             if (state.filterCreatedRange !== undefined) setFilterCreatedRange(state.filterCreatedRange as DateRangePreset);
-            if (state.sortBy !== undefined) setSortBy(state.sortBy);
+            // Tolerate both the new split form (sortBy + sortDir) and any
+            // legacy combined "field-dir" sortBy from views saved before the
+            // server-side-sort switch. Fields not in SORT_OPTIONS are ignored.
+            if (state.sortBy !== undefined) {
+              let by = state.sortBy;
+              let dir: SortDir | undefined =
+                state.sortDir === "asc" || state.sortDir === "desc" ? state.sortDir : undefined;
+              if (by.includes("-")) {
+                const [field, d] = by.split("-");
+                by = field;
+                if (!dir && (d === "asc" || d === "desc")) dir = d;
+              }
+              if (SORT_OPTIONS.some((o) => o.value === by)) {
+                setSortBy(by);
+                if (dir) setSortDir(dir);
+              }
+            } else if (state.sortDir === "asc" || state.sortDir === "desc") {
+              setSortDir(state.sortDir);
+            }
           },
         }}
       />

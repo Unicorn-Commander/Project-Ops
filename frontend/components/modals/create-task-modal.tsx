@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { createTask, TaskType, TaskPriority } from "@/lib/tasks-api";
+import { createTask, TaskType, TaskPriority, TaskStatus } from "@/lib/tasks-api";
 import { TASK_TYPES } from "@/lib/task-types";
 import {
   createTaskSchema,
@@ -36,6 +36,11 @@ interface CreateTaskModalProps {
   onClose: () => void;
   onSuccess: () => void;
   preselectedProjectId?: string;
+  /**
+   * When set (e.g. from a kanban column's "Add task"), the new task is created
+   * directly in this status instead of the backend default (PENDING).
+   */
+  defaultStatus?: TaskStatus;
 }
 
 interface User {
@@ -65,6 +70,7 @@ export function CreateTaskModal({
   onClose,
   onSuccess,
   preselectedProjectId,
+  defaultStatus,
 }: CreateTaskModalProps) {
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
@@ -147,6 +153,9 @@ export function CreateTaskModal({
         description: data.description,
         type: data.type,
         priority: data.priority,
+        // When opened from a kanban column, drop the new task straight into
+        // that column's status instead of the backend default (PENDING).
+        status: defaultStatus,
         dueDate: data.dueDate || undefined,
         projectId: data.projectId,
         assignedToId: data.assignedToId && data.assignedToId !== "UNASSIGNED" ? data.assignedToId : undefined,

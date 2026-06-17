@@ -11,12 +11,15 @@ import { CreateTaskModal } from "@/components/modals/create-task-modal";
 import { TaskDetailsModal } from "@/components/modals/task-details-modal";
 import { EditTaskModal } from "@/components/modals/edit-task-modal";
 import {
-  getMyTasks,
+  getTasks,
   getOverdueTasks,
   Task,
   TaskStatus,
   TaskPriority,
+  type TaskSortBy,
+  type TaskSortDir,
 } from "@/lib/tasks-api";
+import { useAuthStore } from "@/lib/store";
 import { Plus, AlertTriangle, CheckCircle, Clock } from "lucide-react";
 import { iconWellClass } from "@/lib/badge-styles";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
@@ -72,11 +75,27 @@ const SORT_OPTIONS = [
   { value: "title-asc", label: "Title A–Z" },
 ];
 
+// Sort fields the backend `GET /tasks` listing supports natively. Anything
+// outside this set (e.g. "updatedAt") falls back to a client-side sort.
+const SERVER_SORT_FIELDS = new Set<TaskSortBy>([
+  "createdAt",
+  "dueDate",
+  "priority",
+  "status",
+  "title",
+]);
+
 export default function MyTasksPage() {
   const router = useRouter();
+  const currentUser = useAuthStore((s) => s.user);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [overdueTasks, setOverdueTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  // True only until the first list read resolves. Refetches driven by search /
+  // sort / status update the list in place and must NOT re-show the full-page
+  // skeleton (which would otherwise flash on every keystroke). `refetching`
+  // gives a subtle in-place indicator instead.
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refetching, setRefetching] = useState(false);
   const [filterStatus, setFilterStatus] = useState<TaskStatus | "ALL">("ALL");
   const [filterPriority, setFilterPriority] = useState<TaskPriority | "ALL">("ALL");
   const [filterProject, setFilterProject] = useState<string>("ALL");
@@ -92,12 +111,23 @@ export default function MyTasksPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    // Kick both reads off together — the overdue strip and the main list are
-    // independent endpoints, so there's no reason to wait for one before the
-    // other.
-    void Promise.all([fetchTasks(), fetchOverdueTasks()]);
+    // The overdue strip is independent of the list's filters/sort — fetch it
+    // once on mount alongside the first list read.
+    void fetchOverdueTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterStatus]);
+  }, []);
+
+  // Re-fetch the list whenever a server-side control changes (status filter,
+  // sort, or search). Search is debounced so each keystroke doesn't fire a
+  // request. The server now does search + sort + status; the remaining
+  // (priority / project / created-range) filters stay client-side below.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void fetchTasks();
+    }, searchTerm ? 300 : 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id, filterStatus, sortBy, searchTerm]);
 
   // Deep-link from Cmd+K palette: ?new=1 opens the Create Task modal.
   useEffect(() => {
@@ -110,13 +140,25 @@ export default function MyTasksPage() {
   }, [router]);
 
   const fetchTasks = useCallback(async () => {
-    setLoading(true);
+    if (!currentUser?.id) return;
+    setRefetching(true);
     try {
-      const params: any = { take: 500 };
-      if (filterStatus !== "ALL") {
-        params.status = filterStatus;
+      // Scope to the current user's tasks via the rich listing endpoint, which
+      // (unlike /tasks/my-tasks) supports server-side search + sort + status.
+      const [field, dir] = sortBy.split("-") as [TaskSortBy, TaskSortDir];
+      const params: Parameters<typeof getTasks>[0] = {
+        assignedToId: currentUser.id,
+        pageSize: 100,
+      };
+      if (filterStatus !== "ALL") params.status = filterStatus;
+      if (searchTerm.trim()) params.search = searchTerm.trim();
+      // Only push server-supported sort fields; "updatedAt" falls back to the
+      // client-side sort applied below.
+      if (SERVER_SORT_FIELDS.has(field)) {
+        params.sortBy = field;
+        params.sortDir = dir;
       }
-      const response = await getMyTasks(params);
+      const response = await getTasks(params);
 
       // Handle both response formats: array directly or { data: [...] }
       const tasksData = Array.isArray(response) ? response : (response.data || []);
@@ -130,9 +172,10 @@ export default function MyTasksPage() {
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      setRefetching(false);
+      setInitialLoading(false);
     }
-  }, [filterStatus, toast]);
+  }, [currentUser?.id, filterStatus, sortBy, searchTerm, toast]);
 
   const fetchOverdueTasks = useCallback(async () => {
     try {
@@ -286,8 +329,14 @@ export default function MyTasksPage() {
     }
   };
 
-  const filteredTasks = tasks
-    .filter((task) => {
+  // Search, status and sort are now done server-side (see fetchTasks). What
+  // remains here is the client-only refinement: priority / project / created
+  // window filters, plus the "updatedAt" sort the backend doesn't expose
+  // (every other sort field already arrives pre-ordered from the server).
+  const [sortField, sortDir] = sortBy.split("-") as [string, "asc" | "desc"];
+  const needsClientSort = !SERVER_SORT_FIELDS.has(sortField as TaskSortBy);
+  const filteredTasks = (() => {
+    const out = tasks.filter((task) => {
       if (filterPriority !== "ALL" && task.priority !== filterPriority) return false;
       if (filterProject !== "ALL" && task.project?.id !== filterProject) return false;
       if (
@@ -296,24 +345,18 @@ export default function MyTasksPage() {
       ) {
         return false;
       }
-      if (searchTerm) {
-        const search = searchTerm.toLowerCase();
-        return (
-          task.title?.toLowerCase().includes(search) ||
-          task.description?.toLowerCase().includes(search) ||
-          task.project?.projectNumber?.toLowerCase().includes(search) ||
-          task.project?.clientName?.toLowerCase().includes(search)
-        );
-      }
       return true;
-    })
-    .sort((a, b) => {
-      const [field, dir] = sortBy.split("-") as [string, "asc" | "desc"];
-      if (field === "priority") return (priorityRank(b.priority) - priorityRank(a.priority)) * (dir === "desc" ? 1 : -1);
-      const av = (a as any)[field];
-      const bv = (b as any)[field];
-      return compareValues(av, bv, dir);
     });
+    if (needsClientSort) {
+      out.sort((a, b) => {
+        if (sortField === "priority") {
+          return (priorityRank(b.priority) - priorityRank(a.priority)) * (sortDir === "desc" ? 1 : -1);
+        }
+        return compareValues((a as any)[sortField], (b as any)[sortField], sortDir);
+      });
+    }
+    return out;
+  })();
 
   // Memoised: a single pass over `tasks` per change instead of five filter
   // passes on every render (e.g. while typing in the search box, which doesn't
@@ -330,7 +373,7 @@ export default function MyTasksPage() {
     [tasks, overdueTasks],
   );
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-4 w-64" />
@@ -621,8 +664,8 @@ export default function MyTasksPage() {
                   <h2 className="text-xl font-bold text-foreground">
                     Tasks ({rest.length})
                   </h2>
-                  <Button variant="outline" size="sm" onClick={handleRefresh}>
-                    Refresh
+                  <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refetching}>
+                    {refetching ? "Refreshing…" : "Refresh"}
                   </Button>
                 </div>
 

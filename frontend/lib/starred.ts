@@ -8,6 +8,11 @@
  *
  * Lives in localStorage. No backend round-trip; cross-device sync would
  * mean a backend table — filed for later if anyone asks.
+ *
+ * NOTE: starred is INTENTIONALLY local-only. Unlike saved views (which now
+ * sync via `/saved-views`), there is no `/starred` endpoint yet, so this
+ * stays on localStorage until a backend lands. Do not wire it to an API
+ * until that table/route exists.
  */
 
 import { useEffect, useState, useCallback } from "react";

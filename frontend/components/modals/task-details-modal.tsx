@@ -18,18 +18,27 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
+import { Input } from "@/components/ui/input";
 import {
   Task,
   TaskStatus,
   TaskPriority,
   TaskType,
   TaskComment,
+  TaskDependency,
+  TaskDependencyType,
+  DependencyDirection,
+  createTask,
   updateTaskStatus,
   markTaskComplete,
   deleteTask,
   getTaskComments,
   addTaskComment,
   assignTask,
+  getSubtasks,
+  getTaskDependencies,
+  addTaskDependency,
+  removeTaskDependency,
 } from "@/lib/tasks-api";
 import { taskTypeIcon } from "@/lib/task-types";
 import {
@@ -44,6 +53,12 @@ import {
   MessageSquare,
   Send,
   AlertTriangle,
+  ListTree,
+  Plus,
+  Link2,
+  ArrowRight,
+  ArrowLeft,
+  X,
 } from "lucide-react";
 import api from "@/lib/api";
 import { statusBadgeClass, priorityBadgeClass } from "@/lib/badge-styles";
@@ -77,13 +92,44 @@ export function TaskDetailsModal({
   const [newComment, setNewComment] = useState("");
   const [users, setUsers] = useState<UserForAssignment[]>([]);
   const [submittingComment, setSubmittingComment] = useState(false);
+
+  // Subtasks (Push B)
+  const [subtasks, setSubtasks] = useState<Task[]>([]);
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
+  const [addingSubtask, setAddingSubtask] = useState(false);
+
+  // Dependencies (Push B). `projectTasks` is the pick-list of sibling tasks in
+  // the same project (the only valid dependency targets), minus this task.
+  const [dependsOn, setDependsOn] = useState<TaskDependency[]>([]);
+  const [blocks, setBlocks] = useState<TaskDependency[]>([]);
+  const [projectTasks, setProjectTasks] = useState<Task[]>([]);
+  const [depTargetId, setDepTargetId] = useState("");
+  const [depDirection, setDepDirection] = useState<DependencyDirection>(
+    DependencyDirection.DEPENDS_ON,
+  );
+  const [depType, setDepType] = useState<TaskDependencyType>(
+    TaskDependencyType.FINISH_TO_START,
+  );
+  const [addingDep, setAddingDep] = useState(false);
+
   const { toast } = useToast();
 
   useEffect(() => {
     if (isOpen && task) {
       fetchComments();
       fetchUsers();
+      fetchSubtasks();
+      fetchDependencies();
+      fetchProjectTasks();
+      // Reset the inline add-controls each time a different task opens.
+      setNewSubtaskTitle("");
+      setDepTargetId("");
+      setDepDirection(DependencyDirection.DEPENDS_ON);
+      setDepType(TaskDependencyType.FINISH_TO_START);
     }
+    // The fetchers are stable for a given (isOpen, task); re-running only when
+    // the open task changes is intentional (matches the prior pattern).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, task]);
 
   const fetchComments = async () => {
@@ -125,6 +171,119 @@ export function TaskDetailsModal({
       toast({
         title: "Warning",
         description: "Failed to load users for assignment",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // ── Subtasks ──────────────────────────────────────────────────────────────
+  const fetchSubtasks = async () => {
+    if (!task) return;
+    try {
+      setSubtasks(await getSubtasks(task.id));
+    } catch (error) {
+      console.error("Error fetching subtasks:", error);
+      setSubtasks([]);
+    }
+  };
+
+  const handleAddSubtask = async () => {
+    if (!task || !newSubtaskTitle.trim()) return;
+    setAddingSubtask(true);
+    try {
+      // A subtask must live in the same project as its parent (backend enforces
+      // this). Description has a 10-char minimum, so seed a sensible default.
+      await createTask({
+        title: newSubtaskTitle.trim(),
+        description: `Subtask of: ${task.title}`,
+        type: TaskType.TASK,
+        priority: task.priority,
+        projectId: task.projectId,
+        parentTaskId: task.id,
+      });
+      setNewSubtaskTitle("");
+      await fetchSubtasks();
+      toast({ title: "Subtask added", description: "The subtask was created." });
+      // Let the parent list refresh its subtask counts.
+      onUpdate();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to add subtask",
+        variant: "destructive",
+      });
+    } finally {
+      setAddingSubtask(false);
+    }
+  };
+
+  // ── Dependencies ────────────────────────────────────────────────────────────
+  const fetchDependencies = async () => {
+    if (!task) return;
+    try {
+      const data = await getTaskDependencies(task.id);
+      setDependsOn(data.dependsOn);
+      setBlocks(data.blocks);
+    } catch (error) {
+      console.error("Error fetching dependencies:", error);
+      setDependsOn([]);
+      setBlocks([]);
+    }
+  };
+
+  // Sibling tasks in the same project are the only valid dependency targets.
+  const fetchProjectTasks = async () => {
+    if (!task) return;
+    try {
+      const response = await api.get(`/tasks/project/${task.projectId}`, {
+        params: { take: 200 },
+      });
+      const data = Array.isArray(response.data)
+        ? response.data
+        : response.data?.data || [];
+      setProjectTasks(data.filter((t: Task) => t.id !== task.id));
+    } catch (error) {
+      console.error("Error fetching project tasks:", error);
+      setProjectTasks([]);
+    }
+  };
+
+  const handleAddDependency = async () => {
+    if (!task || !depTargetId) return;
+    setAddingDep(true);
+    try {
+      await addTaskDependency(task.id, {
+        taskId: depTargetId,
+        direction: depDirection,
+        type: depType,
+      });
+      setDepTargetId("");
+      await fetchDependencies();
+      toast({ title: "Dependency added", description: "The link was created." });
+    } catch (error: any) {
+      // Surface the backend's specific 400 (cycle / duplicate / self) verbatim.
+      toast({
+        title: "Couldn't add dependency",
+        description:
+          error.response?.data?.message ||
+          "Failed to add dependency. Pick a different task or direction.",
+        variant: "destructive",
+      });
+    } finally {
+      setAddingDep(false);
+    }
+  };
+
+  const handleRemoveDependency = async (dependencyId: string) => {
+    if (!task) return;
+    try {
+      await removeTaskDependency(task.id, dependencyId);
+      await fetchDependencies();
+      toast({ title: "Dependency removed" });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to remove dependency",
         variant: "destructive",
       });
     }
@@ -468,6 +627,201 @@ export function TaskDetailsModal({
           </div>
         </div>
 
+        {/* Subtasks Section */}
+        <div className="mb-6 pb-6 border-b">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+            <ListTree className="h-4 w-4" />
+            SUBTASKS ({subtasks.length})
+          </h3>
+
+          {subtasks.length > 0 && (
+            <div className="space-y-2 mb-3">
+              {subtasks.map((sub) => {
+                const subOverdue =
+                  sub.dueDate &&
+                  new Date(sub.dueDate) < new Date() &&
+                  sub.status !== TaskStatus.COMPLETED;
+                return (
+                  <div
+                    key={sub.id}
+                    className="flex items-center gap-3 rounded-md border bg-muted/30 px-3 py-2"
+                  >
+                    <span className="shrink-0">{taskTypeIcon(sub.type)}</span>
+                    <span className="flex-1 truncate text-sm text-foreground">
+                      {sub.title}
+                    </span>
+                    {sub.dueDate && (
+                      <span
+                        className={`text-xs ${subOverdue ? "text-rose-600 dark:text-rose-400 font-medium" : "text-muted-foreground"}`}
+                      >
+                        {format(new Date(sub.dueDate), "MMM d")}
+                      </span>
+                    )}
+                    <Badge className={`shrink-0 ${getStatusColor(sub.status)}`}>
+                      {sub.status.replace(/_/g, " ")}
+                    </Badge>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Add subtask inline */}
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="Add a subtask…"
+              value={newSubtaskTitle}
+              onChange={(e) => setNewSubtaskTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newSubtaskTitle.trim() && !addingSubtask) {
+                  e.preventDefault();
+                  handleAddSubtask();
+                }
+              }}
+              disabled={addingSubtask}
+              className="flex-1"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleAddSubtask}
+              disabled={addingSubtask || !newSubtaskTitle.trim()}
+            >
+              {addingSubtask ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="mr-2 h-4 w-4" />
+              )}
+              Add
+            </Button>
+          </div>
+        </div>
+
+        {/* Dependencies Section */}
+        <div className="mb-6 pb-6 border-b">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+            <Link2 className="h-4 w-4" />
+            DEPENDENCIES
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            {/* Depends on */}
+            <div>
+              <h4 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Depends on
+              </h4>
+              {dependsOn.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic">Nothing yet</p>
+              ) : (
+                <div className="space-y-2">
+                  {dependsOn.map((dep) => (
+                    <DependencyRow
+                      key={dep.id}
+                      title={dep.predecessor?.title ?? "Unknown task"}
+                      status={dep.predecessor?.status}
+                      type={dep.type}
+                      onRemove={() => handleRemoveDependency(dep.id)}
+                      getStatusColor={getStatusColor}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Blocks */}
+            <div>
+              <h4 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
+                <ArrowRight className="h-3.5 w-3.5" />
+                Blocks
+              </h4>
+              {blocks.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic">Nothing yet</p>
+              ) : (
+                <div className="space-y-2">
+                  {blocks.map((dep) => (
+                    <DependencyRow
+                      key={dep.id}
+                      title={dep.successor?.title ?? "Unknown task"}
+                      status={dep.successor?.status}
+                      type={dep.type}
+                      onRemove={() => handleRemoveDependency(dep.id)}
+                      getStatusColor={getStatusColor}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Add dependency control */}
+          {projectTasks.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              No other tasks in this project to link to yet.
+            </p>
+          ) : (
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+              <Select
+                value={depDirection}
+                onValueChange={(v) => setDepDirection(v as DependencyDirection)}
+              >
+                <SelectTrigger className="w-full sm:w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={DependencyDirection.DEPENDS_ON}>
+                    Depends on
+                  </SelectItem>
+                  <SelectItem value={DependencyDirection.BLOCKS}>Blocks</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={depTargetId} onValueChange={setDepTargetId}>
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Select a task…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projectTasks.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={depType}
+                onValueChange={(v) => setDepType(v as TaskDependencyType)}
+              >
+                <SelectTrigger className="w-full sm:w-[170px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.values(TaskDependencyType).map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t.replace(/_/g, " ").toLowerCase()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAddDependency}
+                disabled={addingDep || !depTargetId}
+              >
+                {addingDep ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="mr-2 h-4 w-4" />
+                )}
+                Link
+              </Button>
+            </div>
+          )}
+        </div>
+
         {/* Comments Section */}
         <div>
           <h3 className="text-sm font-semibold text-muted-foreground mb-4 flex items-center gap-2">
@@ -536,5 +890,46 @@ export function TaskDetailsModal({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// A single dependency edge row: the related task, its status, the edge type,
+// and a remove button. Shared by the "Depends on" and "Blocks" columns.
+function DependencyRow({
+  title,
+  status,
+  type,
+  onRemove,
+  getStatusColor,
+}: {
+  title: string;
+  status?: TaskStatus;
+  type: TaskDependencyType;
+  onRemove: () => void;
+  getStatusColor: (status: TaskStatus) => string;
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-2.5 py-1.5">
+      <div className="flex-1 min-w-0">
+        <p className="truncate text-sm text-foreground">{title}</p>
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          {type.replace(/_/g, " ").toLowerCase()}
+        </p>
+      </div>
+      {status && (
+        <Badge className={`shrink-0 ${getStatusColor(status)}`}>
+          {status.replace(/_/g, " ")}
+        </Badge>
+      )}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
+        aria-label={`Remove dependency on ${title}`}
+        title="Remove dependency"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
   );
 }

@@ -45,6 +45,7 @@ import {
   AlertTriangle,
   Search,
   LayoutGrid,
+  ListTree,
 } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
 import { TASK_TYPES, taskTypeIcon } from '@/lib/task-types';
@@ -188,6 +189,15 @@ function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
               >
                 {task.status.replace(/_/g, ' ')}
               </span>
+              {task._count && (task._count.subtasks ?? 0) > 0 && (
+                <span
+                  className="inline-flex items-center gap-0.5 text-[10.5px] text-muted-foreground"
+                  title={`${task._count.subtasks} subtask${task._count.subtasks !== 1 ? 's' : ''}`}
+                >
+                  <ListTree className="h-3 w-3" />
+                  {task._count.subtasks}
+                </span>
+              )}
               <span className="truncate">{task.project?.title}</span>
             </div>
           </div>
@@ -327,6 +337,9 @@ export default function KanbanPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  // Which column's "Add task" opened the create modal — drives defaultStatus.
+  // Undefined when the modal is opened from the global "New task" button.
+  const [createStatus, setCreateStatus] = useState<TaskStatus | undefined>(undefined);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const sensors = useSensors(
@@ -494,11 +507,10 @@ export default function KanbanPage() {
     setIsDetailsModalOpen(true);
   };
 
-  // Per-column "Add task" CTA. The create modal manages its own status
-  // default, so this just opens the create flow; the `status` arg keeps the
-  // call-site intent explicit (and labels the button) for when the modal
-  // grows a default-status prop.
-  const handleAddTask = (_status: TaskStatus) => {
+  // Per-column "Add task" CTA — opens the create modal pre-targeted at this
+  // column's status (the modal creates the task directly in that status).
+  const handleAddTask = (status: TaskStatus) => {
+    setCreateStatus(status);
     setIsCreateModalOpen(true);
   };
 
@@ -556,7 +568,12 @@ export default function KanbanPage() {
         <p className="text-sm text-muted-foreground">
           Drag and drop tasks to update their status.
         </p>
-        <Button onClick={() => setIsCreateModalOpen(true)}>
+        <Button
+          onClick={() => {
+            setCreateStatus(undefined);
+            setIsCreateModalOpen(true);
+          }}
+        >
           <Plus className="mr-2 h-4 w-4" />
           New task
         </Button>
@@ -680,7 +697,12 @@ export default function KanbanPage() {
           title="Your board is empty"
           body="Tasks created on any project show up here automatically, grouped by status. Create one to see the columns come alive."
           action={
-            <Button onClick={() => setIsCreateModalOpen(true)}>
+            <Button
+              onClick={() => {
+                setCreateStatus(undefined);
+                setIsCreateModalOpen(true);
+              }}
+            >
               <Plus className="mr-2 h-4 w-4" />
               New task
             </Button>
@@ -741,10 +763,15 @@ export default function KanbanPage() {
 
       <CreateTaskModal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        defaultStatus={createStatus}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setCreateStatus(undefined);
+        }}
         onSuccess={() => {
           fetchTasks();
           setIsCreateModalOpen(false);
+          setCreateStatus(undefined);
         }}
       />
 

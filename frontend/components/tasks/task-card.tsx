@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   CheckSquare as CheckSquareIcon,
   Pin as PinIcon,
+  ListTree,
 } from "lucide-react";
 
 interface TaskCardProps {
@@ -181,6 +182,14 @@ function TaskCardImpl({ task, onClick, onChange, selected, onToggleSelect, pinne
         {task.project && (
           <span className="text-xs text-muted-foreground truncate">
             {task.project.title}
+          </span>
+        )}
+
+        {/* Subtask Count */}
+        {task._count && (task._count.subtasks ?? 0) > 0 && (
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title={`${task._count.subtasks} subtask${task._count.subtasks !== 1 ? 's' : ''}`}>
+            <ListTree className="h-3 w-3" />
+            {task._count.subtasks}
           </span>
         )}
 

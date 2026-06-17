@@ -10,6 +10,7 @@ export interface Task {
   dueDate: string | null;
   completedAt: string | null;
   projectId: string;
+  parentTaskId?: string | null;
   assignedToId: string | null;
   createdById: string;
   createdAt: string;
@@ -36,7 +37,56 @@ export interface Task {
   };
   _count?: {
     comments: number;
+    subtasks?: number;
   };
+}
+
+// ── Task dependencies (Push B) ──────────────────────────────────────────────
+// A directed edge: the SUCCESSOR depends on the PREDECESSOR. The backend
+// returns both directions from GET /tasks/:id/dependencies:
+//   dependsOn — edges where this task is the successor (each carries the
+//               `predecessor` summary it waits on).
+//   blocks    — edges where this task is the predecessor (each carries the
+//               `successor` summary waiting on it).
+export enum TaskDependencyType {
+  FINISH_TO_START = 'FINISH_TO_START',
+  START_TO_START = 'START_TO_START',
+  FINISH_TO_FINISH = 'FINISH_TO_FINISH',
+  START_TO_FINISH = 'START_TO_FINISH',
+}
+
+// Direction relative to the task in the URL (`:id`) when creating an edge.
+export enum DependencyDirection {
+  DEPENDS_ON = 'DEPENDS_ON',
+  BLOCKS = 'BLOCKS',
+}
+
+/** The related-task summary embedded in a dependency edge. */
+export interface TaskDependencyTaskSummary {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  projectId: string;
+}
+
+/** A single dependency edge as returned by the API. */
+export interface TaskDependency {
+  id: string;
+  type: TaskDependencyType;
+  predecessorId: string;
+  successorId: string;
+  createdById: string;
+  createdAt: string;
+  /** Present on `dependsOn[]` edges (the task this one waits on). */
+  predecessor?: TaskDependencyTaskSummary;
+  /** Present on `blocks[]` edges (the task waiting on this one). */
+  successor?: TaskDependencyTaskSummary;
+}
+
+export interface TaskDependencies {
+  dependsOn: TaskDependency[];
+  blocks: TaskDependency[];
 }
 
 export interface TaskComment {
@@ -89,8 +139,10 @@ export interface CreateTaskData {
   description: string;
   type: TaskType;
   priority: TaskPriority;
+  status?: TaskStatus;
   dueDate?: string;
   projectId: string;
+  parentTaskId?: string;
   assignedToId?: string;
 }
 
@@ -111,19 +163,35 @@ export interface TasksResponse {
   take: number;
 }
 
+// Columns the backend `GET /tasks` listing may be sorted by.
+export type TaskSortBy = 'createdAt' | 'dueDate' | 'priority' | 'status' | 'title';
+export type TaskSortDir = 'asc' | 'desc';
+
+// Query params for `GET /tasks` (the rich listing endpoint — findAll).
+// NOTE: pagination is `page`/`pageSize` (1-based; pageSize clamped to 100
+// server-side), NOT skip/take. `search` is a case-insensitive substring match
+// on title OR description; `sortBy`/`sortDir` push sorting to the DB.
 export interface TaskFilters {
-  skip?: number;
-  take?: number;
+  page?: number;
+  pageSize?: number;
   status?: TaskStatus;
   priority?: TaskPriority;
-  type?: TaskType;
   projectId?: string;
   assignedToId?: string;
+  createdById?: string;
+  parentTaskId?: string;
   search?: string;
-  sort?: string;
+  sortBy?: TaskSortBy;
+  sortDir?: TaskSortDir;
+  /** Only tasks with dueDate strictly before this ISO timestamp. */
+  dueBefore?: string;
+  /** Only tasks with dueDate at or after this ISO timestamp. */
+  dueAfter?: string;
 }
 
-// Get all tasks with pagination and filters
+// Get all tasks with pagination, filters, free-text search and sort.
+// Empty / "ALL" values should be omitted by the caller so they don't reach
+// the (enum-validated) backend.
 export const getTasks = async (params?: TaskFilters): Promise<TasksResponse> => {
   const response = await api.get('/tasks', { params });
   return response.data;
@@ -226,4 +294,50 @@ export const deleteTaskComment = async (
   commentId: string
 ): Promise<void> => {
   await api.delete(`/tasks/${taskId}/comments/${commentId}`);
+};
+
+// ── Subtasks (Push B) ───────────────────────────────────────────────────────
+
+// Get the direct subtasks of a task. Each subtask carries assignedTo /
+// createdBy and its own `_count` (comments + subtasks). 404s if the parent
+// isn't visible in the active workspace.
+export const getSubtasks = async (taskId: string): Promise<Task[]> => {
+  const response = await api.get(`/tasks/${taskId}/subtasks`);
+  return response.data;
+};
+
+// ── Dependencies (Push B) ───────────────────────────────────────────────────
+
+// Get a task's dependencies in both directions.
+export const getTaskDependencies = async (
+  taskId: string
+): Promise<TaskDependencies> => {
+  const response = await api.get(`/tasks/${taskId}/dependencies`);
+  return response.data;
+};
+
+export interface AddDependencyData {
+  /** The id of the OTHER task to link to. */
+  taskId: string;
+  /** DEPENDS_ON (default): the URL task depends on `taskId`. BLOCKS: it blocks `taskId`. */
+  direction?: DependencyDirection;
+  /** Defaults to FINISH_TO_START server-side. */
+  type?: TaskDependencyType;
+}
+
+// Create a dependency between `taskId` (the URL task) and `data.taskId`.
+// 400 on self / duplicate / cycle; 404 if a task isn't visible.
+export const addTaskDependency = async (
+  taskId: string,
+  data: AddDependencyData
+): Promise<TaskDependency> => {
+  const response = await api.post(`/tasks/${taskId}/dependencies`, data);
+  return response.data;
+};
+
+export const removeTaskDependency = async (
+  taskId: string,
+  dependencyId: string
+): Promise<void> => {
+  await api.delete(`/tasks/${taskId}/dependencies/${dependencyId}`);
 };

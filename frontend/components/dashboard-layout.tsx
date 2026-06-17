@@ -18,6 +18,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { AssistantPanel } from "@/components/assistant-panel";
 import { CommandPalette } from "@/components/command-palette";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { TimerProvider } from "@/components/time-tracking/timer-provider";
 import { TimerWidget } from "@/components/time-tracking/timer-widget";
 import { roleBadgeClass } from "@/lib/badge-styles";
@@ -323,6 +324,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           <TimerWidget />
           <AssistantPanel />
           <WorkspaceSwitcher />
+          <NotificationBell />
           <ThemeToggle />
 
           {/* User menu */}

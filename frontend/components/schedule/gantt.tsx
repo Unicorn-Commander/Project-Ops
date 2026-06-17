@@ -32,7 +32,7 @@
  * smooth (we never paint off-window rows).
  */
 
-import { useMemo, useState, useRef, useEffect, useCallback } from "react";
+import { useMemo, useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
@@ -77,6 +77,7 @@ import {
 } from "lucide-react";
 import { projectColorClasses } from "@/lib/project-colors";
 import { cn } from "@/lib/utils";
+import { getTaskDependencies } from "@/lib/tasks-api";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Types
@@ -454,6 +455,80 @@ export function Gantt({ projects, onReschedule }: GanttProps) {
     [groups],
   );
 
+  // ── Dependency arrows ────────────────────────────────────────────────────
+  // The set of row ids whose bars are actually painted right now (visible in
+  // the window AND not inside a collapsed group). Arrows are only drawn between
+  // two painted bars.
+  const paintedRowIds = useMemo(() => {
+    const hasHeaders = groupBy !== "none";
+    const ids = new Set<string>();
+    for (const g of groups) {
+      if (hasHeaders && collapsed.has(g.key)) continue;
+      for (const r of g.rows) ids.add(r.project.id);
+    }
+    return ids;
+  }, [groups, collapsed, groupBy]);
+
+  // Fetch dependency edges for the painted rows and keep only edges whose BOTH
+  // endpoints are currently painted (predecessor → successor). The backend
+  // exposes dependencies per row id via GET /:id/dependencies; rows with no
+  // edges simply contribute nothing, so the layer degrades to empty gracefully.
+  // Bars register their live DOM node in `barRefs` so the arrow overlay can
+  // measure real pixel positions (robust to zoom / collapse / drag).
+  const barRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const registerBar = useCallback((id: string, el: HTMLElement | null) => {
+    if (el) barRefs.current.set(id, el);
+    else barRefs.current.delete(id);
+  }, []);
+
+  const [edges, setEdges] = useState<{ from: string; to: string }[]>([]);
+  // Stable key for the painted set so the fetch effect only re-runs when the
+  // membership actually changes (not on every render).
+  const paintedKey = useMemo(
+    () => Array.from(paintedRowIds).sort().join("|"),
+    [paintedRowIds],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const ids = paintedKey ? paintedKey.split("|") : [];
+    if (ids.length < 2) {
+      setEdges([]);
+      return;
+    }
+    (async () => {
+      const painted = new Set(ids);
+      const collected: { from: string; to: string }[] = [];
+      const seen = new Set<string>();
+      // One request per painted row. `blocks[]` already gives directed
+      // predecessor→successor edges from this row, so iterating `blocks`
+      // across all rows enumerates every edge exactly once.
+      const results = await Promise.allSettled(
+        ids.map((id) => getTaskDependencies(id)),
+      );
+      results.forEach((res, i) => {
+        if (res.status !== "fulfilled") return;
+        const fromId = ids[i];
+        for (const dep of res.value.blocks) {
+          const toId = dep.successor?.id ?? dep.successorId;
+          if (!toId || !painted.has(toId)) continue;
+          const key = `${fromId}->${toId}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          collected.push({ from: fromId, to: toId });
+        }
+      });
+      if (!cancelled) setEdges(collected);
+    })().catch(() => {
+      // Dependency arrows are non-critical chrome — never let a failed fetch
+      // break the schedule. Just render no arrows.
+      if (!cancelled) setEdges([]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [paintedKey]);
+
   // ── Summary ribbon metrics ──────────────────────────────────────────────
   // Computed over the *filtered* set (the operator's current scope), not just
   // the window, so the ribbon reads as a real portfolio summary.
@@ -740,11 +815,22 @@ export function Gantt({ projects, onReschedule }: GanttProps) {
                         pixelsPerDay={pixelsPerDay}
                         onReschedule={onReschedule}
                         onOpen={(id) => router.push(`/dashboard/projects/${id}`)}
+                        registerBar={registerBar}
                       />
                     ))}
                 </div>
               );
             })}
+
+            {/* Dependency arrows — SVG overlay tracking real bar positions.
+                Recomputes when the painted set, the edges, zoom, collapse, or
+                drag changes. Sits under the Today line (z-30) so urgency wins. */}
+            <DependencyArrows
+              edges={edges}
+              barRefs={barRefs}
+              containerRef={timelineRef}
+              recomputeKey={`${paintedKey}|${zoom}|${timelinePx}|${drag?.projectId ?? ""}:${drag?.dxDays ?? 0}`}
+            />
 
             {/* Today vertical line — drawn over body rows so it shows through */}
             {todayPct !== null && (
@@ -903,6 +989,8 @@ interface ScheduleRowProps {
   pixelsPerDay: number;
   onReschedule?: (projectId: string, newDueDate: Date) => void | Promise<void>;
   onOpen: (id: string) => void;
+  /** Registers this row's bar element by id so the arrow overlay can measure it. */
+  registerBar: (id: string, el: HTMLElement | null) => void;
 }
 
 function ScheduleRow({
@@ -916,6 +1004,7 @@ function ScheduleRow({
   setDrag,
   pixelsPerDay,
   onReschedule,
+  registerBar,
   onOpen,
 }: ScheduleRowProps) {
   const { leftPct, widthPct, overflowRight, end } = geo;
@@ -1002,6 +1091,7 @@ function ScheduleRow({
 
         {/* The bar — a faint track with a project-colour progress fill. */}
         <div
+          ref={(el) => registerBar(project.id, el)}
           className={cn(
             "absolute top-1/2 -translate-y-1/2 h-7 rounded-md overflow-hidden flex items-center shadow-sm group-hover:shadow-md ring-1 ring-inset",
             pc.cardWash,
@@ -1130,5 +1220,130 @@ function ScheduleRow({
         )}
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Dependency arrows — an absolutely-positioned SVG overlay that draws an
+// orthogonal connector for every (predecessor → successor) edge whose both
+// bars are currently painted. Endpoints are MEASURED from the live bar DOM
+// nodes via getBoundingClientRect() (relative to the timeline container), so
+// they track zoom, swimlane collapse, and even the CSS-transform drag preview
+// without re-deriving any date math. Purely decorative: pointer-events-none,
+// and it renders nothing when there are no in-view edges.
+
+interface ArrowPath {
+  key: string;
+  d: string;
+}
+
+function DependencyArrows({
+  edges,
+  barRefs,
+  containerRef,
+  recomputeKey,
+}: {
+  edges: { from: string; to: string }[];
+  barRefs: React.MutableRefObject<Map<string, HTMLElement>>;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  recomputeKey: string;
+}) {
+  const [paths, setPaths] = useState<ArrowPath[]>([]);
+  const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+
+  useLayoutEffect(() => {
+    if (edges.length === 0) {
+      setPaths([]);
+      return;
+    }
+    let raf = 0;
+    const measure = () => {
+      const container = containerRef.current;
+      if (!container) return;
+      const base = container.getBoundingClientRect();
+      setSize({ w: base.width, h: base.height });
+
+      const next: ArrowPath[] = [];
+      for (const edge of edges) {
+        const fromEl = barRefs.current.get(edge.from);
+        const toEl = barRefs.current.get(edge.to);
+        if (!fromEl || !toEl) continue;
+        const a = fromEl.getBoundingClientRect();
+        const b = toEl.getBoundingClientRect();
+        // Coordinates relative to the timeline container.
+        const startX = a.right - base.left;
+        const startY = a.top + a.height / 2 - base.top;
+        const endX = b.left - base.left;
+        const endY = b.top + b.height / 2 - base.top;
+
+        // Orthogonal "elbow" routing. When the successor sits to the right we
+        // step out → across → in. When it's to the left (or overlapping) we
+        // loop out past the predecessor's right edge, down/up, and back to the
+        // successor's left edge so the line never runs backwards through a bar.
+        const STUB = 14; // px the line travels straight off a bar edge
+        const ARROW_GAP = 6; // stop short of the bar so the arrowhead reads
+        const endXAdj = endX - ARROW_GAP;
+        let d: string;
+        if (endXAdj > startX + STUB) {
+          const midX = Math.max(startX + STUB, (startX + endXAdj) / 2);
+          d = `M ${startX} ${startY} H ${midX} V ${endY} H ${endXAdj}`;
+        } else {
+          const outX = startX + STUB;
+          const backX = endX - STUB;
+          const midY = (startY + endY) / 2;
+          d = `M ${startX} ${startY} H ${outX} V ${midY} H ${backX} V ${endY} H ${endXAdj}`;
+        }
+        next.push({ key: `${edge.from}->${edge.to}`, d });
+      }
+      setPaths(next);
+    };
+    // Measure on the next frame so transitions/transforms have applied.
+    raf = requestAnimationFrame(measure);
+    const onResize = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(measure);
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edges, recomputeKey]);
+
+  if (paths.length === 0 || size.w === 0) return null;
+
+  return (
+    <svg
+      className="absolute inset-0 pointer-events-none z-20 overflow-visible"
+      width={size.w}
+      height={size.h}
+      aria-hidden="true"
+    >
+      <defs>
+        <marker
+          id="po-dep-arrowhead"
+          markerWidth="7"
+          markerHeight="7"
+          refX="5.5"
+          refY="3"
+          orient="auto"
+          markerUnits="userSpaceOnUse"
+        >
+          <path d="M0,0 L6,3 L0,6 Z" className="fill-primary/70" />
+        </marker>
+      </defs>
+      {paths.map((p) => (
+        <path
+          key={p.key}
+          d={p.d}
+          fill="none"
+          className="stroke-primary/70"
+          strokeWidth={1.5}
+          strokeLinejoin="round"
+          markerEnd="url(#po-dep-arrowhead)"
+        />
+      ))}
+    </svg>
   );
 }
