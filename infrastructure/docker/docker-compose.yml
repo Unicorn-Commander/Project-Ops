@@ -124,6 +124,17 @@ services:
       MINIO_PUBLIC_USE_SSL: "true"
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-3600}
+      # Fail-closed secret for SMTP password encryption (required in production;
+      # generate with: openssl rand -hex 32). The backend refuses to boot without it.
+      EMAIL_ENCRYPTION_KEY: ${EMAIL_ENCRYPTION_KEY}
+      # Keycloak token audience enforcement. Defaults ON; the allow-list defaults
+      # to KEYCLOAK_CLIENT_ID. Set KEYCLOAK_ENFORCE_AUDIENCE=false (or extend
+      # KEYCLOAK_EXPECTED_AUDIENCES, CSV) to tune without a rebuild.
+      KEYCLOAK_ENFORCE_AUDIENCE: ${KEYCLOAK_ENFORCE_AUDIENCE:-true}
+      KEYCLOAK_EXPECTED_AUDIENCES: ${KEYCLOAK_EXPECTED_AUDIENCES:-}
+      # Phase-E uc-registry workspace SoR. No-op when unset; set the URL to enable
+      # registering every new workspace with the registry before the prod RLS flip.
+      UC_REGISTRY_URL: ${UC_REGISTRY_URL:-}
       CORS_ORIGIN: https://${DOMAIN}
       FRONTEND_URL: https://${DOMAIN}
       LOG_LEVEL: ${LOG_LEVEL:-info}
