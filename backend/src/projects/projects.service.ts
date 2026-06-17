@@ -4,8 +4,29 @@ import { WorkspaceContextService } from '../common/workspace/workspace-context.s
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { AssignProjectDto } from './dto/assign-project.dto';
-import { Project, Prisma, ProjectStatus, User, UserRole } from '@prisma/client';
+import {
+  Project,
+  Prisma,
+  ProjectStatus,
+  TaskStatus,
+  User,
+  UserRole,
+} from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
+
+/** Per-project task rollup attached to each item in the GET /projects list. */
+export interface TaskStats {
+  total: number;
+  completed: number;
+}
+
+/**
+ * Shape of a project as returned by {@link ProjectsService.findAll}: the full
+ * Project (incl. scalar `category`/`tags`) plus the `taskStats` rollup. Other
+ * relations (contact/createdBy/assignedTo/_count) are also present via the
+ * query `include`; this type captures the additive `taskStats` contract.
+ */
+export type ProjectWithTaskStats = Project & { taskStats: TaskStats };
 
 /**
  * SUITE TENANCY (Phase 2, B1): every project read/write runs inside
@@ -138,6 +159,17 @@ export class ProjectsService {
     return projectData;
   }
 
+  /**
+   * List projects for the active workspace (paginated). Each returned project is
+   * enriched with `taskStats: { total, completed }` so the master-schedule UI can
+   * show progress without N+1 fetches. `category` and `tags` are scalar fields on
+   * Project and are returned automatically (the query uses `include`, not an
+   * explicit `select`, so all scalars come back).
+   *
+   * Task counts are gathered with a SINGLE `task.groupBy` over the page's project
+   * ids (run on the same workspace `tx` so RLS holds), then folded into a Map and
+   * attached — no per-project query.
+   */
   async findAll(
     workspaceId: string,
     user: User,
@@ -147,7 +179,7 @@ export class ProjectsService {
       where?: Prisma.ProjectWhereInput;
       orderBy?: Prisma.ProjectOrderByWithRelationInput;
     },
-  ): Promise<{ projects: Project[]; total: number }> {
+  ): Promise<{ projects: ProjectWithTaskStats[]; total: number }> {
     const { skip, take, where, orderBy } = params || {};
 
     return this.workspaceContext.runForUser(
@@ -197,10 +229,56 @@ export class ProjectsService {
           tx.project.count({ where }),
         ]);
 
-        return { projects, total };
+        const statsByProject = await this.buildTaskStats(tx, projects);
+
+        const enriched: ProjectWithTaskStats[] = projects.map((project) => ({
+          ...project,
+          taskStats:
+            statsByProject.get(project.id) ?? { total: 0, completed: 0 },
+        }));
+
+        return { projects: enriched, total };
       },
       workspaceId,
     );
+  }
+
+  /**
+   * Aggregate task counts for a page of projects with a SINGLE grouped query
+   * (no N+1). Runs on the passed workspace `tx` so it stays inside the same RLS
+   * GUC scope as the projects fetch. Returns a Map keyed by projectId; projects
+   * with no tasks are simply absent (callers default to {total:0, completed:0}).
+   */
+  private async buildTaskStats(
+    tx: WorkspaceTxClient,
+    projects: { id: string }[],
+  ): Promise<Map<string, TaskStats>> {
+    const statsByProject = new Map<string, TaskStats>();
+    if (projects.length === 0) {
+      return statsByProject;
+    }
+
+    const projectIds = projects.map((p) => p.id);
+    const grouped = await tx.task.groupBy({
+      by: ['projectId', 'status'],
+      where: { projectId: { in: projectIds } },
+      _count: { _all: true },
+    });
+
+    for (const row of grouped) {
+      const count = row._count._all;
+      const current = statsByProject.get(row.projectId) ?? {
+        total: 0,
+        completed: 0,
+      };
+      current.total += count;
+      if (row.status === TaskStatus.COMPLETED) {
+        current.completed += count;
+      }
+      statsByProject.set(row.projectId, current);
+    }
+
+    return statsByProject;
   }
 
   async findOne(workspaceId: string, user: User, id: string): Promise<Project> {
