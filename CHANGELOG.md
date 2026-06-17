@@ -7,6 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Remaining for the tenancy GA
+
+- **Phase E — uc-registry as the workspace source of record.** PO still mints
+  the single dogfood bootstrap workspace locally; real workspace ids/metadata
+  must read through uc-registry (PO mirrors, never mints, in production).
+- **Production promote of the runtime-role flip.** Phases A–D run on dogfood
+  with the runtime `DATABASE_URL` flipped to the NOBYPASSRLS `project_ops_app`
+  role; promoting that to production is the remaining cutover.
+- **Billable rollup live path.** The Accounting-Ops invoice rollup ships behind
+  `BILLABLE_ROLLUP_LIVE` (default off) until the AO AR integration is signed off
+  in production.
+
+## [1.8.1] — 2026-06-10
+
+Tenancy hardening point release: claimless callers resolve correctly, and two
+write-side RLS escapees the live fence caught are closed.
+
 ### Fixed
 
 - **Tenancy: claimless MCP/PAT callers now resolve to their default membership.**
@@ -18,52 +35,94 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   and the MCP `runScoped` + `workspaceFor` chokepoints now pass the addressing
   precedence straight down (explicit request → the token's own claim → the user's
   default membership), never substituting the env default as the requested
-  workspace. Tenancy-off behavior is unchanged; on dogfood the only user whose
-  resolution changes is the one whose default membership wasn't the env default.
+  workspace. The time-tracking MCP tools were folded onto the same
+  membership-aware resolver. Tenancy-off behavior is unchanged; on dogfood the
+  only user whose resolution changes is the one whose default membership wasn't
+  the env default.
   (`backend/src/common/workspace/workspace-context.service.ts`,
   `backend/src/mcp/mcp.tools.ts`; regression specs in
   `workspace-context.service.spec.ts`.)
+- **Two RLS `WITH CHECK` escapees caught live by the fence.** With the runtime
+  flipped to the non-bypass role, two write paths surfaced rows whose post-image
+  didn't satisfy the `workspace_isolation` policy; both are corrected so the
+  write carries the request workspace and passes `WITH CHECK`.
+
+## [1.8.0] — 2026-06-09
+
+The tenancy fence goes live and federation gets a trusted intake. RLS is now
+**enforced** on dogfood: the runtime connects as the NOBYPASSRLS
+`project_ops_app` role, so a workspace's rows are provably invisible and
+unwritable from any other workspace's GUC. Ships the time-tracking spine
+alongside.
 
 ### Added
 
-**Time Tracking + Billable Rollup — the professional-services spine.**
-Logged work now becomes billable amounts that flow to Accounting-Ops
-for invoicing. Backend-complete and tested; the React surfaces and the
-app-wide RLS hardening follow. Lands on `feat/time-tracking-billable-rollup`
-behind `TIME_TRACKING_ENABLED` (default on) and `BILLABLE_ROLLUP_LIVE`
-(default off).
+- **Federation-trust triage ingest for trusted sibling apps.** The triage
+  `ingest` path accepts candidate action items from trusted federated callers
+  (Brigade actor / sibling suite apps), gated by the configured
+  `PROJECT_OPS_FEDERATION_ACTORS` allow-list, with a generous
+  interactive-transaction window so a large batch ingest doesn't time out
+  mid-transaction.
+- **Suite tenancy foundation → live fence (Phases A–D).** `Workspace` +
+  `Membership` model, the `app.current_workspace` GUC chokepoint
+  (`current_workspace_id()`), and ENABLE+FORCE Row Level Security with a
+  `workspace_isolation` policy (`USING` + `WITH CHECK`) on every
+  workspace-scoped table. The runtime `DATABASE_URL` flips to the NOBYPASSRLS
+  `project_ops_app` role so the policy is actually exercised (the owner role
+  keeps `BYPASSRLS` for migrations/maintenance). Module wire-through routes
+  every query through `PrismaService.withWorkspace` (B1–B9, incl. the triage
+  per-workspace `ProjectIndex` cache and tx reconciliation); PAT workspace
+  scoping is enforced at the app layer (C1); auth login/profile/SSO return
+  `workspaces[]` for the switcher (C2); a Phase-2 frontend workspace switcher
+  (C3) and dogfood workspace seed (C4) land; client-portal signup/login is made
+  RLS-correct via a provisional invite membership. The §9 RLS
+  workspace-isolation integration suite + fixtures + runner prove the fence
+  holds (fail-closed read AND write) against `project_ops_app`, and assert the
+  connected role is genuinely NOBYPASSRLS so a misconfigured URL can't produce a
+  false green.
+- **Magic Unicorn re-keyed to the suite-canonical workspace uuid.** The dogfood
+  Magic Unicorn workspace is re-keyed from its local bootstrap id to the
+  suite-canonical workspace uuid (shared with the other ops modules), via an
+  idempotent migration; the §9 fixtures and seeds carry the new id.
+- **Time Tracking + Billable Rollup — the professional-services spine.**
+  Logged work now becomes billable amounts that flow to Accounting-Ops
+  for invoicing. Backend-complete and tested; ships behind
+  `TIME_TRACKING_ENABLED` (default on) and `BILLABLE_ROLLUP_LIVE` (default off).
+  - **Data model** (`backend/prisma/schema.prisma`): `TimeEntry`,
+    `BillingRate` (multi-scope rates), `TimesheetPeriod`, plus policy fields
+    on `Project` (`billByDefault`, `defaultBillRate`, `budgetHours`,
+    `budgetAmount`, rounding) and `Task` (`billable`, `billRate`). Every new
+    row carries a NOT NULL `workspaceId`. The "at most one running timer per
+    user" invariant is a partial unique index applied in
+    `PrismaService.onModuleInit` (Prisma can't express it) **and** enforced in
+    the service.
+  - **Engine** (`backend/src/time-tracking/`): deterministic rate resolution
+    (Task override → TASK → TASK_TYPE → PROJECT → project default → CONTACT →
+    USER_PROJECT → USER → ROLE → ORG; cost rate resolved independently and
+    never shown to CLIENT), configurable rounding (raw + rounded both stored),
+    timer lifecycle, manual entry with overlap guard, lock/billed immutability,
+    and a weekly submit → approve/reject approval flow that locks on approval.
+  - **Billable rollup → Accounting-Ops**: a source-agnostic assembler groups
+    approved, billable, unbilled entries into invoice line items with a
+    deterministic, retry-safe `external_ref` (hash of the source-id set — never
+    double-bills). The live call hits AO's REST AR API forwarding the caller's
+    bearer; on a not-entitled / unreachable / disabled result it degrades to a
+    draft + PDF preview ("connect Accounting-Ops to invoice"). AO has no
+    webhooks, so a `@Cron` poller mirrors invoice status onto the project
+    billing fields.
+  - **Surfaces**: REST controllers (time entries, timesheets, billing rates,
+    reports, billing), 10 MCP tools (`start_timer`, `stop_timer`, `log_time`,
+    `update_time_entry`, `list_time_entries`, `submit_timesheet`,
+    `approve_time`, `get_utilization`, `create_billable_draft`,
+    `sync_invoice_status`) with new `read:time` / `write:time` scopes, websocket
+    events (incl. a new per-user room for the timer widget), and `AuditLog`
+    on every mutation. Reports cover utilization, realization, WIP, and CSV
+    export.
 
-- **Data model** (`backend/prisma/schema.prisma`): `TimeEntry`,
-  `BillingRate` (multi-scope rates), `TimesheetPeriod`, plus policy fields
-  on `Project` (`billByDefault`, `defaultBillRate`, `budgetHours`,
-  `budgetAmount`, rounding) and `Task` (`billable`, `billRate`). Every new
-  row carries a NOT NULL `workspaceId` (suite-canonical tenancy seam; the
-  app-wide FORCE-RLS hardening is the dedicated tenancy effort's job). The
-  "at most one running timer per user" invariant is a partial unique index
-  applied in `PrismaService.onModuleInit` (Prisma can't express it) **and**
-  enforced in the service.
-- **Engine** (`backend/src/time-tracking/`): deterministic rate resolution
-  (Task override → TASK → TASK_TYPE → PROJECT → project default → CONTACT →
-  USER_PROJECT → USER → ROLE → ORG; cost rate resolved independently and
-  never shown to CLIENT), configurable rounding (raw + rounded both stored),
-  timer lifecycle, manual entry with overlap guard, lock/billed immutability,
-  and a weekly submit → approve/reject approval flow that locks on approval.
-- **Billable rollup → Accounting-Ops**: a source-agnostic assembler groups
-  approved, billable, unbilled entries into invoice line items with a
-  deterministic, retry-safe `external_ref` (hash of the source-id set — never
-  double-bills). The live call hits AO's REST AR API forwarding the caller's
-  bearer; on a not-entitled / unreachable / disabled result it degrades to a
-  draft + PDF preview ("connect Accounting-Ops to invoice"). AO has no
-  webhooks, so a `@Cron` poller mirrors invoice status onto the project
-  billing fields.
-- **Surfaces**: REST controllers (time entries, timesheets, billing rates,
-  reports, billing), 10 MCP tools (`start_timer`, `stop_timer`, `log_time`,
-  `update_time_entry`, `list_time_entries`, `submit_timesheet`,
-  `approve_time`, `get_utilization`, `create_billable_draft`,
-  `sync_invoice_status`) with new `read:time` / `write:time` scopes, websocket
-  events (incl. a new per-user room for the timer widget), and `AuditLog`
-  on every mutation. Reports cover utilization, realization, WIP, and CSV
-  export.
+### Build
+
+- Regenerated `package-lock.json` with the build-image npm (`node:20-alpine3.19`)
+  so `docker npm ci` is reproducible (incl. the `@opentelemetry` dep resync).
 
 ## [1.7.0] — 2026-06-08
 

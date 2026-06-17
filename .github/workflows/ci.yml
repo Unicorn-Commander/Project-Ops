@@ -1,0 +1,199 @@
+name: CI
+
+# Project-Ops CI. The whole point of the backend job is to exercise the
+# multi-tenant RLS fence against the NON-bypass runtime role `project_ops_app`
+# (the role the production DATABASE_URL flips to), exactly as
+# backend/tests/integration/rls/run.sh does locally. A green "rls" step means a
+# row in workspace A is provably invisible/unwritable from workspace B's GUC.
+#
+# Portable GitHub Actions (the repo is hosted on Gitea at
+# git.unicorncommander.ai; Gitea Actions is GitHub-Actions-compatible, and
+# GitHub itself runs this unchanged). Node is pinned to 20 to match the build
+# images (backend node:20-alpine3.19, frontend node:20-alpine).
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# A newer push to the same branch/PR cancels the older in-flight run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # BACKEND — install, lint, build, unit tests, then the RLS isolation proof
+  # against a real Postgres as the NOBYPASSRLS role project_ops_app.
+  # ---------------------------------------------------------------------------
+  backend:
+    name: backend (build, unit, RLS-as-project_ops_app)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    # Postgres 17 to match run.sh (postgres:17-alpine). The default `postgres`
+    # superuser is the BYPASSRLS owner used for db push + migrations + seeds;
+    # the RLS test reconnects as project_ops_app (created by the rls_roles
+    # migration) to actually exercise the fence.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: pw
+          POSTGRES_DB: project_ops
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d project_ops"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # Owner/admin URL (superuser) — db push, migrations, and seeds run here,
+      # exactly as run.sh uses DATABASE_URL.
+      DATABASE_URL: postgresql://postgres:REMOVED@localhost:5432/project_ops?schema=public
+      # Non-bypass runtime URL the RLS test connects as. The password
+      # 'verify_app' is set idempotently by the rls_roles migration's
+      # CREATE/ALTER ROLE project_ops_app ... PASSWORD 'verify_app'.
+      PROJECT_OPS_APP_DATABASE_URL: postgresql://project_ops_app:REMOVED@localhost:5432/project_ops?schema=public
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install (npm ci)
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: Lint
+        # The repo's lint script auto-fixes (`eslint ... --fix`); in CI we must
+        # NOT mutate files and must fail on any finding, so run eslint directly.
+        run: npx eslint "{src,apps,libs,test}/**/*.ts" --max-warnings 0
+
+      - name: Build (nest build)
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test -- --ci
+
+      # --- RLS isolation proof -------------------------------------------------
+      # Replicates run.sh against the Postgres service container:
+      #   1. prisma db push as superuser (the repo deploys via db push, NOT
+      #      `migrate deploy`; there is no _prisma_migrations history).
+      #   2. apply the four tenancy migrations' SQL BY HAND, in apply order, via
+      #      psql -v ON_ERROR_STOP=1. These create the project_ops_app
+      #      NOBYPASSRLS role + grant it, install the GUC chokepoint
+      #      current_workspace_id(), and ENABLE+FORCE the workspace_isolation
+      #      policy on every scoped table. (DO $$...$$ dollar-quoting survives
+      #      because each file is fed to psql -f -.)
+      #   3. seed base users -> phase2 workspaces/memberships -> §9 fixtures.
+      #   4. run the §9 suite as project_ops_app via PROJECT_OPS_APP_DATABASE_URL;
+      #      its beforeAll guard HARD-FAILS if the connected role is BYPASSRLS or
+      #      superuser, so a misconfigured URL can never produce a false green.
+      - name: Apply schema (prisma db push, as superuser)
+        run: npx prisma db push --skip-generate
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Apply tenancy migrations (roles, GUC, RLS, seeds) by hand
+        env:
+          PGPASSWORD: pw
+        run: |
+          set -euo pipefail
+          MIGRATIONS=(
+            "20260603051046_suite_tenancy_rls_roles"
+            "20260609000000_phase2_tenancy_cols"
+            "20260609120000_phase2_workspace_seed"
+            "20260610090000_mu_canonical_rekey"
+          )
+          for m in "${MIGRATIONS[@]}"; do
+            file="prisma/migrations/${m}/migration.sql"
+            echo "Applying migration: ${m}"
+            psql -v ON_ERROR_STOP=1 -h localhost -U postgres -d project_ops -f "${file}"
+          done
+
+      - name: Verify project_ops_app is genuinely NOBYPASSRLS
+        # Belt-and-suspenders: prove the role exists and is non-bypass BEFORE the
+        # test, so a broken migration surfaces here rather than as a confusing
+        # test failure. (The test's beforeAll asserts this too.)
+        env:
+          PGPASSWORD: pw
+        run: |
+          psql -v ON_ERROR_STOP=1 -h localhost -U postgres -d project_ops -t -c \
+            "SELECT CASE WHEN rolbypassrls OR rolsuper THEN
+               (SELECT 1/0) ELSE 1 END
+             FROM pg_roles WHERE rolname='project_ops_app';" \
+          && echo "project_ops_app is NOBYPASSRLS, non-superuser ✓"
+
+      - name: Seed base users (prisma:seed)
+        run: npm run prisma:seed
+
+      - name: Seed phase2 workspaces + memberships (seed:phase2)
+        run: npm run seed:phase2
+
+      - name: Seed §9 RLS fixtures
+        run: npx ts-node tests/integration/rls/seed-rls-fixtures.ts
+
+      - name: RLS workspace-isolation test (AS project_ops_app)
+        # test:rls reads PROJECT_OPS_APP_DATABASE_URL (set in job env above), so
+        # the suite runs — it would self-skip if that URL were unset.
+        run: npm run test:rls
+
+  # ---------------------------------------------------------------------------
+  # FRONTEND — install, lint, typecheck, production build.
+  # ---------------------------------------------------------------------------
+  frontend:
+    name: frontend (lint, typecheck, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    env:
+      # Make the Sentry build plugin fully inert in CI: no auth token => no
+      # source-map upload, and it no-ops cleanly. CI=true is already set by the
+      # runner, which only flips the plugin from silent to logging.
+      SENTRY_AUTH_TOKEN: ''
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install (npm ci)
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build (next build)
+        run: npm run build
+
+      - name: Typecheck
+        # No dedicated script in package.json; tsconfig has noEmit:true so this
+        # is a pure type check. Runs AFTER build on purpose: tsconfig `include`
+        # references next-env.d.ts and .next/types/**, both of which `next build`
+        # generates — running tsc first on a clean checkout would error on the
+        # missing Next type augmentations.
+        run: npx tsc --noEmit
