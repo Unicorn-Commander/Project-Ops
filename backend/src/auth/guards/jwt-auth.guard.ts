@@ -60,6 +60,16 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    // As a GLOBAL guard this also fires on non-HTTP execution contexts
+    // (@SubscribeMessage WebSocket handlers). Those are authenticated at
+    // connection time by RealtimeGateway.handleConnection (JWT in the socket
+    // handshake), and `context.switchToHttp().getRequest()` is undefined for
+    // them — so skip cleanly rather than misread an HTTP request. (Matches how
+    // the built-in ThrottlerGuard short-circuits non-HTTP contexts.)
+    if (context.getType() !== 'http') {
+      return true;
+    }
+
     // Check if route is marked as public
     const isPublic = this.reflector.getAllAndOverride<boolean>('isPublic', [
       context.getHandler(),
@@ -71,6 +81,15 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     }
 
     const request = context.switchToHttp().getRequest<Request>();
+
+    // Idempotency: this guard is registered BOTH globally (APP_GUARD) and
+    // per-route (@UseGuards on most controllers). The global pass runs first
+    // and resolves the user; the per-route pass would otherwise re-validate the
+    // bearer (and re-bcrypt a PAT). If we've already attached a user, accept.
+    if ((request as any).user) {
+      return true;
+    }
+
     const token = extractBearerToken(request);
 
     if (token && isPatToken(token)) {
@@ -92,9 +111,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
           this.logger.warn(
             `403 PAT workspace scope: token bound to ${patWorkspaceId} but request addressed ${requested} (user=${resolved.user.email})`,
           );
-          throw new ForbiddenException(
-            'This token is not scoped to the requested workspace.',
-          );
+          throw new ForbiddenException('This token is not scoped to the requested workspace.');
         }
         // Make the PAT's workspace the request's effective claim so the GUC
         // chokepoint + @CurrentWorkspace resolve to it (a PAT has no JWT
@@ -104,8 +121,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
         (request as any).workspaceId = patWorkspaceId;
       }
 
-      (resolved.user as any).__ucUid =
-        resolved.user.keycloakId ?? resolved.user.id;
+      (resolved.user as any).__ucUid = resolved.user.keycloakId ?? resolved.user.id;
       (request as any).user = resolved.user;
       (request as any).pat = resolved.token;
       return true;

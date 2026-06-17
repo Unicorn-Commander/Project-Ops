@@ -3,6 +3,15 @@ import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
+// Suite-canonical Magic Unicorn workspace id (== DEFAULT_WORKSPACE_ID; the id
+// MO/CO share, set by 20260610090000_mu_canonical_rekey). Phase 3 made every
+// tenanted workspaceId NOT NULL, so these legacy MU-owned seed rows must carry
+// it explicitly now — they were always destined for the bootstrap workspace
+// (the Phase-1 migration used to backfill them). There is NO FK from
+// organization/project.workspaceId to workspaces, so stamping the id is safe
+// even before seed:phase2 inserts the workspace row.
+const BOOTSTRAP_WORKSPACE_ID = '019e50a3-d995-723f-ab66-0f765f92c0f4';
+
 async function main() {
   console.log('Seeding Project Ops database...');
 
@@ -46,6 +55,7 @@ async function main() {
     update: {},
     create: {
       id: 'magic-unicorn-org',
+      workspaceId: BOOTSTRAP_WORKSPACE_ID,
       name: 'Magic Unicorn',
       type: OrgType.AGENCY,
       industry: 'Technology & Creative Services',
@@ -65,6 +75,7 @@ async function main() {
   // Create seed projects
   const project1 = await prisma.project.create({
     data: {
+      workspaceId: BOOTSTRAP_WORKSPACE_ID,
       projectNumber: 'PROJ-001',
       title: 'Majiks Studio Launch',
       description: 'Launch campaign and deliverables for Majiks Studio brand. Includes website, social media assets, and marketing collateral.',
@@ -84,6 +95,7 @@ async function main() {
 
   const project2 = await prisma.project.create({
     data: {
+      workspaceId: BOOTSTRAP_WORKSPACE_ID,
       projectNumber: 'PROJ-002',
       title: 'Client Portal Platform',
       description: 'Ongoing client work - client portal platform maintenance and feature development.',
@@ -101,6 +113,7 @@ async function main() {
 
   const project3 = await prisma.project.create({
     data: {
+      workspaceId: BOOTSTRAP_WORKSPACE_ID,
       projectNumber: 'PROJ-003',
       title: 'Project Ops Refactor',
       description: 'Internal project - building Project Ops general-purpose PM/CRM platform.',

@@ -313,10 +313,10 @@ model PersonalAccessToken {
 
 model Organization {
   id          String  @id @default(uuid())
-  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
+  // Suite tenancy: NOT NULL since Phase 3 (20260617000000_phase3_workspace_not_null).
   // PO Organization is the operator's CLIENT record, NEVER the tenancy
   // boundary — that is `workspaceId`. (SUITE-IDENTITY §2.)
-  workspaceId String?
+  workspaceId String
   name        String
   type        OrgType
   taxId       String? // EIN or identifier
@@ -376,8 +376,8 @@ model Organization {
 model OrganizationContact {
   id String @id @default(uuid())
 
-  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
-  workspaceId String?
+  // Suite tenancy: NOT NULL since Phase 3 (20260617000000_phase3_workspace_not_null).
+  workspaceId String
 
   // Personal information
   firstName   String
@@ -424,8 +424,8 @@ model OrganizationContact {
 
 model Contact {
   id          String  @id @default(uuid())
-  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
-  workspaceId String?
+  // Suite tenancy: NOT NULL since Phase 3 (20260617000000_phase3_workspace_not_null).
+  workspaceId String
   firstName   String
   lastName    String
   email       String
@@ -472,8 +472,8 @@ model Contact {
 
 model Project {
   id            String          @id @default(uuid())
-  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
-  workspaceId   String?
+  // Suite tenancy: NOT NULL since Phase 3 (20260617000000_phase3_workspace_not_null).
+  workspaceId   String
   // projectNumber is unique PER WORKSPACE (see @@unique below), not globally.
   projectNumber String
   title         String
@@ -553,8 +553,8 @@ model Project {
 
 model Document {
   id           String         @id @default(uuid())
-  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
-  workspaceId  String?
+  // Suite tenancy: NOT NULL since Phase 3 (20260617000000_phase3_workspace_not_null).
+  workspaceId  String
   projectId    String?
   uploadedById String
   fileName     String
@@ -581,8 +581,8 @@ model Document {
 
 model Comment {
   id          String   @id @default(uuid())
-  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
-  workspaceId String?
+  // Suite tenancy: NOT NULL since Phase 3 (20260617000000_phase3_workspace_not_null).
+  workspaceId String
   projectId   String
   authorId    String
   content     String
@@ -602,7 +602,16 @@ model Comment {
 
 model AuditLog {
   id          String      @id @default(uuid())
-  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
+  // Suite tenancy: INTENTIONALLY nullable (Phase 3 left it so — see
+  // 20260617000000_phase3_workspace_not_null). audit_logs is the one scoped
+  // table whose write path (AuditService.log) tolerates an unstamped DTO by
+  // design: a workspace-less system event (e.g. a future LOGIN/LOGOUT audit, or
+  // any pre-workspace-resolution failure) must still be recordable, and the
+  // never-throw audit contract would SILENTLY DROP such a row if NOT NULL turned
+  // the fallback into a hard PG error. Every current caller stamps workspaceId,
+  // so RLS still fences live rows; we keep the column nullable as the safety
+  // valve. RLS predicate (workspaceId = current_workspace_id()) already makes a
+  // NULL-workspace row invisible/un-writable under a GUC — fail-closed reads.
   workspaceId String?
   userId      String?
   projectId   String?
@@ -654,8 +663,8 @@ model EmailConfig {
 
 model Task {
   id           String        @id @default(uuid())
-  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
-  workspaceId  String?
+  // Suite tenancy: NOT NULL since Phase 3 (20260617000000_phase3_workspace_not_null).
+  workspaceId  String
   projectId    String
   title        String
   description  String?
@@ -692,8 +701,8 @@ model Task {
 
 model TaskComment {
   id          String   @id @default(uuid())
-  // Suite tenancy: nullable in Phase 1 (additive), NOT NULL after backfill.
-  workspaceId String?
+  // Suite tenancy: NOT NULL since Phase 3 (20260617000000_phase3_workspace_not_null).
+  workspaceId String
   taskId      String
   authorId    String
   content     String
@@ -722,8 +731,8 @@ model TaskComment {
 model TriageProposal {
   id String @id @default(uuid())
 
-  // Suite tenancy: nullable in Phase 2 (additive), NOT NULL after backfill.
-  workspaceId String?
+  // Suite tenancy: NOT NULL since Phase 3 (20260617000000_phase3_workspace_not_null).
+  workspaceId String
 
   // Source provenance + idempotency
   sourceType         String  @default("MANUAL") // MEETING_OPS | MANUAL | WEBHOOK | IMPORT

@@ -54,7 +54,9 @@ import {
   WorkspaceRole,
   MembershipStatus,
   UserRole,
+  OrgType,
 } from '@prisma/client';
+import { registerWorkspaceWithRegistry } from '../../../src/common/registry/uc-registry.client';
 
 // --- Known dogfood ids (must match the §9 test literals; MU is the suite-
 // canonical id MO/CO share, established by 20260610090000_mu_canonical_rekey) --
@@ -67,6 +69,12 @@ const TEST_WORKSPACE_IDS = [MU, GFL] as const;
 // Reserved projectNumbers reused in BOTH workspaces (projectNumber is unique
 // PER workspace — see Project @@unique([workspaceId, projectNumber])).
 const PROJECT_NUMBERS = ['P-1', 'P-2'] as const;
+
+// Reserved contact emails reused in BOTH workspaces. Contact email is unique
+// PER workspace (Contact @@unique([workspaceId, email])), so the SAME two
+// emails can exist in MU and GFL. The §9 cross-contact test relies on exactly
+// two contacts per workspace, each owning ONE of the two projects.
+const CONTACT_EMAILS = ['rls-contact-a@fixture.test', 'rls-contact-b@fixture.test'] as const;
 
 // Stable keycloakId values so memberships key consistently across re-runs and so
 // the §9 Invariant-5 JOIN (users.keycloakId = memberships.userKey) resolves.
@@ -182,18 +190,43 @@ async function seedMemberships(
  *            (type/status/priority have defaults).
  */
 async function seedProjectsAndTasks(createdById: string): Promise<void> {
-  // Tasks FK -> projects (onDelete: Cascade), so deleting the reserved projects
-  // also removes their tasks. Delete ONLY within the two test workspaces and
-  // ONLY the reserved projectNumbers.
-  await prisma.project.deleteMany({
-    where: {
-      workspaceId: { in: [...TEST_WORKSPACE_IDS] },
-      projectNumber: { in: [...PROJECT_NUMBERS] },
-    },
-  });
+  // RECONCILE the two test workspaces to EXACTLY this controlled set. The base
+  // dev seed (prisma/seed.ts) now stamps its legacy "Magic Unicorn" org +
+  // PROJ-00x projects into the MU workspace (Phase 3 made workspaceId NOT NULL,
+  // so they can no longer sit NULL/un-scoped as they did pre-Phase-3). To keep
+  // the §9 EXACT counts (2 projects / 1 task / 1 org per workspace) we clear ALL
+  // rows in the two test workspaces first, in FK-safe order, then plant the
+  // fixtures. SAFETY: every delete is fenced to workspaceId IN (MU, GFL) — it
+  // NEVER touches any other workspace's data.
+  const where = { workspaceId: { in: [...TEST_WORKSPACE_IDS] } };
+  // Children/leaf rows first. tasks & comments cascade from projects, but delete
+  // explicitly so any task/comment created standalone in a test ws is cleared.
+  await prisma.task.deleteMany({ where });
+  await prisma.project.deleteMany({ where }); // detaches contacts (SetNull)
+  await prisma.contact.deleteMany({ where });
 
   for (const workspaceId of TEST_WORKSPACE_IDS) {
-    for (const projectNumber of PROJECT_NUMBERS) {
+    // Two contacts per workspace (A, B). Each owns ONE of the two projects, so
+    // the §9 cross-contact test can prove contact A's portal filter never
+    // returns contact B's project.
+    const contactIds: string[] = [];
+    for (const email of CONTACT_EMAILS) {
+      const contact = await prisma.contact.create({
+        data: {
+          workspaceId,
+          firstName: 'RLS',
+          lastName: email.startsWith('rls-contact-a') ? 'ContactA' : 'ContactB',
+          email,
+          createdById,
+        },
+        select: { id: true },
+      });
+      contactIds.push(contact.id);
+    }
+
+    // Two projects per workspace (unchanged count); P-1 -> contact A, P-2 -> B.
+    for (let i = 0; i < PROJECT_NUMBERS.length; i++) {
+      const projectNumber = PROJECT_NUMBERS[i];
       const project = await prisma.project.create({
         data: {
           workspaceId,
@@ -203,6 +236,8 @@ async function seedProjectsAndTasks(createdById: string): Promise<void> {
           status: ProjectStatus.NEW,
           priority: ProjectPriority.MEDIUM,
           createdById,
+          // P-1 -> contact A, P-2 -> contact B (one project per contact).
+          contactId: contactIds[i],
         },
         select: { id: true },
       });
@@ -222,6 +257,42 @@ async function seedProjectsAndTasks(createdById: string): Promise<void> {
         });
       }
     }
+  }
+}
+
+/**
+ * Plant EXACTLY ONE organization + ONE triage_proposal per test workspace so
+ * the §9 suite can assert RLS isolation on the Phase-3 NOT-NULL scoped tables
+ * (organizations, triage_proposals) in addition to projects/tasks. Scoped
+ * strictly to the two test workspaces; delete-then-insert for exact counts.
+ */
+async function seedOrgsAndTriage(createdById: string): Promise<void> {
+  const ORG_NAME = 'RLS Fixture Org';
+  const TRIAGE_SOURCE_ID = 'rls-fixture-triage-1';
+
+  // Reconcile to EXACTLY one org + one triage proposal per test workspace.
+  // Clear ALL orgs/triage rows in the two test workspaces first (the base dev
+  // seed plants a "Magic Unicorn" org into MU). Runs AFTER seedProjectsAndTasks,
+  // so the projects that referenced those orgs are already gone. Fenced to the
+  // two test workspaces only — never touches other data.
+  const where = { workspaceId: { in: [...TEST_WORKSPACE_IDS] } };
+  await prisma.triageProposal.deleteMany({ where });
+  await prisma.organization.deleteMany({ where });
+
+  for (const workspaceId of TEST_WORKSPACE_IDS) {
+    await prisma.organization.create({
+      data: { workspaceId, name: ORG_NAME, type: OrgType.BUSINESS, createdById },
+    });
+    await prisma.triageProposal.create({
+      data: {
+        workspaceId,
+        sourceType: 'MANUAL',
+        sourceActionItemId: TRIAGE_SOURCE_ID,
+        rawText: 'RLS fixture triage proposal',
+        proposedTitle: 'RLS fixture proposal',
+        createdById,
+      },
+    });
   }
 }
 
@@ -273,6 +344,25 @@ async function main(): Promise<void> {
     },
   });
 
+  // Phase E: register both fixture workspaces with uc-registry (supplied id ==
+  // local id). Pure no-op when UC_REGISTRY_URL is unset (the §9 harness sets no
+  // such env), so this is inert in CI and never blocks the fixtures.
+  for (const ws of [
+    { id: MU, slug: 'magic-unicorn', displayName: 'Magic Unicorn' },
+    { id: GFL, slug: 'brightwater-labs', displayName: 'Brightwater Labs' },
+  ]) {
+    const outcome = await registerWorkspaceWithRegistry({
+      id: ws.id,
+      slug: ws.slug,
+      displayName: ws.displayName,
+      isolationMode: 'standard',
+      isolationTier: 'shared',
+    });
+    if (!outcome.ok) {
+      console.warn(`[seed:rls-fixtures] uc-registry: ${outcome.message} (continuing).`);
+    }
+  }
+
   const aaron = await ensureUser(
     AARON_EMAIL,
     AARON_KEYCLOAK_ID,
@@ -294,6 +384,9 @@ async function main(): Promise<void> {
   // `(SELECT id FROM users LIMIT 1)`, so any real user id satisfies its FK; we
   // use Aaron's id for the seeded projects/tasks.
   await seedProjectsAndTasks(aaron.id);
+  // Phase-3 NOT-NULL scoped tables (organizations, triage_proposals): one row
+  // per workspace for the §9 isolation assertions.
+  await seedOrgsAndTriage(aaron.id);
 
   // Sanity: confirm the EXACT per-workspace project counts the §9 test asserts.
   for (const workspaceId of TEST_WORKSPACE_IDS) {

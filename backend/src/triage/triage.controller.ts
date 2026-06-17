@@ -1,12 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Param,
-  Req,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { TriageService, CandidateItem } from './triage.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -16,6 +8,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentWorkspace } from '../common/workspace/current-workspace.decorator';
 import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
 import { FederationActorGuard } from '../common/workspace/federation-actor.guard';
+import { SkipWorkspaceMembership } from '../common/workspace/skip-workspace-membership.decorator';
 import { User, UserRole } from '@prisma/client';
 
 /**
@@ -34,18 +27,22 @@ import { User, UserRole } from '@prisma/client';
 // which then short-circuits the next two) → human role (RolesGuard) → human
 // workspace membership / D5 (WorkspaceMembershipGuard). Non-federation requests
 // flow through the human path exactly as before.
-@UseGuards(
-  JwtAuthGuard,
-  FederationActorGuard,
-  RolesGuard,
-  WorkspaceMembershipGuard,
-)
+@UseGuards(JwtAuthGuard, FederationActorGuard, RolesGuard, WorkspaceMembershipGuard)
 @Controller('triage')
 export class TriageController {
   constructor(private readonly triage: TriageService) {}
 
   /** Submit candidate action items for triage (propose-only). Source-agnostic. */
   @Post('ingest')
+  // Opt OUT of the GLOBAL WorkspaceMembershipGuard: this is the federation
+  // ingress. A trusted sibling-app actor is NOT a workspace member, and the
+  // global guard runs BEFORE this route's per-route FederationActorGuard (which
+  // is what stamps req.federationActor + the Brigade-vouched workspace). The
+  // per-route chain below (FederationActorGuard → RolesGuard →
+  // WorkspaceMembershipGuard) authorizes both the federation actor and a human
+  // caller exactly as before. Humans hitting this route still pass the per-route
+  // membership guard.
+  @SkipWorkspaceMembership()
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @ApiOperation({ summary: 'Submit candidate action items for triage (propose-only)' })
   ingest(

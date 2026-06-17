@@ -21,19 +21,22 @@
 set -euo pipefail
 
 # --- Tunables ----------------------------------------------------------------
-CONTAINER="po-rls-test"            # throwaway container name (unlikely to clash)
-PG_PORT="55432"                    # NON-default host port -> no 5432 collision
+CONTAINER="${PO_RLS_CONTAINER:-po-rls-test}"  # throwaway container name (unlikely to clash)
+# NON-default host port -> no 5432 collision. Env-overridable (PG_PORT) so a run
+# never wedges when a sibling project already holds the default on this host.
+PG_PORT="${PG_PORT:-55432}"
 PG_PASSWORD="pw"
 PG_DB="project_ops"
 PG_IMAGE="postgres:17-alpine"
 
 MIGRATIONS_DIR="prisma/migrations"
-# The four tenancy migrations, IN APPLY ORDER. Each is idempotent.
+# The tenancy migrations, IN APPLY ORDER. Each is idempotent.
 MIGRATIONS=(
   "20260603051046_suite_tenancy_rls_roles"   # roles, GUC chokepoint, RLS, bootstrap ws
   "20260609000000_phase2_tenancy_cols"       # triage/PAT cols + triage RLS
   "20260609120000_phase2_workspace_seed"     # rebrand MU + add GFL + memberships
   "20260610090000_mu_canonical_rekey"        # re-key MU bootstrap uuid -> suite-canonical (MO/CO-shared)
+  "20260617000000_phase3_workspace_not_null" # tenanted workspaceId -> NOT NULL (PAT + audit_logs stay nullable)
 )
 
 # --- Teardown trap: always remove the throwaway container ---------------------

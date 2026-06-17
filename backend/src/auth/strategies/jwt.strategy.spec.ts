@@ -144,3 +144,116 @@ describe('JwtStrategy Brigade audience binding', () => {
     expect(JwtStrategy.audienceMatches(undefined, 'project-ops')).toBe(false);
   });
 });
+
+/**
+ * Keycloak realm-token audience binding (PO brief item 1). The uchub realm is
+ * SHARED across every UC app, so a realm RS256 token minted for a sibling
+ * client verifies against the same JWKS — PO must additionally bind it to THIS
+ * app via `azp`/`aud`. These pin the post-verification gate that runs in
+ * validate() for any token whose `iss` is the configured realm issuer.
+ *
+ * Keycloak's default layout puts the OAuth client in `azp` and only `account`
+ * in `aud`, so a legitimate PO token typically looks like
+ * `{ iss: <realm>, azp: 'project-ops', aud: 'account' }`.
+ */
+describe('JwtStrategy Keycloak realm audience binding', () => {
+  const KC_URL = 'https://auth.unicorncommander.ai';
+  const REALM = 'uchub';
+  const REALM_ISS = `${KC_URL}/realms/${REALM}`;
+
+  const kcConfig = (overrides: Record<string, string | undefined> = {}) => ({
+    KEYCLOAK_URL: KC_URL,
+    KEYCLOAK_REALM: REALM,
+    KEYCLOAK_CLIENT_ID: 'project-ops',
+    ...overrides,
+  });
+
+  const kcPayload = (
+    claims: { azp?: unknown; aud?: unknown },
+  ): JwtPayload & { iss: string } => ({
+    sub: 'aaron-uuid',
+    email: 'aaron@example.com',
+    role: 'ADMIN',
+    username: 'aaron',
+    iss: REALM_ISS,
+    ...claims,
+  });
+
+  it('accepts a realm token whose azp is the PO client (aud=account default layout)', async () => {
+    const strategy = makeStrategy(async () => fakeUser, kcConfig());
+    await expect(
+      strategy.validate(kcPayload({ azp: 'project-ops', aud: 'account' })),
+    ).resolves.toEqual(fakeUser);
+  });
+
+  it('accepts a realm token whose aud array includes the PO client', async () => {
+    const strategy = makeStrategy(async () => fakeUser, kcConfig());
+    await expect(
+      strategy.validate(kcPayload({ aud: ['account', 'project-ops'] })),
+    ).resolves.toEqual(fakeUser);
+  });
+
+  it('rejects a realm token minted for a sibling client (azp=accounting-ops)', async () => {
+    const validate = jest.fn(async () => fakeUser);
+    const strategy = makeStrategy(
+      validate as unknown as AuthService['validateJwtPayload'],
+      kcConfig(),
+    );
+    await expect(
+      strategy.validate(kcPayload({ azp: 'accounting-ops', aud: 'account' })),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(validate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a realm token with no azp and only aud=account', async () => {
+    const strategy = makeStrategy(async () => fakeUser, kcConfig());
+    await expect(
+      strategy.validate(kcPayload({ aud: 'account' })),
+    ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('honors KEYCLOAK_EXPECTED_AUDIENCES as an additional accepted client', async () => {
+    const strategy = makeStrategy(
+      async () => fakeUser,
+      kcConfig({ KEYCLOAK_EXPECTED_AUDIENCES: 'project-ops-public' }),
+    );
+    await expect(
+      strategy.validate(kcPayload({ azp: 'project-ops-public', aud: 'account' })),
+    ).resolves.toEqual(fakeUser);
+  });
+
+  it('does NOT enforce when KEYCLOAK_ENFORCE_AUDIENCE=false (escape hatch)', async () => {
+    const strategy = makeStrategy(
+      async () => fakeUser,
+      kcConfig({ KEYCLOAK_ENFORCE_AUDIENCE: 'false' }),
+    );
+    await expect(
+      strategy.validate(kcPayload({ azp: 'some-other-app', aud: 'account' })),
+    ).resolves.toEqual(fakeUser);
+  });
+
+  it('does NOT apply the realm gate to local HS256 tokens (no realm iss)', async () => {
+    // fakePayload has no iss → not a realm token → audience gate is skipped.
+    const strategy = makeStrategy(async () => fakeUser, kcConfig());
+    await expect(strategy.validate(fakePayload)).resolves.toEqual(fakeUser);
+  });
+
+  it('keycloakAudienceMatches accepts azp OR aud (string|array)', () => {
+    const expected = new Set(['project-ops']);
+    expect(
+      JwtStrategy.keycloakAudienceMatches('account', 'project-ops', expected),
+    ).toBe(true);
+    expect(
+      JwtStrategy.keycloakAudienceMatches('project-ops', undefined, expected),
+    ).toBe(true);
+    expect(
+      JwtStrategy.keycloakAudienceMatches(['a', 'project-ops'], 'b', expected),
+    ).toBe(true);
+    expect(
+      JwtStrategy.keycloakAudienceMatches('account', 'accounting-ops', expected),
+    ).toBe(false);
+    expect(
+      JwtStrategy.keycloakAudienceMatches(undefined, undefined, expected),
+    ).toBe(false);
+  });
+});

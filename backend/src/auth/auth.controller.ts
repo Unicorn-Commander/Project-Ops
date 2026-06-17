@@ -9,6 +9,8 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { ClientSignupDto } from './dto/client-signup.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { Public } from '../common/decorators/public.decorator';
+import { SkipWorkspaceMembership } from '../common/workspace/skip-workspace-membership.decorator';
 import { User } from '@prisma/client';
 
 @ApiTags('auth')
@@ -20,6 +22,8 @@ export class AuthController {
   ) {}
 
   @Post('login')
+  @Public()
+  @SkipWorkspaceMembership()
   @Throttle({ short: { limit: 5, ttl: 60000 } }) // 5 attempts per minute
   @ApiOperation({ summary: 'Login with email/password' })
   @ApiResponse({ status: 200, description: 'Returns JWT token and user info' })
@@ -48,10 +52,7 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Password does not meet security requirements' })
   @ApiResponse({ status: 401, description: 'Current password is incorrect' })
   @ApiResponse({ status: 429, description: 'Too many password change attempts' })
-  async changePassword(
-    @CurrentUser() user: User,
-    @Body() changePasswordDto: ChangePasswordDto,
-  ) {
+  async changePassword(@CurrentUser() user: User, @Body() changePasswordDto: ChangePasswordDto) {
     return this.authService.changePassword(
       user.id,
       changePasswordDto.currentPassword,
@@ -60,6 +61,8 @@ export class AuthController {
   }
 
   @Get('keycloak')
+  @Public()
+  @SkipWorkspaceMembership()
   @UseGuards(AuthGuard('keycloak'))
   @ApiOperation({ summary: 'Redirect to Keycloak SSO login (uchub realm)' })
   @ApiResponse({ status: 302, description: 'Redirects to Keycloak login page' })
@@ -68,6 +71,8 @@ export class AuthController {
   }
 
   @Get('keycloak/callback')
+  @Public()
+  @SkipWorkspaceMembership()
   @UseGuards(AuthGuard('keycloak'))
   @ApiOperation({ summary: 'Keycloak OAuth callback (uchub realm)' })
   @ApiResponse({ status: 302, description: 'Redirects to frontend with JWT token' })
@@ -79,20 +84,20 @@ export class AuthController {
     );
 
     // Redirect to frontend with token as query parameter
-    return res.redirect(
-      `${frontendUrl}/auth/sso-callback?token=${tokenData.access_token}`,
-    );
+    return res.redirect(`${frontendUrl}/auth/sso-callback?token=${tokenData.access_token}`);
   }
 
   @Post('client-signup/:token')
+  @Public()
+  @SkipWorkspaceMembership()
   @ApiOperation({ summary: 'Client portal signup with invitation token' })
   @ApiResponse({ status: 201, description: 'Client signup successful, returns JWT token' })
-  @ApiResponse({ status: 400, description: 'Invalid request (passwords mismatch, client already signed up)' })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid request (passwords mismatch, client already signed up)',
+  })
   @ApiResponse({ status: 404, description: 'Invalid invitation token' })
-  async clientSignup(
-    @Param('token') token: string,
-    @Body() dto: ClientSignupDto,
-  ) {
+  async clientSignup(@Param('token') token: string, @Body() dto: ClientSignupDto) {
     return this.authService.clientSignup(token, dto);
   }
 }

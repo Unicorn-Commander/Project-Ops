@@ -10,19 +10,25 @@
  */
 
 import { All, Controller, Logger, Req, Res, UseGuards } from '@nestjs/common';
-import { SkipThrottle } from '@nestjs/throttler';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { McpService } from './mcp.service';
+import { THROTTLER_MCP } from '../config/throttler.config';
 import { User, PersonalAccessToken } from '@prisma/client';
 
 @ApiTags('mcp')
 @ApiBearerAuth()
-// Brigade can issue many tool calls per minute on busy chats; bare
-// @SkipThrottle() is a no-op against the named throttlers in app.module,
-// so we have to spell them out for v5.
+// The MCP endpoint is an AUTHENTICATED agent surface (Brigade & MCP clients):
+// a busy chat issues many tool calls per turn, so the human `short`/`long`
+// tiers are too tight — but these calls can create projects/tasks and trigger
+// LLM inference, so we must NOT leave it unlimited (the previous blanket
+// @SkipThrottle did). Skip the human tiers and apply the dedicated,
+// present-but-looser `mcp` tier instead (see config/throttler.config.ts). The
+// explicit per-tier maps are required for @nestjs/throttler v5.
 @SkipThrottle({ short: true, long: true })
+@Throttle({ [THROTTLER_MCP]: { limit: 300, ttl: 60_000 } })
 @Controller('mcp')
 export class McpController {
   private readonly logger = new Logger(McpController.name);

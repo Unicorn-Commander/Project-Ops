@@ -11,12 +11,18 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
+import { Public } from '../common/decorators/public.decorator';
+import { SkipWorkspaceMembership } from '../common/workspace/skip-workspace-membership.decorator';
 
 const PACKAGE_VERSION =
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   (require('../../package.json') as { version: string }).version;
 
 @ApiTags('health')
+// Unauthenticated build-identity endpoint: opt out of the global auth +
+// membership guards. Throttling is skipped to match the health surface.
+@Public()
+@SkipWorkspaceMembership()
 @SkipThrottle({ short: true, long: true })
 @Controller('version')
 export class VersionController {

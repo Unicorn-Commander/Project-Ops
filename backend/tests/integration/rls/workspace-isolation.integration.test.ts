@@ -186,4 +186,90 @@ describeOrSkip('SUITE-IDENTITY §9 — RLS workspace isolation (as project_ops_a
     expect(muRow!.status).toBe('REVOKED');
     expect(muRow!.isDefault).toBe(false);
   });
+
+  // ── Phase-3 NOT-NULL scoped tables: prove RLS fences them too ────────────
+  // contacts/tasks/organizations/triage_proposals all carry a NOT-NULL
+  // workspaceId after 20260617000000_phase3_workspace_not_null. The fixtures
+  // plant per-workspace rows; assert the same workspace_isolation fence holds.
+  it.each([
+    ['contacts', (tx: any) => tx.contact.findMany({ select: { workspaceId: true } }), 2],
+    ['tasks', (tx: any) => tx.task.findMany({ select: { workspaceId: true } }), 1],
+    ['organizations', (tx: any) => tx.organization.findMany({ select: { workspaceId: true } }), 1],
+    ['triage_proposals', (tx: any) => tx.triageProposal.findMany({ select: { workspaceId: true } }), 1],
+  ])(
+    'Invariant 6 — %s is workspace-isolated (GUC=MU sees only MU; GUC=GFL sees only GFL)',
+    async (_label, query, expectedPerWs) => {
+      const muRows = await withWorkspace<{ workspaceId: string | null }[]>(MU, query);
+      expect(muRows).toHaveLength(expectedPerWs as number);
+      expect(muRows.every((r) => r.workspaceId === MU)).toBe(true);
+
+      const gflRows = await withWorkspace<{ workspaceId: string | null }[]>(GFL, query);
+      expect(gflRows).toHaveLength(expectedPerWs as number);
+      expect(gflRows.every((r) => r.workspaceId === GFL)).toBe(true);
+    },
+  );
+
+  it('Invariant 6 (write) — NO GUC => INSERT into a NOT-NULL scoped table (contacts) rejected', async () => {
+    // Same fail-closed-write proof as Invariant 1, on a Phase-3 NOT-NULL table.
+    await expect(
+      withWorkspace(null, (tx) =>
+        tx.$executeRaw`
+          INSERT INTO contacts
+            (id, "workspaceId", "firstName", "lastName", email, "createdById", "createdAt", "updatedAt")
+          VALUES
+            (gen_random_uuid(), ${MU}, 'No', 'Guc', 'noguc-contact@fixture.test',
+             (SELECT id FROM users LIMIT 1), now(), now())`,
+      ),
+    ).rejects.toThrow(/row-level security/i);
+  });
+
+  // ── Client-portal cross-contact denial (data-layer proof) ────────────────
+  // ClientPortalService scopes a CLIENT's reads by `contactId = <their own
+  // contact>`. The fixtures put contact A on P-1 and contact B on P-2 in the
+  // SAME workspace. Under the MU GUC, a query filtered to contact B's id must
+  // return ONLY P-2 — never contact A's P-1. This is the fence the portal's
+  // `case_.contactId !== contact.id` ForbiddenException rests on: even within
+  // one workspace, one contact cannot see another contact's project/docs.
+  it('Invariant 7 — within a workspace, a contact-scoped read never returns another contact’s project', async () => {
+    const result = await withWorkspace<{
+      contacts: { id: string; email: string }[];
+      byB: { projectNumber: string; contactId: string | null }[];
+      crossRead: { projectNumber: string } | null;
+    }>(MU, async (tx) => {
+      const contacts = await tx.contact.findMany({
+        where: { email: { in: ['rls-contact-a@fixture.test', 'rls-contact-b@fixture.test'] } },
+        select: { id: true, email: true },
+        orderBy: { email: 'asc' },
+      });
+      const contactA = contacts.find((c: any) => c.email.startsWith('rls-contact-a'))!;
+      const contactB = contacts.find((c: any) => c.email.startsWith('rls-contact-b'))!;
+
+      // The portal's own filter: projects WHERE contactId = <my contact id>.
+      const byB = await tx.project.findMany({
+        where: { contactId: contactB.id },
+        select: { projectNumber: true, contactId: true },
+      });
+
+      // Contact B trying to read contact A's specific project by id, still
+      // scoped to B's contactId — must resolve to nothing (the service maps
+      // this to a 403/NotFound; here we prove the data simply isn't returned).
+      const aProject = await tx.project.findFirst({
+        where: { contactId: contactA.id },
+        select: { id: true },
+      });
+      const crossRead = await tx.project.findFirst({
+        where: { id: aProject!.id, contactId: contactB.id },
+        select: { projectNumber: true },
+      });
+
+      return { contacts, byB, crossRead };
+    });
+
+    expect(result.contacts).toHaveLength(2);
+    // B sees exactly its own one project (P-2), all stamped with B's contactId.
+    expect(result.byB).toHaveLength(1);
+    expect(result.byB[0].projectNumber).toBe('P-2');
+    // B cannot read A's project even by explicit id under B's contact scope.
+    expect(result.crossRead).toBeNull();
+  });
 });

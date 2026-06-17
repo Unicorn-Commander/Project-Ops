@@ -1,4 +1,5 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { WorkspaceMembershipGuard } from './workspace-membership.guard';
 import { MembershipService } from './membership.service';
 
@@ -18,9 +19,12 @@ describe('WorkspaceMembershipGuard', () => {
 
   const RESOLVED = 'WS-RESOLVED';
 
-  const ctxFor = (req: any): ExecutionContext =>
+  const ctxFor = (req: any, handler: any = () => undefined): ExecutionContext =>
     ({
+      getType: () => 'http',
       switchToHttp: () => ({ getRequest: () => req }),
+      getHandler: () => handler,
+      getClass: () => class {},
     }) as unknown as ExecutionContext;
 
   beforeEach(() => {
@@ -75,5 +79,34 @@ describe('WorkspaceMembershipGuard', () => {
     const req: any = { user: { id: 'u' } };
     await guard.canActivate(ctxFor(req));
     expect(resolveAndAuthorize).toHaveBeenCalledWith(req.user, null);
+  });
+
+  // Global-guard opt-out (@SkipWorkspaceMembership). When the guard runs as a
+  // global APP_GUARD it must honor the metadata flag — so a public/federation
+  // route is NOT membership-gated (and never trips the no-user 403 above).
+  describe('global opt-out via @SkipWorkspaceMembership', () => {
+    const guardWithReflector = (skip: boolean) => {
+      const reflector = {
+        getAllAndOverride: jest.fn().mockReturnValue(skip),
+      } as unknown as Reflector;
+      return new WorkspaceMembershipGuard(
+        { resolveAndAuthorize } as unknown as MembershipService,
+        reflector,
+      );
+    };
+
+    it('returns true WITHOUT resolving membership when the route opts out', async () => {
+      const g = guardWithReflector(true);
+      // No user on the request — would normally 403; the opt-out short-circuits.
+      await expect(g.canActivate(ctxFor({}))).resolves.toBe(true);
+      expect(resolveAndAuthorize).not.toHaveBeenCalled();
+    });
+
+    it('still enforces membership when the route does NOT opt out', async () => {
+      const g = guardWithReflector(false);
+      const req: any = { user: { id: 'u' } };
+      await expect(g.canActivate(ctxFor(req))).resolves.toBe(true);
+      expect(resolveAndAuthorize).toHaveBeenCalledWith(req.user, null);
+    });
   });
 });

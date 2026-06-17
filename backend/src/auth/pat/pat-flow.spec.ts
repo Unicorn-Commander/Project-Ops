@@ -107,6 +107,9 @@ function makeContext(
     params: extra?.params ?? {},
   };
   return {
+    // JwtAuthGuard now short-circuits non-HTTP contexts (it's a global guard);
+    // a real ExecutionContext always exposes getType(), so the mock must too.
+    getType: () => 'http',
     switchToHttp: () => ({ getRequest: () => req }) as any,
     getHandler: () => undefined as any,
     getClass: () => undefined as any,

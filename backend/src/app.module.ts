@@ -5,8 +5,15 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 
+import { validateEnv } from './config/env.validation';
+import { THROTTLER_TIERS } from './config/throttler.config';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { WorkspaceMembershipGuard } from './common/workspace/workspace-membership.guard';
+import { MembershipService } from './common/workspace/membership.service';
+
 // Core modules
 import { PrismaModule } from './prisma/prisma.module';
+import { RegistryModule } from './common/registry/registry.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { ProjectsModule } from './projects/projects.module';
@@ -28,26 +35,20 @@ import { TimeTrackingModule } from './time-tracking/time-tracking.module';
 
 @Module({
   imports: [
-    // Configuration
+    // Configuration. `validate` runs once at boot and aborts startup on a
+    // missing/weak required var (item 3: JWT_SECRET + EMAIL_ENCRYPTION_KEY are
+    // fail-closed in production). See src/config/env.validation.ts.
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      validate: validateEnv,
     }),
 
-    // Rate limiting - Global: 10 requests per 60 seconds
-    // Named throttlers for different security levels
-    ThrottlerModule.forRoot([
-      {
-        name: 'short',
-        ttl: 60000, // 60 seconds in milliseconds
-        limit: 10,  // 10 requests per ttl window
-      },
-      {
-        name: 'long',
-        ttl: 3600000, // 1 hour
-        limit: 100,
-      },
-    ]),
+    // Rate limiting — sane named tiers (short/long human default + a present-
+    // but-looser `mcp` tier for the agent surface). See config/throttler.config.ts
+    // for the policy rationale. Per-route @Throttle overrides (auth/login, etc.)
+    // keep tightening the `short` tier where it matters.
+    ThrottlerModule.forRoot(THROTTLER_TIERS),
 
     // Event emitter for internal events
     EventEmitterModule.forRoot(),
@@ -57,6 +58,8 @@ import { TimeTrackingModule } from './time-tracking/time-tracking.module';
 
     // Core modules
     PrismaModule,
+    // uc-registry client (Phase E). @Global, inert while UC_REGISTRY_URL unset.
+    RegistryModule,
     AuthModule,
     UsersModule,
     ProjectsModule,
@@ -77,10 +80,37 @@ import { TimeTrackingModule } from './time-tracking/time-tracking.module';
     TimeTrackingModule,
   ],
   providers: [
-    // Enable rate limiting globally via guard
+    // MembershipService is needed to construct the GLOBAL WorkspaceMembershipGuard
+    // in this module's injection context. It is otherwise a per-feature-module
+    // provider (PrismaService + ConfigService are both @Global, so this resolves
+    // cleanly). Inert while PROJECT_OPS_TENANCY_ENABLED is off.
+    MembershipService,
+
+    // Global guard chain. Order matters: NestJS runs global guards in
+    // declaration order, BEFORE any controller/route guard
+    // (`globalGuards.concat(scopedGuards)`).
+    //
+    //   1. ThrottlerGuard            — cheapest gate first; reject floods before
+    //                                  we touch auth/DB.
+    //   2. JwtAuthGuard              — authenticate by default. Routes opt out
+    //                                  with @Public() (login, SSO, signup,
+    //                                  health, version). Populates req.user so
+    //                                  the membership guard below can resolve.
+    //   3. WorkspaceMembershipGuard  — membership-gate by default so a new
+    //                                  controller can't silently skip the 403.
+    //                                  Routes opt out with @SkipWorkspaceMembership().
+    //                                  Inert (never throws) while tenancy is OFF.
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: WorkspaceMembershipGuard,
     },
   ],
 })

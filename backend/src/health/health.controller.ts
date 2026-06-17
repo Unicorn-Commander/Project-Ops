@@ -9,12 +9,17 @@ import {
   DiskHealthIndicator,
 } from '@nestjs/terminus';
 import { PrismaHealthIndicator } from './prisma.health';
+import { Public } from '../common/decorators/public.decorator';
+import { SkipWorkspaceMembership } from '../common/workspace/skip-workspace-membership.decorator';
 
 @ApiTags('health')
-// Named throttlers ('short' + 'long') in app.module require an explicit map
-// in @nestjs/throttler v5 — bare @SkipThrottle() is a no-op against named
-// throttlers, so the docker healthcheck started 429-ing once probes plus
-// public traffic exceeded 10 req / 60s.
+// Unauthenticated probe surface: opt out of the global auth + membership guards
+// so container / load-balancer probes don't 401/403.
+@Public()
+@SkipWorkspaceMembership()
+// Probes run far more often than the human tiers allow; skip them so a busy
+// load balancer never 429s the healthcheck. (Named throttlers require an
+// explicit map in @nestjs/throttler v5 — bare @SkipThrottle() is a no-op.)
 @SkipThrottle({ short: true, long: true })
 @Controller('health')
 export class HealthController {
@@ -52,8 +57,6 @@ export class HealthController {
   @ApiResponse({ status: 200, description: 'Service is ready' })
   @ApiResponse({ status: 503, description: 'Service is not ready' })
   readiness() {
-    return this.health.check([
-      () => this.prismaHealth.isHealthy('database'),
-    ]);
+    return this.health.check([() => this.prismaHealth.isHealthy('database')]);
   }
 }

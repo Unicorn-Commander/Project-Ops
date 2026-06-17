@@ -4,7 +4,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as nodemailer from 'nodemailer';
 import { Transporter } from 'nodemailer';
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
-import { CreateEmailConfigDto, UpdateEmailConfigDto, EmailConfigResponseDto } from './dto/email-config.dto';
+import {
+  CreateEmailConfigDto,
+  UpdateEmailConfigDto,
+  EmailConfigResponseDto,
+} from './dto/email-config.dto';
 import { getInvitationEmailTemplate, getTestEmailTemplate } from './templates/invitation.template';
 import { getPasswordResetEmailTemplate } from './templates/password-reset.template';
 import { getProjectAssignedEmailTemplate } from './templates/project-assigned.template';
@@ -24,14 +28,36 @@ export class EmailService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
   ) {
-    // Initialize encryption key from environment or generate one
+    // Initialize the field-encryption key from the environment.
+    //
+    // Fail-closed in production: a stored SMTP password is encrypted under this
+    // key, so a random per-process fallback would silently make every stored
+    // password undecryptable after the next restart. We refuse to construct the
+    // service in that case (env validation in src/config/env.validation.ts is
+    // the first line of defense; this is defense-in-depth so the footgun can
+    // never fire even if validation is bypassed). A 64-char hex string == the
+    // required 32 bytes for AES-256.
     const envKey = this.configService.get<string>('EMAIL_ENCRYPTION_KEY');
-    if (envKey && envKey.length === 64) {
-      this.ENCRYPTION_KEY = Buffer.from(envKey, 'hex');
+    const isProduction =
+      (this.configService.get<string>('NODE_ENV') ?? 'production') === 'production';
+    const validHexKey = typeof envKey === 'string' && /^[0-9a-fA-F]{64}$/.test(envKey);
+
+    if (validHexKey) {
+      this.ENCRYPTION_KEY = Buffer.from(envKey as string, 'hex');
+    } else if (isProduction) {
+      // Boot-blocking: an admin-set SMTP password must survive restarts.
+      throw new Error(
+        'EMAIL_ENCRYPTION_KEY must be set to a 64-char hex string in production ' +
+          '(generate: openssl rand -hex 32). Refusing to start with an ephemeral ' +
+          'key — stored SMTP passwords would become undecryptable after restart.',
+      );
     } else {
-      // Generate a random key (in production, store this in env!)
+      // Dev/test only: a throwaway key keeps local boot + tests frictionless.
       this.ENCRYPTION_KEY = randomBytes(32);
-      this.logger.warn('Using randomly generated encryption key. Set EMAIL_ENCRYPTION_KEY in .env for production!');
+      this.logger.warn(
+        'EMAIL_ENCRYPTION_KEY unset/invalid — using an ephemeral key (dev/test only). ' +
+          'Stored SMTP passwords will NOT survive a restart. Set a 64-char hex key for production.',
+      );
     }
   }
 
@@ -195,14 +221,20 @@ export class EmailService {
   /**
    * Send test email
    */
-  async sendTestEmail(to: string, subject?: string): Promise<{ success: boolean; message: string }> {
+  async sendTestEmail(
+    to: string,
+    subject?: string,
+  ): Promise<{ success: boolean; message: string }> {
     const transporter = await this.createTransporter();
     if (!transporter) {
-      throw new BadRequestException('Email is not configured. Please configure SMTP settings first.');
+      throw new BadRequestException(
+        'Email is not configured. Please configure SMTP settings first.',
+      );
     }
 
     const config = await this.prisma.emailConfig.findFirst({ where: { isEnabled: true } });
-    const fromName = config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
+    const fromName =
+      config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
     const fromEmail = config?.fromEmail || this.configService.get<string>('SMTP_USER', '');
 
     try {
@@ -244,7 +276,8 @@ export class EmailService {
     }
 
     const config = await this.prisma.emailConfig.findFirst({ where: { isEnabled: true } });
-    const fromName = config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
+    const fromName =
+      config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
     const fromEmail = config?.fromEmail || this.configService.get<string>('SMTP_USER', '');
 
     try {
@@ -287,7 +320,8 @@ export class EmailService {
     }
 
     const config = await this.prisma.emailConfig.findFirst({ where: { isEnabled: true } });
-    const fromName = config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
+    const fromName =
+      config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
     const fromEmail = config?.fromEmail || this.configService.get<string>('SMTP_USER', '');
 
     try {
@@ -333,7 +367,8 @@ export class EmailService {
     }
 
     const config = await this.prisma.emailConfig.findFirst({ where: { isEnabled: true } });
-    const fromName = config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
+    const fromName =
+      config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
     const fromEmail = config?.fromEmail || this.configService.get<string>('SMTP_USER', '');
 
     try {
@@ -341,7 +376,14 @@ export class EmailService {
         from: `"${fromName}" <${fromEmail}>`,
         to: email,
         subject: `New Project Assigned: ${projectNumber}`,
-        html: getProjectAssignedEmailTemplate(userName, projectNumber, projectName, assignedBy, projectUrl, fromName),
+        html: getProjectAssignedEmailTemplate(
+          userName,
+          projectNumber,
+          projectName,
+          assignedBy,
+          projectUrl,
+          fromName,
+        ),
       });
 
       this.logger.log(`Project assigned email sent to ${email}. Message ID: ${info.messageId}`);
@@ -379,7 +421,8 @@ export class EmailService {
     }
 
     const config = await this.prisma.emailConfig.findFirst({ where: { isEnabled: true } });
-    const fromName = config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
+    const fromName =
+      config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
     const fromEmail = config?.fromEmail || this.configService.get<string>('SMTP_USER', '');
 
     try {
@@ -387,7 +430,14 @@ export class EmailService {
         from: `"${fromName}" <${fromEmail}>`,
         to: email,
         subject: `Task Reminder: ${taskTitle}`,
-        html: getTaskReminderEmailTemplate(userName, taskTitle, dueDate, projectNumber, taskUrl, fromName),
+        html: getTaskReminderEmailTemplate(
+          userName,
+          taskTitle,
+          dueDate,
+          projectNumber,
+          taskUrl,
+          fromName,
+        ),
       });
 
       this.logger.log(`Task reminder email sent to ${email}. Message ID: ${info.messageId}`);
@@ -424,7 +474,8 @@ export class EmailService {
     }
 
     const config = await this.prisma.emailConfig.findFirst({ where: { isEnabled: true } });
-    const fromName = config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
+    const fromName =
+      config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
     const fromEmail = config?.fromEmail || this.configService.get<string>('SMTP_USER', '');
 
     try {
@@ -473,7 +524,8 @@ export class EmailService {
     }
 
     const config = await this.prisma.emailConfig.findFirst({ where: { isEnabled: true } });
-    const fromName = config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
+    const fromName =
+      config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
     const fromEmail = config?.fromEmail || this.configService.get<string>('SMTP_USER', '');
 
     try {
@@ -481,7 +533,14 @@ export class EmailService {
         from: `"${fromName}" <${fromEmail}>`,
         to: email,
         subject: `New Document Uploaded: ${documentName}`,
-        html: getDocumentUploadEmailTemplate(userName, documentName, projectNumber, uploadedBy, documentUrl, fromName),
+        html: getDocumentUploadEmailTemplate(
+          userName,
+          documentName,
+          projectNumber,
+          uploadedBy,
+          documentUrl,
+          fromName,
+        ),
       });
 
       this.logger.log(`Document upload email sent to ${email}. Message ID: ${info.messageId}`);
@@ -521,7 +580,8 @@ export class EmailService {
     }
 
     const config = await this.prisma.emailConfig.findFirst({ where: { isEnabled: true } });
-    const fromName = config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
+    const fromName =
+      config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
     const fromEmail = config?.fromEmail || this.configService.get<string>('SMTP_USER', '');
 
     try {
@@ -529,10 +589,21 @@ export class EmailService {
         from: `"${fromName}" <${fromEmail}>`,
         to: email,
         subject: `Project Status Updated: ${projectNumber}`,
-        html: getProjectStatusUpdateEmailTemplate(userName, projectNumber, projectName, oldStatus, newStatus, updatedBy, projectUrl, fromName),
+        html: getProjectStatusUpdateEmailTemplate(
+          userName,
+          projectNumber,
+          projectName,
+          oldStatus,
+          newStatus,
+          updatedBy,
+          projectUrl,
+          fromName,
+        ),
       });
 
-      this.logger.log(`Project status update email sent to ${email}. Message ID: ${info.messageId}`);
+      this.logger.log(
+        `Project status update email sent to ${email}. Message ID: ${info.messageId}`,
+      );
       return {
         success: true,
         message: `Project status update email sent to ${email}`,

@@ -48,6 +48,10 @@
  */
 
 import { PrismaClient, MembershipStatus, WorkspaceRole } from '@prisma/client';
+import {
+  registerWorkspaceWithRegistry,
+  ucRegistryEnabled,
+} from '../src/common/registry/uc-registry.client';
 
 const prisma = new PrismaClient();
 
@@ -87,8 +91,40 @@ const AUTHORITATIVE_MEMBERSHIPS: SeedMembership[] = [
   },
 ];
 
+/**
+ * Phase E: register a just-upserted workspace with uc-registry (the suite SoR),
+ * supplying PO's canonical id so the registry and this local mirror agree. A
+ * pure NO-OP when UC_REGISTRY_URL is unset (dogfood today), so this seed's
+ * behavior is unchanged there. Best-effort + loud: a registry outage is logged
+ * but does NOT fail the seed (the local row is authoritative for this step).
+ */
+async function registerWithRegistry(ws: {
+  id: string;
+  slug: string;
+  displayName: string;
+  isolationMode: string;
+  isolationTier: string;
+}): Promise<void> {
+  const outcome = await registerWorkspaceWithRegistry({
+    id: ws.id,
+    slug: ws.slug,
+    displayName: ws.displayName,
+    isolationMode: ws.isolationMode,
+    isolationTier: ws.isolationTier,
+  });
+  if (!outcome.ok) {
+    console.warn(`[seed:phase2] uc-registry: ${outcome.message} (continuing; local row is authoritative).`);
+    return;
+  }
+  if (outcome.skipped) return; // inert (UC_REGISTRY_URL unset)
+  console.log(`[seed:phase2] uc-registry: registered ${ws.slug} (${ws.id}).`);
+}
+
 async function main(): Promise<void> {
   console.log('[seed:phase2] Seeding Phase 2 dogfood tenancy...');
+  if (ucRegistryEnabled()) {
+    console.log('[seed:phase2] uc-registry ENABLED (UC_REGISTRY_URL set) — will register workspaces.');
+  }
 
   // 1. Ensure the Magic Unicorn workspace at the suite-canonical id (rebrand
   //    of displayName/slug included).
@@ -108,6 +144,7 @@ async function main(): Promise<void> {
   console.log(
     `[seed:phase2] Workspace ready: ${magicUnicorn.displayName} (${magicUnicorn.slug}) ${magicUnicorn.id}`,
   );
+  await registerWithRegistry(magicUnicorn);
 
   // 2. Ensure the Brightwater Labs dogfood tenant exists.
   const genesisFlowLabs = await prisma.workspace.upsert({
@@ -125,6 +162,7 @@ async function main(): Promise<void> {
   console.log(
     `[seed:phase2] Workspace ready: ${genesisFlowLabs.displayName} (${genesisFlowLabs.slug}) ${genesisFlowLabs.id}`,
   );
+  await registerWithRegistry(genesisFlowLabs);
 
   // 3. Authoritative operator memberships (override PROJECT_OPS_ACCESS_LIST).
   for (const m of AUTHORITATIVE_MEMBERSHIPS) {

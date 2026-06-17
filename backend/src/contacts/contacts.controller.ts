@@ -11,14 +11,7 @@ import {
   ParseIntPipe,
   DefaultValuePipe,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-  ApiQuery,
-} from '@nestjs/swagger';
-import { SkipThrottle } from '@nestjs/throttler';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { ContactsService } from './contacts.service';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
@@ -56,7 +49,6 @@ export class ContactsController {
   }
 
   @Get()
-  @SkipThrottle({ short: true, long: true })
   @ApiOperation({ summary: 'Get all contacts with pagination and search' })
   @ApiQuery({ name: 'skip', required: false, type: Number })
   @ApiQuery({ name: 'take', required: false, type: Number })
@@ -71,8 +63,7 @@ export class ContactsController {
     @Query('search') search?: string,
     @Query('isActive') isActive?: string,
   ) {
-    const isActiveBoolean =
-      isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+    const isActiveBoolean = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
 
     return this.contactsService.findAll(workspaceId, user, {
       skip,
@@ -83,18 +74,13 @@ export class ContactsController {
   }
 
   @Get('stats')
-  @SkipThrottle({ short: true, long: true })
   @ApiOperation({ summary: 'Get contact statistics for dashboard' })
   @ApiResponse({ status: 200, description: 'Contact statistics' })
-  getStats(
-    @CurrentWorkspace() workspaceId: string,
-    @CurrentUser() user: User,
-  ) {
+  getStats(@CurrentWorkspace() workspaceId: string, @CurrentUser() user: User) {
     return this.contactsService.getContactStats(workspaceId, user);
   }
 
   @Get(':id')
-  @SkipThrottle({ short: true, long: true })
   @ApiOperation({ summary: 'Get contact by ID' })
   @ApiResponse({ status: 200, description: 'Contact details' })
   @ApiResponse({ status: 404, description: 'Contact not found' })
@@ -135,7 +121,6 @@ export class ContactsController {
   }
 
   @Get(':id/projects')
-  @SkipThrottle({ short: true, long: true })
   @ApiOperation({ summary: 'Get all projects for a contact' })
   @ApiQuery({ name: 'skip', required: false, type: Number })
   @ApiQuery({ name: 'take', required: false, type: Number })
@@ -155,7 +140,6 @@ export class ContactsController {
   }
 
   @Get(':id/billing')
-  @SkipThrottle({ short: true, long: true })
   @ApiOperation({ summary: 'Get billing summary for a contact' })
   @ApiResponse({ status: 200, description: 'Billing summary for contact' })
   @ApiResponse({ status: 404, description: 'Contact not found' })
