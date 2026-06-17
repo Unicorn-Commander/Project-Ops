@@ -21,7 +21,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Textarea } from "@/components/ui/textarea";
 import api from "@/lib/api";
 import { getContacts, type Contact } from "@/lib/contacts-api";
-import { Search, Plus } from "lucide-react";
+import { Search, Plus, X } from "lucide-react";
 
 interface Project {
   id: string;
@@ -34,6 +34,8 @@ interface Project {
   clientPhone: string;
   status: string;
   priority: string;
+  category?: string | null;
+  tags?: string[] | null;
   dueDate: string | null;
   assignedToId: string | null;
   invoiceNumber?: string | null;
@@ -91,6 +93,8 @@ export function EditProjectModal({
     clientPhone: "",
     status: "NEW",
     priority: "MEDIUM",
+    category: "",
+    tags: [] as string[],
     dueDate: "",
     invoiceNumber: "",
     billingAmount: null as number | null,
@@ -105,7 +109,22 @@ export function EditProjectModal({
   const [clients, setClients] = useState<Contact[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [showClientSelector, setShowClientSelector] = useState(false);
+  const [tagDraft, setTagDraft] = useState("");
   const { toast } = useToast();
+
+  const addTag = (raw: string) => {
+    const value = raw.trim();
+    if (!value) return;
+    setFormData((prev) => {
+      if (prev.tags.some((t) => t.toLowerCase() === value.toLowerCase())) return prev;
+      return { ...prev, tags: [...prev.tags, value].slice(0, 20) };
+    });
+    setTagDraft("");
+  };
+
+  const removeTag = (value: string) => {
+    setFormData((prev) => ({ ...prev, tags: prev.tags.filter((t) => t !== value) }));
+  };
 
   // Fetch clients
   useEffect(() => {
@@ -133,6 +152,8 @@ export function EditProjectModal({
         clientPhone: projectData.clientPhone,
         status: projectData.status,
         priority: projectData.priority,
+        category: projectData.category || "",
+        tags: Array.isArray(projectData.tags) ? projectData.tags : [],
         dueDate: projectData.dueDate
           ? new Date(projectData.dueDate).toISOString().split("T")[0]
           : "",
@@ -452,17 +473,76 @@ export function EditProjectModal({
 
           </div>
 
-          {/* Due Date */}
+          {/* Due Date + Category */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="dueDate">Due Date (Optional)</Label>
+              <Input
+                id="dueDate"
+                type="date"
+                value={formData.dueDate}
+                onChange={(e) =>
+                  setFormData({ ...formData, dueDate: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label htmlFor="category">Category / Product</Label>
+              <Input
+                id="category"
+                value={formData.category}
+                onChange={(e) =>
+                  setFormData({ ...formData, category: e.target.value })
+                }
+                placeholder="e.g., Web, Mobile, Onboarding"
+              />
+            </div>
+          </div>
+
+          {/* Tags — chip input; press Enter or comma to add. */}
           <div>
-            <Label htmlFor="dueDate">Due Date (Optional)</Label>
-            <Input
-              id="dueDate"
-              type="date"
-              value={formData.dueDate}
-              onChange={(e) =>
-                setFormData({ ...formData, dueDate: e.target.value })
-              }
-            />
+            <Label htmlFor="tags">Tags</Label>
+            <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 transition-colors focus-within:border-ring">
+              {formData.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center gap-1 rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+                >
+                  {tag}
+                  <button
+                    type="button"
+                    onClick={() => removeTag(tag)}
+                    className="text-primary/60 hover:text-primary"
+                    aria-label={`Remove ${tag}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+              <input
+                id="tags"
+                type="text"
+                value={tagDraft}
+                onChange={(e) => setTagDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    addTag(tagDraft);
+                  } else if (
+                    e.key === "Backspace" &&
+                    !tagDraft &&
+                    formData.tags.length
+                  ) {
+                    removeTag(formData.tags[formData.tags.length - 1]);
+                  }
+                }}
+                onBlur={() => addTag(tagDraft)}
+                placeholder={
+                  formData.tags.length ? "Add another…" : "Add tags (press Enter)"
+                }
+                className="flex-1 min-w-[120px] border-0 bg-transparent px-1 py-0.5 text-sm outline-none placeholder:text-muted-foreground"
+              />
+            </div>
           </div>
 
           {/* Billing & Invoicing Section */}

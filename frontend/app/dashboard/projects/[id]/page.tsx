@@ -52,6 +52,8 @@ interface Project {
   clientPhone: string;
   status: string;
   priority: string;
+  category?: string | null;
+  tags?: string[] | null;
   dueDate: string | null;
   assignedToId: string | null;
   assignedTo?: {
@@ -311,7 +313,11 @@ export default function ProjectDetailPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">
+                    Category
                   </label>
+                  <p className="text-foreground mt-1">
+                    {projectData.category || "Uncategorized"}
+                  </p>
                 </div>
 
                 <div>
@@ -347,6 +353,24 @@ export default function ProjectDetailPage() {
                   </p>
                 </div>
               </div>
+
+              {Array.isArray(projectData.tags) && projectData.tags.length > 0 && (
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">
+                    Tags
+                  </label>
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {projectData.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
 

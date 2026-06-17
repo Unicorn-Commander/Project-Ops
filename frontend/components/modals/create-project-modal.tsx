@@ -61,6 +61,12 @@ const createProjectSchema = z.object({
     .or(z.literal("")),
   projectType: z.string().min(1, "Project type is required"),
   priority: z.string().min(1, "Priority is required"),
+  category: z
+    .string()
+    .max(60, "Category must not exceed 60 characters")
+    .optional()
+    .or(z.literal("")),
+  tags: z.array(z.string()).optional(),
   dueDate: z
     .string()
     .optional()
@@ -147,6 +153,8 @@ export function CreateProjectModal({
       clientPhone: "",
       projectType: "",
       priority: "MEDIUM",
+      category: "",
+      tags: [],
       dueDate: "",
       description: "",
       invoiceNumber: "",
@@ -162,7 +170,29 @@ export function CreateProjectModal({
 
   const projectType = watch("projectType");
   const priority = watch("priority");
+  const tags = watch("tags") ?? [];
+  const [tagDraft, setTagDraft] = useState("");
   const description = watch("description");
+
+  const addTag = (raw: string) => {
+    const value = raw.trim();
+    if (!value) return;
+    const current = watch("tags") ?? [];
+    // Dedupe case-insensitively, cap length to keep the array sane.
+    if (current.some((t) => t.toLowerCase() === value.toLowerCase())) {
+      setTagDraft("");
+      return;
+    }
+    setValue("tags", [...current, value].slice(0, 20));
+    setTagDraft("");
+  };
+
+  const removeTag = (value: string) => {
+    setValue(
+      "tags",
+      (watch("tags") ?? []).filter((t) => t !== value),
+    );
+  };
   const paymentStatus = watch("paymentStatus");
   const billingNotes = watch("billingNotes");
   const contactId = watch("contactId");
@@ -249,6 +279,9 @@ export function CreateProjectModal({
         clientPhone: data.clientPhone || undefined,
         projectType: data.projectType,
         priority: data.priority,
+        category: data.category || undefined,
+        // Tags travel as a JSON array of strings (Json column on the model).
+        tags: data.tags && data.tags.length > 0 ? data.tags : undefined,
         dueDate: data.dueDate || undefined,
         description: data.description,
         // Billing fields
@@ -556,6 +589,70 @@ export function CreateProjectModal({
                     {errors.dueDate.message}
                   </p>
                 )}
+              </div>
+
+              {/* Category — feeds the "Product" lane on the master schedule. */}
+              <div>
+                <Label htmlFor="category">Category / Product</Label>
+                <Input
+                  id="category"
+                  type="text"
+                  placeholder="e.g., Web, Mobile, Onboarding"
+                  {...register("category")}
+                  className={errors.category ? "border-red-500" : ""}
+                />
+                {errors.category && (
+                  <p className="text-sm text-red-500 mt-1">
+                    {errors.category.message}
+                  </p>
+                )}
+              </div>
+
+              {/* Tags — chip input; press Enter or comma to add. */}
+              <div className="md:col-span-2">
+                <Label htmlFor="tags">Tags</Label>
+                <div
+                  className={`flex flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 transition-colors focus-within:border-ring ${
+                    errors.tags ? "border-red-500" : ""
+                  }`}
+                >
+                  {tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center gap-1 rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+                    >
+                      {tag}
+                      <button
+                        type="button"
+                        onClick={() => removeTag(tag)}
+                        className="text-primary/60 hover:text-primary"
+                        aria-label={`Remove ${tag}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                  <input
+                    id="tags"
+                    type="text"
+                    value={tagDraft}
+                    onChange={(e) => setTagDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === ",") {
+                        e.preventDefault();
+                        addTag(tagDraft);
+                      } else if (e.key === "Backspace" && !tagDraft && tags.length) {
+                        removeTag(tags[tags.length - 1]);
+                      }
+                    }}
+                    onBlur={() => addTag(tagDraft)}
+                    placeholder={tags.length ? "Add another…" : "Add tags (press Enter)"}
+                    className="flex-1 min-w-[120px] border-0 bg-transparent px-1 py-0.5 text-sm outline-none placeholder:text-muted-foreground"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Press Enter or comma to add. Tags help filter and group work.
+                </p>
               </div>
 
               {/* Description */}

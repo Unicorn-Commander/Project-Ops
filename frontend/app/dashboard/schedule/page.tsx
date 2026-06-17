@@ -76,11 +76,11 @@ export default function SchedulePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Schedule</h1>
+        <h1 className="text-3xl font-bold text-foreground">Master Schedule</h1>
         <p className="text-muted-foreground mt-1">
-          Master timeline across every project. Bars run from project start
-          to due date, coloured per project, with today marked in red.
-          Drag a bar to reschedule. Filter by status, priority, or organization.
+          Every project on one timeline — grouped by customer, product, owner,
+          or status. Bars carry live progress; diamonds mark due dates. Drag a
+          bar to reschedule, zoom the window, or filter the portfolio.
         </p>
       </div>
 
