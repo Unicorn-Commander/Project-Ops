@@ -254,6 +254,10 @@ model User {
   // Relations - Personal Access Tokens (MCP / API access)
   personalAccessTokens PersonalAccessToken[]
 
+  // Relations - Collaboration (Push B)
+  notifications Notification[] @relation("UserNotifications")
+  savedViews    SavedView[]    @relation("UserSavedViews")
+
   // Relations - Time tracking
   timeEntries         TimeEntry[]       @relation("TimeEntryUser")
   approvedTimeEntries TimeEntry[]       @relation("TimeEntryApprover")
@@ -675,6 +679,7 @@ model Task {
   completedAt  DateTime?
   createdById  String
   assignedToId String?
+  parentTaskId String?
   metadata     Json?
   // Time-tracking policy overrides (null = inherit from project)
   billable     Boolean?
@@ -686,6 +691,10 @@ model Task {
   assignedTo   User?         @relation("TaskAssignee", fields: [assignedToId], references: [id])
   project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdBy    User          @relation("TaskCreator", fields: [createdById], references: [id])
+  parentTask   Task?         @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  subtasks     Task[]        @relation("TaskSubtasks")
+  dependsOn    TaskDependency[] @relation("TaskDepSuccessor")
+  dependents   TaskDependency[] @relation("TaskDepPredecessor")
 
   @@index([projectId])
   @@index([status])
@@ -696,6 +705,7 @@ model Task {
   @@index([workspaceId])
   @@index([workspaceId, status])
   @@index([workspaceId, assignedToId])
+  @@index([parentTaskId])
   @@map("tasks")
 }
 
@@ -715,6 +725,79 @@ model TaskComment {
   @@index([authorId])
   @@index([workspaceId])
   @@map("task_comments")
+}
+
+// ============================================================
+// COLLABORATION (Push B): task dependencies, notifications, saved views
+// ============================================================
+// All three are workspace-tenanted (RLS fences on workspaceId via the
+// workspace_isolation policy); notifications/saved_views are additionally
+// filtered by userId in the query layer (RLS is the tenant fence, not the
+// per-user fence). DDL + RLS + grants live in the Push B migration.
+
+enum TaskDependencyType {
+  FINISH_TO_START
+  START_TO_START
+  FINISH_TO_FINISH
+  START_TO_FINISH
+}
+
+// A directed dependency: `successor` depends on `predecessor`.
+model TaskDependency {
+  id            String             @id @default(uuid())
+  workspaceId   String
+  predecessorId String
+  successorId   String
+  type          TaskDependencyType @default(FINISH_TO_START)
+  createdById   String
+  createdAt     DateTime           @default(now())
+  predecessor   Task               @relation("TaskDepPredecessor", fields: [predecessorId], references: [id], onDelete: Cascade)
+  successor     Task               @relation("TaskDepSuccessor", fields: [successorId], references: [id], onDelete: Cascade)
+
+  @@unique([predecessorId, successorId])
+  @@index([workspaceId])
+  @@index([successorId])
+  @@map("task_dependencies")
+}
+
+// Per-user in-app notification. RLS fences by workspace; the app filters by userId.
+model Notification {
+  id          String    @id @default(uuid())
+  workspaceId String
+  userId      String
+  type        String
+  title       String
+  body        String?
+  entityType  String?
+  entityId    String?
+  actorId     String?
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([userId, readAt])
+  @@index([workspaceId, userId])
+  @@map("notifications")
+}
+
+// A saved list view (filters/sort/columns) for a user within a workspace.
+model SavedView {
+  id          String   @id @default(uuid())
+  workspaceId String
+  userId      String
+  scope       String
+  name        String
+  config      Json
+  shared      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation("UserSavedViews", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([workspaceId, scope])
+  @@index([userId])
+  @@map("saved_views")
 }
 
 // ============================================================
