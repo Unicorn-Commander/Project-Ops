@@ -5,7 +5,12 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,7 +24,7 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { updateContact, type Contact } from "@/lib/contacts-api";
 import { getOrganizations, type Organization } from "@/lib/organizations-api";
-import { X, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 const editClientSchema = z.object({
   firstName: z
@@ -154,27 +159,19 @@ export function EditContactModal({
     }
   };
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-card">
+    <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose(); }}>
+      <DialogContent
+        overlayClassName="bg-black/50"
+        className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-card"
+      >
         {/* Header */}
-        <div className="sticky top-0 bg-popover border-b border-border px-6 py-4 flex items-center justify-between z-10">
-          <h2 className="text-xl font-bold text-foreground">Edit Client</h2>
-          <Button aria-label="Close"
-            variant="ghost"
-            size="sm"
-            onClick={handleClose}
-            disabled={loading}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            <X className="w-5 h-5" />
-          </Button>
-        </div>
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold">Edit Client</DialogTitle>
+        </DialogHeader>
 
         {/* Form */}
-        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           {/* Personal Information */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-foreground">
@@ -405,7 +402,7 @@ export function EditContactModal({
             </Button>
           </div>
         </form>
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

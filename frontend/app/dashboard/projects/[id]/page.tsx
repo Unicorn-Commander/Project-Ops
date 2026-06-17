@@ -13,6 +13,8 @@ import { CommentThread } from "@/components/comments/comment-thread";
 import { DocumentList } from "@/components/documents/document-list";
 import { TaskList } from "@/components/tasks/task-list";
 import { ProjectSnapshot } from "@/components/project/project-snapshot";
+import { BudgetPanel, type ProjectBudget } from "@/components/schedule/budget";
+import { EmptyState } from "@/components/ui/empty-state";
 import { recordVisit } from "@/lib/recently-visited";
 import { CreateTaskModal } from "@/components/modals/create-task-modal";
 import { TaskDetailsModal } from "@/components/modals/task-details-modal";
@@ -35,11 +37,11 @@ import {
   FileText,
   MessageSquare,
   Edit,
-  AlertCircle,
   DollarSign,
   CheckSquare,
   Plus,
   Printer,
+  FolderX,
 } from "lucide-react";
 
 interface Project {
@@ -79,6 +81,7 @@ export default function ProjectDetailPage() {
   const projectId = params.id as string;
   const [projectData, setProjectData] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
+  const [budget, setBudget] = useState<ProjectBudget | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -93,6 +96,7 @@ export default function ProjectDetailPage() {
     fetchProjectDetails();
     fetchUserRole();
     fetchProjectTasks();
+    fetchBudget();
   }, [projectId]);
 
   const fetchUserRole = () => {
@@ -139,6 +143,19 @@ export default function ProjectDetailPage() {
       setTasks([]);
     } finally {
       setLoadingTasks(false);
+    }
+  };
+
+  // Budget burn-down — hours logged vs budget + amount billed vs budget.
+  // Fails soft: a 404 (endpoint not yet provisioned, or no budget for
+  // this project) or any error just leaves `budget` null and the panel
+  // hides, rather than surfacing a scary toast.
+  const fetchBudget = async () => {
+    try {
+      const response = await api.get(`/projects/${projectId}/budget`);
+      setBudget(response.data as ProjectBudget);
+    } catch {
+      setBudget(null);
     }
   };
 
@@ -207,17 +224,19 @@ export default function ProjectDetailPage() {
 
   if (!projectData) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px]">
-        <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-        <h3 className="text-lg font-semibold mb-2">Project Not Found</h3>
-        <p className="text-muted-foreground mb-4">
-          The project you're looking for doesn't exist or has been deleted.
-        </p>
-        <Button onClick={() => router.push("/dashboard/projects")}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Projects
-        </Button>
-      </div>
+      <EmptyState
+        icon={FolderX}
+        iconTone="rose"
+        title="Project not found"
+        body="The project you're looking for doesn't exist or has been deleted."
+        className="min-h-[400px]"
+        action={
+          <Button onClick={() => router.push("/dashboard/projects")}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to projects
+          </Button>
+        }
+      />
     );
   }
 
@@ -510,6 +529,12 @@ export default function ProjectDetailPage() {
               </div>
             </Card>
           )}
+
+          {/* Budget burn-down — hours logged vs budget + amount billed vs
+              budget, each with a clear over-budget state. Sits next to
+              billing since it's the money view. Self-hides when no budget
+              is set on the project. */}
+          <BudgetPanel budget={budget} />
 
           {/* Snapshot — completion + status donut + priority bar (v1.6.35).
               Sits above the task list so the project's shape reads at

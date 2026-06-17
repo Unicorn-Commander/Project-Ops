@@ -1,7 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Building2, Briefcase, User as UserIcon } from 'lucide-react';
+import { Building2, Briefcase, User as UserIcon } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   updateOrganization,
   getOrganizations,
@@ -107,23 +113,18 @@ export function EditOrganizationModal({ isOpen, organization, onClose, onSuccess
     }
   }
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-card rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        overlayClassName="bg-black/50"
+        className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-card rounded-xl shadow-2xl"
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-border sticky top-0 bg-card rounded-t-xl">
-          <h2 className="text-2xl font-bold text-foreground">Edit Organization</h2>
-          <button aria-label="Close"
-            onClick={onClose}
-            className="p-2 hover:bg-muted/50 rounded-lg transition-colors"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+        <DialogHeader>
+          <DialogTitle className="text-2xl font-bold">Edit Organization</DialogTitle>
+        </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
           {error && (
             <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-lg">
               <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p>
@@ -371,7 +372,7 @@ export function EditOrganizationModal({ isOpen, organization, onClose, onSuccess
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

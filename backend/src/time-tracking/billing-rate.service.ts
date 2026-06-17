@@ -135,7 +135,37 @@ export class BillingRateService {
     );
   }
 
-  /** Validate that the scope column required by scopeType is present. */
+  /** The scope-identifying columns; exactly one set distinguishes a non-ORG scope. */
+  private static readonly SCOPE_COLUMNS: ReadonlyArray<keyof CreateBillingRateDto> = [
+    'taskId',
+    'taskType',
+    'projectId',
+    'contactId',
+    'userId',
+    'role',
+    'organizationId',
+  ];
+
+  private static isSet(v: unknown): boolean {
+    return v !== undefined && v !== null && v !== '';
+  }
+
+  /**
+   * Validate that the scope column required by scopeType is present.
+   *
+   * ORG is special: it has TWO legitimate forms that the resolver ranks
+   * differently (RateResolverService.rowRank) —
+   *   • org-specific  (organizationId set)  → applies only to that org's projects;
+   *   • workspace-wide default (organizationId null) → the lowest-precedence
+   *     fallback applied to ANY project with no more-specific rate.
+   * Previously ORG skipped validation entirely, so an ORG row created WITHOUT an
+   * organizationId silently became a workspace-wide default that re-priced every
+   * project — a silent over/under-charge when the author actually intended an
+   * org-specific rate. We can't tell those apart after the fact, so make the
+   * intent explicit: a workspace-wide default must carry NO other scope column
+   * (the resolver matches an ORG row only on organizationId and would silently
+   * ignore a stray userId/projectId/etc., mis-scoping the rate).
+   */
   private assertScopeColumns(dto: CreateBillingRateDto) {
     const need: Record<string, keyof CreateBillingRateDto> = {
       TASK: 'taskId',
@@ -144,7 +174,7 @@ export class BillingRateService {
       CONTACT: 'contactId',
       USER: 'userId',
       ROLE: 'role',
-      // ORG: organizationId optional (null = workspace-wide default)
+      ORG: 'organizationId',
     };
     if (dto.scopeType === 'USER_PROJECT') {
       if (!dto.userId || !dto.projectId) {
@@ -152,8 +182,26 @@ export class BillingRateService {
       }
       return;
     }
+
+    if (dto.scopeType === 'ORG') {
+      const hasOrg = BillingRateService.isSet(dto.organizationId);
+      if (hasOrg) return; // org-specific rate — valid.
+      // No organizationId → this is the explicit workspace-wide default. It must
+      // not carry any other scope column, or it would be silently mis-scoped.
+      const stray = BillingRateService.SCOPE_COLUMNS.filter(
+        (c) => c !== 'organizationId' && BillingRateService.isSet(dto[c]),
+      );
+      if (stray.length > 0) {
+        throw new BadRequestException(
+          `ORG rate without an organizationId is the workspace-wide default and must not set ${stray.join(', ')}; ` +
+            'set organizationId for an org-specific rate.',
+        );
+      }
+      return;
+    }
+
     const col = need[dto.scopeType];
-    if (col && (dto[col] === undefined || dto[col] === null || dto[col] === '')) {
+    if (col && !BillingRateService.isSet(dto[col])) {
       throw new BadRequestException(`${dto.scopeType} rate requires ${col}`);
     }
   }

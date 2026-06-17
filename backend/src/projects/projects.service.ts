@@ -12,7 +12,28 @@ import {
   User,
   UserRole,
 } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 import { AuditService } from '../audit/audit.service';
+
+/** Prisma Decimal | null -> number | null (house pattern, see time-tracking/serialize). */
+function decToNum(v: any): number | null {
+  if (v === null || v === undefined) return null;
+  return parseFloat(v.toString());
+}
+
+/** Seconds -> hours, rounded to 2dp (matches ReportsService.hours). */
+function secondsToHours(seconds: number | null | undefined): number {
+  return Math.round(((seconds || 0) / 3600) * 100) / 100;
+}
+
+/**
+ * actual / budget as a fraction. Returns null when there is no budget to measure
+ * against (null or 0) — 0 would otherwise yield Infinity, which isn't valid JSON.
+ */
+function pct(actual: number, budget: number | null): number | null {
+  if (budget === null || budget === 0) return null;
+  return actual / budget;
+}
 
 /** Per-project task rollup attached to each item in the GET /projects list. */
 export interface TaskStats {
@@ -21,12 +42,44 @@ export interface TaskStats {
 }
 
 /**
- * Shape of a project as returned by {@link ProjectsService.findAll}: the full
- * Project (incl. scalar `category`/`tags`) plus the `taskStats` rollup. Other
- * relations (contact/createdBy/assignedTo/_count) are also present via the
- * query `include`; this type captures the additive `taskStats` contract.
+ * Compact per-project budget rollup attached to each item in the GET /projects
+ * list so the UI can render an over-budget badge without an extra call per row.
+ * `loggedHours` is the sum of ALL time-entry hours; `pctHours` is
+ * loggedHours/budgetHours (null when no hours budget is set). Money is excluded
+ * here on purpose — the full burn-down (incl. billed amount) is the dedicated
+ * GET /projects/:id/budget endpoint.
  */
-export type ProjectWithTaskStats = Project & { taskStats: TaskStats };
+export interface ProjectBudgetSummary {
+  budgetHours: number | null;
+  budgetAmount: string | null;
+  loggedHours: number;
+  pctHours: number | null;
+}
+
+/** Full budget burn-down returned by {@link ProjectsService.getBudget}. */
+export interface ProjectBudget {
+  budgetHours: number | null;
+  budgetAmount: string | null;
+  loggedHours: number;
+  billableHours: number;
+  billedAmount: string;
+  pctHours: number | null;
+  pctAmount: number | null;
+  overBudgetHours: boolean;
+  overBudgetAmount: boolean;
+}
+
+/**
+ * Shape of a project as returned by {@link ProjectsService.findAll}: the full
+ * Project (incl. scalar `category`/`tags`) plus the `taskStats` rollup and the
+ * additive `budgetSummary`. Other relations (contact/createdBy/assignedTo/
+ * _count) are also present via the query `include`; this type captures the
+ * additive contracts.
+ */
+export type ProjectWithTaskStats = Project & {
+  taskStats: TaskStats;
+  budgetSummary: ProjectBudgetSummary;
+};
 
 /**
  * SUITE TENANCY (Phase 2, B1): every project read/write runs inside
@@ -229,12 +282,19 @@ export class ProjectsService {
           tx.project.count({ where }),
         ]);
 
-        const statsByProject = await this.buildTaskStats(tx, projects);
+        const [statsByProject, loggedSecondsByProject] = await Promise.all([
+          this.buildTaskStats(tx, projects),
+          this.buildLoggedSeconds(tx, projects),
+        ]);
 
         const enriched: ProjectWithTaskStats[] = projects.map((project) => ({
           ...project,
           taskStats:
             statsByProject.get(project.id) ?? { total: 0, completed: 0 },
+          budgetSummary: this.toBudgetSummary(
+            project,
+            loggedSecondsByProject.get(project.id) ?? 0,
+          ),
         }));
 
         return { projects: enriched, total };
@@ -279,6 +339,129 @@ export class ProjectsService {
     }
 
     return statsByProject;
+  }
+
+  /**
+   * Sum logged seconds for a page of projects with a SINGLE grouped query (no
+   * N+1), mirroring {@link buildTaskStats}. Uses the billable seconds after
+   * rounding when present, else the raw duration — the same convention the
+   * billing rollup and reports use (`roundingAppliedSeconds ?? durationSeconds`).
+   * Runs on the passed workspace `tx` so it stays in the same RLS GUC scope.
+   * Returns a Map keyed by projectId; projects with no entries are absent
+   * (callers default to 0).
+   */
+  private async buildLoggedSeconds(
+    tx: WorkspaceTxClient,
+    projects: { id: string }[],
+  ): Promise<Map<string, number>> {
+    const byProject = new Map<string, number>();
+    if (projects.length === 0) {
+      return byProject;
+    }
+
+    const projectIds = projects.map((p) => p.id);
+    const grouped = await tx.timeEntry.groupBy({
+      by: ['projectId'],
+      where: { projectId: { in: projectIds } },
+      _sum: { durationSeconds: true, roundingAppliedSeconds: true },
+    });
+
+    for (const row of grouped) {
+      const seconds = row._sum.roundingAppliedSeconds ?? row._sum.durationSeconds ?? 0;
+      byProject.set(row.projectId, seconds);
+    }
+    return byProject;
+  }
+
+  /** Fold a project's budget fields + logged seconds into the list summary. */
+  private toBudgetSummary(
+    project: { budgetHours: Decimal | null; budgetAmount: Decimal | null },
+    loggedSeconds: number,
+  ): ProjectBudgetSummary {
+    const budgetHours = decToNum(project.budgetHours);
+    const loggedHours = secondsToHours(loggedSeconds);
+    return {
+      budgetHours,
+      budgetAmount: project.budgetAmount !== null ? project.budgetAmount.toString() : null,
+      loggedHours,
+      pctHours: pct(loggedHours, budgetHours),
+    };
+  }
+
+  /**
+   * Budget burn-down for a single project: hours logged vs. the project's hour
+   * budget, and accrued billable value vs. the amount budget. The billable value
+   * REUSES the billing pipeline output stored on each time entry
+   * (`billableAmount`, computed at write time by EntryFinancialsService via the
+   * rate resolver + rounding) — this method never re-resolves rates or re-rounds.
+   *
+   * SUITE TENANCY: runs inside the workspace RLS tx; the project read and the
+   * time-entry aggregates share one GUC scope. A project from another workspace
+   * 404s (fail-closed) rather than leaking.
+   */
+  async getBudget(workspaceId: string, user: User, projectId: string): Promise<ProjectBudget> {
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const project = await tx.project.findUnique({
+          where: { id: projectId },
+          select: { id: true, budgetHours: true, budgetAmount: true },
+        });
+        if (!project) {
+          throw new NotFoundException(`Project with ID ${projectId} not found`);
+        }
+
+        // One aggregate for all logged hours, one for billable hours + accrued
+        // billable value (the stored, already-rated/rounded amount).
+        const [allAgg, billableAgg] = await Promise.all([
+          tx.timeEntry.aggregate({
+            where: { projectId },
+            _sum: { durationSeconds: true, roundingAppliedSeconds: true },
+          }),
+          tx.timeEntry.aggregate({
+            where: { projectId, billable: true },
+            _sum: {
+              durationSeconds: true,
+              roundingAppliedSeconds: true,
+              billableAmount: true,
+            },
+          }),
+        ]);
+
+        const budgetHours = decToNum(project.budgetHours);
+        const budgetAmount = decToNum(project.budgetAmount);
+
+        const loggedHours = secondsToHours(
+          allAgg._sum.roundingAppliedSeconds ?? allAgg._sum.durationSeconds ?? 0,
+        );
+        const billableHours = secondsToHours(
+          billableAgg._sum.roundingAppliedSeconds ?? billableAgg._sum.durationSeconds ?? 0,
+        );
+        // Accrued billable value (WIP + already billed). Decimal money formatted
+        // to 2dp; null sum (no priced entries) is $0.00.
+        const billedDecimal = new Decimal(billableAgg._sum.billableAmount ?? 0).toDecimalPlaces(
+          2,
+          Decimal.ROUND_HALF_UP,
+        );
+        const billedAmountNum = billedDecimal.toNumber();
+
+        const pctHours = pct(loggedHours, budgetHours);
+        const pctAmount = pct(billedAmountNum, budgetAmount);
+
+        return {
+          budgetHours,
+          budgetAmount: project.budgetAmount !== null ? project.budgetAmount.toString() : null,
+          loggedHours,
+          billableHours,
+          billedAmount: billedDecimal.toString(),
+          pctHours,
+          pctAmount,
+          overBudgetHours: pctHours !== null && pctHours > 1,
+          overBudgetAmount: pctAmount !== null && pctAmount > 1,
+        };
+      },
+      workspaceId,
+    );
   }
 
   async findOne(workspaceId: string, user: User, id: string): Promise<Project> {

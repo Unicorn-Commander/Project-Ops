@@ -14,9 +14,15 @@
  */
 
 import { useEffect, useState } from "react";
-import { X, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -100,16 +106,6 @@ export function TimeEntryModal({
     }
   }, [isOpen, entry, preselectedProjectId]);
 
-  useEffect(() => {
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) onClose();
-    };
-    window.addEventListener("keydown", onEsc);
-    return () => window.removeEventListener("keydown", onEsc);
-  }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
-
   const minutesNum = Number(durationMinutes);
   const validDuration = durationMinutes !== "" && !Number.isNaN(minutesNum) && minutesNum > 0;
   const canSubmit = !!projectId && validDuration && !saving;
@@ -153,28 +149,21 @@ export function TimeEntryModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <Card className="mx-4 w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200">
-        <div className="mb-5 flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-foreground">
-              {isEdit ? "Edit time entry" : "Log time"}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {isEdit
-                ? "Adjust this draft entry."
-                : "Record time you've already worked."}
-            </p>
-          </div>
-          <Button aria-label="Close" variant="outline" size="sm" className="h-8 w-8 p-0" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        overlayClassName="bg-black/50 backdrop-blur-sm"
+        className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-card"
+      >
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold">
+            {isEdit ? "Edit time entry" : "Log time"}
+          </DialogTitle>
+          <DialogDescription>
+            {isEdit
+              ? "Adjust this draft entry."
+              : "Record time you've already worked."}
+          </DialogDescription>
+        </DialogHeader>
 
         <div className="space-y-4">
           <div>
@@ -282,7 +271,7 @@ export function TimeEntryModal({
             )}
           </Button>
         </div>
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

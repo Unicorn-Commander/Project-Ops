@@ -2,7 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -28,7 +33,6 @@ import {
 } from "@/lib/tasks-api";
 import { taskTypeIcon } from "@/lib/task-types";
 import {
-  X,
   Loader2,
   Edit,
   Trash2,
@@ -238,7 +242,7 @@ export function TaskDetailsModal({
     }
   };
 
-  if (!isOpen || !task) return null;
+  if (!task) return null;
 
   const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== TaskStatus.COMPLETED;
 
@@ -249,25 +253,21 @@ export function TaskDetailsModal({
   const getTypeIcon = (type: TaskType) => taskTypeIcon(type);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <Card className="w-full max-w-4xl mx-4 p-6 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex items-start gap-4 flex-1">
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        overlayClassName="bg-black/50 backdrop-blur-sm"
+        className="w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-card"
+      >
+        {/* Header — the built-in close button sits top-right, so leave room. */}
+        <DialogHeader className="text-left">
+          <div className="flex items-start gap-4 pr-8">
             <div className="p-3 bg-primary/10 rounded-lg">
               {getTypeIcon(task.type)}
             </div>
             <div className="flex-1">
-              <h2 className="text-2xl font-bold text-foreground mb-2">
+              <DialogTitle className="text-2xl font-bold mb-2">
                 {task.title}
-              </h2>
+              </DialogTitle>
               <div className="flex items-center gap-2 flex-wrap">
                 <Badge className={getStatusColor(task.status)}>
                   {task.status.replace(/_/g, ' ')}
@@ -281,16 +281,7 @@ export function TaskDetailsModal({
               </div>
             </div>
           </div>
-          <Button aria-label="Close"
-            variant="outline"
-            size="sm"
-            onClick={onClose}
-            className="h-8 w-8 p-0"
-            type="button"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+        </DialogHeader>
 
         {/* Overdue Warning */}
         {isOverdue && (
@@ -543,7 +534,7 @@ export function TaskDetailsModal({
             Close
           </Button>
         </div>
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

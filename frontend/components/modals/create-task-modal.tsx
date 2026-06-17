@@ -4,7 +4,13 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,7 +28,7 @@ import {
   createTaskSchema,
   type CreateTaskFormData,
 } from "@/lib/task-validation";
-import { X, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import api from "@/lib/api";
 
 interface CreateTaskModalProps {
@@ -133,17 +139,6 @@ export function CreateTaskModal({
     }
   };
 
-  // Handle ESC key to close modal
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleEsc);
-    return () => window.removeEventListener("keydown", handleEsc);
-  }, [isOpen, onClose]);
-
   const onSubmit = async (data: CreateTaskFormData) => {
     setLoading(true);
     try {
@@ -179,36 +174,19 @@ export function CreateTaskModal({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <Card className="w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200">
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        overlayClassName="bg-black/50 backdrop-blur-sm"
+        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-card"
+      >
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-foreground">Create New Task</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Add a task to track work on a project
-            </p>
-          </div>
-          <Button aria-label="Close"
-            variant="outline"
-            size="sm"
-            onClick={onClose}
-            className="h-8 w-8 p-0"
-            type="button"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+        <DialogHeader>
+          <DialogTitle className="text-2xl font-bold">Create New Task</DialogTitle>
+          <DialogDescription>
+            Add a task to track work on a project
+          </DialogDescription>
+        </DialogHeader>
 
         {/* Form */}
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -440,7 +418,7 @@ export function CreateTaskModal({
             </Button>
           </div>
         </form>
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

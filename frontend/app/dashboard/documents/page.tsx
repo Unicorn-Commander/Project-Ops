@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import UploadDocumentsModal from "@/components/modals/upload-documents-modal";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { DocumentViewerModal } from "@/components/documents/document-viewer-modal";
 import { iconWellClass } from "@/lib/badge-styles";
 import { projectColorClasses } from "@/lib/project-colors";
@@ -261,12 +262,49 @@ export default function DocumentsPage() {
     });
 
   if (loading) {
+    // Mirrors the route-level documents/loading.tsx so there's no layout shift
+    // between the navigation skeleton and this post-mount fetch skeleton.
     return (
       <div className="space-y-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-10 bg-muted rounded w-1/3"></div>
-          <div className="h-64 bg-muted rounded"></div>
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-40" />
+            <Skeleton className="h-4 w-56" />
+          </div>
+          <Skeleton className="h-9 w-40 rounded-md" />
         </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="p-4">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-9 w-9 rounded-md" />
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-6 w-12" />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+        <Card className="p-4">
+          <div className="flex flex-wrap gap-3">
+            <Skeleton className="h-10 min-w-[200px] flex-1" />
+            <Skeleton className="h-10 w-40" />
+            <Skeleton className="h-10 w-40" />
+          </div>
+        </Card>
+        <Card className="space-y-3 p-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton className="h-5 w-5 rounded" />
+              <Skeleton className="h-5 w-5 rounded" />
+              <Skeleton className="h-4 flex-1" />
+              <Skeleton className="hidden h-4 w-16 sm:block" />
+              <Skeleton className="hidden h-4 w-20 md:block" />
+              <Skeleton className="h-8 w-24 rounded-md" />
+            </div>
+          ))}
+        </Card>
       </div>
     );
   }
@@ -445,7 +483,7 @@ export default function DocumentsPage() {
                         return next;
                       });
                     }}
-                    className="h-5 w-5 rounded border border-border hover:border-primary inline-flex items-center justify-center transition-colors"
+                    className="h-5 w-5 rounded border border-border hover:border-primary inline-flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     aria-label="Select all visible"
                   >
                     {filteredDocuments.length > 0 &&
@@ -454,19 +492,19 @@ export default function DocumentsPage() {
                       )}
                   </button>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider sm:px-6">
                   File Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <th className="hidden px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider sm:table-cell">
                   Type
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <th className="hidden px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider md:table-cell">
                   Size
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <th className="hidden px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider lg:table-cell">
                   Uploaded
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider sm:px-6">
                   Actions
                 </th>
               </tr>
@@ -484,7 +522,7 @@ export default function DocumentsPage() {
                       <button
                         type="button"
                         onClick={() => toggleSelected(doc.id)}
-                        className="h-5 w-5 rounded border border-border hover:border-primary inline-flex items-center justify-center transition-colors"
+                        className="h-5 w-5 rounded border border-border hover:border-primary inline-flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         aria-label={isSelected ? "Deselect document" : "Select document"}
                       >
                         {isSelected && (
@@ -492,30 +530,33 @@ export default function DocumentsPage() {
                         )}
                       </button>
                     </td>
-                    <td className={`px-6 py-4 whitespace-nowrap ${pc ? `border-l-4 ${pc.borderLeft}` : ""}`}>
+                    <td className={`px-4 py-4 sm:px-6 ${pc ? `border-l-4 ${pc.borderLeft}` : ""}`}>
                       <div className="flex items-center gap-3">
                         {getFileIcon(doc.mimeType)}
-                        <span className="text-sm font-medium text-foreground">
+                        <span className="min-w-0 truncate text-sm font-medium text-foreground">
                           {doc.fileName}
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                      {doc.mimeType.split("/")[1].toUpperCase()}
+                    <td className="hidden px-6 py-4 whitespace-nowrap text-sm text-muted-foreground sm:table-cell">
+                      {doc.mimeType.includes("/")
+                        ? doc.mimeType.split("/")[1].toUpperCase()
+                        : doc.mimeType.toUpperCase()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                    <td className="hidden px-6 py-4 whitespace-nowrap text-sm text-muted-foreground md:table-cell">
                       {formatFileSize(doc.fileSize)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                    <td className="hidden px-6 py-4 whitespace-nowrap text-sm text-muted-foreground lg:table-cell">
                       {new Date(doc.createdAt).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                    <td className="px-4 py-4 whitespace-nowrap text-right text-sm sm:px-6">
                       <div className="flex items-center justify-end gap-2">
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handleView(doc)}
                           title="View document"
+                          aria-label={`View ${doc.fileName}`}
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
@@ -524,6 +565,7 @@ export default function DocumentsPage() {
                           size="sm"
                           onClick={() => handleDownload(doc)}
                           title="Download document"
+                          aria-label={`Download ${doc.fileName}`}
                         >
                           <Download className="h-4 w-4" />
                         </Button>
@@ -532,6 +574,7 @@ export default function DocumentsPage() {
                           size="sm"
                           onClick={() => handleDelete(doc)}
                           title="Delete document"
+                          aria-label={`Delete ${doc.fileName}`}
                         >
                           <Trash2 className="h-4 w-4 text-rose-600 dark:text-rose-400" />
                         </Button>

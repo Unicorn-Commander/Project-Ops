@@ -41,6 +41,19 @@ export class DashboardController {
     return this.dashboardService.getProjectStatistics(workspaceId, user);
   }
 
+  @Get('project-breakdown')
+  @ApiOperation({ summary: 'Get project counts grouped by status and priority' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns { byStatus: [{ status, count }], byPriority: [{ priority, count }] }',
+  })
+  getProjectBreakdown(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.dashboardService.getProjectBreakdown(workspaceId, user);
+  }
+
   @Get('upcoming-due-dates')
   @ApiOperation({ summary: 'Get projects with upcoming due dates' })
   @ApiQuery({ name: 'days', required: false, type: Number })

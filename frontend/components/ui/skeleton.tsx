@@ -17,7 +17,10 @@ export function Skeleton({
   return (
     <div
       className={cn(
-        "animate-pulse rounded-md bg-foreground/[0.06] dark:bg-foreground/[0.08]",
+        // Pulse is purely decorative — disable it for reduced-motion users
+        // (the placeholder block still reserves layout, just without the
+        // breathing animation).
+        "animate-pulse motion-reduce:animate-none rounded-md bg-foreground/[0.06] dark:bg-foreground/[0.08]",
         className,
       )}
       style={{ animationDuration: "1.6s" }}

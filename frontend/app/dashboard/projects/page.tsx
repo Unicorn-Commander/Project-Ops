@@ -38,7 +38,6 @@ import {
 import {
   BulkActionBar,
   BulkActionButton,
-  useBulkRunner,
 } from "@/components/ui/bulk-action-bar";
 import {
   Trash2 as TrashIcon,
@@ -46,7 +45,9 @@ import {
   Square as SquareIcon,
   Star as StarIcon,
 } from "lucide-react";
-import { useStarred } from "@/lib/starred";
+import { useStarred, isStarred } from "@/lib/starred";
+import { EmptyState } from "@/components/ui/empty-state";
+import { BudgetBadge, type ProjectBudgetSummary } from "@/components/schedule/budget";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
 import {
   DropdownMenu,
@@ -59,15 +60,15 @@ import {
 import { ChevronDown as ChevronDownIcon } from "lucide-react";
 import { format } from "date-fns";
 import {
-  FileText,
   Plus,
-  Calendar,
   User,
   AlertCircle,
   Eye,
   Edit,
   Trash2,
   DollarSign,
+  Search,
+  FolderPlus,
 } from "lucide-react";
 
 interface ProjectUser {
@@ -96,6 +97,10 @@ interface Project {
   billingAmount?: number | null;
   amountPaid?: number | null;
   paymentStatus?: string | null;
+  // Additive budget summary now included per-project in the list
+  // response under `budgetSummary` (see ProjectBudgetSummary). Optional —
+  // absent on older payloads; inner fields are null when no budget is set.
+  budgetSummary?: ProjectBudgetSummary | null;
 }
 
 const STATUS_OPTIONS: FilterOption[] = [
@@ -195,6 +200,31 @@ export default function ProjectsPage() {
   const handleEditProject = (projectItem: Project) => {
     setSelectedProject(projectItem);
     setEditModalOpen(true);
+  };
+
+  // Star/unstar with feedback (previously silent). `toggleStar` flips the
+  // local set synchronously and broadcasts so every star icon updates at
+  // once; we read the resulting state to word the toast, and surface an
+  // error + revert if the localStorage write didn't take (quota / private
+  // browsing).
+  const handleToggleStar = (projectItem: Project) => {
+    const wasStarred = starred.has(projectItem.id);
+    toggleStar(projectItem.id);
+    if (isStarred("projects", projectItem.id) === wasStarred) {
+      // State didn't change → the write failed. Re-assert the prior state
+      // (no-op for the user) and tell them why nothing happened.
+      toast({
+        title: "Couldn't update favorites",
+        description:
+          "We couldn't save this to your starred projects. Check that your browser allows local storage.",
+        variant: "destructive",
+      });
+      return;
+    }
+    toast({
+      title: wasStarred ? "Removed from starred" : "Added to starred",
+      description: `${projectItem.projectNumber} · ${projectItem.title}`,
+    });
   };
 
   const handleDeleteClick = (projectItem: Project) => {
@@ -301,6 +331,23 @@ export default function ProjectsPage() {
     label: o.label,
   }));
 
+  // Any filter/search narrowing the list — drives the two-mode empty state
+  // (filtered-to-nothing vs genuinely empty).
+  const hasActiveFilters =
+    searchTerm !== "" ||
+    filterStatus !== "ALL" ||
+    filterPriority !== "ALL" ||
+    filterAssignee !== "ALL" ||
+    filterCreatedRange !== "ALL";
+
+  const clearAllFilters = () => {
+    setSearchTerm("");
+    setFilterStatus("ALL");
+    setFilterPriority("ALL");
+    setFilterAssignee("ALL");
+    setFilterCreatedRange("ALL");
+  };
+
   // Selection helpers (v1.6.40 bulk actions).
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
@@ -322,33 +369,87 @@ export default function ProjectsPage() {
     });
   };
 
-  // Bulk delete — N parallel single-entity requests until a backend
-  // bulk endpoint exists. Toasts aggregate the result.
-  const bulkDelete = useBulkRunner({
-    op: (id: string) => api.delete(`/projects/${id}`),
-    label: "Deleted",
-    successMessage: (ok, total) => `Deleted ${ok} of ${total} projects`,
-    onAfter: async () => {
-      setSelectedIds(new Set());
+  // Bulk delete — optimistic: pull the selected rows out of the list
+  // immediately so the UI responds at once, then run N parallel
+  // single-entity requests (until a backend bulk endpoint exists). The
+  // follow-up fetchProjects() is the source of truth and re-adds any row
+  // that failed to delete, so a partial/total failure self-reverts.
+  const [bulkDeletePending, setBulkDeletePending] = useState(false);
+  const runBulkDelete = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    const snapshot = projects;
+    setBulkDeletePending(true);
+    setProjects((prev) => prev.filter((p) => !idSet.has(p.id)));
+    setSelectedIds(new Set());
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) => api.delete(`/projects/${id}`)),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.length - ok;
+      if (failed === 0) {
+        toast({
+          title: "Projects deleted",
+          description: `Deleted ${ok} of ${ids.length} projects`,
+        });
+      } else if (ok === 0) {
+        toast({
+          title: "Delete failed",
+          description: `0 of ${ids.length} deleted. Check permissions or refresh.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Delete partial",
+          description: `${ok} of ${ids.length} deleted; ${failed} failed and were restored.`,
+          variant: "destructive",
+        });
+      }
+    } catch {
+      // Network-level failure before any settled result — restore.
+      setProjects(snapshot);
+      toast({
+        title: "Delete failed",
+        description: "We couldn't reach the server. Nothing was deleted.",
+        variant: "destructive",
+      });
+    } finally {
+      // Reconcile against the server (re-adds survivors, drops the rest).
       await fetchProjects();
-    },
-  });
+      setBulkDeletePending(false);
+    }
+  };
+
+  // Bulk status — optimistic: stamp the new status on the selected rows
+  // immediately, then PATCH each. fetchProjects() reconciles; on a total
+  // failure we snap back to the pre-change snapshot.
   const [bulkStatusPending, setBulkStatusPending] = useState(false);
   const runBulkStatus = async (target: string) => {
     const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    const snapshot = projects;
     setBulkStatusPending(true);
+    setProjects((prev) =>
+      prev.map((p) => (idSet.has(p.id) ? { ...p, status: target } : p)),
+    );
+    setSelectedIds(new Set());
     try {
       const results = await Promise.allSettled(
         ids.map((id) => api.patch(`/projects/${id}/status`, { status: target })),
       );
       const ok = results.filter((r) => r.status === "fulfilled").length;
+      if (ok === 0) {
+        // Nothing took — revert the optimistic stamp.
+        setProjects(snapshot);
+      }
       toast({
-        title: ok === ids.length ? "Status updated" : "Status update partial",
+        title: ok === ids.length ? "Status updated" : ok === 0 ? "Status update failed" : "Status update partial",
         description: `${ok} of ${ids.length} projects → ${target.replace(/_/g, " ")}`,
         variant: ok === ids.length ? "default" : "destructive",
       });
     } finally {
-      setSelectedIds(new Set());
       await fetchProjects();
       setBulkStatusPending(false);
     }
@@ -445,20 +546,24 @@ export default function ProjectsPage() {
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Stats — clickable status-filter chips. Padding + typography match
+          the dashboard home stat cards (p-5, uppercase tracked label,
+          tabular 3xl value) so stat surfaces read consistently app-wide. */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {Object.entries(statusCounts).map(([status, count]) => (
           <Card
             key={status}
-            className={`p-4 cursor-pointer transition-shadow hover:shadow-md ${
+            className={`p-5 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md ${
               filterStatus === status ? "ring-2 ring-primary" : ""
             }`}
             onClick={() => setFilterStatus(status)}
           >
-            <div className="text-sm font-medium text-muted-foreground">
+            <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               {status.replace("_", " ")}
             </div>
-            <div className="text-2xl font-bold mt-2">{count}</div>
+            <div className="text-3xl font-semibold tracking-tight text-foreground tabular-nums mt-1.5">
+              {count}
+            </div>
           </Card>
         ))}
       </div>
@@ -565,7 +670,7 @@ export default function ProjectsPage() {
             key={projectItem.id}
             className={`p-6 hover:shadow-md transition-all border-l-4 ${pc.borderLeft} ${pc.cardWash} ${isSelected ? "ring-2 ring-primary/60 ring-offset-1 ring-offset-background" : ""}`}
           >
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3 sm:gap-4">
               {/* Selection checkbox — clicking the row body still
                   navigates; the checkbox stops propagation. */}
               <button
@@ -581,6 +686,9 @@ export default function ProjectsPage() {
                   <CheckSquareIcon className="h-4 w-4 text-primary" strokeWidth={2.5} />
                 )}
               </button>
+              {/* Content + actions — stacked on mobile, side-by-side from
+                  the sm breakpoint up so the card reads cleanly on phones. */}
+              <div className="flex flex-1 min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 mb-3 flex-wrap">
                   {/* Star — local-only favorite (v1.6.47). Surfaces in
@@ -589,7 +697,7 @@ export default function ProjectsPage() {
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      toggleStar(projectItem.id);
+                      handleToggleStar(projectItem);
                     }}
                     className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded hover:bg-muted/60 transition-colors"
                     aria-label={starred.has(projectItem.id) ? "Unstar project" : "Star project"}
@@ -643,6 +751,11 @@ export default function ProjectsPage() {
                       {projectItem.paymentStatus.replace("_", " ")}
                     </span>
                   )}
+
+                  {/* Budget burn-down — compact pill from the additive
+                      budget summary on the list response. Renders nothing
+                      when no budget is set. */}
+                  <BudgetBadge budget={projectItem.budgetSummary} />
                 </div>
 
                 <h3
@@ -655,13 +768,10 @@ export default function ProjectsPage() {
                   {projectItem.description}
                 </p>
 
-                <div className="flex items-center gap-6 text-sm text-muted-foreground flex-wrap">
+                <div className="flex items-center gap-x-6 gap-y-2 text-sm text-muted-foreground flex-wrap">
                   <div className="flex items-center gap-1.5">
                     <User className="h-4 w-4" />
                     <span>{projectItem.clientName}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Calendar className="h-4 w-4" />
                   </div>
                   {projectItem.dueDate && (
                     <div className="flex items-center gap-1.5">
@@ -682,7 +792,7 @@ export default function ProjectsPage() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2 shrink-0">
+              <div className="flex flex-row flex-wrap gap-2 shrink-0 sm:flex-col">
                 <Button
                   variant="outline"
                   size="sm"
@@ -723,30 +833,43 @@ export default function ProjectsPage() {
                   </Button>
                 )}
               </div>
+              </div>
             </div>
           </Card>
           );
         })}
       </div>
 
-      {filteredProjects.length === 0 && (
-        <Card className="p-12 text-center">
-          <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">No projects found</h3>
-          <p className="text-muted-foreground mb-4">
-            {searchTerm
-              ? "Try adjusting your search criteria"
-              : "Get started by creating a new project"}
-          </p>
-          <Button
-            className="bg-primary hover:bg-primary/90"
-            onClick={() => setCreateModalOpen(true)}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Create New Project
-          </Button>
-        </Card>
-      )}
+      {filteredProjects.length === 0 &&
+        (hasActiveFilters ? (
+          // Projects exist, but the current filters/search hide them all —
+          // offer a one-click reset rather than a dead-end "create" CTA.
+          <EmptyState
+            icon={Search}
+            iconTone="zinc"
+            title="No projects match your filters"
+            body="Nothing here fits the current search, status, priority, assignee, or date range. Clear them to see every project again."
+            action={
+              <Button variant="outline" onClick={clearAllFilters}>
+                Clear filters
+              </Button>
+            }
+          />
+        ) : (
+          // Genuinely empty — first-run state.
+          <EmptyState
+            icon={FolderPlus}
+            iconTone="primary"
+            title="No projects yet"
+            body="Create your first project to start tracking work, schedules, and budgets."
+            action={
+              <Button onClick={() => setCreateModalOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Create project
+              </Button>
+            }
+          />
+        ))}
 
       {/* Create Project Modal */}
       <CreateProjectModal
@@ -830,14 +953,14 @@ export default function ProjectsPage() {
         </DropdownMenu>
         <BulkActionButton
           icon={TrashIcon}
-          pending={bulkDelete.pending}
+          pending={bulkDeletePending}
           onClick={() => {
             if (
               window.confirm(
                 `Delete ${selectedIds.size} project${selectedIds.size === 1 ? "" : "s"}? This cannot be undone.`,
               )
             ) {
-              bulkDelete.run([...selectedIds]);
+              runBulkDelete([...selectedIds]);
             }
           }}
           destructive

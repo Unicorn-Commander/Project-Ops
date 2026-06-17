@@ -19,6 +19,7 @@ import { EditOrganizationModal } from '@/components/modals/edit-organization-mod
 import { activeBadgeClass, iconWellClass } from '@/lib/badge-styles';
 import { projectColorClasses } from '@/lib/project-colors';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { ListToolbar, FilterOption } from '@/components/ui/list-toolbar';
 import { compareValues } from '@/lib/list-controls';
@@ -159,6 +160,18 @@ export default function OrganizationsPage() {
   function handleViewHierarchy(org: Organization, e: React.MouseEvent) {
     e.stopPropagation();
     router.push(`/dashboard/organizations/${org.id}?tab=hierarchy`);
+  }
+
+  // True when any filter is narrowing the list — drives the empty-state
+  // copy + CTA. The default state filter is ACTIVE (not ALL), so an
+  // all-inactive book reads as filtered and Clear reveals inactive rows.
+  const isFiltered =
+    (filters.search ?? '').trim() !== '' ||
+    filters.type !== undefined ||
+    filters.isActive !== undefined;
+
+  function clearFilters() {
+    setFilters({ search: '', type: undefined, isActive: undefined });
   }
 
   return (
@@ -355,13 +368,13 @@ export default function OrganizationsPage() {
               <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Type
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <th className="hidden md:table-cell px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Industry
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <th className="hidden lg:table-cell px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Contacts
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <th className="hidden lg:table-cell px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Projects
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -374,24 +387,62 @@ export default function OrganizationsPage() {
           </thead>
           <tbody className="divide-y divide-border">
             {loading ? (
-              <tr>
-                <td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">
-                  Loading organizations...
-                </td>
-              </tr>
+              Array.from({ length: 6 }).map((_, i) => (
+                <tr key={i}>
+                  <td className="pl-4 pr-2 py-4 w-10">
+                    <Skeleton className="h-5 w-5 rounded" />
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="h-9 w-9 rounded-lg shrink-0" />
+                      <Skeleton className="h-4 w-40" />
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <Skeleton className="h-6 w-20 rounded-full" />
+                  </td>
+                  <td className="hidden md:table-cell px-6 py-4">
+                    <Skeleton className="h-4 w-24" />
+                  </td>
+                  <td className="hidden lg:table-cell px-6 py-4">
+                    <Skeleton className="h-4 w-10" />
+                  </td>
+                  <td className="hidden lg:table-cell px-6 py-4">
+                    <Skeleton className="h-4 w-10" />
+                  </td>
+                  <td className="px-6 py-4">
+                    <Skeleton className="h-6 w-16 rounded-full" />
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex justify-end">
+                      <Skeleton className="h-8 w-24" />
+                    </div>
+                  </td>
+                </tr>
+              ))
             ) : organizations.length === 0 ? (
               <tr>
                 <td colSpan={8} className="p-0">
                   <EmptyState
                     icon={Building2}
                     iconTone="emerald"
-                    title="No organizations yet"
-                    body="Add your first client organization to start tracking projects, contacts, and billing against it."
+                    title={isFiltered ? 'No organizations match' : 'No organizations yet'}
+                    body={
+                      isFiltered
+                        ? 'Try a different search term, or clear the filters.'
+                        : 'Add your first client organization to start tracking projects, contacts, and billing against it.'
+                    }
                     action={
-                      <Button onClick={() => setShowCreateModal(true)}>
-                        <Plus className="mr-2 h-4 w-4" />
-                        New organization
-                      </Button>
+                      isFiltered ? (
+                        <Button variant="outline" onClick={clearFilters}>
+                          Clear filters
+                        </Button>
+                      ) : (
+                        <Button onClick={() => setShowCreateModal(true)}>
+                          <Plus className="mr-2 h-4 w-4" />
+                          New organization
+                        </Button>
+                      )
                     }
                     className="m-4 border-0"
                   />
@@ -466,16 +517,16 @@ export default function OrganizationsPage() {
                       {getOrganizationTypeLabel(org.type)}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm text-foreground">
+                  <td className="hidden md:table-cell px-6 py-4 text-sm text-foreground">
                     {org.industry || 'N/A'}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="hidden lg:table-cell px-6 py-4">
                     <div className="flex items-center gap-2 text-sm text-foreground">
                       <Users className="h-4 w-4 text-muted-foreground" />
                       {org._count?.contacts || 0}
                     </div>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="hidden lg:table-cell px-6 py-4">
                     <div className="flex items-center gap-2 text-sm text-foreground">
                       <Briefcase className="h-4 w-4 text-muted-foreground" />
                       {org._count?.projects || 0}
@@ -490,22 +541,25 @@ export default function OrganizationsPage() {
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={(e) => handleViewHierarchy(org, e)}
-                        className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                        className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
                         title="View Hierarchy"
+                        aria-label={`View hierarchy for ${org.name}`}
                       >
                         <Network className="h-4 w-4" />
                       </button>
                       <button
                         onClick={(e) => handleEdit(org, e)}
-                        className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                        className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
                         title="Edit"
+                        aria-label={`Edit ${org.name}`}
                       >
                         <Edit className="h-4 w-4" />
                       </button>
                       <button
                         onClick={(e) => handleDelete(org, e)}
-                        className="p-2 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg transition-colors"
+                        className="p-2 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
                         title="Delete"
+                        aria-label={`Delete ${org.name}`}
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>

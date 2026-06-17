@@ -127,6 +127,18 @@ export class ProjectsController {
     return this.projectsService.findOne(workspaceId, user, id);
   }
 
+  @Get(':projectId/budget')
+  @ApiOperation({ summary: 'Get budget burn-down (hours + amount) for a project' })
+  @ApiResponse({ status: 200, description: 'Returns the project budget burn-down' })
+  @ApiResponse({ status: 404, description: 'Project not found' })
+  getBudget(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.projectsService.getBudget(workspaceId, user, projectId);
+  }
+
   @Patch(':id')
   @ApiOperation({ summary: 'Update project' })
   @ApiResponse({ status: 200, description: 'Project updated successfully' })

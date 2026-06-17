@@ -20,9 +20,15 @@
  */
 
 import { useEffect, useState } from "react";
-import { X, Loader2, FileText, ExternalLink, AlertTriangle, PlugZap } from "lucide-react";
+import { Loader2, FileText, ExternalLink, AlertTriangle, PlugZap } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
@@ -99,16 +105,6 @@ export function CreateDraftModal({
     setSubmitting(false);
   }, [isOpen, preselectedProjectId]);
 
-  useEffect(() => {
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) onClose();
-    };
-    window.addEventListener("keydown", onEsc);
-    return () => window.removeEventListener("keydown", onEsc);
-  }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
-
   const canSubmit = !!projectId && !submitting;
 
   const handleSubmit = async () => {
@@ -156,26 +152,19 @@ export function CreateDraftModal({
   const draft = result?.draft;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <Card className="mx-4 w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200">
-        <div className="mb-5 flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-foreground">Create draft invoice</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Rolls up approved, billable, unbilled time into a draft. If
-              Accounting-Ops is connected it issues a real invoice; otherwise
-              you still get a draft PDF.
-            </p>
-          </div>
-          <Button aria-label="Close" variant="outline" size="sm" className="h-8 w-8 p-0" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        overlayClassName="bg-black/50 backdrop-blur-sm"
+        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-card"
+      >
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold">Create draft invoice</DialogTitle>
+          <DialogDescription>
+            Rolls up approved, billable, unbilled time into a draft. If
+            Accounting-Ops is connected it issues a real invoice; otherwise
+            you still get a draft PDF.
+          </DialogDescription>
+        </DialogHeader>
 
         {/* --- Form (hidden once we have a result, to focus on the outcome) --- */}
         {!result && (
@@ -411,7 +400,7 @@ export function CreateDraftModal({
             </>
           )}
         </div>
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

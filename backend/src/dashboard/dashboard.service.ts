@@ -89,6 +89,31 @@ export class DashboardService {
     );
   }
 
+  /**
+   * Lightweight status/priority COUNTS for the dashboard charts.
+   *
+   * Replaces the frontend anti-pattern of fetching `?limit=1000` projects just
+   * to bucket them client-side: the aggregation runs in the DB via `groupBy`
+   * (workspace-scoped through the RLS `tx`, role-narrowed like every other
+   * dashboard read) and returns only the counts. Shape mirrors the `byStatus` /
+   * `byPriority` arrays already produced by `getProjectStatistics` so the
+   * frontend can swap the data source without reshaping.
+   */
+  async getProjectBreakdown(workspaceId: string, user: User) {
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const [byStatus, byPriority] = await Promise.all([
+          this.getProjectsByStatus(tx, user),
+          this.getProjectsByPriority(tx, user),
+        ]);
+
+        return { byStatus, byPriority };
+      },
+      workspaceId,
+    );
+  }
+
   async getProjectStatistics(workspaceId: string, user: User) {
     return this.workspaceContext.runForUser(
       user,

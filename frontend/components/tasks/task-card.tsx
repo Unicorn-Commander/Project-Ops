@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { Card } from "@/components/ui/card";
 import { Task, TaskStatus, TaskPriority, TaskType } from "@/lib/tasks-api";
 import { priorityTextClass } from "@/lib/badge-styles";
@@ -27,7 +28,11 @@ interface TaskCardProps {
   onTogglePin?: () => void;
 }
 
-export function TaskCard({ task, onClick, onChange, selected, onToggleSelect, pinned, onTogglePin }: TaskCardProps) {
+// Wrapped in React.memo: these cards render in long lists (My Tasks) and on
+// the kanban board, where an unrelated state change (filter, drag, a sibling
+// status update) would otherwise re-render every card. Props are primitives +
+// stable callbacks, so referential equality is a good bail-out signal.
+function TaskCardImpl({ task, onClick, onChange, selected, onToggleSelect, pinned, onTogglePin }: TaskCardProps) {
   const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== TaskStatus.COMPLETED;
   const pc = projectColorClasses(task.projectId);
 
@@ -56,10 +61,22 @@ export function TaskCard({ task, onClick, onChange, selected, onToggleSelect, pi
   // kanban + dashboard for visual continuity.
   return (
     <Card
-      className={`p-4 hover:shadow-md transition-all cursor-pointer border-l-4 ${
+      role="button"
+      tabIndex={0}
+      aria-label={`Open task: ${task.title}`}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        // Enter / Space open the task — but only when the card itself is
+        // focused, so activating a nested control (status select, pin,
+        // checkbox) doesn't also fire the open handler.
+        if ((e.key === "Enter" || e.key === " ") && e.target === e.currentTarget) {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      className={`p-4 hover:shadow-md transition-all cursor-pointer border-l-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background ${
         isOverdue ? 'border-l-rose-500' : pc.borderLeft
       } ${pc.cardWash} ${selected ? "ring-2 ring-primary/60 ring-offset-1 ring-offset-background" : ""}`}
-      onClick={onClick}
     >
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
@@ -177,3 +194,6 @@ export function TaskCard({ task, onClick, onChange, selected, onToggleSelect, pi
     </Card>
   );
 }
+
+export const TaskCard = React.memo(TaskCardImpl);
+TaskCard.displayName = "TaskCard";

@@ -22,6 +22,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentWorkspace } from '../common/workspace/current-workspace.decorator';
 import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
 import { UserRole, OrgType, User } from '@prisma/client';
+import { clampLimit } from '../common/pagination/clamp';
 
 /**
  * Suite tenancy (Phase 2, B5): every route resolves the active workspace via
@@ -66,7 +67,11 @@ export class OrganizationsController {
     @Query('isActive') isActive?: string,
     @Query('search') search?: string,
   ) {
-    const skip = (page - 1) * limit;
+    // Clamp to a bounded page size (default 20, max 100) so a caller can't pull
+    // the whole org table in one request with ?limit=100000.
+    const safeLimit = clampLimit(limit);
+    const safePage = page > 0 ? page : 1;
+    const skip = (safePage - 1) * safeLimit;
     const where: any = {};
 
     if (type) where.type = type;
@@ -81,7 +86,7 @@ export class OrganizationsController {
 
     const { organizations, total } = await this.organizationsService.findAll(workspaceId, user, {
       skip,
-      take: limit,
+      take: safeLimit,
       where,
       orderBy: { createdAt: 'desc' },
       userRole: user?.role,
@@ -92,9 +97,9 @@ export class OrganizationsController {
       data: organizations,
       meta: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.ceil(total / safeLimit),
       },
     };
   }

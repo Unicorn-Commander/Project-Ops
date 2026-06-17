@@ -103,13 +103,23 @@ function TreeNode({ organization, level }: TreeNodeProps) {
     <div className="select-none">
       {/* Organization Node */}
       <div
-        className="flex items-center gap-3 p-4 rounded-lg hover:bg-muted/40 cursor-pointer transition-colors group"
+        className="flex items-center gap-3 p-4 rounded-lg hover:bg-muted/40 transition-colors group"
         style={{ marginLeft: `${level * 32}px` }}
       >
         {/* Expand/Collapse Button */}
         <button
+          type="button"
           onClick={toggleExpand}
-          className="flex-shrink-0 p-1 hover:bg-muted rounded transition-colors"
+          disabled={!hasChildren}
+          aria-expanded={hasChildren ? isExpanded : undefined}
+          aria-label={
+            hasChildren
+              ? isExpanded
+                ? `Collapse ${organization.name}`
+                : `Expand ${organization.name}`
+              : undefined
+          }
+          className="flex-shrink-0 p-1 hover:bg-muted rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-default disabled:hover:bg-transparent"
         >
           {hasChildren ? (
             isExpanded ? (
@@ -127,31 +137,38 @@ function TreeNode({ organization, level }: TreeNodeProps) {
           <Building2 className="h-5 w-5 text-primary" />
         </div>
 
-        {/* Organization Details */}
-        <div className="flex-1 min-w-0" onClick={handleClick}>
-          <div className="flex items-center gap-2 mb-1">
-            <p className="font-semibold text-foreground truncate">{organization.name}</p>
+        {/* Organization Details — a real button so it's keyboard
+            focusable and Enter/Space activate it. Contains only phrasing
+            content (no nested interactive elements) so it's valid. */}
+        <button
+          type="button"
+          onClick={handleClick}
+          aria-label={`Open ${organization.name}`}
+          className="flex-1 min-w-0 text-left rounded cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+        >
+          <span className="flex items-center gap-2 mb-1">
+            <span className="font-semibold text-foreground truncate">{organization.name}</span>
             <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${getOrganizationTypeBadgeColor(organization.type)}`}>
               {getOrganizationTypeLabel(organization.type)}
             </span>
-          </div>
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1">
+          </span>
+          <span className="flex items-center gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
               <Users className="h-3 w-3" />
               <span>{organization._count?.contacts || 0} contacts</span>
-            </div>
-            <div className="flex items-center gap-1">
+            </span>
+            <span className="flex items-center gap-1">
               <Briefcase className="h-3 w-3" />
               <span>{organization._count?.projects || 0} projects</span>
-            </div>
+            </span>
             {hasChildren && (
-              <div className="flex items-center gap-1">
+              <span className="flex items-center gap-1">
                 <Building2 className="h-3 w-3" />
                 <span>{organization.childOrgs!.length} sub-org{organization.childOrgs!.length !== 1 ? 's' : ''}</span>
-              </div>
+              </span>
             )}
-          </div>
-        </div>
+          </span>
+        </button>
 
         {/* Status Badge */}
         <div className="flex-shrink-0">

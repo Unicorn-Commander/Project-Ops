@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useToast } from "@/components/ui/use-toast";
 import { TaskList } from "@/components/tasks/task-list";
 import { CreateTaskModal } from "@/components/modals/create-task-modal";
@@ -30,7 +31,6 @@ import {
 import {
   BulkActionBar,
   BulkActionButton,
-  useBulkRunner,
 } from "@/components/ui/bulk-action-bar";
 import {
   DropdownMenu,
@@ -91,19 +91,12 @@ export default function MyTasksPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const { toast } = useToast();
 
-  // Debug: Log current user info
   useEffect(() => {
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      const user = JSON.parse(userStr);
-      console.log("Current logged in user:", user);
-      console.log("User ID:", user.id);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTasks();
-    fetchOverdueTasks();
+    // Kick both reads off together — the overdue strip and the main list are
+    // independent endpoints, so there's no reason to wait for one before the
+    // other.
+    void Promise.all([fetchTasks(), fetchOverdueTasks()]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterStatus]);
 
   // Deep-link from Cmd+K palette: ?new=1 opens the Create Task modal.
@@ -116,20 +109,17 @@ export default function MyTasksPage() {
     }
   }, [router]);
 
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     setLoading(true);
     try {
       const params: any = { take: 500 };
       if (filterStatus !== "ALL") {
         params.status = filterStatus;
       }
-      console.log("Fetching my tasks with params:", params);
       const response = await getMyTasks(params);
-      console.log("My tasks API response:", response);
 
       // Handle both response formats: array directly or { data: [...] }
       const tasksData = Array.isArray(response) ? response : (response.data || []);
-      console.log("Tasks data:", tasksData);
       setTasks(tasksData);
     } catch (error) {
       console.error("Error fetching tasks:", error);
@@ -142,9 +132,9 @@ export default function MyTasksPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterStatus, toast]);
 
-  const fetchOverdueTasks = async () => {
+  const fetchOverdueTasks = useCallback(async () => {
     try {
       const response = await getOverdueTasks();
       // Handle both response formats: array directly or { data: [...] }
@@ -154,22 +144,21 @@ export default function MyTasksPage() {
       console.error("Error fetching overdue tasks:", error);
       setOverdueTasks([]);
     }
-  };
+  }, []);
 
-  const handleTaskClick = (task: Task) => {
+  const handleTaskClick = useCallback((task: Task) => {
     setSelectedTask(task);
     setIsDetailsModalOpen(true);
-  };
+  }, []);
 
-  const handleEditClick = () => {
+  const handleEditClick = useCallback(() => {
     setIsDetailsModalOpen(false);
     setIsEditModalOpen(true);
-  };
+  }, []);
 
-  const handleRefresh = () => {
-    fetchTasks();
-    fetchOverdueTasks();
-  };
+  const handleRefresh = useCallback(() => {
+    void Promise.all([fetchTasks(), fetchOverdueTasks()]);
+  }, [fetchTasks, fetchOverdueTasks]);
 
   // Project filter options derived from loaded tasks (no extra round-trip).
   const projectOptions: FilterOption[] = (() => {
@@ -204,33 +193,95 @@ export default function MyTasksPage() {
   };
 
   // Bulk delete + bulk status — N parallel single requests until backend
-  // bulk endpoints land.
-  const bulkDelete = useBulkRunner({
-    op: (id: string) => api.delete(`/tasks/${id}`),
-    label: "Deleted",
-    successMessage: (ok, total) => `Deleted ${ok} of ${total} tasks`,
-    onAfter: async () => {
-      setSelectedIds(new Set());
-      handleRefresh();
-    },
-  });
+  // bulk endpoints land. Both are optimistic: local state updates the instant
+  // the action fires, then reconciles with the server (revert + toast on a
+  // total failure).
+  const [bulkDeletePending, setBulkDeletePending] = useState(false);
+  const runBulkDelete = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    // Optimistic: drop the rows immediately, snapshot for rollback.
+    const snapshot = tasks;
+    setTasks((prev) => prev.filter((t) => !idSet.has(t.id)));
+    setSelectedIds(new Set());
+    setBulkDeletePending(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) => api.delete(`/tasks/${id}`)),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      if (ok === 0) {
+        setTasks(snapshot);
+        toast({
+          title: "Delete failed",
+          description: `0 of ${ids.length} tasks could be deleted.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: ok === ids.length ? "Tasks deleted" : "Delete partial",
+          description: `Deleted ${ok} of ${ids.length} tasks`,
+          variant: ok === ids.length ? "default" : "destructive",
+        });
+        // Reconcile (restores any row whose delete failed, refreshes overdue).
+        handleRefresh();
+      }
+    } catch {
+      setTasks(snapshot);
+      toast({
+        title: "Delete failed",
+        description: "Couldn't reach the server. Your tasks are unchanged.",
+        variant: "destructive",
+      });
+    } finally {
+      setBulkDeletePending(false);
+    }
+  };
   const [bulkStatusPending, setBulkStatusPending] = useState(false);
   const runBulkStatus = async (target: TaskStatus) => {
     const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    // Optimistic: stamp the new status onto the selected rows immediately so
+    // the pills move the moment the menu item is chosen. Snapshot first so we
+    // can roll back if the server rejects everything.
+    const snapshot = tasks;
+    setTasks((prev) =>
+      prev.map((t) => (idSet.has(t.id) ? { ...t, status: target } : t)),
+    );
+    setSelectedIds(new Set());
     setBulkStatusPending(true);
     try {
       const results = await Promise.allSettled(
         ids.map((id) => api.patch(`/tasks/${id}/status`, { status: target })),
       );
       const ok = results.filter((r) => r.status === "fulfilled").length;
+      if (ok === 0) {
+        // Nothing landed — restore the pre-change rows and tell the user.
+        setTasks(snapshot);
+        toast({
+          title: "Status update failed",
+          description: `0 of ${ids.length} tasks could be updated.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: ok === ids.length ? "Status updated" : "Status update partial",
+          description: `${ok} of ${ids.length} tasks → ${target.replace(/_/g, " ").toLowerCase()}`,
+          variant: ok === ids.length ? "default" : "destructive",
+        });
+        // Reconcile with the server (drops rows that fell out of an active
+        // status filter, picks up any server-side normalisation).
+        handleRefresh();
+      }
+    } catch {
+      setTasks(snapshot);
       toast({
-        title: ok === ids.length ? "Status updated" : "Status update partial",
-        description: `${ok} of ${ids.length} tasks → ${target.replace(/_/g, " ").toLowerCase()}`,
-        variant: ok === ids.length ? "default" : "destructive",
+        title: "Status update failed",
+        description: "Couldn't reach the server. Your tasks are unchanged.",
+        variant: "destructive",
       });
     } finally {
-      setSelectedIds(new Set());
-      handleRefresh();
       setBulkStatusPending(false);
     }
   };
@@ -264,14 +315,20 @@ export default function MyTasksPage() {
       return compareValues(av, bv, dir);
     });
 
-  const taskCounts = {
-    all: tasks.length,
-    pending: tasks.filter((t) => t.status === TaskStatus.PENDING).length,
-    inProgress: tasks.filter((t) => t.status === TaskStatus.IN_PROGRESS).length,
-    waitingForClient: tasks.filter((t) => t.status === TaskStatus.WAITING_FOR_CLIENT).length,
-    completed: tasks.filter((t) => t.status === TaskStatus.COMPLETED).length,
-    overdue: overdueTasks.length,
-  };
+  // Memoised: a single pass over `tasks` per change instead of five filter
+  // passes on every render (e.g. while typing in the search box, which doesn't
+  // touch task status at all).
+  const taskCounts = useMemo(
+    () => ({
+      all: tasks.length,
+      pending: tasks.filter((t) => t.status === TaskStatus.PENDING).length,
+      inProgress: tasks.filter((t) => t.status === TaskStatus.IN_PROGRESS).length,
+      waitingForClient: tasks.filter((t) => t.status === TaskStatus.WAITING_FOR_CLIENT).length,
+      completed: tasks.filter((t) => t.status === TaskStatus.COMPLETED).length,
+      overdue: overdueTasks.length,
+    }),
+    [tasks, overdueTasks],
+  );
 
   if (loading) {
     return (
@@ -518,11 +575,24 @@ export default function MyTasksPage() {
             : `${filteredTasks.length} of ${tasks.length} tasks match`}
         </p>
 
-        {/* Pinned tasks (v1.6.54) — float to the top, local-only,
-            persisted in localStorage scope "tasks". Surfaces only when
-            at least one pinned task is present in the current
-            filter set. */}
-        {(() => {
+        {/* Truly empty (no tasks at all from the server) → a proper, inviting
+            empty state with a CTA. The "filtered down to nothing" case keeps
+            the lighter inline message inside TaskList below. */}
+        {tasks.length === 0 ? (
+          <EmptyState
+            icon={CheckCircle}
+            iconTone="emerald"
+            title="No tasks assigned to you"
+            body="When a task is assigned to you on any project it lands here, sorted by due date. Create one to get started."
+            action={
+              <Button onClick={() => setIsCreateModalOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                New task
+              </Button>
+            }
+            className="bg-card"
+          />
+        ) : (() => {
           const pinned = filteredTasks.filter((t) => pinnedTaskIds.has(t.id));
           const rest = filteredTasks.filter((t) => !pinnedTaskIds.has(t.id));
           return (
@@ -607,14 +677,14 @@ export default function MyTasksPage() {
         </DropdownMenu>
         <BulkActionButton
           icon={TrashIcon}
-          pending={bulkDelete.pending}
+          pending={bulkDeletePending}
           onClick={() => {
             if (
               window.confirm(
                 `Delete ${selectedIds.size} task${selectedIds.size === 1 ? "" : "s"}? This cannot be undone.`,
               )
             ) {
-              bulkDelete.run([...selectedIds]);
+              runBulkDelete([...selectedIds]);
             }
           }}
           destructive

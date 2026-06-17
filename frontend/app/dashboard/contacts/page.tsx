@@ -19,6 +19,7 @@ import {
 import { CreateContactModal } from "@/components/modals/create-contact-modal";
 import { EditContactModal } from "@/components/modals/edit-contact-modal";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar } from "@/components/ui/avatar";
 import {
   getContacts,
@@ -197,6 +198,29 @@ export default function ContactsPage() {
     },
   });
 
+  // Optimistic activate/deactivate: flip `isActive` locally the moment the
+  // action fires so the rows update instantly, then let the bulk runner's
+  // `onAfter` re-fetch reconcile with the server. The runner already toasts
+  // on failure; the reconciling re-fetch restores server truth, so a failed
+  // request visually reverts the optimistic change.
+  const applyLocalActive = (ids: string[], isActive: boolean) => {
+    const idSet = new Set(ids);
+    setContacts((prev) =>
+      prev.map((c) => (idSet.has(c.id) ? { ...c, isActive } : c)),
+    );
+  };
+
+  const runBulkActivate = (ids: string[]) => {
+    if (ids.length === 0) return;
+    applyLocalActive(ids, true);
+    bulkActivate.run(ids);
+  };
+  const runBulkDeactivate = (ids: string[]) => {
+    if (ids.length === 0) return;
+    applyLocalActive(ids, false);
+    bulkDeactivate.run(ids);
+  };
+
   const filteredContacts = contacts
     .filter((c) => {
       if (filterOrganization === "ALL") return true;
@@ -209,6 +233,22 @@ export default function ContactsPage() {
       const bv = (b as any)[field];
       return compareValues(av, bv, dir);
     });
+
+  // True when any filter is narrowing the list — drives the empty-state
+  // copy + CTA (offer "Clear filters" vs "New contact"). Note the default
+  // state filter is ACTIVE (not ALL), so an all-inactive book reads as
+  // filtered and Clear reveals the inactive rows.
+  const isFiltered =
+    searchTerm.trim() !== "" ||
+    filterOrganization !== "ALL" ||
+    filterActiveLabel !== "ALL";
+
+  const clearFilters = () => {
+    setSearchTerm("");
+    setFilterOrganization("ALL");
+    setFilterActiveLabel("ALL");
+    setFilterActive(undefined);
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -396,13 +436,13 @@ export default function ContactsPage() {
                   <th className="px-6 py-4 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
                     Contact
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
+                  <th className="hidden lg:table-cell px-6 py-4 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
                     Contact Info
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
+                  <th className="hidden md:table-cell px-6 py-4 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
                     Company
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
+                  <th className="hidden lg:table-cell px-6 py-4 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
                     Projects
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
@@ -415,24 +455,65 @@ export default function ContactsPage() {
               </thead>
               <tbody className="bg-card divide-y divide-border">
                 {loading ? (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center">
-                      <div className="flex items-center justify-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                      </div>
-                    </td>
-                  </tr>
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <tr key={i}>
+                      <td className="pl-4 pr-2 py-4 w-10">
+                        <Skeleton className="h-5 w-5 rounded" />
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <Skeleton className="h-9 w-9 rounded-full shrink-0" />
+                          <div className="space-y-2">
+                            <Skeleton className="h-4 w-32" />
+                            <Skeleton className="h-3 w-44" />
+                          </div>
+                        </div>
+                      </td>
+                      {/* Contact Info (lg) · Company (md) · Projects (lg) —
+                          same responsive order as the real header so the
+                          breakpoint columns line up during the swap. */}
+                      <td className="hidden lg:table-cell px-6 py-4">
+                        <Skeleton className="h-4 w-40" />
+                      </td>
+                      <td className="hidden md:table-cell px-6 py-4">
+                        <Skeleton className="h-4 w-28" />
+                      </td>
+                      <td className="hidden lg:table-cell px-6 py-4">
+                        <Skeleton className="h-4 w-10" />
+                      </td>
+                      <td className="px-6 py-4">
+                        <Skeleton className="h-6 w-16 rounded-full" />
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex justify-end">
+                          <Skeleton className="h-8 w-24" />
+                        </div>
+                      </td>
+                    </tr>
+                  ))
                 ) : filteredContacts.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="p-0">
                       <EmptyState
                         icon={Users}
                         iconTone="violet"
-                        title={searchTerm ? "No contacts match" : "No contacts yet"}
+                        title={isFiltered ? "No contacts match" : "No contacts yet"}
                         body={
-                          searchTerm
-                            ? "Try a different search term, or clear the filter."
+                          isFiltered
+                            ? "Try a different search term, or clear the filters."
                             : "Add your first contact to start associating people with organizations and projects."
+                        }
+                        action={
+                          isFiltered ? (
+                            <Button variant="outline" onClick={clearFilters}>
+                              Clear filters
+                            </Button>
+                          ) : (
+                            <Button onClick={() => setCreateModalOpen(true)}>
+                              <Plus className="mr-2 h-4 w-4" />
+                              New contact
+                            </Button>
+                          )
                         }
                         className="m-4 border-0"
                       />
@@ -503,7 +584,7 @@ export default function ContactsPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="hidden lg:table-cell px-6 py-4">
                         <div className="space-y-1">
                           {contact.email && (
                             <a
@@ -529,7 +610,7 @@ export default function ContactsPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="hidden md:table-cell px-6 py-4">
                         {contact.organization && oc ? (
                           <span className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-medium ${oc.badgeBg} ${oc.badgeText}`}>
                             <span className={`inline-block h-1.5 w-1.5 rounded-full ${oc.dot}`} />
@@ -546,7 +627,7 @@ export default function ContactsPage() {
                           <span className="text-sm text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="hidden lg:table-cell px-6 py-4">
                         <div className="flex items-center">
                           <FileText className="w-4 h-4 mr-2 text-muted-foreground" />
                           <span className="text-sm font-medium text-foreground">
@@ -566,6 +647,8 @@ export default function ContactsPage() {
                             size="sm"
                             onClick={() => handleViewContact(contact.id)}
                             className="text-primary hover:text-primary/90 hover:bg-primary/10"
+                            aria-label={`View ${contact.firstName} ${contact.lastName}`}
+                            title="View"
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
@@ -577,6 +660,8 @@ export default function ContactsPage() {
                               handleEditClick(contact);
                             }}
                             className="text-primary hover:text-primary/90 hover:bg-primary/10"
+                            aria-label={`Edit ${contact.firstName} ${contact.lastName}`}
+                            title="Edit"
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
@@ -588,6 +673,8 @@ export default function ContactsPage() {
                               handleDeleteClick(contact);
                             }}
                             className="text-rose-600 hover:text-rose-700 hover:bg-rose-500/10"
+                            aria-label={`Delete ${contact.firstName} ${contact.lastName}`}
+                            title="Delete"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -685,14 +772,14 @@ export default function ContactsPage() {
         <BulkActionButton
           icon={ToggleRight}
           pending={bulkActivate.pending}
-          onClick={() => bulkActivate.run([...selectedIds])}
+          onClick={() => runBulkActivate([...selectedIds])}
         >
           Activate
         </BulkActionButton>
         <BulkActionButton
           icon={ToggleLeft}
           pending={bulkDeactivate.pending}
-          onClick={() => bulkDeactivate.run([...selectedIds])}
+          onClick={() => runBulkDeactivate([...selectedIds])}
         >
           Deactivate
         </BulkActionButton>

@@ -17,7 +17,7 @@
  * Time-entries page uses (DRAFT + unlocked + unbilled).
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   startOfWeek,
   endOfWeek,
@@ -177,6 +177,97 @@ interface CellEdit {
   currentHours: number;
 }
 
+// ---------------------------------------------------------------------------
+// One project row of the weekly grid. Wrapped in React.memo: a week with many
+// projects renders rows × 7 day-cells, and an unrelated state change (opening
+// the adjust modal, a sibling row's edit) would otherwise re-render every cell
+// in every row. The data accessors are referentially stable (useCallback in
+// the parent) and `days`/`project` only change on week/data change, so
+// referential equality is a good bail-out signal.
+// ---------------------------------------------------------------------------
+interface TimesheetRowProps {
+  project: { id: string; label: string };
+  days: Date[];
+  weekEditable: boolean;
+  total: number;
+  /** entries for this project on a given day (for the multi-entry badge). */
+  cellEntries: (projectId: string, day: Date) => TimeEntry[];
+  cellHours: (projectId: string, day: Date) => number;
+  onOpenCell: (project: { id: string; label: string }, day: Date) => void;
+}
+
+const TimesheetRow = memo(function TimesheetRow({
+  project,
+  days,
+  weekEditable,
+  total,
+  cellEntries,
+  cellHours,
+  onOpenCell,
+}: TimesheetRowProps) {
+  return (
+    <tr className="border-b border-border/60 last:border-0">
+      <td className="sticky left-0 z-10 max-w-[10rem] bg-card px-4 py-3 align-top sm:max-w-[14rem]">
+        <span className="line-clamp-2 font-medium text-foreground">
+          {project.label}
+        </span>
+      </td>
+      {days.map((d) => {
+        const hrs = cellHours(project.id, d);
+        const inCell = cellEntries(project.id, d);
+        const multiple = inCell.length > 1;
+        const clickable = weekEditable && !multiple;
+        return (
+          <td key={d.toISOString()} className="px-1.5 py-1.5 text-center">
+            <button
+              type="button"
+              disabled={!clickable}
+              onClick={() => onOpenCell(project, d)}
+              aria-label={
+                clickable
+                  ? `Adjust hours for ${project.label} on ${format(d, "EEEE, MMM d")}`
+                  : undefined
+              }
+              title={
+                multiple
+                  ? "Multiple entries — edit on the Time entries page"
+                  : clickable
+                    ? "Adjust hours"
+                    : undefined
+              }
+              className={`w-full rounded-md px-2 py-2 font-mono tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+                hrs === 0 ? "text-muted-foreground/50" : "text-foreground"
+              } ${
+                clickable
+                  ? "cursor-pointer hover:bg-primary/10 hover:text-primary"
+                  : "cursor-default"
+              }`}
+            >
+              {HOURS_FMT(hrs)}
+              {multiple && (
+                <span className="ml-0.5 align-super text-[9px] text-muted-foreground">
+                  ×{inCell.length}
+                </span>
+              )}
+            </button>
+          </td>
+        );
+      })}
+      <td className="px-4 py-3 text-right font-mono font-semibold tabular-nums text-foreground">
+        {total.toFixed(2)}
+      </td>
+    </tr>
+  );
+});
+
+// Light row windowing. Most weeks have a handful of projects, but a heavy
+// week (many projects) would render rows × 7 cells eagerly. Above the
+// threshold we render the first `WINDOW_INITIAL` rows and reveal the rest on
+// demand — cheaper than a full virtualization dep, and the day/project totals
+// (computed in the parent over ALL entries) stay correct regardless.
+const WINDOW_THRESHOLD = 40;
+const WINDOW_INITIAL = 30;
+
 function MyTimesheet({ userId }: { userId: string }) {
   const { toast } = useToast();
 
@@ -187,6 +278,9 @@ function MyTimesheet({ userId }: { userId: string }) {
   const [submitting, setSubmitting] = useState(false);
 
   const [edit, setEdit] = useState<CellEdit | null>(null);
+
+  // Light row windowing: how many project rows to render (see WINDOW_*).
+  const [visibleRows, setVisibleRows] = useState(WINDOW_INITIAL);
 
   const days = useMemo(() => weekDays(anchor), [anchor]);
   const weekStart = days[0];
@@ -234,6 +328,15 @@ function MyTimesheet({ userId }: { userId: string }) {
       a.label.localeCompare(b.label),
     );
   }, [entries]);
+
+  // Engage windowing only above the threshold; otherwise show every row. Resets
+  // when the week's project set changes so a long previous week can't bleed
+  // through.
+  useEffect(() => {
+    setVisibleRows(
+      projects.length > WINDOW_THRESHOLD ? WINDOW_INITIAL : projects.length,
+    );
+  }, [projects.length]);
 
   /** entries for a given project on a given local day. */
   const cellEntries = useCallback(
@@ -317,18 +420,22 @@ function MyTimesheet({ userId }: { userId: string }) {
 
   // --- Actions -------------------------------------------------------------
 
-  const openCell = (project: { id: string; label: string }, day: Date) => {
-    if (!weekEditable) return;
-    const inCell = cellEntries(project.id, day);
-    if (inCell.length > 1) return; // multi-entry cells are read-only.
-    setEdit({
-      projectId: project.id,
-      projectLabel: project.label,
-      day,
-      entry: inCell[0] ?? null,
-      currentHours: cellHours(project.id, day),
-    });
-  };
+  // useCallback so the memoized TimesheetRow can bail on referential equality.
+  const openCell = useCallback(
+    (project: { id: string; label: string }, day: Date) => {
+      if (!weekEditable) return;
+      const inCell = cellEntries(project.id, day);
+      if (inCell.length > 1) return; // multi-entry cells are read-only.
+      setEdit({
+        projectId: project.id,
+        projectLabel: project.label,
+        day,
+        entry: inCell[0] ?? null,
+        currentHours: cellHours(project.id, day),
+      });
+    },
+    [weekEditable, cellEntries, cellHours],
+  );
 
   const handleSaveCell = async (hours: number) => {
     if (!edit) return;
@@ -516,7 +623,9 @@ function MyTimesheet({ userId }: { userId: string }) {
             <table className="w-full min-w-[44rem] text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
-                  <th className="px-4 py-3 font-semibold">Project</th>
+                  <th className="sticky left-0 z-10 bg-card px-4 py-3 font-semibold">
+                    Project
+                  </th>
                   {days.map((d) => (
                     <th
                       key={d.toISOString()}
@@ -532,83 +641,52 @@ function MyTimesheet({ userId }: { userId: string }) {
                 </tr>
               </thead>
               <tbody>
-                {projects.map((p, rowIdx) => (
-                  <tr
+                {projects.slice(0, visibleRows).map((p, rowIdx) => (
+                  <TimesheetRow
                     key={p.id}
-                    className="border-b border-border/60 last:border-0"
-                  >
-                    <td className="max-w-[14rem] px-4 py-3 align-top">
-                      <span className="line-clamp-2 font-medium text-foreground">
-                        {p.label}
-                      </span>
-                    </td>
-                    {days.map((d) => {
-                      const hrs = cellHours(p.id, d);
-                      const inCell = cellEntries(p.id, d);
-                      const multiple = inCell.length > 1;
-                      const clickable = weekEditable && !multiple;
-                      return (
-                        <td
-                          key={d.toISOString()}
-                          className="px-1.5 py-1.5 text-center"
-                        >
-                          <button
-                            type="button"
-                            disabled={!clickable}
-                            onClick={() => openCell(p, d)}
-                            title={
-                              multiple
-                                ? "Multiple entries — edit on the Time entries page"
-                                : clickable
-                                  ? "Adjust hours"
-                                  : undefined
-                            }
-                            className={`w-full rounded-md px-2 py-2 font-mono tabular-nums transition-colors ${
-                              hrs === 0
-                                ? "text-muted-foreground/50"
-                                : "text-foreground"
-                            } ${
-                              clickable
-                                ? "hover:bg-primary/10 hover:text-primary cursor-pointer"
-                                : "cursor-default"
-                            }`}
-                          >
-                            {HOURS_FMT(hrs)}
-                            {multiple && (
-                              <span className="ml-0.5 align-super text-[9px] text-muted-foreground">
-                                ×{inCell.length}
-                              </span>
-                            )}
-                          </button>
-                        </td>
-                      );
-                    })}
-                    <td className="px-4 py-3 text-right font-mono tabular-nums font-semibold text-foreground">
-                      {projectTotals[rowIdx].toFixed(2)}
-                    </td>
-                  </tr>
+                    project={p}
+                    days={days}
+                    weekEditable={weekEditable}
+                    total={projectTotals[rowIdx]}
+                    cellEntries={cellEntries}
+                    cellHours={cellHours}
+                    onOpenCell={openCell}
+                  />
                 ))}
               </tbody>
               <tfoot>
                 <tr className="border-t border-border bg-muted/40 text-sm">
-                  <td className="px-4 py-3 font-semibold text-muted-foreground">
+                  <td className="sticky left-0 z-10 bg-muted/40 px-4 py-3 font-semibold text-muted-foreground">
                     Total
                   </td>
                   {dayTotals.map((t, i) => (
                     <td
                       key={i}
-                      className="px-3 py-3 text-center font-mono tabular-nums font-semibold text-foreground"
+                      className="px-3 py-3 text-center font-mono font-semibold tabular-nums text-foreground"
                     >
                       {HOURS_FMT(t)}
                     </td>
                   ))}
-                  <td className="px-4 py-3 text-right font-mono tabular-nums font-bold text-foreground">
+                  <td className="px-4 py-3 text-right font-mono font-bold tabular-nums text-foreground">
                     {grandTotal.toFixed(2)}
                   </td>
                 </tr>
               </tfoot>
             </table>
           </div>
+          {projects.length > visibleRows && (
+            <div className="border-t border-border px-4 py-3 text-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setVisibleRows((n) => n + WINDOW_INITIAL)}
+              >
+                Show {Math.min(WINDOW_INITIAL, projects.length - visibleRows)} more
+                {" "}
+                of {projects.length} projects
+              </Button>
+            </div>
+          )}
           {entries.some((e) => cellEntries(e.projectId, parseISO(e.startedAt)).length > 1) && (
             <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
               Cells with multiple entries (×N) are read-only here — edit them on

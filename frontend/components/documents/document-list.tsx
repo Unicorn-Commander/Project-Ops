@@ -7,6 +7,7 @@ import {
   FileText,
   Image as ImageIcon,
   File,
+  FolderOpen,
   Eye,
   Download,
   Trash2,
@@ -23,6 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { EmptyState } from '@/components/ui/empty-state';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/use-toast';
 import { DocumentViewerModal } from './document-viewer-modal';
@@ -167,13 +169,24 @@ export function DocumentList({ projectId }: DocumentListProps) {
       )}
 
       {documents.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">
-          <File className="h-12 w-12 mx-auto mb-3 text-muted-foreground/70" />
-          <p>No documents uploaded yet</p>
-          {canUpload() && (
-            <p className="text-sm mt-2">Click the button above to upload your first document</p>
-          )}
-        </div>
+        <EmptyState
+          icon={FolderOpen}
+          iconTone="orange"
+          title="No documents yet"
+          body={
+            canUpload()
+              ? "Upload your first file to attach it to this project."
+              : "No files have been attached to this project yet."
+          }
+          action={
+            canUpload() ? (
+              <Button onClick={() => setUploadModalOpen(true)}>
+                <Upload className="mr-2 h-4 w-4" />
+                Upload your first file
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="space-y-2">
         {documents.map((document) => (

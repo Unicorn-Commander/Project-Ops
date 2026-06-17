@@ -11,6 +11,7 @@ import { UserPlus, MoreVertical, Shield, User, Edit } from "lucide-react";
 import { EditUserModal } from "@/components/modals/edit-user-modal";
 import { CreateUserModal } from "@/components/modals/create-user-modal";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar } from "@/components/ui/avatar";
 import { ListToolbar, FilterOption } from "@/components/ui/list-toolbar";
 import { compareValues } from "@/lib/list-controls";
@@ -145,6 +146,17 @@ export default function UsersPage() {
     },
   });
 
+  // True when any filter is narrowing the list — drives the empty-state
+  // copy + CTA (offer "Clear filters" vs "Invite user").
+  const isFiltered =
+    searchTerm.trim() !== "" || filterRole !== "ALL" || filterActive !== "ALL";
+
+  const clearFilters = () => {
+    setSearchTerm("");
+    setFilterRole("ALL");
+    setFilterActive("ALL");
+  };
+
   const filteredUsers = users
     .filter((user) => {
       const term = searchTerm.toLowerCase();
@@ -168,10 +180,40 @@ export default function UsersPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-10 bg-muted rounded w-1/3"></div>
-          <div className="h-64 bg-muted rounded"></div>
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-56" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+          <Skeleton className="h-10 w-28" />
         </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="p-4 space-y-2">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-7 w-12" />
+            </Card>
+          ))}
+        </div>
+        <Card className="overflow-hidden">
+          <div className="divide-y divide-border">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-6 py-4">
+                <Skeleton className="h-5 w-5 rounded shrink-0" />
+                <Skeleton className="h-9 w-9 rounded-full shrink-0" />
+                <div className="flex-1 min-w-0 space-y-2">
+                  <Skeleton className="h-4 w-40 max-w-[60%]" />
+                  <Skeleton className="h-3 w-28 max-w-[40%]" />
+                </div>
+                <Skeleton className="hidden md:block h-4 w-40" />
+                <Skeleton className="h-6 w-20 rounded-full shrink-0" />
+                <Skeleton className="h-6 w-16 rounded-full shrink-0" />
+                <Skeleton className="hidden lg:block h-4 w-24" />
+                <Skeleton className="h-8 w-32 shrink-0" />
+              </div>
+            ))}
+          </div>
+        </Card>
       </div>
     );
   }
@@ -357,7 +399,7 @@ export default function UsersPage() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   User
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <th className="hidden md:table-cell px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Email
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -366,7 +408,7 @@ export default function UsersPage() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <th className="hidden lg:table-cell px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Last Login
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -397,17 +439,22 @@ export default function UsersPage() {
                         name={`${user.firstName} ${user.lastName}`}
                         size={36}
                       />
-                      <div>
+                      <div className="min-w-0">
                         <div className="text-sm font-medium text-foreground">
                           {user.firstName} {user.lastName}
                         </div>
                         <div className="text-sm text-muted-foreground">
                           @{user.username}
                         </div>
+                        {/* Email is its own column ≥md; surface it here on
+                            mobile so the identifier isn't lost. */}
+                        <div className="md:hidden text-xs text-muted-foreground truncate">
+                          {user.email}
+                        </div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                  <td className="hidden md:table-cell px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
                     {user.email}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -427,7 +474,7 @@ export default function UsersPage() {
                       {user.isActive ? "Active" : "Inactive"}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                  <td className="hidden lg:table-cell px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
                     {user.lastLoginAt
                       ? format(new Date(user.lastLoginAt), "MMM d, yyyy")
                       : "Never"}
@@ -466,14 +513,18 @@ export default function UsersPage() {
             <EmptyState
               icon={UserPlus}
               iconTone="rose"
-              title={searchTerm ? "No users match" : "No users yet"}
+              title={isFiltered ? "No users match" : "No users yet"}
               body={
-                searchTerm
-                  ? "Try a different search term."
+                isFiltered
+                  ? "Try a different search term, or clear the filters."
                   : "Invite teammates to give them access. Roles control what each one can see and edit."
               }
               action={
-                !searchTerm && (
+                isFiltered ? (
+                  <Button variant="outline" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                ) : (
                   <Button onClick={() => setIsCreateModalOpen(true)}>
                     <UserPlus className="mr-2 h-4 w-4" />
                     Invite user

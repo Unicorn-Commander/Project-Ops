@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ClientProviders } from "@/components/client-providers";
+import { fetchBrandCss } from "@/lib/brand-tokens";
 
 // Brand fonts (docs/branding/PROJECT-OPS-BRAND.md): DM Sans for display +
 // body, JetBrains Mono for code / identifiers / P-XXXXX project numbers.
@@ -39,13 +40,31 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Brand-driven theme: pull this app's color tokens from Brand-Ops (the brand
+  // source of truth) and override the globals.css defaults at runtime. Returns
+  // null when Brand-Ops is unset/unreachable/malformed — in which case we inject
+  // nothing and the hardcoded globals.css values stand as the fallback. The
+  // <style> is placed in <head> AFTER the imported globals.css so its :root
+  // rules win on source order and override the defaults.
+  const brandCss = await fetchBrandCss();
+
   return (
     <html lang="en" suppressHydrationWarning>
+      {brandCss ? (
+        <head>
+          <style
+            id="brand-ops-theme"
+            // Server-rendered from Brand-Ops tokens; values are validated as
+            // safe CSS color literals in fetchBrandCss() before they reach here.
+            dangerouslySetInnerHTML={{ __html: brandCss }}
+          />
+        </head>
+      ) : null}
       <body
         className={`${dmSans.variable} ${jetBrainsMono.variable} font-sans antialiased`}
       >

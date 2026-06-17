@@ -20,6 +20,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentWorkspace } from '../common/workspace/current-workspace.decorator';
 import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
 import { User } from '@prisma/client';
+import { clampLimit } from '../common/pagination/clamp';
 
 /**
  * Suite tenancy (Phase 2, B3): every route resolves the active workspace via
@@ -57,7 +58,11 @@ export class CommentsController {
     @Query('limit', new ParseIntPipe({ optional: true })) limit: number = 20,
     @Query('projectId') projectId?: string,
   ) {
-    const skip = (page - 1) * limit;
+    // Clamp to a bounded page size (default 20, max 100) so a caller can't
+    // request the whole table with ?limit=100000.
+    const safeLimit = clampLimit(limit);
+    const safePage = page > 0 ? page : 1;
+    const skip = (safePage - 1) * safeLimit;
     const where = projectId ? { projectId } : undefined;
 
     const { comments, total } = await this.commentsService.findAll(
@@ -65,7 +70,7 @@ export class CommentsController {
       user,
       {
         skip,
-        take: limit,
+        take: safeLimit,
         where,
         orderBy: { createdAt: 'desc' },
       },
@@ -75,22 +80,31 @@ export class CommentsController {
       data: comments,
       meta: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.ceil(total / safeLimit),
       },
     };
   }
 
   @Get('project/:projectId')
-  @ApiOperation({ summary: 'Get all comments for a project' })
+  @ApiOperation({ summary: 'Get comments for a project (paginated)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Page size (default 50, max 100)' })
+  @ApiQuery({ name: 'offset', required: false, type: Number, description: 'Rows to skip (default 0)' })
   @ApiResponse({ status: 200, description: 'Returns project comments' })
   findByProjectId(
     @CurrentWorkspace() workspaceId: string,
     @CurrentUser() user: User,
     @Param('projectId') projectId: string,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+    @Query('offset', new ParseIntPipe({ optional: true })) offset?: number,
   ) {
-    return this.commentsService.findByProjectId(workspaceId, user, projectId);
+    // Default 50, max 100 (task spec); offset normalized to >= 0.
+    const take = clampLimit(limit, 50);
+    return this.commentsService.findByProjectId(workspaceId, user, projectId, {
+      take,
+      skip: offset,
+    });
   }
 
   @Get(':id')

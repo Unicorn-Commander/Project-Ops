@@ -2,10 +2,15 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import api from "@/lib/api";
-import { X, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 
 interface CreateUserModalProps {
   isOpen: boolean;
@@ -115,36 +120,15 @@ export function CreateUserModal({
     onClose();
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-      onClick={(e) => {
-        // Close on backdrop click
-        if (e.target === e.currentTarget) {
-          handleClose();
-        }
-      }}
-      onKeyDown={(e) => {
-        // Close on ESC key
-        if (e.key === "Escape") {
-          handleClose();
-        }
-      }}
-    >
-      <Card className="w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-foreground">Create New User</h2>
-          <Button aria-label="Close"
-            variant="outline"
-            size="sm"
-            onClick={handleClose}
-            className="h-8 w-8 p-0"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
+      <DialogContent
+        overlayClassName="bg-black/50 backdrop-blur-sm"
+        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-card"
+      >
+        <DialogHeader>
+          <DialogTitle className="text-2xl font-bold">Create New User</DialogTitle>
+        </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
@@ -317,7 +301,7 @@ export function CreateUserModal({
             </Button>
           </div>
         </form>
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

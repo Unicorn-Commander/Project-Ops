@@ -6,6 +6,7 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
 import { Comment, Prisma, User } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
+import { clampLimit, clampOffset } from '../common/pagination/clamp';
 
 /**
  * Comments service.
@@ -202,13 +203,25 @@ export class CommentsService {
     workspaceId: string,
     user: User,
     projectId: string,
+    params?: {
+      skip?: number;
+      take?: number;
+    },
   ): Promise<any[]> {
+    // Pagination guardrail: this used to `findMany` with no bound, so a project
+    // with thousands of comments loaded them all in one shot. `take`/`skip` are
+    // clamped at the controller; we apply sane fallbacks here too so any other
+    // caller (e.g. a service-to-service path) is still bounded.
+    const { skip, take } = params || {};
+
     const comments = await this.workspaceContext.runForUser(
       user,
       (tx) =>
         tx.comment.findMany({
           where: { projectId },
           orderBy: { createdAt: 'desc' },
+          skip: clampOffset(skip),
+          take: clampLimit(take, 50),
           include: {
             author: {
               select: {

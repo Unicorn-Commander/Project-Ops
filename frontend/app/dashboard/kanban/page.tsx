@@ -158,7 +158,12 @@ function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
           isDragging || isDraggingState ? 'shadow-lg opacity-80' : ''
         }`}
       >
-        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing select-none">
+        <div
+          {...attributes}
+          {...listeners}
+          aria-label={`${task.title} — drag to change status`}
+          className="cursor-grab rounded-sm select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background active:cursor-grabbing"
+        >
           <div className="flex items-start justify-between gap-2 mb-2">
             <div className="flex items-center gap-2">
               <div className="text-primary">{getTypeIcon(task.type)}</div>
@@ -215,11 +220,13 @@ function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
         </div>
 
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onClick();
           }}
-          className="mt-2 text-xs text-primary hover:underline w-full text-right"
+          aria-label={`View details for ${task.title}`}
+          className="mt-2 w-full rounded-sm text-right text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
         >
           View Details →
         </button>
@@ -234,9 +241,11 @@ interface KanbanColumnProps {
   title: string;
   tasks: Task[];
   onTaskClick: (task: Task) => void;
+  /** Opens the create-task modal pre-targeted at this column's status. */
+  onAddTask: (status: TaskStatus) => void;
 }
 
-function KanbanColumn({ id, title, tasks, onTaskClick }: KanbanColumnProps) {
+function KanbanColumn({ id, title, tasks, onTaskClick, onAddTask }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
   return (
@@ -260,15 +269,30 @@ function KanbanColumn({ id, title, tasks, onTaskClick }: KanbanColumnProps) {
       >
         {tasks.length === 0 ? (
           <div
-            className={`flex h-32 flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed transition-colors ${
+            className={`flex h-32 flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed transition-colors ${
               isOver
                 ? 'border-foreground/40 text-foreground'
                 : 'border-border/50 text-muted-foreground/60'
             }`}
           >
-            <span className="text-[11px] uppercase tracking-wider">
-              {isOver ? `Drop into ${title}` : 'Drop tasks here'}
-            </span>
+            {isOver ? (
+              <span className="text-[11px] uppercase tracking-wider">
+                Drop into {title}
+              </span>
+            ) : (
+              <>
+                <span className="text-xs text-muted-foreground/70">No tasks</span>
+                <button
+                  type="button"
+                  onClick={() => onAddTask(id)}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+                  aria-label={`Add task to ${title}`}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add task
+                </button>
+              </>
+            )}
           </div>
         ) : (
           tasks.map((task) => <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />)
@@ -468,6 +492,14 @@ export default function KanbanPage() {
   const handleTaskClick = (task: Task) => {
     setSelectedTask(task);
     setIsDetailsModalOpen(true);
+  };
+
+  // Per-column "Add task" CTA. The create modal manages its own status
+  // default, so this just opens the create flow; the `status` arg keeps the
+  // call-site intent explicit (and labels the button) for when the modal
+  // grows a default-status prop.
+  const handleAddTask = (_status: TaskStatus) => {
+    setIsCreateModalOpen(true);
   };
 
   const handleEditTask = () => {
@@ -679,6 +711,7 @@ export default function KanbanPage() {
                 title={column.title}
                 tasks={getTasksByStatus(column.id)}
                 onTaskClick={handleTaskClick}
+                onAddTask={handleAddTask}
               />
             ))}
           </div>

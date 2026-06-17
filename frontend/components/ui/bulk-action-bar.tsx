@@ -13,7 +13,7 @@
  * during that run lives in the parent — see useBulkRunner below.
  */
 
-import { useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { X, Loader2 } from "lucide-react";
@@ -31,6 +31,22 @@ export function BulkActionBar({
   onClear,
   children,
 }: BulkActionBarProps) {
+  // Escape clears the current selection (and so dismisses the bar) — a
+  // standard "get me out" affordance for keyboard users. Bound only while
+  // a selection exists. Declared before the early return to satisfy the
+  // rules of hooks.
+  useEffect(() => {
+    if (selectedCount === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClear();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedCount, onClear]);
+
   if (selectedCount === 0) return null;
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 pointer-events-auto">
