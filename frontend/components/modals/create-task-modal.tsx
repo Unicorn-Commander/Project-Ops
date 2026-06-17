@@ -199,7 +199,7 @@ export function CreateTaskModal({
               Add a task to track work on a project
             </p>
           </div>
-          <Button
+          <Button aria-label="Close"
             variant="outline"
             size="sm"
             onClick={onClose}

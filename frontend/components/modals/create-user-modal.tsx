@@ -136,7 +136,7 @@ export function CreateUserModal({
       <Card className="w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-foreground">Create New User</h2>
-          <Button
+          <Button aria-label="Close"
             variant="outline"
             size="sm"
             onClick={handleClose}

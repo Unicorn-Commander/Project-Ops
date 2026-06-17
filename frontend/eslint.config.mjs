@@ -10,6 +10,20 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
+  // Global ignores. In ESLint flat config, an `ignores`-only config object is
+  // treated as global; co-locating `ignores` with `rules`/`files` (as before)
+  // scopes it to that object instead, which let `.next/**` build output slip
+  // through and report errors from generated vendor chunks. Keep this object
+  // ignores-only so the whole build/output tree is excluded everywhere.
+  {
+    ignores: [
+      "node_modules/**",
+      ".next/**",
+      "out/**",
+      "build/**",
+      "next-env.d.ts",
+    ],
+  },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
     rules: {
@@ -18,13 +32,6 @@ const eslintConfig = [
       "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
       "react/no-unescaped-entities": "off",
     },
-    ignores: [
-      "node_modules/**",
-      ".next/**",
-      "out/**",
-      "build/**",
-      "next-env.d.ts",
-    ],
   },
 ];
 

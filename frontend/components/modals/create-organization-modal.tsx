@@ -126,7 +126,7 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border sticky top-0 bg-card rounded-t-xl">
           <h2 className="text-2xl font-bold text-foreground">Create Organization</h2>
-          <button
+          <button aria-label="Close"
             onClick={handleClose}
             className="p-2 hover:bg-muted/50 rounded-lg transition-colors"
           >

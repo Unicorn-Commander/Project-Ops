@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/use-toast';
 import { Send } from 'lucide-react';
 
 interface CommentFormProps {
@@ -20,12 +20,15 @@ export function CommentForm({ projectId, onCommentAdded }: CommentFormProps) {
     e.preventDefault();
 
     if (!content.trim()) {
-      toast.error('Comment cannot be empty');
+      toast({ title: 'Comment cannot be empty', variant: 'destructive' });
       return;
     }
 
     if (content.length > 2000) {
-      toast.error('Comment is too long (max 2000 characters)');
+      toast({
+        title: 'Comment is too long (max 2000 characters)',
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -35,14 +38,14 @@ export function CommentForm({ projectId, onCommentAdded }: CommentFormProps) {
         projectId,
         content: content.trim(),
       });
-      toast.success('Comment added');
+      toast({ title: 'Comment added', variant: 'success' });
       setContent('');
       if (onCommentAdded) {
         onCommentAdded();
       }
     } catch (error) {
       console.error('Failed to add comment:', error);
-      toast.error('Failed to add comment');
+      toast({ title: 'Failed to add comment', variant: 'destructive' });
     } finally {
       setIsSubmitting(false);
     }

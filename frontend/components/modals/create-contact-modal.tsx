@@ -154,7 +154,7 @@ export function CreateContactModal({
         {/* Header */}
         <div className="sticky top-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between z-10">
           <h2 className="text-xl font-bold text-foreground">Create New Client</h2>
-          <Button
+          <Button aria-label="Close"
             variant="ghost"
             size="sm"
             onClick={handleClose}

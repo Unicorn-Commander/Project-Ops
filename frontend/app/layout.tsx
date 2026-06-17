@@ -1,11 +1,22 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { DM_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ClientProviders } from "@/components/client-providers";
 
-const inter = Inter({
+// Brand fonts (docs/branding/PROJECT-OPS-BRAND.md): DM Sans for display +
+// body, JetBrains Mono for code / identifiers / P-XXXXX project numbers.
+// Exposed as CSS vars and wired into globals.css + the `font-sans`/`font-mono`
+// utilities below.
+const dmSans = DM_Sans({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-dm-sans",
+  display: "swap",
+});
+
+const jetBrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -35,7 +46,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} font-sans antialiased`}>
+      <body
+        className={`${dmSans.variable} ${jetBrainsMono.variable} font-sans antialiased`}
+      >
         <ClientProviders>
           {children}
         </ClientProviders>

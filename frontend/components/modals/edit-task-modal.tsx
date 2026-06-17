@@ -164,7 +164,7 @@ export function EditTaskModal({
               Update task details
             </p>
           </div>
-          <Button
+          <Button aria-label="Close"
             variant="outline"
             size="sm"
             onClick={onClose}

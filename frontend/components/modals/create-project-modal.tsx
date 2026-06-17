@@ -310,7 +310,7 @@ export function CreateProjectModal({
               Add a new project to your management system
             </p>
           </div>
-          <Button
+          <Button aria-label="Close"
             variant="outline"
             size="sm"
             onClick={onClose}

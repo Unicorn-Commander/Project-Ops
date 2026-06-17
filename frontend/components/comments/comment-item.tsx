@@ -18,7 +18,7 @@ import { Edit2, Trash2, Check, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { api } from '@/lib/api';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/use-toast';
 
 interface Comment {
   id: string;
@@ -78,18 +78,18 @@ export function CommentItem({ comment, currentUserId, onUpdate, onDelete }: Comm
 
   const handleSaveEdit = async () => {
     if (!editContent.trim()) {
-      toast.error('Comment cannot be empty');
+      toast({ title: 'Comment cannot be empty', variant: 'destructive' });
       return;
     }
 
     try {
       await api.patch(`/comments/${comment.id}`, { content: editContent });
-      toast.success('Comment updated');
+      toast({ title: 'Comment updated', variant: 'success' });
       setIsEditing(false);
       onUpdate();
     } catch (error) {
       console.error('Failed to update comment:', error);
-      toast.error('Failed to update comment');
+      toast({ title: 'Failed to update comment', variant: 'destructive' });
     }
   };
 
@@ -97,11 +97,11 @@ export function CommentItem({ comment, currentUserId, onUpdate, onDelete }: Comm
     try {
       setIsDeleting(true);
       await api.delete(`/comments/${comment.id}`);
-      toast.success('Comment deleted');
+      toast({ title: 'Comment deleted', variant: 'success' });
       onDelete();
     } catch (error) {
       console.error('Failed to delete comment:', error);
-      toast.error('Failed to delete comment');
+      toast({ title: 'Failed to delete comment', variant: 'destructive' });
     } finally {
       setIsDeleting(false);
       setShowDeleteDialog(false);
@@ -135,6 +135,7 @@ export function CommentItem({ comment, currentUserId, onUpdate, onDelete }: Comm
                       variant="ghost"
                       size="sm"
                       onClick={() => setIsEditing(true)}
+                      aria-label="Edit comment"
                     >
                       <Edit2 className="h-4 w-4" />
                     </Button>
@@ -144,6 +145,7 @@ export function CommentItem({ comment, currentUserId, onUpdate, onDelete }: Comm
                       variant="ghost"
                       size="sm"
                       onClick={() => setShowDeleteDialog(true)}
+                      aria-label="Delete comment"
                     >
                       <Trash2 className="h-4 w-4 text-red-600" />
                     </Button>

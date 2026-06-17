@@ -334,7 +334,7 @@ function CreateTokenModal({
             Pick the scopes the token should be allowed to use, plus an expiry.
           </p>
         </div>
-        <button
+        <button aria-label="Close"
           onClick={onClose}
           disabled={submitting}
           className="text-muted-foreground hover:text-foreground disabled:opacity-50"

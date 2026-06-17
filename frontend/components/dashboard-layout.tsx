@@ -18,6 +18,8 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { AssistantPanel } from "@/components/assistant-panel";
 import { CommandPalette } from "@/components/command-palette";
+import { TimerProvider } from "@/components/time-tracking/timer-provider";
+import { TimerWidget } from "@/components/time-tracking/timer-widget";
 import { roleBadgeClass } from "@/lib/badge-styles";
 import { Avatar } from "@/components/ui/avatar";
 import {
@@ -37,6 +39,10 @@ import {
   ChevronDown,
   Search,
   Inbox,
+  Clock,
+  CalendarClock,
+  BarChart3,
+  Receipt,
 } from "lucide-react";
 
 interface NavItem {
@@ -44,7 +50,9 @@ interface NavItem {
   href: string;
   icon: any;
   adminOnly?: boolean;
-  group: "Workspace" | "CRM" | "Admin";
+  /** Managers (MANAGER/ADMIN) only — used for approval + billing surfaces. */
+  managerOnly?: boolean;
+  group: "Workspace" | "Time & Billing" | "CRM" | "Admin";
 }
 
 const navigation: NavItem[] = [
@@ -55,6 +63,10 @@ const navigation: NavItem[] = [
   { name: "Kanban Board", href: "/dashboard/kanban", icon: LayoutGrid, group: "Workspace" },
   { name: "Schedule", href: "/dashboard/schedule", icon: CalendarRange, group: "Workspace" },
   { name: "Documents", href: "/dashboard/documents", icon: FolderOpen, group: "Workspace" },
+  { name: "Time entries", href: "/dashboard/time", icon: Clock, group: "Time & Billing" },
+  { name: "Timesheets", href: "/dashboard/timesheets", icon: CalendarClock, group: "Time & Billing" },
+  { name: "Utilization", href: "/dashboard/utilization", icon: BarChart3, group: "Time & Billing" },
+  { name: "Billing", href: "/dashboard/billing", icon: Receipt, managerOnly: true, group: "Time & Billing" },
   { name: "Organizations", href: "/dashboard/organizations", icon: Building2, group: "CRM" },
   { name: "Contacts", href: "/dashboard/contacts", icon: UserCircle, group: "CRM" },
   { name: "Users", href: "/dashboard/users", icon: Users, adminOnly: true, group: "Admin" },
@@ -79,6 +91,10 @@ function pageTitleFor(pathname: string | null): string {
     "/dashboard/projects": "Projects",
     "/dashboard/kanban": "Kanban board",
     "/dashboard/documents": "Documents",
+    "/dashboard/time": "Time entries",
+    "/dashboard/timesheets": "Timesheets",
+    "/dashboard/utilization": "Utilization",
+    "/dashboard/billing": "Billing",
     "/dashboard/organizations": "Organizations",
     "/dashboard/contacts": "Contacts",
     "/dashboard/users": "Users",
@@ -118,9 +134,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     router.push("/auth/login");
   };
 
-  const filteredNavigation = navigation.filter(
-    (item) => !item.adminOnly || user?.role === "ADMIN",
-  );
+  const isManager = user?.role === "ADMIN" || user?.role === "MANAGER";
+  const filteredNavigation = navigation.filter((item) => {
+    if (item.adminOnly && user?.role !== "ADMIN") return false;
+    if (item.managerOnly && !isManager) return false;
+    return true;
+  });
 
   const groupedNav = useMemo(() => {
     const groups: Record<string, NavItem[]> = {};
@@ -144,7 +163,18 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   }, [title]);
 
   return (
+    <TimerProvider>
     <div className="min-h-screen bg-background">
+      {/* Skip link — first focusable element; visually hidden until focused,
+          then it jumps keyboard users straight past the sidebar/top bar to
+          the page content. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring"
+      >
+        Skip to content
+      </a>
+
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -191,6 +221,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             {(
               [
                 ["Workspace", "blue"],
+                ["Time & Billing", "violet"],
                 ["CRM", "emerald"],
                 ["Admin", "rose"],
               ] as const
@@ -208,6 +239,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                         (item.href !== "/dashboard" && pathname?.startsWith(item.href + "/"));
                       const activeIconBg = {
                         blue: "bg-blue-500/15 text-blue-600 dark:text-blue-300",
+                        violet: "bg-violet-500/15 text-violet-600 dark:text-violet-300",
                         emerald: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
                         rose: "bg-rose-500/15 text-rose-600 dark:text-rose-300",
                       }[tone];
@@ -288,6 +320,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           >
             <Search className="h-5 w-5" />
           </Button>
+          <TimerWidget />
           <AssistantPanel />
           <WorkspaceSwitcher />
           <ThemeToggle />
@@ -351,11 +384,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page content */}
-        <main className="p-4 lg:p-6">{children}</main>
+        <main id="main-content" tabIndex={-1} className="p-4 lg:p-6 focus:outline-none">
+          {children}
+        </main>
       </div>
 
       {/* Cmd+K palette — mounted once at root so it's reachable from any page. */}
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </div>
+    </TimerProvider>
   );
 }

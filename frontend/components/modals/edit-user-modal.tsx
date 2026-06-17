@@ -161,7 +161,7 @@ export function EditUserModal({
       <Card className="w-full max-w-2xl mx-4 p-6">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-foreground">Edit User</h2>
-          <Button
+          <Button aria-label="Close"
             variant="outline"
             size="sm"
             onClick={onClose}

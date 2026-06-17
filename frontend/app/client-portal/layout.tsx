@@ -22,7 +22,7 @@ export default function ClientPortalLayout({ children }: ClientPortalLayoutProps
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("access_token");
     const userData = localStorage.getItem("user");
 
     if (!token || !userData) {
@@ -40,7 +40,7 @@ export default function ClientPortalLayout({ children }: ClientPortalLayoutProps
   }, [router]);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
+    localStorage.removeItem("access_token");
     localStorage.removeItem("user");
     router.push("/auth/login");
   };
@@ -69,6 +69,14 @@ export default function ClientPortalLayout({ children }: ClientPortalLayoutProps
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Skip link — first focusable element, visually hidden until focused. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring"
+      >
+        Skip to content
+      </a>
+
       {/* Top Navigation */}
       <header className="bg-card border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -136,7 +144,11 @@ export default function ClientPortalLayout({ children }: ClientPortalLayoutProps
       </div>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 focus:outline-none"
+      >
         {children}
       </main>
     </div>

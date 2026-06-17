@@ -184,12 +184,16 @@ export default function SettingsPage() {
           <div>
             <h2 className="text-xl font-semibold">Notifications</h2>
             <p className="text-xs text-muted-foreground">
-              Coming soon — these toggles are placeholder. Per-user notification
-              preferences land alongside the email-send pipeline.
+              Coming soon. These toggles are a placeholder. Per-user
+              notification preferences land alongside the email-send pipeline,
+              once the backend exposes a preferences endpoint.
             </p>
           </div>
         </div>
-        <div className="space-y-3 opacity-60 pointer-events-none">
+        <div
+          className="space-y-3 opacity-60 pointer-events-none"
+          aria-hidden="true"
+        >
           {[
             { label: "Email notifications", body: "Receive email updates about your projects." },
             { label: "Project status changes", body: "Get notified when project status changes." },

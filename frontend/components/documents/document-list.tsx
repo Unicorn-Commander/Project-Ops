@@ -24,7 +24,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { api } from '@/lib/api';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/use-toast';
 import { DocumentViewerModal } from './document-viewer-modal';
 import UploadDocumentsModal from '../modals/upload-documents-modal';
 
@@ -67,7 +67,7 @@ export function DocumentList({ projectId }: DocumentListProps) {
       setDocuments(response.data);
     } catch (error) {
       console.error('Failed to fetch documents:', error);
-      toast.error('Failed to load documents');
+      toast({ title: 'Failed to load documents', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -102,7 +102,7 @@ export function DocumentList({ projectId }: DocumentListProps) {
       setShowViewer(true);
     } catch (error) {
       console.error('Failed to get preview URL:', error);
-      toast.error('Failed to preview document');
+      toast({ title: 'Failed to preview document', variant: 'destructive' });
     }
   };
 
@@ -115,10 +115,10 @@ export function DocumentList({ projectId }: DocumentListProps) {
       window.document.body.appendChild(link);
       link.click();
       window.document.body.removeChild(link);
-      toast.success('Download started');
+      toast({ title: 'Download started', variant: 'success' });
     } catch (error) {
       console.error('Failed to download document:', error);
-      toast.error('Failed to download document');
+      toast({ title: 'Failed to download document', variant: 'destructive' });
     }
   };
 
@@ -127,11 +127,11 @@ export function DocumentList({ projectId }: DocumentListProps) {
 
     try {
       await api.delete(`/documents/${documentToDelete}`);
-      toast.success('Document deleted');
+      toast({ title: 'Document deleted', variant: 'success' });
       fetchDocuments();
     } catch (error) {
       console.error('Failed to delete document:', error);
-      toast.error('Failed to delete document');
+      toast({ title: 'Failed to delete document', variant: 'destructive' });
     } finally {
       setDeleteDialogOpen(false);
       setDocumentToDelete(null);
@@ -196,6 +196,7 @@ export function DocumentList({ projectId }: DocumentListProps) {
                   variant="outline"
                   size="sm"
                   onClick={() => handlePreview(document)}
+                  aria-label={`Preview ${document.fileName}`}
                 >
                   <Eye className="h-4 w-4" />
                 </Button>
@@ -203,6 +204,7 @@ export function DocumentList({ projectId }: DocumentListProps) {
                   variant="outline"
                   size="sm"
                   onClick={() => handleDownload(document)}
+                  aria-label={`Download ${document.fileName}`}
                 >
                   <Download className="h-4 w-4" />
                 </Button>
@@ -214,6 +216,7 @@ export function DocumentList({ projectId }: DocumentListProps) {
                       setDocumentToDelete(document.id);
                       setDeleteDialogOpen(true);
                     }}
+                    aria-label={`Delete ${document.fileName}`}
                   >
                     <Trash2 className="h-4 w-4 text-red-600" />
                   </Button>

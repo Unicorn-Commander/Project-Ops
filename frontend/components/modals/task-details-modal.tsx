@@ -281,7 +281,7 @@ export function TaskDetailsModal({
               </div>
             </div>
           </div>
-          <Button
+          <Button aria-label="Close"
             variant="outline"
             size="sm"
             onClick={onClose}

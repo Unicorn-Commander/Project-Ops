@@ -5,7 +5,7 @@ import { CommentItem } from './comment-item';
 import { CommentForm } from './comment-form';
 import { api } from '@/lib/api';
 import { wsClient } from '@/lib/websocket';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/use-toast';
 import { Loader2 } from 'lucide-react';
 
 interface Comment {
@@ -74,7 +74,7 @@ export function CommentThread({ projectId }: CommentThreadProps) {
       setComments(response.data);
     } catch (error) {
       console.error('Failed to fetch comments:', error);
-      toast.error('Failed to load comments');
+      toast({ title: 'Failed to load comments', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
