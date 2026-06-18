@@ -22,6 +22,12 @@ import { Textarea } from "@/components/ui/textarea";
 import api from "@/lib/api";
 import { getContacts, type Contact } from "@/lib/contacts-api";
 import { Search, Plus, X } from "lucide-react";
+import { CustomFieldsSection } from "@/components/custom-fields/custom-field-inputs";
+import { RecurrencePicker } from "@/components/custom-fields/recurrence-picker";
+import {
+  CustomFieldEntity,
+  type CustomFieldValueMap,
+} from "@/lib/custom-fields-api";
 
 interface Project {
   id: string;
@@ -46,6 +52,8 @@ interface Project {
   paymentDueDate?: string | null;
   paymentReceivedDate?: string | null;
   billingNotes?: string | null;
+  recurrenceRule?: string | null;
+  metadata?: { customFields?: Record<string, any>; [key: string]: any } | null;
 }
 
 interface EditProjectModalProps {
@@ -110,6 +118,8 @@ export function EditProjectModal({
   const [searchTerm, setSearchTerm] = useState("");
   const [showClientSelector, setShowClientSelector] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
+  const [customFields, setCustomFields] = useState<CustomFieldValueMap>({});
+  const [recurrenceRule, setRecurrenceRule] = useState("");
   const { toast } = useToast();
 
   const addTag = (raw: string) => {
@@ -172,6 +182,8 @@ export function EditProjectModal({
           : "",
         billingNotes: projectData.billingNotes || "",
       });
+      setCustomFields(projectData.metadata?.customFields ?? {});
+      setRecurrenceRule(projectData.recurrenceRule ?? "");
     }
   }, [projectData]);
 
@@ -235,6 +247,9 @@ export function EditProjectModal({
       const payload = {
         ...formData,
         dueDate: formData.dueDate || null,
+        // Always send so clearing the recurrence ("") is persisted.
+        recurrenceRule,
+        customFields,
       };
 
       await api.patch(`/projects/${projectData.id}`, payload);
@@ -675,6 +690,25 @@ export function EditProjectModal({
               </div>
             </div>
           </div>
+
+          {/* Recurrence */}
+          <div className="pt-4 border-t">
+            <h3 className="text-lg font-semibold mb-4">Recurrence</h3>
+            <RecurrencePicker
+              value={recurrenceRule}
+              onChange={setRecurrenceRule}
+              idPrefix="edit-project-recurrence"
+            />
+          </div>
+
+          {/* Custom fields — workspace-defined PROJECT attributes (self-hides
+              header + spacing when the workspace has no project fields). */}
+          <CustomFieldsSection
+            entity={CustomFieldEntity.PROJECT}
+            values={customFields}
+            onChange={setCustomFields}
+            title="Custom Fields"
+          />
 
           {/* Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t">

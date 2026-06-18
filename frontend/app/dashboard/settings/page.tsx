@@ -17,6 +17,8 @@ import {
   Mail,
   ChevronRight,
   Loader2,
+  SlidersHorizontal,
+  Webhook,
 } from "lucide-react";
 import Link from "next/link";
 import { ApiTokensCard } from "./api-tokens-card";
@@ -239,6 +241,38 @@ export default function SettingsPage() {
                     <p className="font-medium">Email configuration</p>
                     <p className="text-sm text-muted-foreground">
                       SMTP settings used by the project notification + invite flows.
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="h-5 w-5 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+              </div>
+            </Link>
+            <Link href="/dashboard/settings/custom-fields">
+              <div className="flex items-center justify-between p-4 rounded-md border hover:bg-muted/50 transition-colors cursor-pointer group">
+                <div className="flex items-center gap-3">
+                  <div className={`inline-flex h-9 w-9 items-center justify-center rounded-md ${iconWellClass("violet")}`}>
+                    <SlidersHorizontal className="h-5 w-5" strokeWidth={1.75} />
+                  </div>
+                  <div>
+                    <p className="font-medium">Custom fields</p>
+                    <p className="text-sm text-muted-foreground">
+                      Define your own fields on tasks and projects (text, number, date, select…).
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="h-5 w-5 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+              </div>
+            </Link>
+            <Link href="/dashboard/settings/webhooks">
+              <div className="flex items-center justify-between p-4 rounded-md border hover:bg-muted/50 transition-colors cursor-pointer group">
+                <div className="flex items-center gap-3">
+                  <div className={`inline-flex h-9 w-9 items-center justify-center rounded-md ${iconWellClass("emerald")}`}>
+                    <Webhook className="h-5 w-5" strokeWidth={1.75} />
+                  </div>
+                  <div>
+                    <p className="font-medium">Webhooks</p>
+                    <p className="text-sm text-muted-foreground">
+                      Send signed HTTP callbacks to your systems when tasks and projects change.
                     </p>
                   </div>
                 </div>

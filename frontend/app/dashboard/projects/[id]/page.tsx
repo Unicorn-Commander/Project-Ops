@@ -5,6 +5,24 @@ import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { EditProjectModal } from "@/components/modals/edit-project-modal";
 import { StatusUpdate } from "@/components/project/status-update";
@@ -28,6 +46,15 @@ import {
   paymentStatusBadgeClass,
 } from "@/lib/badge-styles";
 import { projectColorClasses } from "@/lib/project-colors";
+import {
+  requestApproval,
+  getProjectApprovals,
+  approvalStatusLabel,
+  approvalStatusBadgeClass,
+  entityTypeLabel,
+  type PortalApproval,
+  type ApprovalEntityType,
+} from "@/lib/portal-api";
 import { format } from "date-fns";
 import {
   ArrowLeft,
@@ -45,6 +72,8 @@ import {
   FolderX,
   GanttChartSquare,
   ChevronDown,
+  ClipboardCheck,
+  Loader2,
 } from "lucide-react";
 
 interface Project {
@@ -66,6 +95,12 @@ interface Project {
     lastName: string;
     email: string;
   };
+  contact?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  } | null;
   createdAt: string;
   updatedAt: string;
   invoiceNumber?: string | null;
@@ -96,6 +131,21 @@ export default function ProjectDetailPage() {
   // Timeline section open/closed. Open by default so dependency arrows are
   // discoverable; collapsible to keep the long detail page tidy.
   const [timelineOpen, setTimelineOpen] = useState(true);
+
+  // ── Request-client-approval (staff → portal) ──────────────────────────────
+  // Loaded live from the staff-readable GET /client-portal/approvals/by-project/:id
+  // (fetchProjectApprovals), so staff see real client decisions; a fresh request
+  // is also optimistically prepended on create.
+  // The client decides them in their portal; reading those decisions back here
+  // would need a staff list endpoint that does not exist yet.
+  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
+  const [approvalEntityType, setApprovalEntityType] =
+    useState<ApprovalEntityType>("DELIVERABLE");
+  const [approvalApprover, setApprovalApprover] = useState<string>("ANY");
+  const [approvalNote, setApprovalNote] = useState("");
+  const [requestingApproval, setRequestingApproval] = useState(false);
+  const [requestedApprovals, setRequestedApprovals] = useState<PortalApproval[]>([]);
+
   const { toast } = useToast();
 
   useEffect(() => {
@@ -103,6 +153,7 @@ export default function ProjectDetailPage() {
     fetchUserRole();
     fetchProjectTasks();
     fetchBudget();
+    fetchProjectApprovals();
   }, [projectId]);
 
   const fetchUserRole = () => {
@@ -152,6 +203,18 @@ export default function ProjectDetailPage() {
     }
   };
 
+  // Live client decisions on this project's approval requests (staff view, via
+  // the staff-readable GET /client-portal/approvals/by-project/:id). Fails soft:
+  // clients never reach this page, and a 403/404 just leaves the list empty.
+  const fetchProjectApprovals = async () => {
+    try {
+      const res = await getProjectApprovals(projectId);
+      setRequestedApprovals(res.data);
+    } catch {
+      // staff-only endpoint — ignore for non-staff / not-found
+    }
+  };
+
   // Budget burn-down — hours logged vs budget + amount billed vs budget.
   // Fails soft: a 404 (endpoint not yet provisioned, or no budget for
   // this project) or any error just leaves `budget` null and the panel
@@ -177,6 +240,48 @@ export default function ProjectDetailPage() {
 
   const handleTaskUpdate = () => {
     fetchProjectTasks();
+  };
+
+  const resetApprovalForm = () => {
+    setApprovalEntityType("DELIVERABLE");
+    setApprovalApprover("ANY");
+    setApprovalNote("");
+  };
+
+  const handleRequestApproval = async () => {
+    if (requestingApproval) return;
+    setRequestingApproval(true);
+    try {
+      // For DOCUMENT/DELIVERABLE the backend wants the entity's own id; we
+      // don't have a per-deliverable picker here, so the entity is the project
+      // itself (the approval is still attached to this project via projectId,
+      // which is what drives client scoping).
+      const created = await requestApproval({
+        entityType: approvalEntityType,
+        entityId: projectId,
+        projectId,
+        approverContactId:
+          approvalApprover === "ANY" ? undefined : approvalApprover,
+        note: approvalNote.trim() || undefined,
+      });
+      setRequestedApprovals((prev) => [created, ...prev]);
+      toast({
+        title: "Approval requested",
+        description:
+          "The client will see this in their portal and can approve, reject, or request changes.",
+      });
+      setApprovalDialogOpen(false);
+      resetApprovalForm();
+    } catch (error: any) {
+      toast({
+        title: "Could not request approval",
+        description:
+          error.response?.data?.message || "Please try again in a moment.",
+        variant: "destructive",
+      });
+    } finally {
+      setRequestingApproval(false);
+    }
   };
 
   const getStatusColor = statusBadgeClass;
@@ -308,6 +413,16 @@ export default function ProjectDetailPage() {
             <Printer className="mr-2 h-4 w-4" />
             Print
           </Button>
+          {canEditProject() && (
+            <Button
+              variant="outline"
+              onClick={() => setApprovalDialogOpen(true)}
+              title="Ask the client to approve a document, deliverable, or the project"
+            >
+              <ClipboardCheck className="mr-2 h-4 w-4" />
+              Request approval
+            </Button>
+          )}
           {canEditProject() && (
             <Button
               className="bg-primary hover:bg-primary/90"
@@ -662,6 +777,58 @@ export default function ProjectDetailPage() {
             </Card>
           )}
 
+          {/* Client Approvals */}
+          {canEditProject() && (
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">Client Approvals</h2>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setApprovalDialogOpen(true)}
+                >
+                  <ClipboardCheck className="mr-2 h-4 w-4" />
+                  Request
+                </Button>
+              </div>
+              {requestedApprovals.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No approval requests yet. Use{" "}
+                  <span className="font-medium text-foreground">Request</span> to
+                  ask the client to sign off on a document, deliverable, or the
+                  project.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {requestedApprovals.map((a) => (
+                    <div
+                      key={a.id}
+                      className="flex items-start justify-between gap-3 rounded-md border border-border p-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">
+                          {entityTypeLabel(a.entityType)}
+                        </p>
+                        {a.note && (
+                          <p className="text-xs text-muted-foreground line-clamp-2">
+                            {a.note}
+                          </p>
+                        )}
+                      </div>
+                      <Badge className={approvalStatusBadgeClass(a.status)}>
+                        {approvalStatusLabel(a.status)}
+                      </Badge>
+                    </div>
+                  ))}
+                  <p className="text-xs text-muted-foreground">
+                    Shows requests made here. The client&apos;s decision appears
+                    in their portal.
+                  </p>
+                </div>
+              )}
+            </Card>
+          )}
+
           {/* Activity Timeline */}
           <Card className="p-6">
             <h2 className="text-lg font-semibold mb-4">Activity Timeline</h2>
@@ -739,6 +906,108 @@ export default function ProjectDetailPage() {
         }}
         task={selectedTask}
       />
+
+      {/* Request client approval */}
+      <Dialog
+        open={approvalDialogOpen}
+        onOpenChange={(open) => {
+          setApprovalDialogOpen(open);
+          if (!open) resetApprovalForm();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Request client approval</DialogTitle>
+            <DialogDescription>
+              Ask the client to sign off on this project. They&apos;ll approve,
+              request changes, or reject it from their portal.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="approval-entity-type">What needs approval?</Label>
+              <Select
+                value={approvalEntityType}
+                onValueChange={(v) =>
+                  setApprovalEntityType(v as ApprovalEntityType)
+                }
+              >
+                <SelectTrigger id="approval-entity-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DELIVERABLE">Deliverable</SelectItem>
+                  <SelectItem value="DOCUMENT">Document</SelectItem>
+                  <SelectItem value="PROJECT">Project</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="approval-approver">Approver</Label>
+              <Select
+                value={approvalApprover}
+                onValueChange={setApprovalApprover}
+              >
+                <SelectTrigger id="approval-approver">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ANY">
+                    Any client on this project
+                  </SelectItem>
+                  {projectData.contact && (
+                    <SelectItem value={projectData.contact.id}>
+                      {projectData.contact.firstName}{" "}
+                      {projectData.contact.lastName}
+                      {projectData.contact.email
+                        ? ` (${projectData.contact.email})`
+                        : ""}
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="approval-note">
+                Note{" "}
+                <span className="font-normal text-muted-foreground">
+                  (optional)
+                </span>
+              </Label>
+              <Textarea
+                id="approval-note"
+                placeholder="e.g. Please review the final deliverable and approve."
+                value={approvalNote}
+                onChange={(e) => setApprovalNote(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setApprovalDialogOpen(false)}
+              disabled={requestingApproval}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRequestApproval}
+              disabled={requestingApproval}
+              className="bg-primary hover:bg-primary/90"
+            >
+              {requestingApproval && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Send request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

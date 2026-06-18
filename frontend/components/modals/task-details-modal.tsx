@@ -63,6 +63,10 @@ import {
 import api from "@/lib/api";
 import { statusBadgeClass, priorityBadgeClass } from "@/lib/badge-styles";
 import { format } from "date-fns";
+import { CustomFieldValues } from "@/components/custom-fields/custom-field-inputs";
+import { CustomFieldEntity } from "@/lib/custom-fields-api";
+import { Repeat, Timer, SlidersHorizontal } from "lucide-react";
+import { parseRecurrenceRule } from "@/components/custom-fields/recurrence-picker";
 
 interface TaskDetailsModalProps {
   isOpen: boolean;
@@ -405,6 +409,25 @@ export function TaskDetailsModal({
 
   const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== TaskStatus.COMPLETED;
 
+  // Human-readable recurrence ("Every week" / "Every 2 weeks"). The picker's
+  // parser tolerates anything; an unrecognized rule shows the raw string.
+  const recurrenceSummary = (() => {
+    const { freq, interval } = parseRecurrenceRule(task.recurrenceRule);
+    if (!freq) return task.recurrenceRule ?? "";
+    const noun = { DAILY: "day", WEEKLY: "week", MONTHLY: "month" }[freq];
+    return interval === 1 ? `Every ${noun}` : `Every ${interval} ${noun}s`;
+  })();
+
+  // Whether the task has any populated custom-field value (gates the section
+  // header; CustomFieldValues itself also hides if no definitions match).
+  const cfMap = task.metadata?.customFields ?? {};
+  const hasCustomFieldValues = Object.values(cfMap).some((v) => {
+    if (v === null || v === undefined) return false;
+    if (typeof v === "string") return v.trim().length > 0;
+    if (Array.isArray(v)) return v.length > 0;
+    return true;
+  });
+
   const getStatusColor = (status: TaskStatus) => statusBadgeClass(status);
   const getPriorityColor = (priority: TaskPriority) => priorityBadgeClass(priority);
 
@@ -574,7 +597,46 @@ export function TaskDetailsModal({
               </p>
             </div>
           )}
+
+          {/* Estimated Hours */}
+          {task.estimatedHours !== null && task.estimatedHours !== undefined && (
+            <div>
+              <h3 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-2">
+                <Timer className="h-4 w-4" />
+                ESTIMATED HOURS
+              </h3>
+              <p className="text-foreground">
+                {Number(task.estimatedHours)}{" "}
+                {Number(task.estimatedHours) === 1 ? "hour" : "hours"}
+              </p>
+            </div>
+          )}
+
+          {/* Recurrence */}
+          {task.recurrenceRule && (
+            <div>
+              <h3 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-2">
+                <Repeat className="h-4 w-4" />
+                REPEATS
+              </h3>
+              <p className="text-foreground">{recurrenceSummary}</p>
+            </div>
+          )}
         </div>
+
+        {/* Custom Fields */}
+        {hasCustomFieldValues && (
+          <div className="mb-6 pb-6 border-b">
+            <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+              <SlidersHorizontal className="h-4 w-4" />
+              CUSTOM FIELDS
+            </h3>
+            <CustomFieldValues
+              entity={CustomFieldEntity.TASK}
+              values={task.metadata?.customFields}
+            />
+          </div>
+        )}
 
         {/* Actions */}
         <div className="mb-6 pb-6 border-b">

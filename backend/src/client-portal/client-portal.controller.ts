@@ -169,6 +169,22 @@ export class ClientPortalController {
     return this.approvalsService.request(workspaceId, user, dto);
   }
 
+  @Get('approvals/by-project/:projectId')
+  // STAFF-only: the requester's view of a project's approvals — live client
+  // decisions, not just in-session creates. Gated by RolesGuard (class level);
+  // distinct path depth from the client `GET approvals`, so no route shadowing.
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
+  @ApiOperation({ summary: '[staff] List all approvals on a project' })
+  @ApiResponse({ status: 200, description: 'Approvals on the project (pending first)' })
+  @ApiResponse({ status: 404, description: 'Project not found' })
+  listProjectApprovals(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.approvalsService.listForProject(workspaceId, user, projectId);
+  }
+
   // ====================================================================
   // COMMENTS (two-way) — on the client's visible projects
   // ====================================================================

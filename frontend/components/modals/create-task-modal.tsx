@@ -30,6 +30,12 @@ import {
 } from "@/lib/task-validation";
 import { Loader2 } from "lucide-react";
 import api from "@/lib/api";
+import { CustomFieldsSection } from "@/components/custom-fields/custom-field-inputs";
+import { RecurrencePicker } from "@/components/custom-fields/recurrence-picker";
+import {
+  CustomFieldEntity,
+  type CustomFieldValueMap,
+} from "@/lib/custom-fields-api";
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -75,6 +81,10 @@ export function CreateTaskModal({
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  // New fields (not part of the zod schema — kept as plain state).
+  const [customFields, setCustomFields] = useState<CustomFieldValueMap>({});
+  const [recurrenceRule, setRecurrenceRule] = useState("");
+  const [estimatedHours, setEstimatedHours] = useState("");
   const { toast } = useToast();
 
   const {
@@ -109,6 +119,10 @@ export function CreateTaskModal({
       if (!preselectedProjectId) {
         fetchProjects();
       }
+      // Reset the non-form fields each time the modal opens fresh.
+      setCustomFields({});
+      setRecurrenceRule("");
+      setEstimatedHours("");
     }
   }, [isOpen, preselectedProjectId]);
 
@@ -159,6 +173,10 @@ export function CreateTaskModal({
         dueDate: data.dueDate || undefined,
         projectId: data.projectId,
         assignedToId: data.assignedToId && data.assignedToId !== "UNASSIGNED" ? data.assignedToId : undefined,
+        recurrenceRule: recurrenceRule || undefined,
+        estimatedHours:
+          estimatedHours.trim() !== "" ? Number(estimatedHours) : undefined,
+        customFields: Object.keys(customFields).length ? customFields : undefined,
       });
 
       toast({
@@ -400,6 +418,41 @@ export function CreateTaskModal({
               </div>
             </div>
           </div>
+
+          {/* Scheduling — estimate + recurrence */}
+          <div>
+            <h3 className="text-lg font-semibold text-foreground mb-4 border-b pb-2">
+              Scheduling
+            </h3>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="estimatedHours">Estimated hours</Label>
+                  <Input
+                    id="estimatedHours"
+                    type="number"
+                    min={0}
+                    step="0.25"
+                    placeholder="e.g. 4.5"
+                    value={estimatedHours}
+                    onChange={(e) => setEstimatedHours(e.target.value)}
+                  />
+                </div>
+              </div>
+              <RecurrencePicker
+                value={recurrenceRule}
+                onChange={setRecurrenceRule}
+                idPrefix="create-task-recurrence"
+              />
+            </div>
+          </div>
+
+          {/* Custom fields — workspace-defined TASK attributes */}
+          <CustomFieldsSection
+            entity={CustomFieldEntity.TASK}
+            values={customFields}
+            onChange={setCustomFields}
+          />
 
           {/* Action Buttons */}
           <div className="flex justify-end gap-3 pt-4 border-t">

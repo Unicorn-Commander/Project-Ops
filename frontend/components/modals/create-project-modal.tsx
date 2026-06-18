@@ -26,6 +26,12 @@ import { useToast } from "@/components/ui/use-toast";
 import api from "@/lib/api";
 import { getContacts, type Contact } from "@/lib/contacts-api";
 import { X, Loader2, Plus, Search } from "lucide-react";
+import { CustomFieldsSection } from "@/components/custom-fields/custom-field-inputs";
+import { RecurrencePicker } from "@/components/custom-fields/recurrence-picker";
+import {
+  CustomFieldEntity,
+  type CustomFieldValueMap,
+} from "@/lib/custom-fields-api";
 
 // Project types with display names
 const PROJECT_TYPES = [
@@ -141,6 +147,8 @@ export function CreateProjectModal({
   const [clients, setClients] = useState<Contact[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [showClientSelector, setShowClientSelector] = useState(false);
+  const [customFields, setCustomFields] = useState<CustomFieldValueMap>({});
+  const [recurrenceRule, setRecurrenceRule] = useState("");
   const { toast } = useToast();
 
   const {
@@ -215,6 +223,9 @@ export function CreateProjectModal({
     };
     if (isOpen) {
       fetchClients();
+      // Reset the non-form fields each time the modal opens fresh.
+      setCustomFields({});
+      setRecurrenceRule("");
     }
   }, [isOpen]);
 
@@ -288,6 +299,8 @@ export function CreateProjectModal({
         paymentDueDate: data.paymentDueDate || undefined,
         paymentReceivedDate: data.paymentReceivedDate || undefined,
         billingNotes: data.billingNotes || undefined,
+        recurrenceRule: recurrenceRule || undefined,
+        customFields: Object.keys(customFields).length ? customFields : undefined,
       };
 
       await api.post("/projects", payload);
@@ -817,6 +830,25 @@ export function CreateProjectModal({
               </div>
             </div>
           </div>
+
+          {/* Recurrence */}
+          <div>
+            <h3 className="text-lg font-semibold text-foreground mb-4 border-b pb-2">
+              Recurrence
+            </h3>
+            <RecurrencePicker
+              value={recurrenceRule}
+              onChange={setRecurrenceRule}
+              idPrefix="create-project-recurrence"
+            />
+          </div>
+
+          {/* Custom fields — workspace-defined PROJECT attributes */}
+          <CustomFieldsSection
+            entity={CustomFieldEntity.PROJECT}
+            values={customFields}
+            onChange={setCustomFields}
+          />
 
           {/* Action Buttons */}
           <div className="flex justify-end gap-3 pt-4 border-t">

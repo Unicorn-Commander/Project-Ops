@@ -106,6 +106,48 @@ export class ApprovalsService {
   }
 
   // ----------------------------------------------------------------------
+  // STAFF: list approvals on a project (the requester's side of the loop)
+  // ----------------------------------------------------------------------
+
+  /**
+   * List ALL approvals on a project for a STAFF user — so staff see live client
+   * decisions on what they requested, not just the rows they created in-session.
+   * Workspace RLS scopes the read; the projectId is validated under that scope
+   * (a cross-workspace id is invisible → NotFound). No contact-ownership filter:
+   * staff see every approval on their project. Controller gates this to
+   * ADMIN/MANAGER/STAFF (no `verifyClientRole`).
+   */
+  async listForProject(
+    workspaceId: string,
+    staffUser: User,
+    projectId: string,
+  ): Promise<{ data: any[]; total: number }> {
+    return this.workspaceContext.runForUser(
+      staffUser,
+      async (tx) => {
+        const project = await tx.project.findUnique({
+          where: { id: projectId },
+          select: { id: true },
+        });
+        if (!project) {
+          throw new NotFoundException('Project not found');
+        }
+        const where: Prisma.ApprovalWhereInput = { projectId };
+        const [rows, total] = await Promise.all([
+          tx.approval.findMany({
+            where,
+            orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
+            include: { project: { select: this.projectSelect } },
+          }),
+          tx.approval.count({ where }),
+        ]);
+        return { data: rows.map((r) => this.transform(r)), total };
+      },
+      workspaceId,
+    );
+  }
+
+  // ----------------------------------------------------------------------
   // CLIENT: list my approvals
   // ----------------------------------------------------------------------
 

@@ -8,6 +8,8 @@ import {
   LayoutDashboard,
   FileText,
   FolderOpen,
+  ClipboardCheck,
+  Receipt,
   LogOut,
   User,
 } from "lucide-react";
@@ -55,6 +57,16 @@ export default function ClientPortalLayout({ children }: ClientPortalLayoutProps
       name: "My Projects",
       href: "/client-portal/projects",
       icon: FileText,
+    },
+    {
+      name: "Approvals",
+      href: "/client-portal/approvals",
+      icon: ClipboardCheck,
+    },
+    {
+      name: "Invoices",
+      href: "/client-portal/invoices",
+      icon: Receipt,
     },
     {
       name: "Documents",

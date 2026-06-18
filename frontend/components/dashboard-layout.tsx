@@ -45,6 +45,9 @@ import {
   CalendarClock,
   BarChart3,
   Receipt,
+  LineChart,
+  Gauge,
+  Zap,
 } from "lucide-react";
 
 interface NavItem {
@@ -68,9 +71,12 @@ const navigation: NavItem[] = [
   { name: "Time entries", href: "/dashboard/time", icon: Clock, group: "Time & Billing" },
   { name: "Timesheets", href: "/dashboard/timesheets", icon: CalendarClock, group: "Time & Billing" },
   { name: "Utilization", href: "/dashboard/utilization", icon: BarChart3, group: "Time & Billing" },
+  { name: "Reports", href: "/dashboard/reports", icon: LineChart, group: "Time & Billing" },
+  { name: "Capacity", href: "/dashboard/capacity", icon: Gauge, managerOnly: true, group: "Time & Billing" },
   { name: "Billing", href: "/dashboard/billing", icon: Receipt, managerOnly: true, group: "Time & Billing" },
   { name: "Organizations", href: "/dashboard/organizations", icon: Building2, group: "CRM" },
   { name: "Contacts", href: "/dashboard/contacts", icon: UserCircle, group: "CRM" },
+  { name: "Automations", href: "/dashboard/automations", icon: Zap, managerOnly: true, group: "Admin" },
   { name: "Users", href: "/dashboard/users", icon: Users, adminOnly: true, group: "Admin" },
   { name: "Settings", href: "/dashboard/settings", icon: Settings, group: "Admin" },
 ];

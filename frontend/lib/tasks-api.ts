@@ -15,6 +15,18 @@ export interface Task {
   createdById: string;
   createdAt: string;
   updatedAt: string;
+  /** RRULE subset (FREQ=DAILY|WEEKLY|MONTHLY[;INTERVAL=N]); set => recurrence template. */
+  recurrenceRule?: string | null;
+  /** Effort estimate in hours (capacity planning). Decimal — may arrive as a string. */
+  estimatedHours?: number | string | null;
+  /**
+   * Free-form entity metadata. Custom-field VALUES live under
+   * `metadata.customFields`, keyed by the workspace TASK field key.
+   */
+  metadata?: {
+    customFields?: Record<string, any>;
+    [key: string]: any;
+  } | null;
   project?: {
     id: string;
     projectNumber: string;
@@ -144,6 +156,16 @@ export interface CreateTaskData {
   projectId: string;
   parentTaskId?: string;
   assignedToId?: string;
+  /** RRULE subset; when set the task becomes a recurrence template. */
+  recurrenceRule?: string;
+  /** Effort estimate in hours (>= 0, up to 2 decimals). */
+  estimatedHours?: number;
+  /**
+   * Custom-field VALUES keyed by the workspace TASK field key. Validated +
+   * normalized server-side against the workspace definitions, then merged into
+   * metadata.customFields.
+   */
+  customFields?: Record<string, any>;
 }
 
 export interface UpdateTaskData {
@@ -154,6 +176,9 @@ export interface UpdateTaskData {
   status?: TaskStatus;
   dueDate?: string;
   assignedToId?: string;
+  recurrenceRule?: string;
+  estimatedHours?: number;
+  customFields?: Record<string, any>;
 }
 
 export interface TasksResponse {

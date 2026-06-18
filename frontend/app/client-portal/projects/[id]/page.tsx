@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Loader2,
   ArrowLeft,
@@ -14,14 +15,21 @@ import {
   User,
   MessageSquare,
   DollarSign,
+  Send,
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { useHydrated } from "@/lib/use-hydrated";
 import api from "@/lib/api";
 import {
   statusBadgeClass,
   priorityBadgeClass,
   paymentStatusBadgeClass,
 } from "@/lib/badge-styles";
+import {
+  getProjectComments,
+  postProjectComment,
+  type PortalComment,
+} from "@/lib/portal-api";
 import { format } from "date-fns";
 import Link from "next/link";
 
@@ -77,15 +85,25 @@ export default function ProjectDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
+  const hydrated = useHydrated();
   const [loading, setLoading] = useState(true);
   const [projectData, setProjectData] = useState<ProjectDetails | null>(null);
+
+  // Comments are driven by the dedicated two-way endpoint (read + post) rather
+  // than the snapshot embedded in the project payload, so a newly posted
+  // comment shows immediately and carries the author's role.
+  const [comments, setComments] = useState<PortalComment[]>([]);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [postingComment, setPostingComment] = useState(false);
 
   const projectId = params?.id as string;
 
   useEffect(() => {
     if (projectId) {
       loadProject();
+      loadComments();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   const loadProject = async () => {
@@ -102,6 +120,36 @@ export default function ProjectDetailsPage() {
       router.push("/client-portal/projects");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadComments = async () => {
+    try {
+      const data = await getProjectComments(projectId);
+      setComments(data);
+    } catch {
+      // Non-fatal: the project itself still renders. Leave the thread empty.
+    }
+  };
+
+  const handlePostComment = async () => {
+    const content = commentDraft.trim();
+    if (!content || postingComment) return;
+    setPostingComment(true);
+    try {
+      const created = await postProjectComment(projectId, content);
+      // Prepend — the list is ordered newest-first.
+      setComments((prev) => [created, ...prev]);
+      setCommentDraft("");
+    } catch (error: any) {
+      toast({
+        title: "Could not post comment",
+        description:
+          error.response?.data?.message || "Please try again in a moment.",
+        variant: "destructive",
+      });
+    } finally {
+      setPostingComment(false);
     }
   };
 
@@ -287,35 +335,82 @@ export default function ProjectDetailsPage() {
         )}
       </Card>
 
-      {/* Comments */}
+      {/* Comments — two-way discussion */}
       <Card className="bg-card border-border">
         <div className="p-6 border-b border-border">
           <div className="flex items-center gap-2">
             <MessageSquare className="w-5 h-5 text-primary" />
             <h2 className="text-lg font-bold text-foreground">
-              Comments ({projectData.comments.length})
+              Discussion ({comments.length})
             </h2>
           </div>
         </div>
 
-        {projectData.comments.length === 0 ? (
+        {/* Composer */}
+        <div className="p-4 border-b border-border space-y-3">
+          <Textarea
+            aria-label="Write a comment"
+            placeholder="Write a comment to your team…"
+            value={commentDraft}
+            onChange={(e) => setCommentDraft(e.target.value)}
+            disabled={postingComment}
+            rows={3}
+            onKeyDown={(e) => {
+              // Cmd/Ctrl+Enter posts, matching the app's other composers.
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                e.preventDefault();
+                handlePostComment();
+              }
+            }}
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">
+              Press ⌘/Ctrl + Enter to post
+            </span>
+            <Button
+              onClick={handlePostComment}
+              disabled={postingComment || !commentDraft.trim()}
+              className="bg-primary hover:bg-primary/90"
+            >
+              {postingComment ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4 mr-2" />
+              )}
+              Post comment
+            </Button>
+          </div>
+        </div>
+
+        {comments.length === 0 ? (
           <div className="p-12 text-center">
             <MessageSquare className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">No comments yet</p>
+            <p className="text-muted-foreground">
+              No comments yet — start the conversation above.
+            </p>
           </div>
         ) : (
           <div className="divide-y divide-border">
-            {projectData.comments.map((comment) => (
+            {comments.map((comment) => (
               <div key={comment.id} className="p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="font-medium text-foreground">
-                    {comment.author.firstName} {comment.author.lastName}
+                    {comment.author?.name ?? "Unknown"}
                   </span>
-                  <span className="text-sm text-muted-foreground">
-                    {format(new Date(comment.createdAt), "MMM d, yyyy")}
-                  </span>
+                  {comment.author?.role === "CLIENT" && (
+                    <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-300">
+                      You
+                    </Badge>
+                  )}
+                  {hydrated && (
+                    <span className="text-sm text-muted-foreground">
+                      {format(new Date(comment.createdAt), "MMM d, yyyy h:mm a")}
+                    </span>
+                  )}
                 </div>
-                <p className="text-foreground">{comment.content}</p>
+                <p className="text-foreground whitespace-pre-wrap">
+                  {comment.content}
+                </p>
               </div>
             ))}
           </div>
