@@ -14,6 +14,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { useAuthStore } from "@/lib/store";
+import { useHydrated } from "@/lib/use-hydrated";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { AssistantPanel } from "@/components/assistant-panel";
@@ -121,11 +122,16 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Pretty platform-aware shortcut hint for the trigger button.
+  // Pretty platform-aware shortcut hint for the trigger button. `navigator` is
+  // client-only, so the server and the first client render must agree on the
+  // neutral "Ctrl K" label; once hydrated we swap in the Mac glyph. Gating on
+  // `useHydrated()` (rather than reading navigator during render) avoids a
+  // text-content hydration mismatch (React #418) in the top bar.
+  const hydrated = useHydrated();
   const cmdLabel = useMemo(() => {
-    if (typeof navigator === "undefined") return "Ctrl K";
+    if (!hydrated || typeof navigator === "undefined") return "Ctrl K";
     return navigator.platform.toLowerCase().includes("mac") ? "⌘K" : "Ctrl K";
-  }, []);
+  }, [hydrated]);
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuthStore();

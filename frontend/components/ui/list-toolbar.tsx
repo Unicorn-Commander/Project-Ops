@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/save-view-dialog";
 import {
   type SavedView,
+  BUILT_IN_VIEWS,
   getAllViews,
   syncUserViews,
   createUserView,
@@ -399,7 +400,14 @@ function currentUserId(): string | null {
  * apply-only.
  */
 function ViewsDropdown({ views }: { views: ListViewsControl }) {
-  const [allViews, setAllViews] = useState<SavedView[]>(() => getAllViews(views.scope));
+  // Seed with built-ins only — those are static and identical on the server and
+  // the client. The cached *user* views live in localStorage, so pulling them
+  // in the initializer would diverge between the server and the first client
+  // render (a hydration mismatch, React #418). The mount effect below overlays
+  // the localStorage cache right after hydration, keeping the instant paint.
+  const [allViews, setAllViews] = useState<SavedView[]>(
+    () => BUILT_IN_VIEWS[views.scope] ?? [],
+  );
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   // Dialog state is lifted out of the dropdown so the Radix Dialog's focus
@@ -424,6 +432,13 @@ function ViewsDropdown({ views }: { views: ListViewsControl }) {
     setAllViews(getAllViews(views.scope));
     syncUserViews(views.scope, uid).then(applyUserViews);
   }, [views.scope, uid, applyUserViews]);
+
+  // Overlay the localStorage-cached user views once, after mount (the initial
+  // state held built-ins only to match SSR). The dropdown then paints the full
+  // cached set immediately, before the open-time backend refresh below.
+  useEffect(() => {
+    setAllViews(getAllViews(views.scope));
+  }, [views.scope]);
 
   // Refresh from the backend whenever the dropdown is opened (cheap, and
   // picks up views shared by teammates since last open).

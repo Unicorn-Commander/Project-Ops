@@ -84,7 +84,16 @@ export function useStarred(scope: StarredScope): {
   starred: Set<string>;
   toggle: (id: string) => void;
 } {
-  const [starred, setStarred] = useState<Set<string>>(() => loadSet(scope));
+  // Start empty so the server render and the first client render agree — reading
+  // localStorage in the initializer painted filled stars on the client but not
+  // the server (a hydration mismatch, React #418). The mount effect below loads
+  // the real set immediately after hydration.
+  const [starred, setStarred] = useState<Set<string>>(() => new Set());
+
+  // Load the persisted set once on mount, then keep it live via the listeners.
+  useEffect(() => {
+    setStarred(loadSet(scope));
+  }, [scope]);
 
   useEffect(() => {
     const onChange = (e: Event) => {

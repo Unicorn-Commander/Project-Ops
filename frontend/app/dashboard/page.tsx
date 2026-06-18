@@ -13,6 +13,7 @@ import { TopContactsWidget } from "@/components/dashboard/top-contacts-widget";
 import api from "@/lib/api";
 import { getMyTasks, Task, TaskStatus } from "@/lib/tasks-api";
 import { useAuthStore } from "@/lib/store";
+import { useHydrated } from "@/lib/use-hydrated";
 import {
   statusBadgeClass,
   priorityTextClass,
@@ -80,6 +81,12 @@ export default function DashboardPage() {
   const [isEditTaskModalOpen, setIsEditTaskModalOpen] = useState(false);
   const { toast } = useToast();
   const { user } = useAuthStore();
+  // The auth store is populated from localStorage after mount, so `user` (and
+  // anything it drives, like the greeting) differs between the server render
+  // and the first client render. Gate that text on `useHydrated()` so both
+  // renders show the neutral "Welcome back" and the personalized greeting
+  // paints once hydrated — no #418 mismatch even if this paints pre-loading.
+  const hydrated = useHydrated();
 
   useEffect(() => {
     fetchDashboardData();
@@ -222,7 +229,7 @@ export default function DashboardPage() {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-              {user?.firstName ? `Welcome back, ${user.firstName}` : "Welcome back"}
+              {hydrated && user?.firstName ? `Welcome back, ${user.firstName}` : "Welcome back"}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Here's what's happening across your projects today.

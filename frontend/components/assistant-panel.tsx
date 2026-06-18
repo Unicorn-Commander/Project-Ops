@@ -38,12 +38,21 @@ export function AssistantPanel() {
    * button in the panel header. Persisted to localStorage so the
    * user's last preference sticks across sessions.
    */
-  const [popped, setPopped] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem("projectops:assistant-popped") === "1";
-  });
+  // Default `false` so SSR and the first client render agree; the stored
+  // preference is read in a mount effect (reading localStorage in the
+  // initializer is the localStorage-in-render anti-pattern that causes
+  // hydration mismatches — React #418). `poppedHydrated` gates the persist
+  // effect so it doesn't clobber the stored value with the default before the
+  // load runs.
+  const [popped, setPopped] = useState<boolean>(false);
+  const poppedHydrated = useRef(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
+    setPopped(window.localStorage.getItem("projectops:assistant-popped") === "1");
+    poppedHydrated.current = true;
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined" || !poppedHydrated.current) return;
     window.localStorage.setItem("projectops:assistant-popped", popped ? "1" : "0");
   }, [popped]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);

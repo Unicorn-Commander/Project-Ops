@@ -52,15 +52,33 @@ const WorkspaceContext = createContext<WorkspaceContextValue | undefined>(
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
-  // Seed synchronously from localStorage so the switcher renders immediately
-  // on reload, before `/auth/profile` re-hydrates the list.
-  const [workspaces, setWorkspaces] = useState<WorkspaceMembership[]>(() =>
-    getStoredWorkspaces(),
-  );
+  // Start EMPTY so the first client render matches the server render (which has
+  // no localStorage) — seeding from localStorage in the `useState` initializer
+  // ran during render and made the switcher appear on the client but not the
+  // server, a hydration mismatch (React #418) in the always-rendered top bar.
+  // We re-seed from the localStorage cache in a mount effect below (still
+  // synchronous, still ahead of the `/auth/profile` round-trip), so the switcher
+  // paints from cache immediately after hydration.
+  const [workspaces, setWorkspaces] = useState<WorkspaceMembership[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
-    () => getStoredWorkspaceId(),
+    null,
   );
   const [isLoading, setIsLoading] = useState(true);
+
+  // Seed from the localStorage cache once, after mount. Runs before the
+  // `/auth/profile` fetch (which then overwrites with the authoritative list),
+  // so the switcher still renders instantly from cache on reload — just on the
+  // client only, where localStorage actually exists.
+  useEffect(() => {
+    const cached = getStoredWorkspaces();
+    if (cached.length > 0) {
+      setWorkspaces(cached);
+    }
+    const storedId = getStoredWorkspaceId();
+    if (storedId) {
+      setActiveWorkspaceId(storedId);
+    }
+  }, []);
 
   // Fetch `/auth/profile` (which carries `workspaces[]`), re-seed state +
   // storage, and re-resolve the active workspace. Shared by the auth-state

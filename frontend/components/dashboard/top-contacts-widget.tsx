@@ -85,7 +85,7 @@ export function TopContactsWidget() {
           <UserCircle className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-50" />
           <p className="text-sm text-muted-foreground mb-2">No contacts found</p>
           <p className="text-xs text-muted-foreground">
-            Start by creating cases with contact information
+            Start by adding contacts, or linking clients to your projects
           </p>
         </div>
       </Card>
