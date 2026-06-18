@@ -106,10 +106,11 @@ export function ProjectCharts({ projects }: Props) {
                 data={statusData}
                 dataKey="value"
                 nameKey="name"
-                innerRadius="55%"
-                outerRadius="85%"
+                innerRadius={56}
+                outerRadius={92}
                 paddingAngle={2}
                 strokeWidth={0}
+                isAnimationActive={false}
               >
                 {statusData.map((d) => (
                   <Cell key={d.key} fill={d.fill} />
@@ -179,7 +180,7 @@ export function ProjectCharts({ projects }: Props) {
                   fontSize: "12px",
                 }}
               />
-              <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+              <Bar dataKey="value" radius={[6, 6, 0, 0]} isAnimationActive={false}>
                 {priorityData.map((d) => (
                   <Cell key={d.key} fill={d.fill} />
                 ))}
