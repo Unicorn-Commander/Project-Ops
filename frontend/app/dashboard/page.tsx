@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
@@ -9,7 +10,6 @@ import { CreateProjectModal } from "@/components/modals/create-project-modal";
 import { TaskDetailsModal } from "@/components/modals/task-details-modal";
 import { EditTaskModal } from "@/components/modals/edit-task-modal";
 import { TopContactsWidget } from "@/components/dashboard/top-contacts-widget";
-import { ProjectCharts } from "@/components/dashboard/project-charts";
 import api from "@/lib/api";
 import { getMyTasks, Task, TaskStatus } from "@/lib/tasks-api";
 import { useAuthStore } from "@/lib/store";
@@ -36,6 +36,14 @@ import {
   CheckSquare,
   ArrowRight,
 } from "lucide-react";
+
+// Charts render client-only: Recharts 3's ResponsiveContainer can't measure its
+// box during SSR/hydration under React 19 (blank series + a #418 hydration error),
+// so we skip SSR for the chart bundle and let it mount + measure on the client.
+const ProjectCharts = dynamic(
+  () => import("@/components/dashboard/project-charts").then((m) => m.ProjectCharts),
+  { ssr: false },
+);
 
 interface DashboardStats {
   totalProjects: number;
