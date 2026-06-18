@@ -14,6 +14,7 @@ import { DocumentList } from "@/components/documents/document-list";
 import { TaskList } from "@/components/tasks/task-list";
 import { ProjectSnapshot } from "@/components/project/project-snapshot";
 import { BudgetPanel, type ProjectBudget } from "@/components/schedule/budget";
+import { TaskTimeline } from "@/components/schedule/task-timeline";
 import { EmptyState } from "@/components/ui/empty-state";
 import { recordVisit } from "@/lib/recently-visited";
 import { CreateTaskModal } from "@/components/modals/create-task-modal";
@@ -42,6 +43,8 @@ import {
   Plus,
   Printer,
   FolderX,
+  GanttChartSquare,
+  ChevronDown,
 } from "lucide-react";
 
 interface Project {
@@ -90,6 +93,9 @@ export default function ProjectDetailPage() {
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [isTaskDetailsModalOpen, setIsTaskDetailsModalOpen] = useState(false);
   const [isEditTaskModalOpen, setIsEditTaskModalOpen] = useState(false);
+  // Timeline section open/closed. Open by default so dependency arrows are
+  // discoverable; collapsible to keep the long detail page tidy.
+  const [timelineOpen, setTimelineOpen] = useState(true);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -541,6 +547,42 @@ export default function ProjectDetailPage() {
               a glance before scrolling. Hidden when there are no tasks
               (component renders a friendly empty card instead). */}
           {!loadingTasks && <ProjectSnapshot tasks={tasks} />}
+
+          {/* Timeline — a task-level Gantt that visualizes dependencies as
+              arrows (predecessor → successor). Collapsible so it doesn't
+              crowd the page; hidden in print since the SVG overlay is measured
+              at runtime. (v1.6.x) */}
+          <Card className="p-0 overflow-hidden no-print">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-2 px-6 py-4 text-left hover:bg-muted/30 transition-colors"
+              onClick={() => setTimelineOpen((o) => !o)}
+              aria-expanded={timelineOpen}
+            >
+              <span className="flex items-center gap-2">
+                <GanttChartSquare className="h-5 w-5 text-primary" />
+                <span className="text-lg font-semibold">Timeline</span>
+                <span className="text-sm text-muted-foreground">
+                  Schedule & dependencies
+                </span>
+              </span>
+              <ChevronDown
+                className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${
+                  timelineOpen ? "" : "-rotate-90"
+                }`}
+              />
+            </button>
+            {timelineOpen && (
+              <div className="px-6 pb-6 pt-0 border-t">
+                <div className="pt-4">
+                  <TaskTimeline
+                    projectId={projectId}
+                    onTaskClick={handleTaskClick}
+                  />
+                </div>
+              </div>
+            )}
+          </Card>
 
           {/* Tasks */}
           <Card className="p-6">

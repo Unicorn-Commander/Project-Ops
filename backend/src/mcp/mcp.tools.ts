@@ -9,6 +9,7 @@
 
 import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { Prisma, User, UserRole } from '@prisma/client';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MinioService } from '../documents/minio.service';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -103,6 +104,10 @@ export class ProjectOpsTools {
     private readonly tt?: TimeTrackingDeps,
     private readonly bearerToken: string | null = null,
     private readonly workspace?: WorkspaceContextService,
+    // Same global EventEmitter2 the REST TasksService uses. Optional so the
+    // pure-function RBAC unit tests can construct the tools without it; when
+    // absent, addTaskComment simply skips the (best-effort) domain emit.
+    private readonly events?: EventEmitter2,
   ) {}
 
   // ── Workspace (suite tenancy, Phase 2 G2) ────────────────
@@ -441,37 +446,57 @@ export class ProjectOpsTools {
     user: User,
     args: { taskId: string; content: string },
   ) {
-    const comment = await this.runScoped(user, async (tx, workspaceId) => {
-      const task = await tx.task.findFirst({
-        where: {
-          id: args.taskId,
-          project: buildVisibilityFilter(user),
-        },
-        select: { id: true, projectId: true },
-      });
-      if (!task) {
-        throw new Error("Task not found or you don't have access");
-      }
-      const created = await tx.taskComment.create({
-        data: {
-          taskId: task.id,
-          // Stamp the active workspace — RLS WITH CHECK rejects a NULL
-          // workspaceId row (this was the one MCP create missing it; caught
-          // live by the fence on 2026-06-10).
-          workspaceId,
-          authorId: user.id,
-          content: args.content,
-        },
-        select: {
-          id: true,
-          content: true,
-          createdAt: true,
-          author: { select: { firstName: true, lastName: true } },
-        },
-      });
-      this.logger.log(`MCP add_task_comment: user=${user.email} task=${task.id}`);
-      return created;
+    // Capture the resolved workspace + created comment so we can emit the
+    // domain event AFTER the tx commits (mirrors TasksService.addComment).
+    const { comment, workspaceId } = await this.runScoped(
+      user,
+      async (tx, workspaceId) => {
+        const task = await tx.task.findFirst({
+          where: {
+            id: args.taskId,
+            project: buildVisibilityFilter(user),
+          },
+          select: { id: true, projectId: true },
+        });
+        if (!task) {
+          throw new Error("Task not found or you don't have access");
+        }
+        const created = await tx.taskComment.create({
+          data: {
+            taskId: task.id,
+            // Stamp the active workspace — RLS WITH CHECK rejects a NULL
+            // workspaceId row (this was the one MCP create missing it; caught
+            // live by the fence on 2026-06-10).
+            workspaceId,
+            authorId: user.id,
+            content: args.content,
+          },
+          select: {
+            id: true,
+            content: true,
+            createdAt: true,
+            author: { select: { firstName: true, lastName: true } },
+          },
+        });
+        this.logger.log(`MCP add_task_comment: user=${user.email} task=${task.id}`);
+        return { comment: created, workspaceId };
+      },
+    );
+
+    // Domain event for downstream @mention fan-out (notifications module).
+    // Emitted OUTSIDE the workspace tx so a listener that re-queries the DB
+    // sees a committed row and a slow/failing listener can never hold or roll
+    // back the comment write. Payload matches TasksService.addComment exactly
+    // so MCP-posted comments fan out @mentions identically. (Optional emitter:
+    // skipped only in the pure RBAC unit tests that don't wire one.)
+    this.events?.emit('task.comment.created', {
+      workspaceId,
+      taskId: args.taskId,
+      commentId: comment.id,
+      authorId: user.id,
+      content: comment.content,
     });
+
     return comment;
   }
 

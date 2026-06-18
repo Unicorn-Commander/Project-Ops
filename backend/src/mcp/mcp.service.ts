@@ -10,6 +10,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { User } from '@prisma/client';
 import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
@@ -39,6 +40,11 @@ export class McpService {
     private readonly timesheet: TimesheetService,
     private readonly reports: ReportsService,
     private readonly rollup: BillableRollupService,
+    // Global EventEmitter2 (EventEmitterModule.forRoot in app.module) — handed
+    // to ProjectOpsTools so MCP-posted task comments emit the same
+    // `task.comment.created` event the REST TasksService does, fanning out
+    // @mention notifications identically.
+    private readonly events: EventEmitter2,
   ) {}
 
   /**
@@ -154,6 +160,7 @@ export class McpService {
       ttDeps,
       bearerToken ?? null,
       this.workspace,
+      this.events,
     );
 
     server.registerTool(

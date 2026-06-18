@@ -197,6 +197,12 @@ export const getTasks = async (params?: TaskFilters): Promise<TasksResponse> => 
   return response.data;
 };
 
+// Alias for the rich `GET /tasks` listing, named to read at call sites that
+// want "list the tasks matching these filters" (e.g. the project task
+// timeline does `listTasks({ projectId, pageSize: 200 })`). Identical to
+// {@link getTasks} — same params, same paginated response.
+export const listTasks = getTasks;
+
 // Get single task by ID
 export const getTask = async (id: string): Promise<Task> => {
   const response = await api.get(`/tasks/${id}`);

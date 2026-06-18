@@ -58,6 +58,7 @@ function makeService(resolvedWorkspace: string): McpService {
     noop, // timesheet
     noop, // reports
     noop, // rollup
+    noop, // events (EventEmitter2) — gate tests deny before the tool body
   );
   // Silence the service logger.
   (svc as any).logger = new Logger('test');

@@ -12,6 +12,10 @@ import {
   Bookmark,
   Users as UsersIcon,
   Trash2 as TrashIcon,
+  MoreHorizontal,
+  Pencil,
+  UserPlus,
+  UserMinus,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -23,10 +27,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import {
+  SaveViewDialog,
+  type SaveViewResult,
+} from "@/components/ui/save-view-dialog";
+import {
   type SavedView,
   getAllViews,
   syncUserViews,
   createUserView,
+  updateUserView,
   deleteUserView,
 } from "@/lib/saved-views";
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -384,23 +393,37 @@ function currentUserId(): string | null {
 /**
  * Saved-views dropdown, backed by the DB-synced store. Paints instantly from
  * the localStorage cache (built-ins + cached user views), then refreshes from
- * the API on open. "Save current as view" prompts for a name and offers a
- * "shared" toggle (visible to the whole workspace). Owner-only views show a
- * delete affordance; built-ins and others' shared views don't.
+ * the API on open. "Save current as view" opens a proper dialog (name + a
+ * "share with the workspace" toggle). Views the user owns get a manage menu
+ * (Rename · Share/Unshare · Delete); built-ins and others' shared views are
+ * apply-only.
  */
 function ViewsDropdown({ views }: { views: ListViewsControl }) {
   const [allViews, setAllViews] = useState<SavedView[]>(() => getAllViews(views.scope));
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Dialog state is lifted out of the dropdown so the Radix Dialog's focus
+  // trap doesn't fight the menu's focus restoration. `null` = closed.
+  const [dialog, setDialog] = useState<
+    | { mode: "create" }
+    | { mode: "rename"; view: SavedView }
+    | null
+  >(null);
   const uid = currentUserId();
 
-  const refresh = useCallback(() => {
-    // Re-read built-ins + cache synchronously, then reconcile with the API.
-    setAllViews(getAllViews(views.scope));
-    syncUserViews(views.scope, uid).then((userViews) => {
+  // Built-ins + the authoritative user views. Keep the synchronous cache for
+  // the first paint, then overlay the freshly-synced user portion.
+  const applyUserViews = useCallback(
+    (userViews: SavedView[]) => {
       setAllViews([...getAllViews(views.scope).filter((v) => v.builtIn), ...userViews]);
-    });
-  }, [views.scope, uid]);
+    },
+    [views.scope],
+  );
+
+  const refresh = useCallback(() => {
+    setAllViews(getAllViews(views.scope));
+    syncUserViews(views.scope, uid).then(applyUserViews);
+  }, [views.scope, uid, applyUserViews]);
 
   // Refresh from the backend whenever the dropdown is opened (cheap, and
   // picks up views shared by teammates since last open).
@@ -408,109 +431,239 @@ function ViewsDropdown({ views }: { views: ListViewsControl }) {
     if (open) refresh();
   }, [open, refresh]);
 
-  const handleSave = useCallback(async () => {
-    if (typeof window === "undefined") return;
-    const name = window.prompt("Name this view:");
-    if (!name) return;
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    // Ask whether to share with the workspace (default = the last choice).
-    const shared = window.confirm(
-      "Share this view with everyone in the workspace?\n\nOK = shared · Cancel = just me",
-    );
-    setBusy(true);
-    const created = await createUserView(views.scope, trimmed, views.current, {
-      shared,
-      currentUserId: uid,
-    });
-    setBusy(false);
-    if (created) {
-      setAllViews([...getAllViews(views.scope).filter((v) => v.builtIn), ...(await syncUserViews(views.scope, uid))]);
-    } else if (typeof window !== "undefined") {
-      window.alert("Couldn't save this view — the server was unreachable. Try again.");
-    }
-  }, [views.current, views.scope, uid]);
+  // Create from the current snapshot. Returns false on failure so the dialog
+  // stays open for a retry.
+  const handleCreate = useCallback(
+    async ({ name, shared }: SaveViewResult) => {
+      setBusy(true);
+      const created = await createUserView(views.scope, name, views.current, {
+        shared,
+        currentUserId: uid,
+      });
+      if (created) {
+        // Optimistic append, then reconcile with the server's full list.
+        setAllViews((prev) => [...prev, created]);
+        applyUserViews(await syncUserViews(views.scope, uid));
+      }
+      setBusy(false);
+      return Boolean(created);
+    },
+    // `views` is read for its live `.current` snapshot at call time, so depend
+    // on the object itself (not the mutable `.current` field).
+    [views, uid, applyUserViews],
+  );
+
+  // Rename / re-share an owned view. Optimistically patches the row, then
+  // reconciles; reverts to the server's truth on failure.
+  const handleRename = useCallback(
+    async (view: SavedView, { name, shared }: SaveViewResult) => {
+      setBusy(true);
+      setAllViews((prev) =>
+        prev.map((v) => (v.id === view.id ? { ...v, name, shared } : v)),
+      );
+      const updated = await updateUserView(
+        views.scope,
+        view.id,
+        { name, shared },
+        uid,
+      );
+      applyUserViews(await syncUserViews(views.scope, uid));
+      setBusy(false);
+      return Boolean(updated);
+    },
+    [views.scope, uid, applyUserViews],
+  );
+
+  // Toggle just the shared flag (no dialog) for an owned view.
+  const handleToggleShare = useCallback(
+    async (view: SavedView) => {
+      const nextShared = !view.shared;
+      setBusy(true);
+      setAllViews((prev) =>
+        prev.map((v) => (v.id === view.id ? { ...v, shared: nextShared } : v)),
+      );
+      await updateUserView(views.scope, view.id, { shared: nextShared }, uid);
+      applyUserViews(await syncUserViews(views.scope, uid));
+      setBusy(false);
+    },
+    [views.scope, uid, applyUserViews],
+  );
 
   const handleDelete = useCallback(
     async (id: string) => {
       setBusy(true);
-      const ok = await deleteUserView(views.scope, id);
+      // Optimistically drop it; reconcile (restores it if the delete failed).
+      setAllViews((prev) => prev.filter((v) => v.id !== id));
+      await deleteUserView(views.scope, id);
+      applyUserViews(await syncUserViews(views.scope, uid));
       setBusy(false);
-      if (ok) {
-        setAllViews([...getAllViews(views.scope).filter((v) => v.builtIn), ...(await syncUserViews(views.scope, uid))]);
-      }
     },
-    [views.scope, uid],
+    [views.scope, uid, applyUserViews],
   );
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm">
+            <Bookmark className="mr-1.5 h-3.5 w-3.5" />
+            <span className="text-xs">Views</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-[15rem]">
+          <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground px-2 py-1.5">
+            Saved views
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {allViews.length === 0 && (
+            <div className="px-2 py-2 text-xs text-muted-foreground">
+              No views yet. Configure filters + click below.
+            </div>
+          )}
+          {allViews.map((v) => {
+            // Manageable (rename / share / delete) only when the caller owns
+            // it. ownedByMe is undefined when we couldn't resolve the current
+            // user — in that case fall back to "non-built-in" so owners aren't
+            // locked out (the server still enforces owner-only mutations).
+            const canManage = !v.builtIn && (v.ownedByMe ?? true);
+            return (
+              <DropdownMenuItem
+                key={v.id}
+                onSelect={() => views.onApply(v.state)}
+                className="flex items-center gap-2 cursor-pointer"
+              >
+                <Bookmark className={`h-3.5 w-3.5 ${v.builtIn ? "text-muted-foreground" : "text-primary"}`} />
+                <span className="flex-1 truncate">{v.name}</span>
+                {v.shared && (
+                  <span title="Shared with the workspace">
+                    <UsersIcon className="h-3 w-3 text-muted-foreground" />
+                  </span>
+                )}
+                {canManage && (
+                  <ViewManageMenu
+                    view={v}
+                    busy={busy}
+                    onRename={() => {
+                      // Close this menu, then open the dialog (lifted state
+                      // avoids the menu/dialog focus-trap conflict).
+                      setOpen(false);
+                      setDialog({ mode: "rename", view: v });
+                    }}
+                    onToggleShare={() => void handleToggleShare(v)}
+                    onDelete={() => void handleDelete(v.id)}
+                  />
+                )}
+              </DropdownMenuItem>
+            );
+          })}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            disabled={busy}
+            onSelect={(e) => {
+              // Don't apply a view; open the save dialog instead. Close the
+              // menu first so focus lands cleanly in the dialog.
+              e.preventDefault();
+              setOpen(false);
+              setDialog({ mode: "create" });
+            }}
+            className="cursor-pointer"
+          >
+            <BookmarkPlus className="h-3.5 w-3.5 text-primary" />
+            <span>Save current as view…</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <SaveViewDialog
+        open={dialog !== null}
+        onOpenChange={(next) => {
+          if (!next) setDialog(null);
+        }}
+        mode={dialog?.mode ?? "create"}
+        initialName={dialog?.mode === "rename" ? dialog.view.name : ""}
+        initialShared={dialog?.mode === "rename" ? Boolean(dialog.view.shared) : false}
+        onSubmit={(result) =>
+          dialog?.mode === "rename"
+            ? handleRename(dialog.view, result)
+            : handleCreate(result)
+        }
+      />
+    </>
+  );
+}
+
+/**
+ * Per-view "⋯" manage menu, shown only on views the user owns. A nested Radix
+ * dropdown (Rename · Share/Unshare · Delete). The trigger stops the parent
+ * item's apply-on-select from firing. Rename defers to a lifted dialog; share
+ * + delete act immediately (optimistic, reconciled by the parent).
+ */
+function ViewManageMenu({
+  view,
+  busy,
+  onRename,
+  onToggleShare,
+  onDelete,
+}: {
+  view: SavedView;
+  busy: boolean;
+  onRename: () => void;
+  onToggleShare: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Bookmark className="mr-1.5 h-3.5 w-3.5" />
-          <span className="text-xs">Views</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-[15rem]">
-        <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground px-2 py-1.5">
-          Saved views
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {allViews.length === 0 && (
-          <div className="px-2 py-2 text-xs text-muted-foreground">
-            No views yet. Configure filters + click below.
-          </div>
-        )}
-        {allViews.map((v) => {
-          // Deletable only when the caller owns it. ownedByMe is undefined
-          // when we couldn't resolve the current user — in that case fall
-          // back to "non-built-in" so owners aren't locked out (the server
-          // still enforces owner-only delete).
-          const canDelete = !v.builtIn && (v.ownedByMe ?? true);
-          return (
-            <DropdownMenuItem
-              key={v.id}
-              onSelect={() => views.onApply(v.state)}
-              className="flex items-center gap-2 cursor-pointer"
-            >
-              <Bookmark className={`h-3.5 w-3.5 ${v.builtIn ? "text-muted-foreground" : "text-primary"}`} />
-              <span className="flex-1 truncate">{v.name}</span>
-              {v.shared && (
-                <span title="Shared with the workspace">
-                  <UsersIcon className="h-3 w-3 text-muted-foreground" />
-                </span>
-              )}
-              {canDelete && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleDelete(v.id);
-                  }}
-                  className="opacity-50 hover:opacity-100 hover:text-rose-600 disabled:opacity-30"
-                  title="Delete view"
-                  aria-label="Delete view"
-                >
-                  <TrashIcon className="h-3 w-3" />
-                </button>
-              )}
-            </DropdownMenuItem>
-          );
-        })}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
+        <button
+          type="button"
           disabled={busy}
-          onSelect={(e) => {
-            // Keep the menu open through the prompt flow.
+          // Keep the click on the icon from selecting (applying) the row.
+          onClick={(e) => {
             e.preventDefault();
-            void handleSave();
+            e.stopPropagation();
+          }}
+          className="rounded p-0.5 opacity-50 hover:opacity-100 hover:bg-muted disabled:opacity-30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          title="Manage view"
+          aria-label={`Manage view ${view.name}`}
+        >
+          <MoreHorizontal className="h-3.5 w-3.5" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[11rem]">
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            onRename();
           }}
           className="cursor-pointer"
         >
-          <BookmarkPlus className="h-3.5 w-3.5 text-primary" />
-          <span>{busy ? "Saving…" : "Save current as view…"}</span>
+          <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+          <span>Rename…</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            onToggleShare();
+          }}
+          className="cursor-pointer"
+        >
+          {view.shared ? (
+            <UserMinus className="h-3.5 w-3.5 text-muted-foreground" />
+          ) : (
+            <UserPlus className="h-3.5 w-3.5 text-muted-foreground" />
+          )}
+          <span>{view.shared ? "Unshare" : "Share with workspace"}</span>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            onDelete();
+          }}
+          className="cursor-pointer text-rose-600 focus:text-rose-600"
+        >
+          <TrashIcon className="h-3.5 w-3.5" />
+          <span>Delete</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

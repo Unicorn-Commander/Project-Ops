@@ -103,3 +103,78 @@ describe('ProjectOpsTools.assertCanWrite', () => {
     ).toThrow(/Read-only role/);
   });
 });
+
+describe('ProjectOpsTools.addTaskComment — domain event', () => {
+  // Minimal WorkspaceContextService stub: resolveAuthorized hands back the
+  // active workspace, runForUser runs the callback against a fake tx (no DB).
+  // This pins the MCP path's `task.comment.created` emit so MCP-posted task
+  // comments fan out @mentions identically to the REST TasksService.addComment.
+  const WS_ID = 'ws-1';
+
+  function makeTools(overrides?: {
+    taskFindFirst?: () => Promise<any>;
+    taskCommentCreate?: () => Promise<any>;
+  }) {
+    const emit = jest.fn();
+    const events = { emit } as any;
+    const tx = {
+      task: {
+        findFirst:
+          overrides?.taskFindFirst ??
+          (async () => ({ id: 'task1', projectId: 'p1' })),
+      },
+      taskComment: {
+        create:
+          overrides?.taskCommentCreate ??
+          (async () => ({
+            id: 'comment1',
+            content: 'hey @bob',
+            createdAt: new Date(),
+            author: { firstName: 'A', lastName: 'B' },
+          })),
+      },
+    };
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_user: User, fn: (t: any) => Promise<any>) =>
+        fn(tx),
+    } as any;
+    const tools = new ProjectOpsTools(
+      {} as any, // prisma (unused — runForUser stub supplies tx)
+      {} as any, // minio
+      { log: () => {}, warn: () => {} },
+      undefined, // triage
+      undefined, // tt
+      null, // bearerToken
+      workspace,
+      events,
+    );
+    return { tools, emit };
+  }
+
+  const user = baseUser({ id: 'u1', role: UserRole.STAFF });
+
+  it('emits task.comment.created with the expected payload after commit', async () => {
+    const { tools, emit } = makeTools();
+
+    await tools.addTaskComment(user, { taskId: 'task1', content: 'hey @bob' });
+
+    // Byte-for-byte the same event + payload shape TasksService.addComment emits.
+    expect(emit).toHaveBeenCalledWith('task.comment.created', {
+      workspaceId: WS_ID,
+      taskId: 'task1',
+      commentId: 'comment1',
+      authorId: 'u1',
+      content: 'hey @bob',
+    });
+  });
+
+  it('does NOT emit if the task is missing (create never runs)', async () => {
+    const { tools, emit } = makeTools({ taskFindFirst: async () => null });
+
+    await expect(
+      tools.addTaskComment(user, { taskId: 'missing', content: 'x' }),
+    ).rejects.toThrow(/Task not found/);
+    expect(emit).not.toHaveBeenCalled();
+  });
+});

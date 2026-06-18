@@ -32,7 +32,7 @@
  * smooth (we never paint off-window rows).
  */
 
-import { useMemo, useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
@@ -78,6 +78,7 @@ import {
 import { projectColorClasses } from "@/lib/project-colors";
 import { cn } from "@/lib/utils";
 import { getTaskDependencies } from "@/lib/tasks-api";
+import { DependencyArrows, useBarRegistry } from "@/components/schedule/dependency-arrows";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Types
@@ -475,11 +476,7 @@ export function Gantt({ projects, onReschedule }: GanttProps) {
   // edges simply contribute nothing, so the layer degrades to empty gracefully.
   // Bars register their live DOM node in `barRefs` so the arrow overlay can
   // measure real pixel positions (robust to zoom / collapse / drag).
-  const barRefs = useRef<Map<string, HTMLElement>>(new Map());
-  const registerBar = useCallback((id: string, el: HTMLElement | null) => {
-    if (el) barRefs.current.set(id, el);
-    else barRefs.current.delete(id);
-  }, []);
+  const { barRefs, registerBar } = useBarRegistry();
 
   const [edges, setEdges] = useState<{ from: string; to: string }[]>([]);
   // Stable key for the painted set so the fetch effect only re-runs when the
@@ -1224,126 +1221,7 @@ function ScheduleRow({
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Dependency arrows — an absolutely-positioned SVG overlay that draws an
-// orthogonal connector for every (predecessor → successor) edge whose both
-// bars are currently painted. Endpoints are MEASURED from the live bar DOM
-// nodes via getBoundingClientRect() (relative to the timeline container), so
-// they track zoom, swimlane collapse, and even the CSS-transform drag preview
-// without re-deriving any date math. Purely decorative: pointer-events-none,
-// and it renders nothing when there are no in-view edges.
-
-interface ArrowPath {
-  key: string;
-  d: string;
-}
-
-function DependencyArrows({
-  edges,
-  barRefs,
-  containerRef,
-  recomputeKey,
-}: {
-  edges: { from: string; to: string }[];
-  barRefs: React.MutableRefObject<Map<string, HTMLElement>>;
-  containerRef: React.RefObject<HTMLDivElement | null>;
-  recomputeKey: string;
-}) {
-  const [paths, setPaths] = useState<ArrowPath[]>([]);
-  const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
-
-  useLayoutEffect(() => {
-    if (edges.length === 0) {
-      setPaths([]);
-      return;
-    }
-    let raf = 0;
-    const measure = () => {
-      const container = containerRef.current;
-      if (!container) return;
-      const base = container.getBoundingClientRect();
-      setSize({ w: base.width, h: base.height });
-
-      const next: ArrowPath[] = [];
-      for (const edge of edges) {
-        const fromEl = barRefs.current.get(edge.from);
-        const toEl = barRefs.current.get(edge.to);
-        if (!fromEl || !toEl) continue;
-        const a = fromEl.getBoundingClientRect();
-        const b = toEl.getBoundingClientRect();
-        // Coordinates relative to the timeline container.
-        const startX = a.right - base.left;
-        const startY = a.top + a.height / 2 - base.top;
-        const endX = b.left - base.left;
-        const endY = b.top + b.height / 2 - base.top;
-
-        // Orthogonal "elbow" routing. When the successor sits to the right we
-        // step out → across → in. When it's to the left (or overlapping) we
-        // loop out past the predecessor's right edge, down/up, and back to the
-        // successor's left edge so the line never runs backwards through a bar.
-        const STUB = 14; // px the line travels straight off a bar edge
-        const ARROW_GAP = 6; // stop short of the bar so the arrowhead reads
-        const endXAdj = endX - ARROW_GAP;
-        let d: string;
-        if (endXAdj > startX + STUB) {
-          const midX = Math.max(startX + STUB, (startX + endXAdj) / 2);
-          d = `M ${startX} ${startY} H ${midX} V ${endY} H ${endXAdj}`;
-        } else {
-          const outX = startX + STUB;
-          const backX = endX - STUB;
-          const midY = (startY + endY) / 2;
-          d = `M ${startX} ${startY} H ${outX} V ${midY} H ${backX} V ${endY} H ${endXAdj}`;
-        }
-        next.push({ key: `${edge.from}->${edge.to}`, d });
-      }
-      setPaths(next);
-    };
-    // Measure on the next frame so transitions/transforms have applied.
-    raf = requestAnimationFrame(measure);
-    const onResize = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(measure);
-    };
-    window.addEventListener("resize", onResize);
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", onResize);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [edges, recomputeKey]);
-
-  if (paths.length === 0 || size.w === 0) return null;
-
-  return (
-    <svg
-      className="absolute inset-0 pointer-events-none z-20 overflow-visible"
-      width={size.w}
-      height={size.h}
-      aria-hidden="true"
-    >
-      <defs>
-        <marker
-          id="po-dep-arrowhead"
-          markerWidth="7"
-          markerHeight="7"
-          refX="5.5"
-          refY="3"
-          orient="auto"
-          markerUnits="userSpaceOnUse"
-        >
-          <path d="M0,0 L6,3 L0,6 Z" className="fill-primary/70" />
-        </marker>
-      </defs>
-      {paths.map((p) => (
-        <path
-          key={p.key}
-          d={p.d}
-          fill="none"
-          className="stroke-primary/70"
-          strokeWidth={1.5}
-          strokeLinejoin="round"
-          markerEnd="url(#po-dep-arrowhead)"
-        />
-      ))}
-    </svg>
-  );
-}
+// Dependency arrows are rendered by the shared <DependencyArrows> overlay
+// (components/schedule/dependency-arrows.tsx), measured from the live bar DOM
+// nodes registered above. The same component powers the per-project task
+// timeline, so the arrow look + elbow routing stay in lockstep.
