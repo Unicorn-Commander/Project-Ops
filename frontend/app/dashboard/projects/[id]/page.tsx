@@ -142,8 +142,8 @@ export default function ProjectDetailPage() {
   const fetchProjectTasks = async () => {
     setLoadingTasks(true);
     try {
-      const response = await getProjectTasks(projectId);
-      setTasks(response.data || []);
+      const projectTasks = await getProjectTasks(projectId);
+      setTasks(projectTasks || []);
     } catch (error) {
       console.error("Error fetching tasks:", error);
       setTasks([]);

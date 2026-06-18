@@ -253,11 +253,13 @@ export const markTaskComplete = async (id: string): Promise<Task> => {
   return response.data;
 };
 
-// Get all tasks for a project
+// Get all tasks for a project. NOTE: GET /tasks/project/:projectId returns a
+// BARE Task[] (not the paginated {data,...} envelope of GET /tasks) — other
+// callers (time-tracking, task-details dependency picker) rely on that shape.
 export const getProjectTasks = async (
   projectId: string,
   params?: { skip?: number; take?: number; status?: TaskStatus }
-): Promise<TasksResponse> => {
+): Promise<Task[]> => {
   const response = await api.get(`/tasks/project/${projectId}`, { params });
   return response.data;
 };
