@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
   ParseIntPipe,
+  DefaultValuePipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { CommentsService } from './comments.service';
@@ -54,8 +55,8 @@ export class CommentsController {
   async findAll(
     @CurrentWorkspace() workspaceId: string,
     @CurrentUser() user: User,
-    @Query('page', new ParseIntPipe({ optional: true })) page: number = 1,
-    @Query('limit', new ParseIntPipe({ optional: true })) limit: number = 20,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('projectId') projectId?: string,
   ) {
     // Clamp to a bounded page size (default 20, max 100) so a caller can't
@@ -96,8 +97,8 @@ export class CommentsController {
     @CurrentWorkspace() workspaceId: string,
     @CurrentUser() user: User,
     @Param('projectId') projectId: string,
-    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
-    @Query('offset', new ParseIntPipe({ optional: true })) offset?: number,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset: number,
   ) {
     // Default 50, max 100 (task spec); offset normalized to >= 0.
     const take = clampLimit(limit, 50);

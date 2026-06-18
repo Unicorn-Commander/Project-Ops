@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
   ParseIntPipe,
+  DefaultValuePipe,
   BadRequestException,
   InternalServerErrorException,
   UseInterceptors,
@@ -213,8 +214,8 @@ export class DocumentsController {
   async findAll(
     @CurrentWorkspace() workspaceId: string,
     @CurrentUser() user: User,
-    @Query('page', new ParseIntPipe({ optional: true })) page: number = 1,
-    @Query('limit', new ParseIntPipe({ optional: true })) limit: number = 20,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('projectId') projectId?: string,
     @Query('status') status?: DocumentStatus,
   ) {

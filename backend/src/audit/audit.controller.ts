@@ -5,6 +5,7 @@ import {
   Param,
   UseGuards,
   ParseIntPipe,
+  DefaultValuePipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { AuditService } from './audit.service';
@@ -44,8 +45,8 @@ export class AuditController {
   async findAll(
     @CurrentWorkspace() workspaceId: string,
     @CurrentUser() user: User,
-    @Query('page', new ParseIntPipe({ optional: true })) page: number = 1,
-    @Query('limit', new ParseIntPipe({ optional: true })) limit: number = 50,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('action') action?: AuditAction,
     @Query('resource') resource?: string,
     @Query('userId') userId?: string,

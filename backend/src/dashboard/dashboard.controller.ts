@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards, ParseIntPipe, DefaultValuePipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -61,7 +61,7 @@ export class DashboardController {
   getUpcomingDueDates(
     @CurrentWorkspace() workspaceId: string,
     @CurrentUser() user: User,
-    @Query('days', new ParseIntPipe({ optional: true })) days: number = 7,
+    @Query('days', new DefaultValuePipe(7), ParseIntPipe) days: number,
   ) {
     return this.dashboardService.getUpcomingDueDates(workspaceId, days, user);
   }
@@ -84,7 +84,7 @@ export class DashboardController {
   getRecentActivity(
     @CurrentWorkspace() workspaceId: string,
     @CurrentUser() user: User,
-    @Query('limit', new ParseIntPipe({ optional: true })) limit: number = 20,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
     return this.dashboardService.getRecentActivity(workspaceId, user, limit);
   }

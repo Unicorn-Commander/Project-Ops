@@ -10,6 +10,7 @@ import {
   UseGuards,
   ParseIntPipe,
   ParseBoolPipe,
+  DefaultValuePipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { OrganizationsService } from './organizations.service';
@@ -61,8 +62,8 @@ export class OrganizationsController {
   async findAll(
     @CurrentWorkspace() workspaceId: string,
     @CurrentUser() user: User,
-    @Query('page', new ParseIntPipe({ optional: true })) page: number = 1,
-    @Query('limit', new ParseIntPipe({ optional: true })) limit: number = 20,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('type') type?: OrgType,
     @Query('isActive') isActive?: string,
     @Query('search') search?: string,
