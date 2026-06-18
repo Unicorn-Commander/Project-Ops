@@ -29,7 +29,7 @@ export class ListProjectsDto {
   @ApiPropertyOptional({
     type: Number,
     default: 20,
-    description: 'Page size (clamped to a max of 100).',
+    description: 'Page size (clamped to a max of 1000 for the project list).',
   })
   @Type(() => Number)
   @IsInt()

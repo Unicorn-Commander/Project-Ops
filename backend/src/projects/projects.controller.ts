@@ -51,7 +51,7 @@ export class ProjectsController {
   @Get()
   @ApiOperation({ summary: 'Get all projects with pagination, search, filters and sort' })
   @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Page size (max 100)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Page size (max 1000)' })
   @ApiQuery({ name: 'status', required: false, enum: ProjectStatus })
   @ApiQuery({ name: 'priority', required: false, enum: ProjectPriority })
   @ApiQuery({ name: 'assignedToId', required: false, type: String })
@@ -74,10 +74,12 @@ export class ProjectsController {
     @Query() query: ListProjectsDto,
   ) {
     // ValidationPipe (transform: true) coerces/validates query into the DTO;
-    // page/limit arrive as numbers. Clamp the page size to a bounded max (100)
-    // so a caller can't pull the whole table in one round-trip.
+    // page/limit arrive as numbers. Projects allow a higher cap (1000) than the
+    // shared default (100): full-list views — the master schedule, dashboard
+    // charts, project pickers — legitimately pull every project in a workspace.
+    // Still bounded so a caller can't pull an unbounded table in one round-trip.
     const page = query.page && query.page > 0 ? query.page : 1;
-    const limit = clampLimit(query.limit);
+    const limit = clampLimit(query.limit, 20, 1000);
     const skip = (page - 1) * limit;
 
     const where: Prisma.ProjectWhereInput = {};

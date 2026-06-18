@@ -10,9 +10,12 @@ class WebSocketClient {
       return this.socket;
     }
 
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('access_token');
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3101';
-    const wsUrl = apiUrl.replace(/^http/, 'ws');
+    // Strip any path (e.g. `/api/v1`) so the socket.io namespace is exactly
+    // `/realtime` (matching the backend gateway), not `/api/v1/realtime`
+    // (which the server rejects as an invalid namespace).
+    const wsUrl = apiUrl.replace(/^http/, 'ws').replace(/\/api\/v1\/?$/, '');
 
     this.socket = io(`${wsUrl}/realtime`, {
       auth: { token },
