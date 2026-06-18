@@ -1,19 +1,44 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+  Optional,
+  Inject,
+} from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { AssignProjectDto } from './dto/assign-project.dto';
-import {
-  Project,
-  Prisma,
-  ProjectStatus,
-  TaskStatus,
-  User,
-  UserRole,
-} from '@prisma/client';
+import { Project, Prisma, ProjectStatus, TaskStatus, User, UserRole } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { AuditService } from '../audit/audit.service';
+import { CUSTOM_FIELDS_SERVICE, CustomFieldsValidator } from './custom-fields.contract';
+
+/**
+ * Domain events emitted (after the tx commits) for the automations + webhooks
+ * engines. Kept as string constants so listeners and tests share one source.
+ */
+export const PROJECT_CREATED_EVENT = 'project.created';
+export const PROJECT_STATUS_CHANGED_EVENT = 'project.status_changed';
+
+export interface ProjectCreatedEvent {
+  workspaceId: string;
+  projectId: string;
+  actorId: string;
+  project: Project;
+}
+
+export interface ProjectStatusChangedEvent {
+  workspaceId: string;
+  projectId: string;
+  fromStatus: ProjectStatus;
+  toStatus: ProjectStatus;
+  actorId: string;
+  project: Project;
+}
 
 /** Prisma Decimal | null -> number | null (house pattern, see time-tracking/serialize). */
 function decToNum(v: any): number | null {
@@ -103,7 +128,54 @@ export class ProjectsService {
     private prisma: PrismaService,
     private auditService: AuditService,
     private readonly workspaceContext: WorkspaceContextService,
+    private readonly eventEmitter: EventEmitter2,
+    // The custom-fields service is owned by another module and may not be wired
+    // in every checkout/deploy. Inject it OPTIONALLY by token: when present we
+    // validate + normalize custom-field values through it; when absent we store
+    // the incoming map as-is (graceful no-op) rather than failing to boot.
+    @Optional()
+    @Inject(CUSTOM_FIELDS_SERVICE)
+    private readonly customFields?: CustomFieldsValidator,
   ) {}
+
+  /**
+   * Validate + normalize a project's `customFields` against the workspace's
+   * PROJECT field definitions (inside the active workspace tx so RLS scopes the
+   * definition reads), then merge the normalized values into
+   * `metadata.customFields`, preserving any other metadata keys. Returns the
+   * metadata object to persist, or `undefined`/passthrough when there is nothing
+   * to change (so callers can omit it from the Prisma `data`).
+   *
+   * Mirrors the tasks-side resolveMetadataWithCustomFields exactly (same shared
+   * CUSTOM_FIELDS_SERVICE token): throws a BadRequestException when
+   * `customFields` is supplied but no CustomFieldsService is wired, so a value
+   * can't silently bypass validation.
+   */
+  private async resolveMetadataWithCustomFields(
+    tx: WorkspaceTxClient,
+    workspaceId: string,
+    incomingMetadata: any,
+    customFields: Record<string, any> | undefined,
+  ): Promise<any | undefined> {
+    if (customFields === undefined) {
+      // No custom-field values supplied → pass metadata through untouched.
+      return incomingMetadata;
+    }
+
+    if (!this.customFields) {
+      throw new BadRequestException('Custom fields are not available in this deployment');
+    }
+
+    const normalized = await this.customFields.validateValues(
+      tx,
+      workspaceId,
+      'PROJECT',
+      customFields,
+    );
+
+    const base = incomingMetadata && typeof incomingMetadata === 'object' ? incomingMetadata : {};
+    return { ...base, customFields: normalized };
+  }
 
   /**
    * Coerce ISO date *strings* (e.g. "2026-06-01" from an <input type="date">)
@@ -113,12 +185,7 @@ export class ProjectsService {
    * any present date field to a real Date so every write path is safe.
    */
   private coerceDateFields<T extends Record<string, any>>(data: T): T {
-    const dateFields = [
-      'dueDate',
-      'billingDate',
-      'paymentDueDate',
-      'paymentReceivedDate',
-    ] as const;
+    const dateFields = ['dueDate', 'billingDate', 'paymentDueDate', 'paymentReceivedDate'] as const;
     for (const field of dateFields) {
       const value = data[field];
       if (typeof value === 'string' && value.length > 0) {
@@ -138,11 +205,24 @@ export class ProjectsService {
     user: User,
     createProjectDto: CreateProjectDto,
   ): Promise<Project> {
-    return this.workspaceContext.runForUser(
+    const project = await this.workspaceContext.runForUser(
       user,
       (tx) => this.createInTx(tx, workspaceId, user, createProjectDto),
       workspaceId,
     );
+
+    // Domain event AFTER the tx commits (mirrors tasks.addComment): a listener
+    // that re-queries sees a committed row, and a slow/failing automations or
+    // webhooks listener can never hold or roll back the create. We do NOT
+    // implement those engines here.
+    this.eventEmitter.emit(PROJECT_CREATED_EVENT, {
+      workspaceId,
+      projectId: project.id,
+      actorId: user.id,
+      project,
+    } satisfies ProjectCreatedEvent);
+
+    return project;
   }
 
   /**
@@ -164,13 +244,22 @@ export class ProjectsService {
   ): Promise<Project> {
     const projectNumber = await this.generateProjectNumber(tx);
 
-    // Extract projectType from DTO (it's not a direct Prisma field)
-    const { projectType, ...projectDataFields } = createProjectDto;
+    // Extract the non-column DTO fields. `projectType` and `customFields` are
+    // NOT Prisma columns — they live inside metadata. `recurrenceRule` IS a
+    // column and flows through projectDataFields unchanged.
+    const { projectType, customFields, ...projectDataFields } = createProjectDto;
 
-    // Prepare metadata with projectType if provided
-    const metadata = projectType
+    // Prepare metadata: fold in projectType, then validate + merge custom-field
+    // values (in-tx, so the validator's field-def reads are tenant-scoped).
+    const metadataWithType = projectType
       ? { ...createProjectDto.metadata, projectType }
       : createProjectDto.metadata;
+    const metadata = await this.resolveMetadataWithCustomFields(
+      tx,
+      workspaceId,
+      metadataWithType,
+      customFields,
+    );
 
     const projectData = await tx.project.create({
       data: {
@@ -289,12 +378,8 @@ export class ProjectsService {
 
         const enriched: ProjectWithTaskStats[] = projects.map((project) => ({
           ...project,
-          taskStats:
-            statsByProject.get(project.id) ?? { total: 0, completed: 0 },
-          budgetSummary: this.toBudgetSummary(
-            project,
-            loggedSecondsByProject.get(project.id) ?? 0,
-          ),
+          taskStats: statsByProject.get(project.id) ?? { total: 0, completed: 0 },
+          budgetSummary: this.toBudgetSummary(project, loggedSecondsByProject.get(project.id) ?? 0),
         }));
 
         return { projects: enriched, total };
@@ -560,14 +645,23 @@ export class ProjectsService {
     return this.workspaceContext.runForUser(
       user,
       async (tx) => {
-        // Extract projectType from DTO (it's not a direct Prisma field)
-        const { projectType, ...projectDataFields } = updateProjectDto;
+        // Extract the non-column fields. projectType + customFields live in
+        // metadata; recurrenceRule is a real column carried by projectDataFields.
+        const { projectType, customFields, ...projectDataFields } = updateProjectDto;
 
-        // If projectType is being updated, merge it into metadata
-        const metadata =
+        // Fold projectType into the DTO's metadata, then validate + merge any
+        // custom-field values (in-tx; throws if values were sent but no
+        // CustomFieldsService is wired). Mirrors the tasks update path.
+        const metadataWithType =
           projectType !== undefined
             ? { ...updateProjectDto.metadata, projectType }
             : updateProjectDto.metadata;
+        const metadata = await this.resolveMetadataWithCustomFields(
+          tx,
+          workspaceId,
+          metadataWithType,
+          customFields,
+        );
 
         const projectData = await tx.project.update({
           where: { id },
@@ -606,9 +700,21 @@ export class ProjectsService {
     id: string,
     status: ProjectStatus,
   ): Promise<Project> {
-    return this.workspaceContext.runForUser(
+    const { project, fromStatus } = await this.workspaceContext.runForUser(
       user,
       async (tx) => {
+        // Read the CURRENT status first so we know the real transition (the
+        // updated row would only ever show the new status). 404s a project
+        // outside the workspace (fail-closed under RLS).
+        const existing = await tx.project.findUnique({
+          where: { id },
+          select: { status: true },
+        });
+        if (!existing) {
+          throw new NotFoundException(`Project with ID ${id} not found`);
+        }
+        const previousStatus = existing.status;
+
         const updateData: any = { status };
 
         if (status === ProjectStatus.COMPLETED) {
@@ -631,16 +737,31 @@ export class ProjectsService {
           action: 'UPDATE',
           resource: 'Project',
           resourceId: id,
-          details: { status, previousStatus: projectData.status },
+          details: { status, previousStatus },
         });
 
         this.logger.log(
-          `Project status updated: ${projectData.projectNumber} to ${status} ws=${workspaceId}`,
+          `Project status updated: ${projectData.projectNumber} ${previousStatus} -> ${status} ws=${workspaceId}`,
         );
-        return projectData;
+        return { project: projectData, fromStatus: previousStatus };
       },
       workspaceId,
     );
+
+    // Domain event AFTER commit, only when the status actually changed, for the
+    // automations + webhooks engines (not implemented here).
+    if (fromStatus !== status) {
+      this.eventEmitter.emit(PROJECT_STATUS_CHANGED_EVENT, {
+        workspaceId,
+        projectId: id,
+        fromStatus,
+        toStatus: status,
+        actorId: user.id,
+        project,
+      } satisfies ProjectStatusChangedEvent);
+    }
+
+    return project;
   }
 
   async assignProject(
@@ -707,6 +828,21 @@ export class ProjectsService {
       },
       workspaceId,
     );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Recurring projects (Wave 2)
+  // ───────────────────────────────────────────────────────────────────────
+
+  /**
+   * Public wrapper over {@link generateProjectNumber} so the recurrence service
+   * (ProjectsRecurrenceService) mints instance numbers through the SAME
+   * workspace-scoped sequence the interactive create path uses, inside its own
+   * workspace tx. Kept here (not duplicated in the scheduler) so there is one
+   * source of truth for project numbering.
+   */
+  async nextProjectNumber(tx: WorkspaceTxClient): Promise<string> {
+    return this.generateProjectNumber(tx);
   }
 
   /**

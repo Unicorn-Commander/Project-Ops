@@ -1,4 +1,13 @@
-import { IsString, IsNotEmpty, IsEnum, IsOptional, IsDateString, IsObject } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsEnum,
+  IsOptional,
+  IsDateString,
+  IsObject,
+  IsNumber,
+  Min,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { TaskStatus, TaskPriority, TaskType } from '@prisma/client';
 
@@ -85,4 +94,35 @@ export class CreateTaskDto {
   @IsObject()
   @IsOptional()
   metadata?: any;
+
+  @ApiProperty({
+    description:
+      'Recurrence rule (RRULE subset: FREQ=DAILY|WEEKLY|MONTHLY with optional INTERVAL). When set, this task is a recurrence TEMPLATE and a daily cron materializes its next instance.',
+    example: 'FREQ=WEEKLY;INTERVAL=1',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  recurrenceRule?: string;
+
+  @ApiProperty({
+    description: 'Effort estimate in hours (used by capacity planning).',
+    example: 4.5,
+    required: false,
+  })
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @IsOptional()
+  estimatedHours?: number;
+
+  @ApiProperty({
+    description:
+      'Custom-field VALUES for this task, keyed by the workspace TASK field key. Validated + normalized against the workspace custom-field definitions, then merged into metadata.customFields.',
+    example: { priority_score: 8, client_tier: 'gold' },
+    required: false,
+    type: 'object',
+  })
+  @IsObject()
+  @IsOptional()
+  customFields?: Record<string, any>;
 }

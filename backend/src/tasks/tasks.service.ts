@@ -4,6 +4,8 @@ import {
   ForbiddenException,
   BadRequestException,
   Logger,
+  Optional,
+  Inject,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -15,6 +17,7 @@ import { UpdateTaskDto } from './dto/update-task.dto';
 import { CreateTaskCommentDto } from './dto/create-task-comment.dto';
 import { CreateTaskDependencyDto, DependencyDirection } from './dto/create-task-dependency.dto';
 import { TaskSortBy, TaskSortDir } from './dto/query-tasks.dto';
+import { CUSTOM_FIELDS_SERVICE, CustomFieldsValidator } from './custom-fields.contract';
 import { clampLimit, clampOffset } from '../common/pagination/clamp';
 import {
   TaskStatus,
@@ -39,6 +42,19 @@ import {
  * `createInTx(tx, workspaceId, user, dto)` exposes the creation logic so other
  * modules (the triage agent) can create a Task inside their OWN workspace tx,
  * in one transaction and one membership authorization.
+ *
+ * WAVE 2 additions:
+ *   - Domain events (`task.created` / `task.status_changed` / `task.assigned` /
+ *     `task.completed`) emitted AFTER the tx commits — same shape as the
+ *     existing `task.comment.created` emit — for the automations + webhooks
+ *     engines to consume. The emit is OUTSIDE the workspace tx so a listener
+ *     re-querying the DB sees a committed row and a slow/failing listener can
+ *     never hold or roll back the write.
+ *   - `estimatedHours` (Decimal) accepted/returned for capacity planning.
+ *   - `recurrenceRule` (RRULE subset) accepted; a daily cron
+ *     (TasksRecurrenceService) materializes the next instance of each template.
+ *   - `customFields` validated + normalized via the injected CustomFieldsService
+ *     and merged into `metadata.customFields`.
  */
 @Injectable()
 export class TasksService {
@@ -50,7 +66,50 @@ export class TasksService {
     private emailService: EmailService,
     private configService: ConfigService,
     private eventEmitter: EventEmitter2,
+    // Provided by the CustomFieldsModule (bound to the CUSTOM_FIELDS_SERVICE
+    // token by the integrator). @Optional so task creation/updates still work —
+    // simply skipping custom-field normalization — if the module isn't wired.
+    @Optional()
+    @Inject(CUSTOM_FIELDS_SERVICE)
+    private readonly customFields?: CustomFieldsValidator,
   ) {}
+
+  /**
+   * Validate + normalize a task's `customFields` against the workspace's TASK
+   * field definitions (inside the active workspace tx so RLS scopes the
+   * definition reads), then merge the normalized values into
+   * `metadata.customFields`, preserving any other metadata keys. Returns the
+   * metadata object to persist, or `undefined` when there is nothing to change
+   * (so callers can omit it from the Prisma `data`).
+   *
+   * Throws a BadRequestException if `customFields` was supplied but no
+   * CustomFieldsService is wired, so the value can't silently bypass validation.
+   */
+  private async resolveMetadataWithCustomFields(
+    tx: WorkspaceTxClient,
+    workspaceId: string,
+    incomingMetadata: any,
+    customFields: Record<string, any> | undefined,
+  ): Promise<any | undefined> {
+    if (customFields === undefined) {
+      // No custom-field values supplied → pass metadata through untouched.
+      return incomingMetadata;
+    }
+
+    if (!this.customFields) {
+      throw new BadRequestException('Custom fields are not available in this deployment');
+    }
+
+    const normalized = await this.customFields.validateValues(
+      tx,
+      workspaceId,
+      'TASK',
+      customFields,
+    );
+
+    const base = incomingMetadata && typeof incomingMetadata === 'object' ? incomingMetadata : {};
+    return { ...base, customFields: normalized };
+  }
 
   /**
    * Create a task INSIDE an existing workspace tx. Shared by the public
@@ -107,9 +166,20 @@ export class TasksService {
       }
     }
 
+    // `customFields` is a derived value (merged into metadata), not a Prisma
+    // column — pull it out of the spread and fold it into metadata.customFields.
+    const { customFields, ...taskData } = createTaskDto;
+    const metadata = await this.resolveMetadataWithCustomFields(
+      tx,
+      workspaceId,
+      createTaskDto.metadata,
+      customFields,
+    );
+
     const task = await tx.task.create({
       data: {
-        ...createTaskDto,
+        ...taskData,
+        metadata,
         workspaceId,
         createdById: user.id,
         dueDate: createTaskDto.dueDate ? new Date(createTaskDto.dueDate) : null,
@@ -150,13 +220,36 @@ export class TasksService {
 
   /**
    * Create a new task. Runs inside the acting user's workspace RLS transaction.
+   * After commit, emits `task.created` (and `task.assigned` when the task is
+   * created already assigned) for the automations + webhooks engines.
    */
   async create(workspaceId: string, user: User, createTaskDto: CreateTaskDto) {
-    return this.workspaceContext.runForUser(
+    const task = await this.workspaceContext.runForUser(
       user,
       (tx) => this.createInTx(tx, workspaceId, user, createTaskDto),
       workspaceId,
     );
+
+    this.eventEmitter.emit('task.created', {
+      workspaceId,
+      taskId: task.id,
+      projectId: task.projectId,
+      actorId: user.id,
+      task,
+    });
+
+    // A task created with an assignee is also an assignment event.
+    if (task.assignedToId) {
+      this.eventEmitter.emit('task.assigned', {
+        workspaceId,
+        taskId: task.id,
+        assignedToId: task.assignedToId,
+        actorId: user.id,
+        task,
+      });
+    }
+
+    return task;
   }
 
   /**
@@ -368,7 +461,9 @@ export class TasksService {
   }
 
   /**
-   * Update a task
+   * Update a task. After commit, emits the domain events implied by the change:
+   * `task.status_changed` (+ `task.completed` when the new status is COMPLETED)
+   * and `task.assigned` when the assignee changes to a non-null user.
    */
   async update(
     workspaceId: string,
@@ -377,7 +472,10 @@ export class TasksService {
     updateTaskDto: UpdateTaskDto,
     userRole: UserRole,
   ) {
-    return this.workspaceContext.runForUser(
+    // `customFields` is derived (merged into metadata), not a Prisma column.
+    const { customFields, ...updateData } = updateTaskDto;
+
+    const { updatedTask, fromStatus, prevAssignedToId } = await this.workspaceContext.runForUser(
       user,
       async (tx) => {
         const task = await tx.task.findUnique({
@@ -410,10 +508,28 @@ export class TasksService {
           }
         }
 
-        const updatedTask = await tx.task.update({
+        const metadata = await this.resolveMetadataWithCustomFields(
+          tx,
+          workspaceId,
+          updateTaskDto.metadata,
+          customFields,
+        );
+
+        // When status transitions INTO COMPLETED, stamp completedAt; when it
+        // transitions OUT of COMPLETED, clear it. Mirrors updateStatus.
+        const statusChanging = updateData.status !== undefined && updateData.status !== task.status;
+        const completedAt = statusChanging
+          ? updateData.status === TaskStatus.COMPLETED
+            ? new Date()
+            : null
+          : undefined;
+
+        const result = await tx.task.update({
           where: { id },
           data: {
-            ...updateTaskDto,
+            ...updateData,
+            ...(metadata !== undefined && { metadata }),
+            ...(completedAt !== undefined && { completedAt }),
             dueDate: updateTaskDto.dueDate ? new Date(updateTaskDto.dueDate) : undefined,
           },
           include: {
@@ -444,17 +560,74 @@ export class TasksService {
         });
 
         this.logger.log(`Task ${id} updated by user ${user.id}`);
-        return updatedTask;
+        return {
+          updatedTask: result,
+          fromStatus: task.status,
+          prevAssignedToId: task.assignedToId,
+        };
       },
       workspaceId,
     );
+
+    this.emitTaskStatusEvents(workspaceId, user.id, updatedTask, fromStatus);
+
+    if (updatedTask.assignedToId && updatedTask.assignedToId !== prevAssignedToId) {
+      this.eventEmitter.emit('task.assigned', {
+        workspaceId,
+        taskId: updatedTask.id,
+        assignedToId: updatedTask.assignedToId,
+        actorId: user.id,
+        task: updatedTask,
+      });
+    }
+
+    return updatedTask;
   }
 
   /**
-   * Update task status
+   * Emit `task.status_changed` (and `task.completed` when the destination
+   * status is COMPLETED) when `updatedTask.status` differs from `fromStatus`.
+   * Shared by `update`, `updateStatus`, and `markComplete` so all status
+   * transitions produce identical events regardless of the entry point. No-op
+   * when the status did not actually change (idempotent re-sets are silent).
+   */
+  private emitTaskStatusEvents(
+    workspaceId: string,
+    actorId: string,
+    updatedTask: { id: string; projectId: string; status: TaskStatus },
+    fromStatus: TaskStatus,
+  ): void {
+    if (updatedTask.status === fromStatus) {
+      return;
+    }
+
+    this.eventEmitter.emit('task.status_changed', {
+      workspaceId,
+      taskId: updatedTask.id,
+      projectId: updatedTask.projectId,
+      fromStatus,
+      toStatus: updatedTask.status,
+      actorId,
+      task: updatedTask,
+    });
+
+    if (updatedTask.status === TaskStatus.COMPLETED) {
+      this.eventEmitter.emit('task.completed', {
+        workspaceId,
+        taskId: updatedTask.id,
+        projectId: updatedTask.projectId,
+        actorId,
+        task: updatedTask,
+      });
+    }
+  }
+
+  /**
+   * Update task status. After commit, emits `task.status_changed` (and
+   * `task.completed` when transitioning to COMPLETED) if the status changed.
    */
   async updateStatus(workspaceId: string, user: User, id: string, status: TaskStatus) {
-    return this.workspaceContext.runForUser(
+    const { updatedTask, fromStatus } = await this.workspaceContext.runForUser(
       user,
       async (tx) => {
         const task = await tx.task.findUnique({
@@ -465,7 +638,7 @@ export class TasksService {
           throw new NotFoundException(`Task with ID ${id} not found`);
         }
 
-        const updatedTask = await tx.task.update({
+        const result = await tx.task.update({
           where: { id },
           data: {
             status,
@@ -479,10 +652,14 @@ export class TasksService {
         });
 
         this.logger.log(`Task ${id} status updated to ${status}`);
-        return updatedTask;
+        return { updatedTask: result, fromStatus: task.status };
       },
       workspaceId,
     );
+
+    this.emitTaskStatusEvents(workspaceId, user.id, updatedTask, fromStatus);
+
+    return updatedTask;
   }
 
   /**
@@ -490,7 +667,7 @@ export class TasksService {
    * tx (a slow/failing mail send must never hold or roll back the DB write).
    */
   async assignTask(workspaceId: string, user: User, id: string, assignedToId: string) {
-    const updatedTask = await this.workspaceContext.runForUser(
+    const { updatedTask, prevAssignedToId } = await this.workspaceContext.runForUser(
       user,
       async (tx) => {
         const task = await tx.task.findUnique({
@@ -521,10 +698,22 @@ export class TasksService {
         });
 
         this.logger.log(`Task ${id} assigned to user ${assignedToId}`);
-        return result;
+        return { updatedTask: result, prevAssignedToId: task.assignedToId };
       },
       workspaceId,
     );
+
+    // Domain event for the automations + webhooks engines. Emitted OUTSIDE the
+    // tx (committed row) and only when the assignee actually changed.
+    if (updatedTask.assignedToId && updatedTask.assignedToId !== prevAssignedToId) {
+      this.eventEmitter.emit('task.assigned', {
+        workspaceId,
+        taskId: updatedTask.id,
+        assignedToId: updatedTask.assignedToId,
+        actorId: user.id,
+        task: updatedTask,
+      });
+    }
 
     // Side effect OUTSIDE the tx: notify the new assignee.
     if (updatedTask.assignedTo?.email) {
@@ -565,10 +754,11 @@ export class TasksService {
   }
 
   /**
-   * Mark task as completed
+   * Mark task as completed. After commit, emits `task.status_changed` +
+   * `task.completed` (only when the task was not already COMPLETED).
    */
   async markComplete(workspaceId: string, user: User, id: string) {
-    return this.workspaceContext.runForUser(
+    const { updatedTask, fromStatus } = await this.workspaceContext.runForUser(
       user,
       async (tx) => {
         const task = await tx.task.findUnique({
@@ -579,7 +769,7 @@ export class TasksService {
           throw new NotFoundException(`Task with ID ${id} not found`);
         }
 
-        const updatedTask = await tx.task.update({
+        const result = await tx.task.update({
           where: { id },
           data: {
             status: TaskStatus.COMPLETED,
@@ -593,10 +783,14 @@ export class TasksService {
         });
 
         this.logger.log(`Task ${id} marked as completed by user ${user.id}`);
-        return updatedTask;
+        return { updatedTask: result, fromStatus: task.status };
       },
       workspaceId,
     );
+
+    this.emitTaskStatusEvents(workspaceId, user.id, updatedTask, fromStatus);
+
+    return updatedTask;
   }
 
   /**

@@ -26,25 +26,29 @@ function makeService(opts: {
   taskFindMany?: (args: any) => Promise<any[]>;
   taskCount?: () => Promise<number>;
   taskCreate?: (args: any) => Promise<any>;
+  taskUpdate?: (args: any) => Promise<any>;
+  userFindUnique?: (args: any) => Promise<any>;
   taskCommentCreate?: (args: any) => Promise<any>;
   projectFindUnique?: (args: any) => Promise<any>;
   depFindMany?: (args: any) => Promise<any[]>;
   depFindUnique?: (args: any) => Promise<any>;
   depCreate?: (args: any) => Promise<any>;
   depDelete?: (args: any) => Promise<any>;
+  validateValues?: (tx: any, ws: string, entity: string, incoming: any) => Promise<any>;
 }) {
   const tx = {
     project: {
       findUnique: jest.fn(opts.projectFindUnique ?? (async () => ({ id: 'p1' }))),
     },
     user: {
-      findUnique: jest.fn(async () => ({ id: 'u-assignee' })),
+      findUnique: jest.fn(opts.userFindUnique ?? (async () => ({ id: 'u-assignee' }))),
     },
     task: {
       findUnique: jest.fn(opts.taskFindUnique ?? (async () => ({ id: 't' }))),
       findMany: jest.fn(opts.taskFindMany ?? (async () => [])),
       count: jest.fn(opts.taskCount ?? (async () => 0)),
       create: jest.fn(opts.taskCreate ?? (async (a: any) => ({ id: 'new', ...a.data }))),
+      update: jest.fn(opts.taskUpdate ?? (async (a: any) => ({ id: a.where.id, ...a.data }))),
     },
     taskComment: {
       create: jest.fn(
@@ -64,6 +68,9 @@ function makeService(opts: {
     runForUser: jest.fn(async (_u: any, fn: (t: any) => any) => fn(tx)),
   };
   const emit = jest.fn();
+  const customFields = opts.validateValues
+    ? { validateValues: jest.fn(opts.validateValues) }
+    : undefined;
 
   const svc = new TasksService(
     {} as any, // prisma
@@ -71,9 +78,10 @@ function makeService(opts: {
     {} as any, // emailService
     { get: (_k: string, d: any) => d } as any, // configService
     { emit } as any, // eventEmitter
+    customFields as any, // CustomFieldsValidator (optional)
   );
 
-  return { svc, tx, emit };
+  return { svc, tx, emit, customFields };
 }
 
 describe('TasksService.createInTx — subtask parent validation', () => {
@@ -294,5 +302,240 @@ describe('TasksService.addComment — domain event', () => {
       svc.addComment('ws1', user, 'missing', { content: 'x' } as any),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(emit).not.toHaveBeenCalled();
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Wave 2: domain events
+// ───────────────────────────────────────────────────────────────────────────
+
+function emittedPayload(emit: jest.Mock, name: string) {
+  const call = emit.mock.calls.find((c) => c[0] === name);
+  return call ? call[1] : undefined;
+}
+
+describe('TasksService.create — task.created / task.assigned events', () => {
+  it('emits task.created after commit with the documented payload', async () => {
+    const { svc, emit } = makeService({
+      taskCreate: async () => ({ id: 'task1', projectId: 'p1', assignedToId: null }),
+    });
+    await svc.create('ws1', user, { projectId: 'p1', title: 'x' } as any);
+    expect(emittedPayload(emit, 'task.created')).toEqual({
+      workspaceId: 'ws1',
+      taskId: 'task1',
+      projectId: 'p1',
+      actorId: 'u1',
+      task: { id: 'task1', projectId: 'p1', assignedToId: null },
+    });
+    expect(emittedPayload(emit, 'task.assigned')).toBeUndefined();
+  });
+
+  it('also emits task.assigned when created with an assignee', async () => {
+    const { svc, emit } = makeService({
+      taskCreate: async () => ({ id: 'task1', projectId: 'p1', assignedToId: 'u9' }),
+    });
+    await svc.create('ws1', user, {
+      projectId: 'p1',
+      title: 'x',
+      assignedToId: 'u9',
+    } as any);
+    expect(emittedPayload(emit, 'task.assigned')).toEqual({
+      workspaceId: 'ws1',
+      taskId: 'task1',
+      assignedToId: 'u9',
+      actorId: 'u1',
+      task: { id: 'task1', projectId: 'p1', assignedToId: 'u9' },
+    });
+  });
+});
+
+describe('TasksService.updateStatus — status_changed / completed events', () => {
+  it('emits status_changed (and completed) when transitioning to COMPLETED', async () => {
+    const { svc, emit } = makeService({
+      taskFindUnique: async () => ({ id: 't1', status: 'IN_PROGRESS', projectId: 'p1' }),
+      taskUpdate: async () => ({ id: 't1', status: 'COMPLETED', projectId: 'p1' }),
+    });
+    await svc.updateStatus('ws1', user, 't1', 'COMPLETED' as any);
+
+    expect(emittedPayload(emit, 'task.status_changed')).toEqual({
+      workspaceId: 'ws1',
+      taskId: 't1',
+      projectId: 'p1',
+      fromStatus: 'IN_PROGRESS',
+      toStatus: 'COMPLETED',
+      actorId: 'u1',
+      task: { id: 't1', status: 'COMPLETED', projectId: 'p1' },
+    });
+    expect(emittedPayload(emit, 'task.completed')).toEqual({
+      workspaceId: 'ws1',
+      taskId: 't1',
+      projectId: 'p1',
+      actorId: 'u1',
+      task: { id: 't1', status: 'COMPLETED', projectId: 'p1' },
+    });
+  });
+
+  it('emits status_changed but NOT completed for a non-completed transition', async () => {
+    const { svc, emit } = makeService({
+      taskFindUnique: async () => ({ id: 't1', status: 'PENDING', projectId: 'p1' }),
+      taskUpdate: async () => ({ id: 't1', status: 'IN_PROGRESS', projectId: 'p1' }),
+    });
+    await svc.updateStatus('ws1', user, 't1', 'IN_PROGRESS' as any);
+    expect(emittedPayload(emit, 'task.status_changed')).toBeDefined();
+    expect(emittedPayload(emit, 'task.completed')).toBeUndefined();
+  });
+
+  it('does NOT emit when the status is unchanged', async () => {
+    const { svc, emit } = makeService({
+      taskFindUnique: async () => ({ id: 't1', status: 'IN_PROGRESS', projectId: 'p1' }),
+      taskUpdate: async () => ({ id: 't1', status: 'IN_PROGRESS', projectId: 'p1' }),
+    });
+    await svc.updateStatus('ws1', user, 't1', 'IN_PROGRESS' as any);
+    expect(emit).not.toHaveBeenCalled();
+  });
+});
+
+describe('TasksService.markComplete — completed event', () => {
+  it('emits status_changed + completed when not already completed', async () => {
+    const { svc, emit } = makeService({
+      taskFindUnique: async () => ({ id: 't1', status: 'PENDING', projectId: 'p1' }),
+      taskUpdate: async () => ({ id: 't1', status: 'COMPLETED', projectId: 'p1' }),
+    });
+    await svc.markComplete('ws1', user, 't1');
+    expect(emittedPayload(emit, 'task.status_changed')?.toStatus).toBe('COMPLETED');
+    expect(emittedPayload(emit, 'task.completed')).toBeDefined();
+  });
+
+  it('does NOT re-emit when the task was already COMPLETED', async () => {
+    const { svc, emit } = makeService({
+      taskFindUnique: async () => ({ id: 't1', status: 'COMPLETED', projectId: 'p1' }),
+      taskUpdate: async () => ({ id: 't1', status: 'COMPLETED', projectId: 'p1' }),
+    });
+    await svc.markComplete('ws1', user, 't1');
+    expect(emit).not.toHaveBeenCalled();
+  });
+});
+
+describe('TasksService.assignTask — task.assigned event', () => {
+  it('emits task.assigned when the assignee changes', async () => {
+    const { svc, emit } = makeService({
+      taskFindUnique: async () => ({ id: 't1', assignedToId: null }),
+      taskUpdate: async () => ({
+        id: 't1',
+        assignedToId: 'u9',
+        project: {},
+        assignedTo: { email: null },
+        createdBy: null,
+      }),
+    });
+    await svc.assignTask('ws1', user, 't1', 'u9');
+    expect(emittedPayload(emit, 'task.assigned')).toEqual({
+      workspaceId: 'ws1',
+      taskId: 't1',
+      assignedToId: 'u9',
+      actorId: 'u1',
+      task: expect.objectContaining({ id: 't1', assignedToId: 'u9' }),
+    });
+  });
+
+  it('does NOT emit when re-assigning to the same user', async () => {
+    const { svc, emit } = makeService({
+      taskFindUnique: async () => ({ id: 't1', assignedToId: 'u9' }),
+      taskUpdate: async () => ({
+        id: 't1',
+        assignedToId: 'u9',
+        project: {},
+        assignedTo: { email: null },
+        createdBy: null,
+      }),
+    });
+    await svc.assignTask('ws1', user, 't1', 'u9');
+    expect(emittedPayload(emit, 'task.assigned')).toBeUndefined();
+  });
+});
+
+describe('TasksService.update — events + assignee change', () => {
+  it('emits status_changed + completed and stamps completedAt on transition', async () => {
+    const { svc, emit, tx } = makeService({
+      taskFindUnique: async () => ({
+        id: 't1',
+        status: 'IN_PROGRESS',
+        projectId: 'p1',
+        createdById: 'u1',
+        assignedToId: 'u1',
+      }),
+      taskUpdate: async (a: any) => ({ id: 't1', status: 'COMPLETED', projectId: 'p1', ...a.data }),
+    });
+    await svc.update('ws1', user, 't1', { status: 'COMPLETED' } as any, 'ADMIN' as any);
+    expect(emittedPayload(emit, 'task.status_changed')?.fromStatus).toBe('IN_PROGRESS');
+    expect(emittedPayload(emit, 'task.completed')).toBeDefined();
+    // completedAt stamped when transitioning into COMPLETED.
+    expect((tx.task.update as jest.Mock).mock.calls[0][0].data.completedAt).toBeInstanceOf(Date);
+  });
+
+  it('emits task.assigned when update changes the assignee', async () => {
+    const { svc, emit } = makeService({
+      taskFindUnique: async () => ({
+        id: 't1',
+        status: 'PENDING',
+        projectId: 'p1',
+        createdById: 'u1',
+        assignedToId: null,
+      }),
+      taskUpdate: async (a: any) => ({ id: 't1', status: 'PENDING', projectId: 'p1', ...a.data }),
+    });
+    await svc.update('ws1', user, 't1', { assignedToId: 'u9' } as any, 'ADMIN' as any);
+    expect(emittedPayload(emit, 'task.assigned')?.assignedToId).toBe('u9');
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Wave 2: custom-field values merged into metadata.customFields
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('TasksService — customFields validation + merge', () => {
+  it('validates via CustomFieldsService and merges into metadata.customFields on create', async () => {
+    const { svc, tx, customFields } = makeService({
+      validateValues: async (_tx, _ws, _entity, incoming) => ({ ...incoming, normalized: true }),
+    });
+    await svc.create('ws1', user, {
+      projectId: 'p1',
+      title: 'x',
+      metadata: { existing: 1 },
+      customFields: { tier: 'gold' },
+    } as any);
+
+    expect(customFields!.validateValues).toHaveBeenCalledWith(
+      tx,
+      'ws1',
+      'TASK',
+      { tier: 'gold' },
+    );
+    const data = (tx.task.create as jest.Mock).mock.calls[0][0].data;
+    // Preserves other metadata keys, nests normalized values under customFields,
+    // and does NOT leak the raw `customFields` DTO key into the Prisma data.
+    expect(data.metadata).toEqual({ existing: 1, customFields: { tier: 'gold', normalized: true } });
+    expect(data.customFields).toBeUndefined();
+  });
+
+  it('throws BadRequest if customFields given but no CustomFieldsService is wired', async () => {
+    const { svc } = makeService({}); // no validateValues → service undefined
+    await expect(
+      svc.create('ws1', user, {
+        projectId: 'p1',
+        title: 'x',
+        customFields: { tier: 'gold' },
+      } as any),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('leaves metadata untouched when customFields is absent', async () => {
+    const { svc, tx } = makeService({});
+    await svc.create('ws1', user, {
+      projectId: 'p1',
+      title: 'x',
+      metadata: { a: 1 },
+    } as any);
+    expect((tx.task.create as jest.Mock).mock.calls[0][0].data.metadata).toEqual({ a: 1 });
   });
 });

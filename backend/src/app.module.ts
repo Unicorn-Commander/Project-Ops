@@ -35,6 +35,12 @@ import { TimeTrackingModule } from './time-tracking/time-tracking.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SavedViewsModule } from './saved-views/saved-views.module';
+// Wave 2 modules
+import { CustomFieldsModule } from './custom-fields/custom-fields.module';
+import { AutomationsModule } from './automations/automations.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
+import { CapacityModule } from './capacity/capacity.module';
+import { ReportingModule } from './reporting/reporting.module';
 
 @Module({
   imports: [
@@ -84,6 +90,11 @@ import { SavedViewsModule } from './saved-views/saved-views.module';
     WorkspacesModule,
     NotificationsModule,
     SavedViewsModule,
+    CustomFieldsModule,
+    AutomationsModule,
+    WebhooksModule,
+    CapacityModule,
+    ReportingModule,
   ],
   providers: [
     // MembershipService is needed to construct the GLOBAL WorkspaceMembershipGuard

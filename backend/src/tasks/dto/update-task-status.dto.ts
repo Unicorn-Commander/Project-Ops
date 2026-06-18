@@ -5,7 +5,7 @@ import { TaskStatus } from '@prisma/client';
 export class UpdateTaskStatusDto {
   @ApiProperty({
     enum: TaskStatus,
-    example: TaskStatus.COMPLETED
+    example: TaskStatus.COMPLETED,
   })
   @IsEnum(TaskStatus)
   @IsNotEmpty()

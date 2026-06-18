@@ -1,10 +1,11 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
-import { User } from '@prisma/client';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { PaymentStatus, User } from '@prisma/client';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
+import { WorkspaceTxClient } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
+import { CreatePortalCommentDto } from './dto/create-portal-comment.dto';
+import { clampLimit, clampOffset } from '../common/pagination/clamp';
 
 /**
  * Read-only portal surface for CLIENT users: their own projects, project
@@ -24,7 +25,47 @@ import { WorkspaceContextService } from '../common/workspace/workspace-context.s
  */
 @Injectable()
 export class ClientPortalService {
-  constructor(private readonly workspaceContext: WorkspaceContextService) {}
+  private readonly logger = new Logger(ClientPortalService.name);
+
+  constructor(
+    private readonly workspaceContext: WorkspaceContextService,
+    private readonly auditService: AuditService,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
+
+  /**
+   * Resolve (and require) the portal Contact for the signed-in user, inside an
+   * existing workspace tx. Shared by every portal method so the contact lookup
+   * and its dependent reads always run under the same GUC.
+   */
+  private async requireContact(tx: WorkspaceTxClient, user: User) {
+    const contact = await tx.contact.findUnique({
+      where: { userId: user.id },
+    });
+    if (!contact) {
+      throw new NotFoundException('Contact profile not found');
+    }
+    return contact;
+  }
+
+  /**
+   * Load a project and assert it belongs to `contactId`, inside an existing
+   * workspace tx. 404 when the project does not resolve under the workspace
+   * RLS scope; 403 when it resolves but is another contact's project (mirrors
+   * getProjectDetails). Returns the project row for callers that need it.
+   */
+  private async requireOwnedProject(tx: WorkspaceTxClient, contactId: string, projectId: string) {
+    const project = await tx.project.findUnique({
+      where: { id: projectId },
+    });
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+    if (project.contactId !== contactId) {
+      throw new ForbiddenException('You do not have access to this project');
+    }
+    return project;
+  }
 
   async getDashboard(workspaceId: string, user: User) {
     return this.workspaceContext.runForUser(
@@ -294,5 +335,217 @@ export class ClientPortalService {
       },
       workspaceId,
     );
+  }
+
+  // ======================================================================
+  // COMMENTS (two-way) — a portal client reads + posts on THEIR projects.
+  // ======================================================================
+
+  /**
+   * List the non-internal comments on a project the client owns. Reuses the
+   * existing Comment model directly (the comments module is not owned here);
+   * `isInternal: false` is enforced so staff-only comments never surface, and
+   * the project-ownership check 403/404s anything outside the client's scope.
+   */
+  async getProjectComments(
+    workspaceId: string,
+    user: User,
+    projectId: string,
+    params?: { take?: number; skip?: number },
+  ) {
+    const { take, skip } = params || {};
+
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const contact = await this.requireContact(tx, user);
+        await this.requireOwnedProject(tx, contact.id, projectId);
+
+        const comments = await tx.comment.findMany({
+          where: { projectId, isInternal: false },
+          orderBy: { createdAt: 'desc' },
+          take: clampLimit(take, 50),
+          skip: clampOffset(skip),
+          include: {
+            author: {
+              select: { id: true, firstName: true, lastName: true, role: true },
+            },
+          },
+        });
+
+        return comments.map((c) => this.transformComment(c));
+      },
+      workspaceId,
+    );
+  }
+
+  /**
+   * Post a comment as the signed-in client on a project they own. `isInternal`
+   * is FORCED false (a client can never create an internal comment); the author
+   * is the client's user. Emits the same `comment.created` event the comments
+   * module uses so the realtime gateway relays it, and audits the write.
+   */
+  async createProjectComment(
+    workspaceId: string,
+    user: User,
+    projectId: string,
+    dto: CreatePortalCommentDto,
+  ) {
+    const comment = await this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const contact = await this.requireContact(tx, user);
+        await this.requireOwnedProject(tx, contact.id, projectId);
+
+        return tx.comment.create({
+          data: {
+            workspaceId,
+            projectId,
+            authorId: user.id,
+            content: dto.content,
+            // Hard-coded: portal clients only ever create client-visible comments.
+            isInternal: false,
+          },
+          include: {
+            author: {
+              select: { id: true, firstName: true, lastName: true, role: true },
+            },
+          },
+        });
+      },
+      workspaceId,
+    );
+
+    const transformed = this.transformComment(comment);
+
+    // Same event shape the comments module emits; the gateway listener only
+    // relays the payload to the project room (no unscoped re-query).
+    this.eventEmitter.emit('comment.created', {
+      workspaceId,
+      projectId,
+      comment: transformed,
+    });
+
+    await this.auditService.log({
+      workspaceId,
+      userId: user.id,
+      projectId,
+      action: 'CREATE',
+      resource: 'Comment',
+      resourceId: comment.id,
+      details: { content: comment.content.substring(0, 100), portal: true },
+    });
+
+    this.logger.log(
+      `Portal comment ${comment.id} created on project ${projectId} by user ${user.id} ws=${workspaceId}`,
+    );
+    return transformed;
+  }
+
+  /** Shape a Comment row into the portal contract. */
+  private transformComment(comment: any) {
+    return {
+      id: comment.id,
+      projectId: comment.projectId,
+      content: comment.content,
+      isInternal: comment.isInternal,
+      createdAt: comment.createdAt,
+      updatedAt: comment.updatedAt,
+      author: comment.author
+        ? {
+            id: comment.author.id,
+            name: `${comment.author.firstName} ${comment.author.lastName}`,
+            role: comment.author.role,
+          }
+        : null,
+    };
+  }
+
+  // ======================================================================
+  // INVOICES (read-only) — projection of the client's billable projects.
+  // ======================================================================
+  //
+  // Project-Ops has no standalone Invoice model; invoice/billing data lives on
+  // the Project row (invoiceNumber, billingAmount, amountPaid, paymentStatus,
+  // billing/payment dates) and is reconciled into Accounting-Ops via the
+  // billable-draft / sync_invoice_status MCP flow. The portal surfaces that
+  // rollup READ-ONLY here. Money movement is NEVER auto-executed: `payUrl` is a
+  // deep-link stub to the portal checkout for an open balance, not a payment.
+
+  /** List the client's invoices (projects that carry billing data). */
+  async getInvoices(workspaceId: string, user: User) {
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const contact = await this.requireContact(tx, user);
+
+        const projects = await tx.project.findMany({
+          where: {
+            contactId: contact.id,
+            // "Has an invoice" == a billing number was assigned OR an amount set.
+            OR: [{ invoiceNumber: { not: null } }, { billingAmount: { not: null } }],
+          },
+          orderBy: [{ billingDate: 'desc' }, { createdAt: 'desc' }],
+        });
+
+        return projects.map((p) => this.transformInvoice(p));
+      },
+      workspaceId,
+    );
+  }
+
+  /** Get one invoice (a billable project the client owns). */
+  async getInvoiceById(workspaceId: string, user: User, projectId: string) {
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const contact = await this.requireContact(tx, user);
+        const project = await this.requireOwnedProject(tx, contact.id, projectId);
+
+        if (!project.invoiceNumber && project.billingAmount == null) {
+          // The project is the client's but has no billing data — there is no
+          // invoice to show.
+          throw new NotFoundException('Invoice not found');
+        }
+        return this.transformInvoice(project);
+      },
+      workspaceId,
+    );
+  }
+
+  /**
+   * Project an invoice view from a Project row. Computes the outstanding
+   * balance and, when there IS an unpaid balance, a checkout DEEP-LINK stub
+   * (the portal frontend route that initiates payment) — never an executed
+   * charge. The id is the project id (invoices are not separately keyed).
+   */
+  private transformInvoice(p: any) {
+    const billingAmount = p.billingAmount != null ? parseFloat(p.billingAmount.toString()) : null;
+    const amountPaid = p.amountPaid != null ? parseFloat(p.amountPaid.toString()) : 0;
+    const balanceDue =
+      billingAmount != null
+        ? Math.max(0, Math.round((billingAmount - amountPaid) * 100) / 100)
+        : null;
+
+    const isPayable =
+      balanceDue != null && balanceDue > 0 && p.paymentStatus !== PaymentStatus.CANCELLED;
+
+    return {
+      id: p.id,
+      projectId: p.id,
+      projectNumber: p.projectNumber,
+      projectTitle: p.title,
+      invoiceNumber: p.invoiceNumber,
+      paymentStatus: p.paymentStatus,
+      billingAmount,
+      amountPaid,
+      balanceDue,
+      billingDate: p.billingDate,
+      paymentDueDate: p.paymentDueDate,
+      paymentReceivedDate: p.paymentReceivedDate,
+      // Deep-link stub only — DO NOT execute payment from the portal/agent.
+      // Null unless there is an open balance to pay.
+      payUrl: isPayable ? `/client-portal/invoices/${p.id}/pay` : null,
+    };
   }
 }

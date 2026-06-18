@@ -1,0 +1,152 @@
+import {
+  ProjectsService,
+  PROJECT_CREATED_EVENT,
+  PROJECT_STATUS_CHANGED_EVENT,
+} from './projects.service';
+import { ProjectStatus } from '@prisma/client';
+import { BadRequestException } from '@nestjs/common';
+
+/**
+ * Unit tests for the Wave 2 project features on ProjectsService: custom-field
+ * merge into metadata, and the project.created / project.status_changed domain
+ * events. (Recurrence materialization lives in ProjectsRecurrenceService and is
+ * covered by projects-recurrence.service.spec.ts.)
+ *
+ * Mirrors the suite test style (tasks.service.spec.ts): hand-rolled mocks where
+ * workspaceContext.runForUser invokes the callback with a fake tx, so we
+ * exercise the real method bodies without a DB.
+ */
+
+const user = { id: 'u1', email: 'a@x.co', role: 'ADMIN' } as any;
+
+function makeService(
+  opts: {
+    tx?: any;
+    validateValues?: (...args: any[]) => Promise<any>;
+  } = {},
+) {
+  const tx = opts.tx ?? {};
+  const workspaceContext = {
+    runForUser: jest.fn(async (_u: any, fn: (t: any) => any) => fn(tx)),
+  };
+  const emit = jest.fn();
+  const auditService = { log: jest.fn(async () => undefined) };
+  const customFields = opts.validateValues
+    ? { validateValues: jest.fn(opts.validateValues) }
+    : undefined;
+
+  const svc = new ProjectsService(
+    {} as any, // prisma
+    auditService as any,
+    workspaceContext as any,
+    { emit } as any, // eventEmitter
+    customFields as any, // optional CustomFieldsValidator
+  );
+
+  return { svc, tx, emit, auditService, customFields };
+}
+
+describe('ProjectsService.create — custom fields + project.created event', () => {
+  it('validates customFields via the service and merges into metadata.customFields', async () => {
+    const created = { id: 'p1', projectNumber: 'PROJ-1', metadata: {} };
+    const projectCreate = jest.fn(async () => created);
+    const tx = {
+      project: { count: jest.fn(async () => 0), create: projectCreate },
+    };
+    const { svc, emit, customFields } = makeService({
+      tx,
+      validateValues: async () => ({ priority_score: 7 }),
+    });
+
+    const result = await svc.create('ws1', user, {
+      title: 'T',
+      clientName: 'C',
+      customFields: { priority_score: '7' },
+    } as any);
+
+    // Validator called with (tx, workspaceId, 'PROJECT', incoming).
+    expect(customFields!.validateValues).toHaveBeenCalledWith(tx, 'ws1', 'PROJECT', {
+      priority_score: '7',
+    });
+    // Normalized values folded under metadata.customFields; raw key not leaked.
+    const data = (projectCreate as jest.Mock).mock.calls[0][0].data;
+    expect(data.metadata).toEqual({ customFields: { priority_score: 7 } });
+    expect(data.customFields).toBeUndefined();
+    // project.created emitted AFTER create with the right payload.
+    expect(emit).toHaveBeenCalledWith(PROJECT_CREATED_EVENT, {
+      workspaceId: 'ws1',
+      projectId: 'p1',
+      actorId: 'u1',
+      project: created,
+    });
+    expect(result).toBe(created);
+  });
+
+  it('throws BadRequest when customFields supplied but no service is wired', async () => {
+    const tx = {
+      project: { count: jest.fn(async () => 0), create: jest.fn() },
+    };
+    const { svc } = makeService({ tx }); // no validateValues
+
+    await expect(
+      svc.create('ws1', user, {
+        title: 'T',
+        clientName: 'C',
+        customFields: { note: 'hi' },
+      } as any),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('still emits project.created with no customFields', async () => {
+    const created = { id: 'p2', projectNumber: 'PROJ-2' };
+    const tx = {
+      project: { count: jest.fn(async () => 0), create: jest.fn(async () => created) },
+    };
+    const { svc, emit } = makeService({ tx });
+
+    await svc.create('ws1', user, { title: 'T', clientName: 'C' } as any);
+
+    expect(emit).toHaveBeenCalledWith(
+      PROJECT_CREATED_EVENT,
+      expect.objectContaining({ projectId: 'p2', actorId: 'u1' }),
+    );
+  });
+});
+
+describe('ProjectsService.updateStatus — project.status_changed event', () => {
+  it('emits with the real fromStatus->toStatus, reading the prior status first', async () => {
+    const updated = { id: 'p1', projectNumber: 'PROJ-1', status: ProjectStatus.IN_PROGRESS };
+    const tx = {
+      project: {
+        findUnique: jest.fn(async () => ({ status: ProjectStatus.NEW })),
+        update: jest.fn(async () => updated),
+      },
+    };
+    const { svc, emit } = makeService({ tx });
+
+    await svc.updateStatus('ws1', user, 'p1', ProjectStatus.IN_PROGRESS);
+
+    expect(emit).toHaveBeenCalledWith(PROJECT_STATUS_CHANGED_EVENT, {
+      workspaceId: 'ws1',
+      projectId: 'p1',
+      fromStatus: ProjectStatus.NEW,
+      toStatus: ProjectStatus.IN_PROGRESS,
+      actorId: 'u1',
+      project: updated,
+    });
+  });
+
+  it('does NOT emit when the status is unchanged', async () => {
+    const tx = {
+      project: {
+        findUnique: jest.fn(async () => ({ status: ProjectStatus.IN_PROGRESS })),
+        update: jest.fn(async () => ({ id: 'p1', status: ProjectStatus.IN_PROGRESS })),
+      },
+    };
+    const { svc, emit } = makeService({ tx });
+
+    await svc.updateStatus('ws1', user, 'p1', ProjectStatus.IN_PROGRESS);
+
+    expect(emit).not.toHaveBeenCalled();
+  });
+});

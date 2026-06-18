@@ -1,4 +1,13 @@
-import { IsString, IsNotEmpty, IsEnum, IsOptional, IsInt, IsEmail, IsDateString, IsObject, IsNumber, IsArray } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsEnum,
+  IsOptional,
+  IsEmail,
+  IsDateString,
+  IsObject,
+  IsNumber,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { ProjectStatus, ProjectPriority, PaymentStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
@@ -74,13 +83,13 @@ export class CreateProjectDto {
   @IsOptional()
   invoiceNumber?: string;
 
-  @ApiProperty({ example: 2500.00, required: false })
+  @ApiProperty({ example: 2500.0, required: false })
   @IsNumber()
   @IsOptional()
   @Type(() => Number)
   billingAmount?: number;
 
-  @ApiProperty({ example: 0.00, required: false })
+  @ApiProperty({ example: 0.0, required: false })
   @IsNumber()
   @IsOptional()
   @Type(() => Number)
@@ -116,4 +125,30 @@ export class CreateProjectDto {
   @IsString()
   @IsOptional()
   projectType?: string;
+
+  // Recurrence (Wave 2). A minimal RRULE — FREQ=DAILY|WEEKLY|MONTHLY with an
+  // optional INTERVAL (e.g. "FREQ=MONTHLY;INTERVAL=1"). Setting this on a project
+  // with no recurrenceParentId marks it a TEMPLATE: a daily cron materializes the
+  // next instance from it. Validated minimally here; the engine ignores
+  // unsupported parts. See recurrence.util.ts.
+  @ApiProperty({
+    example: 'FREQ=MONTHLY;INTERVAL=1',
+    required: false,
+    description: 'Minimal RRULE (FREQ=DAILY|WEEKLY|MONTHLY + optional INTERVAL).',
+  })
+  @IsString()
+  @IsOptional()
+  recurrenceRule?: string;
+
+  // Custom-field VALUES for this project (Wave 2). A free-form map keyed by the
+  // workspace's PROJECT field definitions; validated + normalized by the
+  // custom-fields service and merged into metadata.customFields on write.
+  @ApiProperty({
+    required: false,
+    type: 'object',
+    description: 'Custom-field values, validated against the workspace PROJECT field set.',
+  })
+  @IsObject()
+  @IsOptional()
+  customFields?: Record<string, any>;
 }
