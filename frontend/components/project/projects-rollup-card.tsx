@@ -170,10 +170,11 @@ export function ProjectsRollupCard({ projects, emptyMessage }: ProjectsRollupCar
                   data={statusData}
                   dataKey="value"
                   nameKey="name"
-                  innerRadius="55%"
-                  outerRadius="85%"
+                  innerRadius={44}
+                  outerRadius={72}
                   paddingAngle={2}
                   strokeWidth={0}
+                  isAnimationActive={false}
                 >
                   {statusData.map((d) => <Cell key={d.key} fill={d.fill} />)}
                 </Pie>
@@ -217,7 +218,7 @@ export function ProjectsRollupCard({ projects, emptyMessage }: ProjectsRollupCar
                     fontSize: "12px",
                   }}
                 />
-                <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                <Bar dataKey="value" radius={[6, 6, 0, 0]} isAnimationActive={false}>
                   {priorityData.map((d) => <Cell key={d.key} fill={d.fill} />)}
                 </Bar>
               </BarChart>

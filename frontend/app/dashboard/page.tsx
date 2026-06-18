@@ -308,7 +308,7 @@ export default function DashboardPage() {
                   body="No pending tasks assigned to you. Enjoy the breathing room."
                 />
               ) : (
-                myTasks.map((task) => {
+                myTasks.slice(0, 5).map((task) => {
                   const pc = projectColorClasses(task.projectId);
                   return (
                   <div

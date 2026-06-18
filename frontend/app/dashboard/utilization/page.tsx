@@ -402,10 +402,11 @@ export default function UtilizationPage() {
                     data={splitData}
                     dataKey="value"
                     nameKey="name"
-                    innerRadius="55%"
-                    outerRadius="85%"
+                    innerRadius={64}
+                    outerRadius={100}
                     paddingAngle={2}
                     strokeWidth={0}
+                    isAnimationActive={false}
                   >
                     {splitData.map((d) => (
                       <Cell key={d.key} fill={d.fill} />
@@ -500,6 +501,7 @@ export default function UtilizationPage() {
                   />
                   <Bar
                     dataKey="utilization"
+                    isAnimationActive={false}
                     fill={COLOUR.violet}
                     radius={[6, 6, 0, 0]}
                   />
@@ -564,12 +566,14 @@ export default function UtilizationPage() {
                 />
                 <Bar
                   dataKey="billable"
+                  isAnimationActive={false}
                   stackId="hours"
                   fill={COLOUR.emerald}
                   radius={[0, 0, 0, 0]}
                 />
                 <Bar
                   dataKey="nonBillable"
+                  isAnimationActive={false}
                   stackId="hours"
                   fill={COLOUR.zinc}
                   radius={[6, 6, 0, 0]}
