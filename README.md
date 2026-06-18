@@ -1,70 +1,57 @@
 # Project Ops
 
-Project management, task tracking, CRM, billing, and a built-in AI agent
-— for teams who'd rather ship than chase status updates.
+Project management, task tracking, CRM, time & billing, recurring work, an
+automation engine, outbound webhooks, portfolio reporting, capacity planning,
+a two-way client portal, and a built-in AI agent — for teams who'd rather ship
+than chase status updates.
 
 Part of the [Unicorn Commander](https://unicorncommander.ai) suite, by
 [Magic Unicorn](https://magicunicorn.dev).
 
 Live: [projectops.magicunicorn.dev](https://projectops.magicunicorn.dev) ·
+Features: [`docs/FEATURES.md`](docs/FEATURES.md) ·
 Changelog: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## What's inside
 
-- **Projects & tasks** — status, priority, deadlines, owners; kanban,
-  list, and Gantt views. **Drag-to-reschedule** on the Gantt; click-
-  the-stat-card or use the toolbar to filter; sort by 6+ fields.
-- **List toolbars everywhere** — every list page (Projects, My Tasks,
-  Contacts, Organisations, Documents, Users) shares the same UX:
-  search, multi-filter dropdowns with active-chip row, Clear-all, and
-  an explicit Sort dropdown. Per-project colour stripes carry across
-  every surface so a long list reads as more than rows.
-- **Project snapshot card** — `/dashboard/projects/[id]` opens with
-  completion %, status donut, priority bar, and Total/Completed/Overdue
-  quick stats above the task list.
-- **Cmd/Ctrl+K palette** — global jump surface. Search projects, tasks,
-  contacts, organisations + quick actions (New project / task /
-  contact). On empty query: a **Starred** section (your explicit
-  picks) and a **Recent** section (last 6 detail-page visits) lead
-  the list. Keyboard-first: ↑↓ navigate, ↵ select, Esc close.
-- **Star projects, contacts, organisations + pin tasks** — local-only
-  flag per entity, per browser. Star icon on each row in the list
-  page; pinned tasks float to a dedicated **Pinned** card at the top
-  of My Tasks. All four scopes feed the Cmd+K Starred section so a
-  flagged item is one keystroke away from anywhere.
-- **Bulk actions** — multi-select on every list page (Projects, My
-  Tasks, Contacts, Organisations, Documents, Users); floating action
-  bar with Set Status / Activate / Deactivate / Delete depending on
-  the entity. Selected rows tint primary so the selection stays
-  visible during scroll.
-- **Saved views** — filter + sort presets per list page, persisted in
-  localStorage. Built-in starting points ship per page (e.g.
-  Projects: "Active only", "Urgent priority", "Recently updated");
-  Save current view captures whatever filters are active.
-- **CSV export — scoped** — every list page has an Export CSV
-  popover with date-range chips (None / 7 / 30 / 90 days / Custom
-  pickers) and status / type / role / activity chips that scope the
-  export *without* changing the list's active filters. Live
-  "N of M records" counter; UTF-8 BOM for Excel; RFC-4180 quoting.
-- **Assistant in popped mode** — the AI sidebar can swap to a
-  fixed-corner widget so the dashboard stays interactive while you
-  ask a question and click through to the answer in the same
-  gesture. Mode is remembered.
-- **Print-friendly project detail** — a Print button on
-  `/dashboard/projects/[id]` triggers a clean paper layout: chrome
-  hidden, single-column flow, status colours preserved, project
-  number + title + timestamp as a print header.
-- **Per-org / per-contact snapshot** — Active / Completed / Billed /
-  Outstanding stats + project status donut + priority bar at the top
-  of each org and contact detail page.
-- **Organizations & contacts** — real CRM with parent/child org hierarchy and per-org rollups.
-- **Billing** — invoice number, amount, payment status, due/paid dates, billing notes — on the project itself.
-- **Client portal** — `CLIENT` role users see only their own organization's projects + shared documents.
-- **Documents** — S3-compatible object store; attach to projects or tasks; share with the right people.
-- **AI assistant** — embedded sidebar agent (Unicorn Brigade) with live read + write access to your data via MCP, scoped per-user.
-- **Real-time collaboration** — WebSocket updates so every tab catches up live.
-- **Activity & comments** — threaded comments on projects and tasks plus a unified activity feed.
-- **SSO + audit trail** — Keycloak (`uchub` realm) with Google + Microsoft federation; every change logged.
+The full, up-to-date tour lives in **[`docs/FEATURES.md`](docs/FEATURES.md)**.
+The headline set:
+
+- **Projects & tasks** — statuses, priorities, categories/tags, **subtasks**,
+  and **task dependencies** (with cycle/duplicate/self-link guards).
+- **Views** — Kanban board, a **Master schedule** (timeline with org/owner/
+  status swimlanes + drag-to-reschedule), and a snapshot card on every project
+  (completion %, status donut, priority bar).
+- **Recurring tasks & projects** — a "Repeats" picker (Daily / Weekly /
+  Monthly + every-N) backed by an `FREQ`/`INTERVAL` RRULE subset, materialized
+  daily.
+- **Custom fields** — per-workspace, per-entity fields (text / number / date /
+  select / multi-select / boolean) under Settings → Custom fields.
+- **Automations** — a When → If → Then rules engine over your activity, with a
+  builder, conditions (`eq`/`neq`/`contains`/`gt`/`lt`), 5 action types, run
+  counts, and a loop guard.
+- **Webhooks** — per-workspace endpoints with HMAC-SHA256-signed deliveries
+  (`X-ProjectOps-Signature`), show-once secrets, retries, and a delivery log.
+- **Reporting** — Portfolio / Profitability / Throughput (money is
+  manager-gated).
+- **Capacity planning** — committed vs pro-rated weekly capacity, utilization
+  bands, over-allocation + unestimated-task flags.
+- **Time tracking & billing** — timers, manual entry, rate resolution,
+  timesheets, and a billable rollup to Accounting-Ops.
+- **Two-way client portal** — approvals (request / approve / reject / request
+  changes), client comments, and read-only invoices with a pay deep-link
+  (no in-app payment).
+- **CRM** — organizations (parent/child hierarchy + rollups) and contacts.
+- **Documents** — S3-compatible object store; attach to projects/tasks; print
+  a project as a paper status report.
+- **Collaboration** — notifications + @mentions, real-time WebSocket updates,
+  threaded comments, and a unified activity feed.
+- **List tooling** — shared search/filter/sort toolbars, a Cmd/Ctrl+K palette,
+  star/pin, bulk actions, saved views, and scoped CSV export on every list.
+- **AI assistant + MCP/API** — an embedded, RBAC-scoped sidebar agent plus an
+  MCP server and Personal Access Tokens for any agent or client.
+- **Multi-tenancy** — workspaces fenced in Postgres with Row-Level Security;
+  roles (ADMIN / MANAGER / STAFF / CLIENT); SSO + a full audit trail.
 
 ## Keyboard shortcuts
 
@@ -79,7 +66,8 @@ Changelog: [`CHANGELOG.md`](CHANGELOG.md)
 ## Stack
 
 - **Frontend**: Next.js 15, React 19, Tailwind 4, Radix
-- **Backend**: NestJS 10, Prisma 5, PostgreSQL 17
+- **Backend**: NestJS 10, Prisma 5, PostgreSQL 17 with **Row-Level Security**
+  for workspace tenancy (the runtime connects as a `NOBYPASSRLS` role)
 - **Auth**: Keycloak (`uchub` realm) — SSO with Google + Microsoft federation
 - **Storage**: S3-compatible — production uses [Garage](https://garagehq.deuxfleurs.fr/) (Rust-based, distributed); env vars are still named `MINIO_*` for back-compat
 - **Cache**: Redis 7
@@ -128,6 +116,17 @@ your own agent) can plug into the same surface.
 - **For developers wiring up a coding agent** —
   [`docs/MCP_FOR_CODING_AGENTS.md`](docs/MCP_FOR_CODING_AGENTS.md): full
   tool list, JWT minting, per-client config.
+
+## Documentation
+
+The full doc set is indexed in [`docs/README.md`](docs/README.md). Start here:
+
+| Doc | What |
+|---|---|
+| [`docs/FEATURES.md`](docs/FEATURES.md) | The complete, user-facing feature guide (every area, how to use it, limits) |
+| [`docs/AI_ASSISTANT.md`](docs/AI_ASSISTANT.md) | The in-app AI assistant — what to ask, RBAC + memory, tips |
+| [`docs/MCP_FOR_CODING_AGENTS.md`](docs/MCP_FOR_CODING_AGENTS.md) | Wire a coding agent / API client into the MCP server |
+| [`CHANGELOG.md`](CHANGELOG.md) | Per-release record of what shipped, changed, and got fixed |
 
 ## Local development
 

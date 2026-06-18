@@ -48,6 +48,7 @@ import {
   LineChart,
   Gauge,
   Zap,
+  LifeBuoy,
 } from "lucide-react";
 
 interface NavItem {
@@ -68,6 +69,7 @@ const navigation: NavItem[] = [
   { name: "Kanban Board", href: "/dashboard/kanban", icon: LayoutGrid, group: "Workspace" },
   { name: "Schedule", href: "/dashboard/schedule", icon: CalendarRange, group: "Workspace" },
   { name: "Documents", href: "/dashboard/documents", icon: FolderOpen, group: "Workspace" },
+  { name: "Help", href: "/dashboard/help", icon: LifeBuoy, group: "Workspace" },
   { name: "Time entries", href: "/dashboard/time", icon: Clock, group: "Time & Billing" },
   { name: "Timesheets", href: "/dashboard/timesheets", icon: CalendarClock, group: "Time & Billing" },
   { name: "Utilization", href: "/dashboard/utilization", icon: BarChart3, group: "Time & Billing" },
@@ -99,6 +101,7 @@ function pageTitleFor(pathname: string | null): string {
     "/dashboard/projects": "Projects",
     "/dashboard/kanban": "Kanban board",
     "/dashboard/documents": "Documents",
+    "/dashboard/help": "Help center",
     "/dashboard/time": "Time entries",
     "/dashboard/timesheets": "Timesheets",
     "/dashboard/utilization": "Utilization",
