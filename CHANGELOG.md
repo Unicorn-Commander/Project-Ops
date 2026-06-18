@@ -19,6 +19,62 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `BILLABLE_ROLLUP_LIVE` (default off) until the AO AR integration is signed off
   in production.
 
+## [1.9.0] — 2026-06-18
+
+Wave 2 — the feature set that closes the gap to a best-in-class PM tool:
+recurring work, custom fields, an automation engine, outbound webhooks,
+portfolio/profitability reporting, capacity planning, and a two-way client
+portal. Built by a multi-agent swarm, integrated, and browser-verified on
+dogfood.
+
+### Added
+
+- **Recurring tasks & projects.** An RRULE recurrence (`FREQ=DAILY|WEEKLY|MONTHLY`
+  + `INTERVAL`) materialized by a daily cron into the next instance, with a
+  "Repeats" picker on the create/edit forms.
+- **Custom fields.** Per-workspace, per-entity (task/project) field definitions —
+  text, number, date, select, multi-select, boolean — managed under
+  Settings → Custom fields and rendered on the create/edit forms + task details.
+  Values live on the entity's `metadata`.
+- **Automations (rules engine).** When → If → Then rules over the domain-event
+  stream: a trigger (task/project/comment lifecycle), optional conditions, and
+  actions (assign, set status, comment, create task, notify). A Zapier-lite
+  builder with a live plain-English preview, enable toggle, and run counts; an
+  AsyncLocalStorage depth guard stops an automation's own writes from
+  re-triggering it.
+- **Outbound webhooks.** Per-workspace endpoints subscribe to task/project events
+  and receive HMAC-SHA256-signed deliveries (`X-ProjectOps-Signature`) with retry
+  and a delivery log; the signing secret is shown once on create.
+- **Reporting.** Portfolio (budget vs logged, billed vs budget, % complete,
+  over-budget), Profitability (billable/billed/cost/margin/realization, money
+  manager-gated), and Throughput (completed-over-time) — charts + sortable tables.
+- **Capacity planning.** Per-person committed hours (from task estimates) vs a
+  pro-rated weekly capacity, with utilization bands, over-allocation flags, and an
+  "unestimated tasks" warning. New `estimatedHours` on tasks +
+  `weeklyCapacityHours` on users.
+- **Two-way client portal.** Clients approve / reject / request changes on
+  documents, deliverables, and projects, comment on their projects, and view
+  invoices (with a pay deep-link — no in-app payment). Staff request approvals and
+  see live client decisions from the project page.
+- **Collaboration (folded in since 1.8.1):** subtasks & task dependencies,
+  notifications + @mentions, and saved views with synced filters/sort.
+
+### Fixed
+
+- **Dashboard reliability.** A legacy `sort=field:dir` param (rejected by the
+  strict validator) blanked the dashboard; Recharts 3 series rendered empty under
+  React 19; a hydration mismatch (#418) from localStorage read during render; and
+  the realtime-comments WebSocket namespace/token — all corrected.
+- **Reporting totals contract.** Portfolio + profitability totals aligned to the
+  client's expected shape (project/active counts, task totals, billable hours).
+
+### Schema
+
+- New tenanted tables (RLS `workspace_isolation` + grants):
+  `custom_field_definitions`, `automation_rules`, `webhook_endpoints`,
+  `webhook_deliveries`, `approvals`; recurrence columns on `tasks`/`projects`;
+  `tasks.estimatedHours` + `users.weeklyCapacityHours`.
+
 ## [1.8.1] — 2026-06-10
 
 Tenancy hardening point release: claimless callers resolve correctly, and two
