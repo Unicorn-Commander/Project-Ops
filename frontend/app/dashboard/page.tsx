@@ -82,9 +82,12 @@ export default function DashboardPage() {
       // Fetch real dashboard data from API. The full-list pull (`limit=1000`)
       // backs the Project Status + Priority charts — `recentProjects` is the
       // first 5 of the same set, used for the Recent Projects panel.
+      // Each call is independently caught so one failing widget can't blank the
+      // whole dashboard. (sort is the backend's split sortBy/sortDir contract —
+      // the legacy `sort=field:dir` param is rejected by the strict validator.)
       const [statsResponse, projectsResponse, tasksResponse] = await Promise.all([
-        api.get("/dashboard/overview"),
-        api.get("/projects?page=1&limit=1000&sort=createdAt:desc"),
+        api.get("/dashboard/overview").catch(() => ({ data: {} })),
+        api.get("/projects?page=1&limit=1000&sortBy=createdAt&sortDir=desc").catch(() => ({ data: { data: [] } })),
         getMyTasks({ take: 5, status: TaskStatus.PENDING }).catch(() => ({ data: [], total: 0, skip: 0, take: 0 })),
       ]);
 

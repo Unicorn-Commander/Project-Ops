@@ -16,7 +16,7 @@ export default function SchedulePage() {
   const fetchProjects = useCallback(async () => {
     try {
       const res = await api.get(
-        "/projects?page=1&limit=1000&sort=createdAt:desc",
+        "/projects?page=1&limit=1000&sortBy=createdAt&sortDir=desc",
       );
       setProjects(res.data.data || []);
     } catch (err) {
