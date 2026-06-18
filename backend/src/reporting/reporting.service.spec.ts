@@ -70,7 +70,10 @@ describe('ReportingService.getPortfolio', () => {
     expect(row.percentComplete).toBe(75);
     expect(row.overBudget).toBe(true);
 
-    expect(out.totals.projectCount).toBe(1);
+    expect(out.totals.projects).toBe(1);
+    expect(out.totals.activeProjects).toBe(1);
+    expect(out.totals.tasksTotal).toBe(4);
+    expect(out.totals.tasksCompleted).toBe(3);
     expect(out.totals.loggedHours).toBe(14.4);
     expect(out.totals.billedAmount).toBe(1500);
     expect(out.totals.overBudgetCount).toBe(1);
@@ -83,7 +86,7 @@ describe('ReportingService.getPortfolio', () => {
 
     const out = await svc.getPortfolio('ws1', admin);
     expect(out.projects).toEqual([]);
-    expect(out.totals.projectCount).toBe(0);
+    expect(out.totals.projects).toBe(0);
   });
 });
 

@@ -149,12 +149,21 @@ export class ReportingService {
           };
         });
 
+        // Statuses that count as "active" (in-flight, not finished/archived).
+        const ACTIVE_STATUSES = new Set<ProjectStatus>([
+          ProjectStatus.NEW,
+          ProjectStatus.IN_PROGRESS,
+          ProjectStatus.UNDER_REVIEW,
+        ]);
         const totals = {
-          projectCount: rows.length,
+          projects: rows.length,
+          activeProjects: rows.filter((r) => ACTIVE_STATUSES.has(r.status)).length,
           budgetHours: round2(sum(rows.map((r) => r.budgetHours ?? 0))),
           loggedHours: round2(sum(rows.map((r) => r.loggedHours))),
           budgetAmount: round2(sum(rows.map((r) => r.budgetAmount ?? 0))),
           billedAmount: round2(sum(rows.map((r) => r.billedAmount))),
+          tasksTotal: sum(rows.map((r) => r.tasksTotal)),
+          tasksCompleted: sum(rows.map((r) => r.tasksCompleted)),
           overBudgetCount: rows.filter((r) => r.overBudget).length,
         };
 
@@ -280,6 +289,7 @@ export class ReportingService {
         const totalMargin = totalCost !== null ? round2(totalBillable - totalCost) : null;
 
         const totals = {
+          billableHours: round2(sum(rows.map((r) => r.billableHours))),
           billableAmount: totalBillable,
           billedAmount: totalBilled,
           costBasis: totalCost,
@@ -476,11 +486,14 @@ export class ReportingService {
 
   private emptyPortfolioTotals() {
     return {
-      projectCount: 0,
+      projects: 0,
+      activeProjects: 0,
       budgetHours: 0,
       loggedHours: 0,
       budgetAmount: 0,
       billedAmount: 0,
+      tasksTotal: 0,
+      tasksCompleted: 0,
       overBudgetCount: 0,
     };
   }
