@@ -227,6 +227,8 @@ model User {
   updatedAt           DateTime  @updatedAt
   password            String?
   forcePasswordChange Boolean?  @default(false)
+  // Capacity planning (Wave 2): the user's weekly working-hours budget.
+  weeklyCapacityHours Int?      @default(40)
 
   // Relations - Projects
   assignedProjects Project[] @relation("ProjectAssignee")
@@ -528,6 +530,10 @@ model Project {
   // Metadata
   metadata Json?
 
+  // Recurrence (Wave 2): RRULE + the template project this instance was spawned from.
+  recurrenceRule     String?
+  recurrenceParentId String?
+
   // Relations
   contact         Contact?         @relation(fields: [contactId], references: [id])
   assignedTo      User?            @relation("ProjectAssignee", fields: [assignedToId], references: [id])
@@ -538,6 +544,9 @@ model Project {
   auditLogs       AuditLog[]
   triageProposals TriageProposal[] @relation("TriageProposalProject")
   timeEntries     TimeEntry[]
+  approvals       Approval[]
+  recurrenceParent    Project?  @relation("ProjectRecurrence", fields: [recurrenceParentId], references: [id], onDelete: SetNull)
+  recurrenceInstances Project[] @relation("ProjectRecurrence")
 
   @@unique([workspaceId, projectNumber])
   @@index([status])
@@ -552,6 +561,7 @@ model Project {
   @@index([workspaceId])
   @@index([workspaceId, status])
   @@index([workspaceId, assignedToId])
+  @@index([recurrenceParentId])
   @@map("projects")
 }
 
@@ -680,6 +690,11 @@ model Task {
   createdById  String
   assignedToId String?
   parentTaskId String?
+  // Recurrence (Wave 2): an RRULE string + the template task this instance was spawned from.
+  recurrenceRule     String?
+  recurrenceParentId String?
+  // Capacity planning (Wave 2): effort estimate used to compute per-user workload.
+  estimatedHours     Decimal?      @db.Decimal(8, 2)
   metadata     Json?
   // Time-tracking policy overrides (null = inherit from project)
   billable     Boolean?
@@ -695,6 +710,8 @@ model Task {
   subtasks     Task[]        @relation("TaskSubtasks")
   dependsOn    TaskDependency[] @relation("TaskDepSuccessor")
   dependents   TaskDependency[] @relation("TaskDepPredecessor")
+  recurrenceParent    Task?  @relation("TaskRecurrence", fields: [recurrenceParentId], references: [id], onDelete: SetNull)
+  recurrenceInstances Task[] @relation("TaskRecurrence")
 
   @@index([projectId])
   @@index([status])
@@ -706,6 +723,7 @@ model Task {
   @@index([workspaceId, status])
   @@index([workspaceId, assignedToId])
   @@index([parentTaskId])
+  @@index([recurrenceParentId])
   @@map("tasks")
 }
 
@@ -798,6 +816,161 @@ model SavedView {
   @@index([workspaceId, scope])
   @@index([userId])
   @@map("saved_views")
+}
+
+// ============================================================
+// WAVE 2: automations, custom fields, recurring, webhooks, client approvals
+// ============================================================
+// All five tables are workspace-tenanted (RLS workspace_isolation on workspaceId
+// + DML grant to project_ops_app). Recurrence lives as columns on tasks/projects;
+// custom-field VALUES live in the entity's existing `metadata` JSON under a
+// `customFields` key (only the DEFINITIONS get a table). DDL + RLS in the Wave-2 migration.
+
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  DATE
+  SELECT
+  MULTISELECT
+  BOOLEAN
+}
+
+enum CustomFieldEntity {
+  TASK
+  PROJECT
+}
+
+// Domain events an AutomationRule can fire on (mapped onto the EventEmitter stream).
+enum AutomationTrigger {
+  TASK_CREATED
+  TASK_STATUS_CHANGED
+  TASK_ASSIGNED
+  TASK_COMPLETED
+  PROJECT_CREATED
+  PROJECT_STATUS_CHANGED
+  COMMENT_CREATED
+}
+
+enum ClientApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+}
+
+enum ApprovalEntityType {
+  DOCUMENT
+  DELIVERABLE
+  PROJECT
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+// A user-defined field for tasks or projects. Values are stored in the entity's
+// metadata JSON under `customFields[key]`; only the definition is a row here.
+model CustomFieldDefinition {
+  id          String            @id @default(uuid())
+  workspaceId String
+  entity      CustomFieldEntity
+  key         String
+  label       String
+  type        CustomFieldType
+  options     Json?
+  required    Boolean           @default(false)
+  position    Int               @default(0)
+  createdById String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([workspaceId, entity, key])
+  @@index([workspaceId])
+  @@index([workspaceId, entity])
+  @@map("custom_field_definitions")
+}
+
+// A trigger -> conditions -> actions rule run by the automation engine off the EventEmitter.
+model AutomationRule {
+  id          String            @id @default(uuid())
+  workspaceId String
+  name        String
+  enabled     Boolean           @default(true)
+  trigger     AutomationTrigger
+  conditions  Json?
+  actions     Json
+  createdById String
+  lastRunAt   DateTime?
+  runCount    Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([workspaceId])
+  @@index([workspaceId, trigger, enabled])
+  @@map("automation_rules")
+}
+
+// An outbound webhook subscription; HMAC-signed deliveries are logged in WebhookDelivery.
+model WebhookEndpoint {
+  id          String            @id @default(uuid())
+  workspaceId String
+  url         String
+  secret      String
+  events      String[]
+  enabled     Boolean           @default(true)
+  description String?
+  createdById String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  deliveries  WebhookDelivery[]
+
+  @@index([workspaceId])
+  @@map("webhook_endpoints")
+}
+
+model WebhookDelivery {
+  id           String                @id @default(uuid())
+  workspaceId  String
+  endpointId   String
+  event        String
+  payload      Json
+  status       WebhookDeliveryStatus @default(PENDING)
+  responseCode Int?
+  attempts     Int                   @default(0)
+  error        String?
+  createdAt    DateTime              @default(now())
+  deliveredAt  DateTime?
+  endpoint     WebhookEndpoint       @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([endpointId])
+  @@map("webhook_deliveries")
+}
+
+// A client-portal approval request on a document / deliverable / project.
+model Approval {
+  id                 String               @id @default(uuid())
+  workspaceId        String
+  entityType         ApprovalEntityType
+  entityId           String
+  projectId          String?
+  requestedById      String
+  approverContactId  String?
+  status             ClientApprovalStatus @default(PENDING)
+  note               String?
+  decisionNote       String?
+  decidedByContactId String?
+  decidedAt          DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  project            Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([workspaceId, status])
+  @@index([projectId])
+  @@map("approvals")
 }
 
 // ============================================================
