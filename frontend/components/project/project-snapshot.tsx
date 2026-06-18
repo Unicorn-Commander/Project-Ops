@@ -153,7 +153,7 @@ export function ProjectSnapshot({ tasks }: ProjectSnapshotProps) {
         <div>
           <h4 className="text-sm font-semibold text-foreground mb-2">Status</h4>
           <div className="h-44">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={176}>
               <PieChart>
                 <Pie
                   data={statusData}
@@ -193,7 +193,7 @@ export function ProjectSnapshot({ tasks }: ProjectSnapshotProps) {
         <div>
           <h4 className="text-sm font-semibold text-foreground mb-2">Priority</h4>
           <div className="h-44">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={176}>
               <BarChart data={priorityData} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
                 <XAxis

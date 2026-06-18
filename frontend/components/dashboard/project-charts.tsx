@@ -100,7 +100,7 @@ export function ProjectCharts({ projects }: Props) {
           </div>
         </div>
         <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={224}>
             <PieChart>
               <Pie
                 data={statusData}
@@ -154,7 +154,7 @@ export function ProjectCharts({ projects }: Props) {
           </div>
         </div>
         <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={224}>
             <BarChart data={priorityData} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
               <XAxis

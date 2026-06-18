@@ -396,7 +396,7 @@ export default function UtilizationPage() {
           />
           <div className="h-64">
             {splitData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={256}>
                 <PieChart>
                   <Pie
                     data={splitData}
@@ -461,7 +461,7 @@ export default function UtilizationPage() {
           />
           <div className="h-64">
             {userData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={256}>
                 <BarChart
                   data={userData}
                   margin={{ top: 8, right: 8, bottom: 0, left: -16 }}
@@ -531,7 +531,7 @@ export default function UtilizationPage() {
         />
         <div className="h-72">
           {projectData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={256}>
               <BarChart
                 data={projectData}
                 margin={{ top: 8, right: 8, bottom: 0, left: -16 }}

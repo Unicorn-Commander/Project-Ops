@@ -164,7 +164,7 @@ export function ProjectsRollupCard({ projects, emptyMessage }: ProjectsRollupCar
         <div>
           <h4 className="text-sm font-semibold text-foreground mb-2">Project status</h4>
           <div className="h-44">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={176}>
               <PieChart>
                 <Pie
                   data={statusData}
@@ -202,7 +202,7 @@ export function ProjectsRollupCard({ projects, emptyMessage }: ProjectsRollupCar
         <div>
           <h4 className="text-sm font-semibold text-foreground mb-2">Priority</h4>
           <div className="h-44">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={176}>
               <BarChart data={priorityData} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
                 <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }} />
