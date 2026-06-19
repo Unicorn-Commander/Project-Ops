@@ -9,9 +9,9 @@
  * runs with their identity / RBAC.
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { User } from '@prisma/client';
+import { AgentVia, User } from '@prisma/client';
 import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
 import { MinioService } from '../documents/minio.service';
@@ -32,6 +32,11 @@ import { CapacityService } from '../capacity/capacity.service';
 import { AutomationsService } from '../automations/automations.service';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import { ApprovalsService } from '../client-portal/approvals/approvals.service';
+// Agent activity capture (v1.11) — OPTIONAL: when AgentsModule is imported into
+// McpModule the recorder is injected and every successful tool call is logged
+// as an AgentEvent; if not wired, capture is silently skipped (app still boots).
+import { AgentEventsService } from '../agents/agent-events.service';
+import { deriveToolTarget, McpActorIdentity, resolveMcpActor } from '../agents/agent-capture.util';
 
 @Injectable()
 export class McpService {
@@ -60,6 +65,8 @@ export class McpService {
     private readonly automations: AutomationsService,
     private readonly customFields: CustomFieldsService,
     private readonly approvals: ApprovalsService,
+    // OPTIONAL: present only when AgentsModule is imported into McpModule.
+    @Optional() private readonly agentEvents?: AgentEventsService,
   ) {}
 
   /**
@@ -95,6 +102,11 @@ export class McpService {
     grantedScopes?: string[] | null,
     bearerToken?: string | null,
     patWorkspaceId?: string | null,
+    // The authenticating PAT (id + human name), when the caller is PAT-auth'd.
+    // Used ONLY for agent-activity capture (actorKey/actorLabel); not security-
+    // bearing (scope + workspace gating already happen above). Undefined for
+    // JWT/federation callers — capture resolves their identity from `user`.
+    patIdentity?: { id: string; name?: string | null } | null,
   ) {
     const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 
@@ -121,6 +133,19 @@ export class McpService {
     // patWorkspaceId == null) pass straight through, preserving behavior.
     const grantedSet = grantedScopes ? new Set(grantedScopes) : null;
     const boundWorkspaceId = patWorkspaceId ?? null;
+
+    // Resolve this caller's agent identity ONCE (PAT / federation / user) for
+    // activity capture. Cheap + pure. Capture itself is best-effort and never
+    // blocks or fails a tool call.
+    const recorder = this.agentEvents;
+    // grantedScopes != null ⇒ the caller is PAT-auth'd (the controller only sets
+    // it for PATs). That's the stable signal we have without the controller
+    // threading the PAT id/name; `patIdentity` (if provided) enriches the label.
+    const actor: McpActorIdentity | null = recorder
+      ? resolveMcpActor(user, patIdentity, grantedScopes != null)
+      : null;
+    const captureWorkspaceId = () => boundWorkspaceId ?? this.workspace.resolve(user);
+
     const rawRegister = server.registerTool.bind(server);
     server.registerTool = (
       name: string,
@@ -154,7 +179,35 @@ export class McpService {
             return scopeDenied(name, required, [...grantedSet]);
           }
         }
-        return handler(args);
+        const startedAt = Date.now();
+        const result = await handler(args);
+        // Best-effort agent-activity capture AFTER a successful call. Skipped on
+        // an error envelope; never awaited into the response path; never throws
+        // (the recorder swallows its own errors, and we guard the derive too).
+        if (recorder && actor && !(result && (result as any).isError)) {
+          try {
+            const raw = unwrapToolResult(result);
+            const target = deriveToolTarget(name, args, raw);
+            void recorder.record({
+              workspaceId: captureWorkspaceId(),
+              user,
+              actorKind: actor.actorKind,
+              actorKey: actor.actorKey,
+              actorLabel: actor.actorLabel,
+              via: AgentVia.MCP,
+              action: name,
+              resource: target.resource,
+              resourceId: target.resourceId,
+              projectId: target.projectId,
+              taskId: target.taskId,
+              // MCP tool calls are zero-LLM-cost actions: no tokens / cost.
+              durationMs: Date.now() - startedAt,
+            });
+          } catch (err) {
+            this.logger.debug(`agent capture skipped for "${name}": ${(err as Error).message}`);
+          }
+        }
+        return result;
       };
       return rawRegister(name, schema, gated);
     };
@@ -1028,6 +1081,22 @@ function wrap(payload: unknown) {
       },
     ],
   };
+}
+
+/**
+ * Recover the raw tool object from a `wrap()`-ed MCP result envelope (the
+ * handlers return `wrap(<obj>)`, which serializes the object into
+ * `content[0].text`). Used ONLY by agent-activity capture to derive the touched
+ * project/task. Returns null on any non-standard shape — capture then records
+ * the event with no target rather than failing.
+ */
+function unwrapToolResult(result: any): any {
+  try {
+    const text = result?.content?.[0]?.text;
+    return typeof text === 'string' ? JSON.parse(text) : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

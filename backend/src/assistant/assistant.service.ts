@@ -7,16 +7,25 @@
  * (Aaron's chat history isn't shared with Shafen, etc).
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { User } from '@prisma/client';
+import { AgentActorKind, AgentVia, User } from '@prisma/client';
 import { ChatMessageDto } from './dto/chat.dto';
+// Agent activity capture (v1.11) — OPTIONAL: when AgentsModule is imported into
+// AssistantModule the recorder is injected and each assistant turn is logged as
+// an AgentEvent; if not wired, capture is skipped (app still boots).
+import { AgentEventsService } from '../agents/agent-events.service';
+import { WithWorkspaceClaim } from '../common/workspace/workspace.util';
 
 @Injectable()
 export class AssistantService {
   private readonly logger = new Logger(AssistantService.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    // OPTIONAL: present only when AgentsModule is imported into AssistantModule.
+    @Optional() private readonly agentEvents?: AgentEventsService,
+  ) {}
 
   private get brigadeBaseUrl(): string {
     return this.config.get<string>(
@@ -121,9 +130,74 @@ export class AssistantService {
       throw new Error('Assistant returned an empty reply.');
     }
 
+    // Best-effort agent-activity capture for this assistant turn. Never blocks
+    // or fails the reply (the recorder swallows its own errors).
+    this.captureTurn(user, body, data);
+
     return {
       content,
       messageId: data.id || data.messageId,
     };
   }
+
+  /**
+   * Record one `assistant.turn` AgentEvent. Token usage is pulled from the
+   * Brigade response IF it surfaces it — we probe the common shapes
+   * (`usage.{prompt,completion}_tokens` / `usage.{input,output}_tokens`,
+   * top-level `tokens_in`/`tokens_out`). Brigade's non-streaming v1 reply does
+   * not currently include usage in the fields this proxy reads, so tokens are
+   * typically null today.
+   *
+   * COST: left null. There is no per-model price wired into this proxy (the LLM
+   * runs behind Brigade, which meters its own spend via Lago). When a price
+   * becomes configurable here, compute costUsd from the captured tokens.
+   * TODO(cost): wire a configurable $/1k-token price (env) once Brigade exposes
+   * the model + token counts on the chat reply, then set costUsd.
+   */
+  private captureTurn(
+    user: User & Partial<WithWorkspaceClaim>,
+    body: { projectId?: string },
+    data: any,
+  ): void {
+    if (!this.agentEvents) return;
+    try {
+      const usage = data?.usage ?? {};
+      const tokensIn = firstNum(
+        usage.prompt_tokens,
+        usage.input_tokens,
+        usage.promptTokens,
+        data?.tokens_in,
+      );
+      const tokensOut = firstNum(
+        usage.completion_tokens,
+        usage.output_tokens,
+        usage.completionTokens,
+        data?.tokens_out,
+      );
+
+      void this.agentEvents.recordForUser(user, {
+        actorKind: AgentActorKind.ASSISTANT,
+        actorKey: 'assistant',
+        actorLabel: 'Project Assistant',
+        via: AgentVia.ASSISTANT,
+        action: 'assistant.turn',
+        projectId: body.projectId ?? null,
+        tokensIn,
+        tokensOut,
+        // costUsd intentionally null — see method doc (no price wired here).
+        costUsd: null,
+        details: data?.id || data?.messageId ? { messageId: data.id || data.messageId } : null,
+      });
+    } catch (err) {
+      this.logger.debug(`assistant turn capture skipped: ${(err as Error).message}`);
+    }
+  }
+}
+
+/** First finite number among the candidates, else null (Brigade usage probing). */
+function firstNum(...candidates: unknown[]): number | null {
+  for (const c of candidates) {
+    if (typeof c === 'number' && Number.isFinite(c)) return c;
+  }
+  return null;
 }
