@@ -24,6 +24,7 @@ shipped, see [`../CHANGELOG.md`](../CHANGELOG.md).
 - [Reporting](#reporting)
 - [Capacity planning](#capacity-planning)
 - [Time tracking & billing](#time-tracking--billing)
+- [Agent activity & usage](#agent-activity--usage)
 - [Two-way client portal](#two-way-client-portal)
 - [CRM — organizations & contacts](#crm--organizations--contacts)
 - [Documents](#documents)
@@ -386,6 +387,45 @@ invoicing.
 default); the **live** AO rollup is behind `BILLABLE_ROLLUP_LIVE` (off until
 the AO AR integration is signed off in production) — until then the rollup
 produces a draft + preview rather than a live invoice.
+
+---
+
+## Agent activity & usage
+
+The agent analog of time tracking. Time tracking answers "what did the *team*
+do, and what's it billable at"; this answers "what did your *AI agents* do —
+and what did it cost." Every agent action against the workspace is recorded as
+a first-class, workspace-scoped **`AgentEvent`** you can audit, chart, and mark
+billable — under **Time & Billing → Agents** (ADMIN/MANAGER).
+
+**What's captured.** Each event records the actor (`actorKind` ∈
+PAT / ASSISTANT / FEDERATED / USER / SYSTEM, with a stable `actorKey` + label),
+how it arrived (`via` ∈ MCP / API / ASSISTANT / GUI / SYSTEM), the `action`, the
+entity it touched (resource + optional project/task link), `tokensIn`/`tokensOut`,
+`costUsd`, `durationMs`, a `billable` flag, and `occurredAt`.
+
+- **Automatic capture.** An MCP tool call records an event after it succeeds
+  (`via=MCP`, the tool name as the action) and an in-app assistant turn records
+  one (`actorKind=ASSISTANT`). Capture is best-effort and never blocks the
+  request.
+- **MCP tool calls are zero-cost *actions*** — they count as events but carry no
+  tokens/cost (shown as `—`). Only assistant/LLM events carry tokens.
+
+**The Agents dashboard** (`/dashboard/agents`): KPI tiles (active agents,
+events, tokens, total + billable cost), an agent roster, usage & cost charts
+(events- and cost-over-time, per-agent breakdown), and a filterable, paginated
+activity feed — filter by agent / project / channel, with an inline **billable**
+toggle on cost-bearing rows. A per-agent detail page
+(`/dashboard/agents/[actorKey]`) drills into one agent's totals, per-project
+breakdown, and recent activity.
+
+**API.** `GET /agents` (roster + totals), `GET /agents/activity`,
+`GET /agents/usage`, `GET /agents/:actorKey`, `PATCH /agents/activity/:id/billable`
+— all ADMIN/MANAGER-gated and workspace-RLS-scoped.
+
+**Note.** Per-event cost attribution from the Brigade LLM proxy is a follow-up;
+today assistant events record tokens where the proxy surfaces them and cost is
+left null until the metering hook lands.
 
 ---
 

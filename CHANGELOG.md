@@ -19,6 +19,48 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `BILLABLE_ROLLUP_LIVE` (default off) until the AO AR integration is signed off
   in production.
 
+## [1.11.0] — 2026-06-19
+
+The **agent activity & usage ledger** — the agent analog of Timesheets /
+Utilization. Where time-tracking answers "what did the *team* do and what's it
+billable at," this answers "what did your *AI agents* do — and what did it
+cost." Every MCP tool call and in-app assistant turn is now recorded as a
+first-class, workspace-scoped event you can audit, chart, and mark billable.
+
+### Added
+
+- **`AgentEvent` ledger (backend).** A new `agent_events` table — workspace-scoped
+  with the same Postgres RLS `workspace_isolation` chokepoint as every other
+  tenant table — capturing `{ actorKind, actorKey, actorLabel, via, action,
+  resource, tokensIn, tokensOut, costUsd, durationMs, billable, occurredAt }`
+  plus optional project/task linkage. `actorKind` ∈ PAT / ASSISTANT / FEDERATED /
+  USER / SYSTEM; `via` ∈ MCP / API / ASSISTANT / GUI / SYSTEM.
+- **Automatic capture.** `McpService` records an event after each successful
+  tool call (`via=MCP`, the tool name as the action, the touched entity as the
+  resource, duration in ms — MCP tool calls are zero-cost *actions*, so
+  tokens/cost are null). `AssistantService` records each assistant turn
+  (`actorKind=ASSISTANT`). Both inject the recorder as an **optional** dependency
+  so capture never blocks or breaks the request path.
+- **`/agents` read API (ADMIN/MANAGER, workspace-scoped).** `GET /agents`
+  (roster + totals), `GET /agents/activity` (filterable, paginated audit feed),
+  `GET /agents/usage` (by-agent + time-series + totals), `GET /agents/:actorKey`
+  (one agent's totals, per-project breakdown, usage-over-time, recent activity),
+  and `PATCH /agents/activity/:id/billable` (flag a cost-bearing event billable).
+- **"Agents" dashboard (frontend).** A first-class peer to Timesheets /
+  Utilization under **Time & Billing**: KPI tiles (active agents, events, tokens,
+  total + billable cost), an agent roster, usage & cost charts (events-over-time,
+  cost-over-time, per-agent breakdown), and a filterable activity feed with an
+  inline billable toggle. A per-agent detail page (`/dashboard/agents/[actorKey]`)
+  drills into one agent. Hydration-safe date windows, the verified Recharts
+  config, light/dark, `HelpHint`s explaining what counts as an agent event and
+  why some rows carry no cost.
+
+### Notes
+
+- Many events carry **null** token/cost by design — MCP tool calls are recorded
+  as actions, not LLM spend. Only assistant/LLM events carry tokens; cost
+  attribution from the Brigade proxy is a follow-up (`TODO(cost)`).
+
 ## [1.10.0] — 2026-06-18
 
 The "best-in-class → no-asterisk" pass: agent-native parity for the Wave 2
