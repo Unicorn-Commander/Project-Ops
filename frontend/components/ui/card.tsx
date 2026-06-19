@@ -18,20 +18,29 @@ const Card = React.forwardRef<
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, onClick, onKeyDown, role, tabIndex, ...props }, ref) => {
   const isInteractive = typeof onClick === "function" && role === undefined;
+  // Only attach a keyboard handler when the card is actually interactive (or the
+  // consumer passed their own). A plain non-interactive Card must render WITHOUT
+  // any injected onKeyDown, both for correctness and because Next's static
+  // prerender rejects an unexpected event handler on an otherwise-static surface
+  // ("Event handlers cannot be passed to Client Component props").
+  const handleKeyDown =
+    isInteractive || onKeyDown
+      ? (e: React.KeyboardEvent<HTMLDivElement>) => {
+          onKeyDown?.(e);
+          if (isInteractive && !e.defaultPrevented && (e.key === "Enter" || e.key === " ")) {
+            // Space would otherwise scroll the page; Enter/Space should activate.
+            e.preventDefault();
+            (e.currentTarget as HTMLDivElement).click();
+          }
+        }
+      : undefined;
   return (
     <div
       ref={ref}
       onClick={onClick}
       role={isInteractive ? "button" : role}
       tabIndex={isInteractive ? (tabIndex ?? 0) : tabIndex}
-      onKeyDown={(e) => {
-        onKeyDown?.(e);
-        if (isInteractive && !e.defaultPrevented && (e.key === "Enter" || e.key === " ")) {
-          // Space would otherwise scroll the page; Enter/Space should activate.
-          e.preventDefault();
-          (e.currentTarget as HTMLDivElement).click();
-        }
-      }}
+      onKeyDown={handleKeyDown}
       className={cn(
         // `po-card` is a semantic hook used by the print stylesheet (and any
         // other surface-level rules that need to target every Card without
