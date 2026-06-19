@@ -45,6 +45,7 @@ import {
   AXIS_TICK,
   StatCard,
   ChartHeader,
+  ChartFigure,
   DateRangeControl,
   resolveRange,
   type RangeKey,
@@ -107,6 +108,22 @@ export function ThroughputSection() {
         fill: STATUS_COLOUR[s.label] ?? colourForIndex(i),
       }));
   }, [report]);
+
+  // Compact spoken summary of a {label,value} time series for the chart a11y
+  // label — first/last periods + the peak, so SR users get the shape not noise.
+  const seriesSummary = (
+    noun: string,
+    total: number,
+    series: SeriesPoint[],
+  ): string => {
+    if (series.length === 0) return `No ${noun} in this period.`;
+    const first = series[0]!;
+    const last = series[series.length - 1]!;
+    const peak = series.reduce((a, b) => (b.value > a.value ? b : a));
+    return `${total} ${noun} over ${series.length} period${
+      series.length === 1 ? "" : "s"
+    }, from ${first.label} (${first.value}) to ${last.label} (${last.value}); peak ${peak.value} in ${peak.label}.`;
+  };
 
   if (loading) return <ThroughputSkeleton range={range} onChange={setRange} />;
 
@@ -172,8 +189,15 @@ export function ThroughputSection() {
             </HelpHint>
           }
         />
-        <div className="h-72">
-          {taskSeries.length > 0 ? (
+        {taskSeries.length > 0 ? (
+          <ChartFigure
+            heightClass="h-72"
+            summary={seriesSummary(
+              "tasks completed",
+              report?.tasksCompleted.total ?? 0,
+              taskSeries,
+            )}
+          >
             <ResponsiveContainer width="100%" height={288}>
               <AreaChart
                 data={taskSeries}
@@ -219,7 +243,9 @@ export function ThroughputSection() {
                 />
               </AreaChart>
             </ResponsiveContainer>
-          ) : (
+          </ChartFigure>
+        ) : (
+          <div className="h-72">
             <EmptyState
               icon={LineIcon}
               iconTone="zinc"
@@ -227,8 +253,8 @@ export function ThroughputSection() {
               body="Completed tasks will plot over time here once work is finished in this period."
               className="h-full border-0"
             />
-          )}
-        </div>
+          </div>
+        )}
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -243,8 +269,13 @@ export function ThroughputSection() {
                 : "No tasks in this period"
             }
           />
-          <div className="h-64">
-            {statusData.length > 0 ? (
+          {statusData.length > 0 ? (
+            <ChartFigure
+              heightClass="h-64"
+              summary={`Tasks by status: ${statusData
+                .map((d) => `${d.name} ${d.value}`)
+                .join(", ")}.`}
+            >
               <ResponsiveContainer width="100%" height={256}>
                 <BarChart
                   data={statusData}
@@ -283,7 +314,9 @@ export function ThroughputSection() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-            ) : (
+            </ChartFigure>
+          ) : (
+            <div className="h-64">
               <EmptyState
                 icon={BarChart3}
                 iconTone="zinc"
@@ -291,8 +324,8 @@ export function ThroughputSection() {
                 body="Task status distribution will appear here."
                 className="h-full border-0"
               />
-            )}
-          </div>
+            </div>
+          )}
         </Card>
 
         {/* Projects completed over time */}
@@ -306,8 +339,15 @@ export function ThroughputSection() {
                 : "No projects completed in this period"
             }
           />
-          <div className="h-64">
-            {projectSeries.length > 0 ? (
+          {projectSeries.length > 0 ? (
+            <ChartFigure
+              heightClass="h-64"
+              summary={seriesSummary(
+                "projects completed",
+                report?.projectsCompleted.total ?? 0,
+                projectSeries,
+              )}
+            >
               <ResponsiveContainer width="100%" height={256}>
                 <AreaChart
                   data={projectSeries}
@@ -353,7 +393,9 @@ export function ThroughputSection() {
                   />
                 </AreaChart>
               </ResponsiveContainer>
-            ) : (
+            </ChartFigure>
+          ) : (
+            <div className="h-64">
               <EmptyState
                 icon={Activity}
                 iconTone="zinc"
@@ -361,8 +403,8 @@ export function ThroughputSection() {
                 body="Completed projects will plot over time here."
                 className="h-full border-0"
               />
-            )}
-          </div>
+            </div>
+          )}
         </Card>
       </div>
     </div>

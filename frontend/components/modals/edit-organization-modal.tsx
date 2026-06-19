@@ -247,7 +247,7 @@ export function EditOrganizationModal({ isOpen, organization, onClose, onSuccess
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
                   City
@@ -359,14 +359,14 @@ export function EditOrganizationModal({ isOpen, organization, onClose, onSuccess
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2 border border-border text-foreground rounded-lg hover:bg-muted/50 transition-colors"
+              className="px-6 py-2 border border-border text-foreground rounded-lg hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
             >
               {loading ? 'Saving...' : 'Save Changes'}
             </button>

@@ -91,7 +91,17 @@ export function CapacityChart({ rows }: { rows: UserCapacityRow[] }) {
         </div>
       </div>
 
-      <div className="h-72">
+      <div
+        className="h-72"
+        role="img"
+        aria-label={
+          data.length > 0
+            ? `Committed hours against capacity per person: ${data
+                .map((d) => `${d.fullName} committed ${d.committed} of ${d.capacity} hours`)
+                .join("; ")}.`
+            : "No team members to chart."
+        }
+      >
         {data.length > 0 ? (
           <ResponsiveContainer width="100%" height={272}>
             <BarChart

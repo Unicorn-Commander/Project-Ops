@@ -287,6 +287,7 @@ export default function DashboardPage() {
             <Card
               key={label}
               onClick={() => router.push(href)}
+              aria-label={`${label}: ${value}. View details.`}
               className={`group relative cursor-pointer overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:shadow-md border-l-4 ${stripe} ${wash}`}
             >
               <div className="flex items-start justify-between">
@@ -354,8 +355,17 @@ export default function DashboardPage() {
                   return (
                   <div
                     key={task.id}
-                    className={`group p-3 border rounded-lg cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-sm hover:bg-card border-l-4 ${pc.borderLeft} ${pc.cardWash}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Task: ${task.title}. Open details.`}
                     onClick={() => handleTaskClick(task)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleTaskClick(task);
+                      }
+                    }}
+                    className={`group p-3 border rounded-lg cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-sm hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background border-l-4 ${pc.borderLeft} ${pc.cardWash}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
@@ -444,8 +454,17 @@ export default function DashboardPage() {
                 return (
                 <div
                   key={projectItem.id}
-                  className={`group flex items-center justify-between gap-4 p-4 border rounded-lg cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md hover:bg-card border-l-4 ${pc.borderLeft} ${pc.cardWash}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Project ${projectItem.projectNumber}: ${projectItem.title}. Open project.`}
                   onClick={() => router.push(`/dashboard/projects/${projectItem.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      router.push(`/dashboard/projects/${projectItem.id}`);
+                    }
+                  }}
+                  className={`group flex items-center justify-between gap-4 p-4 border rounded-lg cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background border-l-4 ${pc.borderLeft} ${pc.cardWash}`}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-1.5">

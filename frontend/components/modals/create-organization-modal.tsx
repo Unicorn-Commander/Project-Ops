@@ -147,7 +147,7 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
             <label className="block text-sm font-medium text-foreground mb-3">
               Organization Type <span className="text-red-500">*</span>
             </label>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <button
                 type="button"
                 onClick={() => handleTypeChange('AGENCY')}
@@ -279,7 +279,7 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
                   City
@@ -384,14 +384,14 @@ export function CreateOrganizationModal({ isOpen, onClose, onSuccess }: CreateOr
             <button
               type="button"
               onClick={handleClose}
-              className="px-6 py-2 border border-border text-foreground rounded-lg hover:bg-muted/50 transition-colors"
+              className="px-6 py-2 border border-border text-foreground rounded-lg hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
             >
               {loading ? 'Creating...' : 'Create Organization'}
             </button>

@@ -42,6 +42,7 @@ import {
   StatCard,
   ChartHeader,
   ChartLegend,
+  ChartFigure,
 } from "./shared";
 import {
   FolderKanban,
@@ -76,9 +77,19 @@ function MeterBar({
 }) {
   const clamped = Math.min(100, Math.max(0, pct ?? 0));
   const fill = over ? COLOUR.rose : clamped >= 90 ? COLOUR.amber : COLOUR.emerald;
+  const meterLabel =
+    pct === null
+      ? "No budget set"
+      : `${pct.toFixed(0)}% of budget used${
+          over ? " — over budget" : clamped >= 90 ? " — near budget" : ""
+        }`;
   return (
     <div className="flex items-center gap-2">
-      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-foreground/[0.08]">
+      <div
+        className="h-1.5 w-20 overflow-hidden rounded-full bg-foreground/[0.08]"
+        role="img"
+        aria-label={meterLabel}
+      >
         <div
           className="h-full rounded-full"
           style={{ width: `${clamped}%`, background: fill }}
@@ -231,8 +242,13 @@ export function PortfolioSection() {
               : "No projects in this workspace yet"
           }
         />
-        <div className="h-64">
-          {donutData.length > 0 ? (
+        {donutData.length > 0 ? (
+          <ChartFigure
+            heightClass="h-64"
+            summary={`Projects by status: ${donutData
+              .map((d) => `${d.name} ${d.value}`)
+              .join(", ")}.`}
+          >
             <ResponsiveContainer width="100%" height={256}>
               <PieChart>
                 <Pie
@@ -255,7 +271,9 @@ export function PortfolioSection() {
                 />
               </PieChart>
             </ResponsiveContainer>
-          ) : (
+          </ChartFigure>
+        ) : (
+          <div className="h-64">
             <EmptyState
               icon={PieIcon}
               iconTone="zinc"
@@ -263,8 +281,8 @@ export function PortfolioSection() {
               body="Project status distribution will appear here once you have projects."
               className="h-full border-0"
             />
-          )}
-        </div>
+          </div>
+        )}
         <ChartLegend
           items={donutData.map((d) => ({
             key: d.key,
@@ -298,8 +316,12 @@ export function PortfolioSection() {
           </div>
         </div>
         {hasProjects ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="-mx-6 overflow-x-auto px-6">
+            <table className="w-full min-w-[40rem] text-sm">
+              <caption className="sr-only">
+                Project health: budget burn, billing, and completion per
+                project. Use the column header buttons to sort.
+              </caption>
               <thead>
                 <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
                   <SortableTh
@@ -309,7 +331,7 @@ export function PortfolioSection() {
                     sortDir={sortDir}
                     onSort={toggleSort}
                     align="left"
-                    className="pl-3"
+                    className="sticky left-0 z-10 bg-card pl-3"
                   />
                   <SortableTh
                     label="Client"
@@ -382,7 +404,12 @@ function ProjectRow({ p }: { p: PortfolioProject }) {
           : ""
       }`}
     >
-      <td className="py-2.5 pl-3 pr-4">
+      <th
+        scope="row"
+        className={`sticky left-0 z-10 py-2.5 pl-3 pr-4 text-left font-normal ${
+          p.overBudget ? "bg-rose-50 dark:bg-rose-950/40" : "bg-card"
+        }`}
+      >
         <div className="flex items-center gap-2">
           <span className="font-medium text-foreground">{p.projectNumber}</span>
           {p.overBudget && (
@@ -395,7 +422,7 @@ function ProjectRow({ p }: { p: PortfolioProject }) {
         <span className="text-xs text-muted-foreground line-clamp-1">
           {p.title}
         </span>
-      </td>
+      </th>
       <td className="py-2.5 px-4 text-muted-foreground/80">
         {p.clientName ?? <span className="text-muted-foreground/40">—</span>}
       </td>
@@ -448,17 +475,22 @@ function SortableTh({
   const Icon = !active ? ArrowUpDown : sortDir === "asc" ? ArrowUp : ArrowDown;
   return (
     <th
+      scope="col"
+      aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
       className={`font-medium py-2 ${align === "right" ? "text-right pl-4" : "text-left pr-4"} ${className ?? ""}`}
     >
       <button
         type="button"
         onClick={() => onSort(col)}
-        className={`inline-flex items-center gap-1 transition-colors hover:text-foreground ${
+        aria-label={`Sort by ${label}${
+          active ? (sortDir === "asc" ? ", ascending" : ", descending") : ""
+        }`}
+        className={`inline-flex items-center gap-1 rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
           active ? "text-foreground" : ""
         } ${align === "right" ? "flex-row-reverse" : ""}`}
       >
         {label}
-        <Icon className="h-3 w-3 opacity-60" />
+        <Icon className="h-3 w-3 opacity-60" aria-hidden />
       </button>
     </th>
   );

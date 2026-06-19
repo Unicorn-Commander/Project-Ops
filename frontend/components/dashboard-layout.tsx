@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -117,6 +117,36 @@ function pageTitleFor(pathname: string | null): string {
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // Refs for the mobile-drawer focus dance: when the drawer opens we move
+  // focus to its close button; when it closes we restore focus to the
+  // hamburger that opened it. Esc closes the drawer.
+  const hamburgerRef = useRef<HTMLButtonElement>(null);
+  const sidebarCloseRef = useRef<HTMLButtonElement>(null);
+  // Tracks whether the drawer was open on the previous render so we only
+  // restore focus to the hamburger after a real open→close transition (not on
+  // initial mount, which would steal focus to it on every page load).
+  const sidebarWasOpen = useRef(false);
+
+  useEffect(() => {
+    if (sidebarOpen) {
+      sidebarWasOpen.current = true;
+      // Defer so the element is mounted/visible before we focus it.
+      const id = window.setTimeout(() => sidebarCloseRef.current?.focus(), 0);
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === "Escape") setSidebarOpen(false);
+      };
+      window.addEventListener("keydown", onKey);
+      return () => {
+        window.clearTimeout(id);
+        window.removeEventListener("keydown", onKey);
+      };
+    }
+    // On close, return focus to the trigger for a coherent keyboard flow.
+    if (sidebarWasOpen.current) {
+      sidebarWasOpen.current = false;
+      hamburgerRef.current?.focus();
+    }
+  }, [sidebarOpen]);
 
   // Cmd/Ctrl+K opens the command palette from anywhere in the dashboard.
   // Cmd+/ toggles too — common alt-binding from other SaaS apps.
@@ -194,6 +224,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
+          aria-hidden="true"
           className="fixed inset-0 z-40 bg-foreground/30 backdrop-blur-sm lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
@@ -201,6 +232,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
       {/* Sidebar */}
       <aside
+        id="dashboard-sidebar"
+        aria-label="Primary"
         className={`fixed inset-y-0 left-0 z-50 w-64 transform border-r border-border bg-card transition-transform duration-300 lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
@@ -220,9 +253,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               </div>
             </Link>
             <Button
+              ref={sidebarCloseRef}
               variant="ghost"
               size="sm"
               className="lg:hidden"
+              aria-label="Close navigation menu"
               onClick={() => setSidebarOpen(false)}
             >
               <X className="h-5 w-5" />
@@ -263,7 +298,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                         <Link
                           key={item.name}
                           href={item.href}
-                          className={`group flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm font-medium transition-colors ${
+                          aria-current={isActive ? "page" : undefined}
+                          className={`group flex items-center gap-3 rounded-lg px-2 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-card ${
                             isActive
                               ? "bg-foreground/[0.06] text-foreground"
                               : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -302,9 +338,13 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         {/* Top bar */}
         <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border/60 bg-card/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-card/60 lg:px-6">
           <Button
+            ref={hamburgerRef}
             variant="ghost"
             size="sm"
             className="lg:hidden"
+            aria-label="Open navigation menu"
+            aria-expanded={sidebarOpen}
+            aria-controls="dashboard-sidebar"
             onClick={() => setSidebarOpen(true)}
           >
             <Menu className="h-5 w-5" />

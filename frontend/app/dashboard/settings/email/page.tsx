@@ -297,21 +297,23 @@ export default function EmailSettingsPage() {
       <Card className="p-6">
         <button
           onClick={() => setShowInstructions(!showInstructions)}
-          className="flex items-center justify-between w-full text-left"
+          aria-expanded={showInstructions}
+          aria-controls="setup-instructions"
+          className="flex items-center justify-between w-full rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <div className="flex items-center gap-3">
             <AlertCircle className="h-5 w-5 text-primary" />
             <h2 className="text-xl font-semibold">Setup Instructions</h2>
           </div>
           {showInstructions ? (
-            <ChevronUp className="h-5 w-5" />
+            <ChevronUp className="h-5 w-5" aria-hidden />
           ) : (
-            <ChevronDown className="h-5 w-5" />
+            <ChevronDown className="h-5 w-5" aria-hidden />
           )}
         </button>
 
         {showInstructions && (
-          <div className="mt-6 space-y-6">
+          <div id="setup-instructions" className="mt-6 space-y-6">
             {/* Security Notice */}
             <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-700 rounded-lg p-4">
               <div className="flex gap-3">
@@ -343,7 +345,7 @@ export default function EmailSettingsPage() {
                     href={SMTP_PROVIDERS.microsoft365.setupUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-primary hover:underline inline-flex items-center gap-1 font-medium"
+                    className="text-primary hover:underline inline-flex items-center gap-1 font-medium rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     Microsoft Account Security
                     <ExternalLink className="h-3 w-3" />
@@ -373,7 +375,7 @@ export default function EmailSettingsPage() {
                     href={SMTP_PROVIDERS.google.setupUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-primary hover:underline inline-flex items-center gap-1 font-medium"
+                    className="text-primary hover:underline inline-flex items-center gap-1 font-medium rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     Google App Passwords
                     <ExternalLink className="h-3 w-3" />
@@ -423,7 +425,11 @@ export default function EmailSettingsPage() {
                 value={selectedProvider}
                 onValueChange={(value) => setValue("provider", value as any)}
               >
-                <SelectTrigger>
+                <SelectTrigger
+                  id="provider"
+                  aria-invalid={!!errors.provider}
+                  aria-describedby={errors.provider ? "provider-error" : undefined}
+                >
                   <SelectValue placeholder="Select provider" />
                 </SelectTrigger>
                 <SelectContent>
@@ -433,7 +439,7 @@ export default function EmailSettingsPage() {
                 </SelectContent>
               </Select>
               {errors.provider && (
-                <p className="text-sm text-red-500">{errors.provider.message}</p>
+                <p id="provider-error" className="text-sm text-red-500">{errors.provider.message}</p>
               )}
             </div>
 
@@ -444,14 +450,16 @@ export default function EmailSettingsPage() {
                 id="smtpHost"
                 {...register("smtpHost")}
                 placeholder="smtp.example.com"
+                aria-invalid={!!errors.smtpHost}
+                aria-describedby={errors.smtpHost ? "smtpHost-error" : undefined}
               />
               {errors.smtpHost && (
-                <p className="text-sm text-red-500">{errors.smtpHost.message}</p>
+                <p id="smtpHost-error" className="text-sm text-red-500">{errors.smtpHost.message}</p>
               )}
             </div>
 
             {/* SMTP Port and TLS */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="smtpPort">SMTP Port</Label>
                 <Input
@@ -459,9 +467,11 @@ export default function EmailSettingsPage() {
                   type="number"
                   {...register("smtpPort", { valueAsNumber: true })}
                   placeholder="587"
+                  aria-invalid={!!errors.smtpPort}
+                  aria-describedby={errors.smtpPort ? "smtpPort-error" : undefined}
                 />
                 {errors.smtpPort && (
-                  <p className="text-sm text-red-500">{errors.smtpPort.message}</p>
+                  <p id="smtpPort-error" className="text-sm text-red-500">{errors.smtpPort.message}</p>
                 )}
               </div>
               <div className="space-y-2">
@@ -471,6 +481,7 @@ export default function EmailSettingsPage() {
                     id="useTLS"
                     checked={useTLS}
                     onCheckedChange={(checked) => setValue("useTLS", checked)}
+                    aria-label="Use TLS or STARTTLS"
                   />
                   <span className="text-sm text-muted-foreground">
                     {useTLS ? "Enabled" : "Disabled"}
@@ -487,11 +498,15 @@ export default function EmailSettingsPage() {
                 type="email"
                 {...register("email")}
                 placeholder="your-email@company.com"
+                aria-invalid={!!errors.email}
+                aria-describedby={
+                  errors.email ? "email-error" : "email-hint"
+                }
               />
               {errors.email && (
-                <p className="text-sm text-red-500">{errors.email.message}</p>
+                <p id="email-error" className="text-sm text-red-500">{errors.email.message}</p>
               )}
-              <p className="text-sm text-muted-foreground">
+              <p id="email-hint" className="text-sm text-muted-foreground">
                 The email address used to send emails
               </p>
             </div>
@@ -506,11 +521,17 @@ export default function EmailSettingsPage() {
                   {...register("password")}
                   placeholder="Enter app-specific password"
                   className="pr-10"
+                  aria-invalid={!!errors.password}
+                  aria-describedby={
+                    errors.password ? "password-error" : "password-hint"
+                  }
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4" />
@@ -520,9 +541,9 @@ export default function EmailSettingsPage() {
                 </button>
               </div>
               {errors.password && (
-                <p className="text-sm text-red-500">{errors.password.message}</p>
+                <p id="password-error" className="text-sm text-red-500">{errors.password.message}</p>
               )}
-              <p className="text-sm text-muted-foreground">
+              <p id="password-hint" className="text-sm text-muted-foreground">
                 Use an app-specific password, not your regular email password
               </p>
             </div>
@@ -534,11 +555,13 @@ export default function EmailSettingsPage() {
                 id="fromName"
                 {...register("fromName")}
                 placeholder="Project Ops"
+                aria-invalid={!!errors.fromName}
+                aria-describedby={errors.fromName ? "fromName-error" : "fromName-hint"}
               />
               {errors.fromName && (
-                <p className="text-sm text-red-500">{errors.fromName.message}</p>
+                <p id="fromName-error" className="text-sm text-red-500">{errors.fromName.message}</p>
               )}
-              <p className="text-sm text-muted-foreground">
+              <p id="fromName-hint" className="text-sm text-muted-foreground">
                 The name that appears in the "From" field of sent emails
               </p>
             </div>
@@ -546,14 +569,18 @@ export default function EmailSettingsPage() {
             {/* Enable/Disable */}
             <div className="flex items-center justify-between border-t pt-6">
               <div>
-                <p className="font-medium">Enable Email Sending</p>
+                <Label htmlFor="email-enabled" className="font-medium cursor-pointer">
+                  Enable Email Sending
+                </Label>
                 <p className="text-sm text-muted-foreground">
                   Turn email notifications on or off
                 </p>
               </div>
               <Switch
+                id="email-enabled"
                 checked={enabled}
                 onCheckedChange={(checked) => setValue("enabled", checked)}
+                aria-label="Enable email sending"
               />
             </div>
 

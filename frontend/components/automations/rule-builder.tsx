@@ -326,8 +326,13 @@ export function RuleBuilder({
               placeholder="e.g. Notify the lead when an urgent task lands"
               maxLength={200}
               aria-invalid={!!errors.name}
+              aria-describedby={errors.name ? "rule-name-error" : undefined}
             />
-            {errors.name && <p className="text-sm text-rose-600">{errors.name}</p>}
+            {errors.name && (
+              <p id="rule-name-error" className="text-sm text-rose-600">
+                {errors.name}
+              </p>
+            )}
           </div>
 
           {/* WHEN — trigger */}
@@ -350,7 +355,7 @@ export function RuleBuilder({
                 );
               }}
             >
-              <SelectTrigger>
+              <SelectTrigger aria-label="Trigger event">
                 <SelectValue placeholder="Choose a trigger…" />
               </SelectTrigger>
               <SelectContent>
@@ -418,7 +423,10 @@ export function RuleBuilder({
                             value={c.field}
                             onValueChange={(v) => updateCondition(c.key, { field: v, value: "" })}
                           >
-                            <SelectTrigger aria-invalid={!!errors[`c:${c.key}:field`]}>
+                            <SelectTrigger
+                              aria-label="Condition field"
+                              aria-invalid={!!errors[`c:${c.key}:field`]}
+                            >
                               <SelectValue placeholder="Field…" />
                             </SelectTrigger>
                             <SelectContent>
@@ -436,6 +444,7 @@ export function RuleBuilder({
                             value={c.field}
                             onChange={(e) => updateCondition(c.key, { field: e.target.value })}
                             placeholder="field.path"
+                            aria-label="Condition field path"
                           />
                         )}
 
@@ -444,7 +453,7 @@ export function RuleBuilder({
                           value={c.op}
                           onValueChange={(v) => updateCondition(c.key, { op: v as ConditionOp })}
                         >
-                          <SelectTrigger>
+                          <SelectTrigger aria-label="Condition operator">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -461,11 +470,16 @@ export function RuleBuilder({
                           kind={kind}
                           value={c.value}
                           invalid={!!errors[`c:${c.key}:value`]}
+                          describedBy={
+                            errors[`c:${c.key}:field`] || errors[`c:${c.key}:value`]
+                              ? `c-${c.key}-error`
+                              : undefined
+                          }
                           onChange={(v) => updateCondition(c.key, { value: v })}
                         />
                       </div>
                       {(errors[`c:${c.key}:field`] || errors[`c:${c.key}:value`]) && (
-                        <p className="mt-1.5 text-xs text-rose-600">
+                        <p id={`c-${c.key}-error`} className="mt-1.5 text-xs text-rose-600">
                           {errors[`c:${c.key}:field`] || errors[`c:${c.key}:value`]}
                         </p>
                       )}
@@ -532,7 +546,7 @@ export function RuleBuilder({
 
                     <div className="space-y-2">
                       <Select value={a.type} onValueChange={(v) => changeActionType(a.key, v as ActionType)}>
-                        <SelectTrigger>
+                        <SelectTrigger aria-label={`Step ${idx + 1} action`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -608,18 +622,25 @@ function ConditionValueEditor({
   kind,
   value,
   invalid,
+  describedBy,
   onChange,
 }: {
   kind: FieldKind;
   value: string;
   invalid: boolean;
+  /** id of an error message to associate, if any. */
+  describedBy?: string;
   onChange: (v: string) => void;
 }) {
   if (kind === "status" || kind === "priority") {
     const options = kind === "status" ? TASK_STATUS_OPTIONS : TASK_PRIORITY_OPTIONS;
     return (
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger aria-invalid={invalid}>
+        <SelectTrigger
+          aria-label="Condition value"
+          aria-invalid={invalid}
+          aria-describedby={describedBy}
+        >
           <SelectValue placeholder="Choose…" />
         </SelectTrigger>
         <SelectContent>
@@ -637,7 +658,9 @@ function ConditionValueEditor({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder="Value"
+      aria-label="Condition value"
       aria-invalid={invalid}
+      aria-describedby={describedBy}
     />
   );
 }
@@ -659,12 +682,21 @@ function ActionParamsEditor({
 }) {
   const p = action.params;
   const err = (field: string) => errors[`a:${action.key}:${field}`];
+  // Stable per-control ids so labels + error text associate to the right field.
+  const fieldId = (field: string) => `a-${action.key}-${field}`;
+  const errId = (field: string) => `${fieldId(field)}-error`;
 
   const UserPicker = ({ field, label }: { field: string; label: string }) => (
     <div className="space-y-1.5">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <Label htmlFor={fieldId(field)} className="text-xs text-muted-foreground">
+        {label}
+      </Label>
       <Select value={p[field] ?? ""} onValueChange={(v) => onParam(field, v)}>
-        <SelectTrigger aria-invalid={!!err(field)}>
+        <SelectTrigger
+          id={fieldId(field)}
+          aria-invalid={!!err(field)}
+          aria-describedby={err(field) ? errId(field) : undefined}
+        >
           <SelectValue placeholder="Choose a person…" />
         </SelectTrigger>
         <SelectContent>
@@ -681,7 +713,11 @@ function ActionParamsEditor({
           )}
         </SelectContent>
       </Select>
-      {err(field) && <p className="text-xs text-rose-600">{err(field)}</p>}
+      {err(field) && (
+        <p id={errId(field)} className="text-xs text-rose-600">
+          {err(field)}
+        </p>
+      )}
     </div>
   );
 
@@ -694,8 +730,11 @@ function ActionParamsEditor({
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <UserPicker field="userId" label="Notify" />
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Message (optional)</Label>
+            <Label htmlFor={fieldId("message")} className="text-xs text-muted-foreground">
+              Message (optional)
+            </Label>
             <Input
+              id={fieldId("message")}
               value={p.message ?? ""}
               onChange={(e) => onParam("message", e.target.value)}
               placeholder="e.g. A new urgent task needs you"
@@ -707,9 +746,15 @@ function ActionParamsEditor({
     case "set_status":
       return (
         <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">New status</Label>
+          <Label htmlFor={fieldId("status")} className="text-xs text-muted-foreground">
+            New status
+          </Label>
           <Select value={p.status ?? ""} onValueChange={(v) => onParam("status", v)}>
-            <SelectTrigger aria-invalid={!!err("status")}>
+            <SelectTrigger
+              id={fieldId("status")}
+              aria-invalid={!!err("status")}
+              aria-describedby={err("status") ? errId("status") : undefined}
+            >
               <SelectValue placeholder="Choose a status…" />
             </SelectTrigger>
             <SelectContent>
@@ -720,22 +765,34 @@ function ActionParamsEditor({
               ))}
             </SelectContent>
           </Select>
-          {err("status") && <p className="text-xs text-rose-600">{err("status")}</p>}
+          {err("status") && (
+            <p id={errId("status")} className="text-xs text-rose-600">
+              {err("status")}
+            </p>
+          )}
         </div>
       );
 
     case "add_comment":
       return (
         <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Comment</Label>
+          <Label htmlFor={fieldId("text")} className="text-xs text-muted-foreground">
+            Comment
+          </Label>
           <Textarea
+            id={fieldId("text")}
             value={p.text ?? ""}
             onChange={(e) => onParam("text", e.target.value)}
             placeholder="The comment to post on the task…"
             rows={3}
             aria-invalid={!!err("text")}
+            aria-describedby={err("text") ? errId("text") : undefined}
           />
-          {err("text") && <p className="text-xs text-rose-600">{err("text")}</p>}
+          {err("text") && (
+            <p id={errId("text")} className="text-xs text-rose-600">
+              {err("text")}
+            </p>
+          )}
         </div>
       );
 
@@ -743,20 +800,30 @@ function ActionParamsEditor({
       return (
         <div className="space-y-2">
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Task title</Label>
+            <Label htmlFor={fieldId("title")} className="text-xs text-muted-foreground">
+              Task title
+            </Label>
             <Input
+              id={fieldId("title")}
               value={p.title ?? ""}
               onChange={(e) => onParam("title", e.target.value)}
               placeholder="e.g. Follow up with the client"
               aria-invalid={!!err("title")}
+              aria-describedby={err("title") ? errId("title") : undefined}
             />
-            {err("title") && <p className="text-xs text-rose-600">{err("title")}</p>}
+            {err("title") && (
+              <p id={errId("title")} className="text-xs text-rose-600">
+                {err("title")}
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Priority (optional)</Label>
+              <Label htmlFor={fieldId("priority")} className="text-xs text-muted-foreground">
+                Priority (optional)
+              </Label>
               <Select value={p.priority ?? ""} onValueChange={(v) => onParam("priority", v)}>
-                <SelectTrigger>
+                <SelectTrigger id={fieldId("priority")}>
                   <SelectValue placeholder="Default" />
                 </SelectTrigger>
                 <SelectContent>
@@ -769,9 +836,11 @@ function ActionParamsEditor({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Project (optional)</Label>
+              <Label htmlFor={fieldId("projectId")} className="text-xs text-muted-foreground">
+                Project (optional)
+              </Label>
               <Select value={p.projectId ?? ""} onValueChange={(v) => onParam("projectId", v)}>
-                <SelectTrigger>
+                <SelectTrigger id={fieldId("projectId")}>
                   <SelectValue placeholder="Same as trigger" />
                 </SelectTrigger>
                 <SelectContent>

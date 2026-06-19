@@ -665,11 +665,11 @@ export default function KanbanPage() {
           </Select>
         </div>
 
-        <div className="flex items-center justify-between mt-4 pt-4 border-t">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-3 mt-4 pt-4 border-t sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
             {/* Type Filter — labels via shared TASK_TYPES helper */}
             <Select value={selectedType} onValueChange={setSelectedType}>
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className="w-full sm:w-[200px]">
                 <SelectValue placeholder="All Types" />
               </SelectTrigger>
               <SelectContent>
@@ -687,7 +687,12 @@ export default function KanbanPage() {
             </div>
           </div>
 
-          <Button variant="outline" size="sm" onClick={handleClearFilters}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleClearFilters}
+            className="self-start sm:self-auto"
+          >
             <X className="h-4 w-4 mr-2" />
             Clear Filters
           </Button>

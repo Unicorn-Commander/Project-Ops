@@ -181,6 +181,42 @@ export function ChartHeader({
   );
 }
 
+/**
+ * Accessible wrapper for a Recharts chart. The chart itself is opaque SVG to a
+ * screen reader, so we expose the fixed-height body as `role="img"` with an
+ * `aria-label` summary, and render a visually-hidden longer description (the
+ * underlying numbers) so SR users get the substance, not just "graphic".
+ *
+ * `summary` is the short spoken label (becomes the aria-label); optional
+ * `children` after the chart can carry an sr-only data fallback (e.g. a list of
+ * the series points) for charts where the legend doesn't already do that.
+ *
+ * Keeps the same fixed-height-div contract the charts rely on (numeric
+ * ResponsiveContainer heights, isAnimationActive=false) — it only adds the
+ * a11y attributes around the existing body.
+ */
+export function ChartFigure({
+  heightClass,
+  summary,
+  children,
+  srOnly,
+}: {
+  /** Tailwind height class for the body (e.g. "h-64", "h-72"). */
+  heightClass: string;
+  /** Short spoken description — becomes the chart's accessible name. */
+  summary: string;
+  children: React.ReactNode;
+  /** Optional richer text fallback, rendered visually-hidden after the chart. */
+  srOnly?: React.ReactNode;
+}) {
+  return (
+    <div className={heightClass} role="img" aria-label={summary}>
+      {children}
+      {srOnly && <span className="sr-only">{srOnly}</span>}
+    </div>
+  );
+}
+
 export function ChartCard({
   icon,
   title,

@@ -185,9 +185,9 @@ export default function AutomationsPage() {
       {/* Header */}
       <div className="border-b border-border bg-card">
         <div className="container mx-auto px-6 py-6">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary">
                 <Zap className="h-6 w-6 text-white" strokeWidth={2.25} />
               </div>
               <div>

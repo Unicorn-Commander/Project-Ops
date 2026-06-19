@@ -43,6 +43,7 @@ import {
   AXIS_TICK,
   StatCard,
   ChartHeader,
+  ChartFigure,
   DateRangeControl,
   resolveRange,
   type RangeKey,
@@ -200,8 +201,13 @@ export function ProfitabilitySection() {
                   : "No billed projects in this period"
               }
             />
-            <div className="h-72">
-              {marginData.length > 0 ? (
+            {marginData.length > 0 ? (
+              <ChartFigure
+                heightClass="h-72"
+                summary={`Margin by project: ${marginData
+                  .map((d) => `${d.fullName} ${formatMoney(d.margin)}`)
+                  .join(", ")}.`}
+              >
                 <ResponsiveContainer width="100%" height={288}>
                   <BarChart
                     data={marginData}
@@ -250,7 +256,9 @@ export function ProfitabilitySection() {
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
-              ) : (
+              </ChartFigure>
+            ) : (
+              <div className="h-72">
                 <EmptyState
                   icon={BarChart3}
                   iconTone="zinc"
@@ -258,8 +266,8 @@ export function ProfitabilitySection() {
                   body="Once projects are billed in this period, their margin contribution appears here."
                   className="h-full border-0"
                 />
-              )}
-            </div>
+              </div>
+            )}
           </Card>
 
           {/* Profitability table */}
@@ -285,17 +293,22 @@ export function ProfitabilitySection() {
               </div>
             </div>
             {hasProjects ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div className="-mx-6 overflow-x-auto px-6">
+                <table className="w-full min-w-[44rem] text-sm">
+                  <caption className="sr-only">
+                    Profitability by project: billable value, billed, cost basis,
+                    margin, margin percent, and realization. A negative margin is
+                    a loss.
+                  </caption>
                   <thead>
                     <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
-                      <th className="text-left font-medium py-2 pl-3 pr-4">Project</th>
-                      <th className="text-right font-medium py-2 px-4">Billable</th>
-                      <th className="text-right font-medium py-2 px-4">Billed</th>
-                      <th className="text-right font-medium py-2 px-4">Cost</th>
-                      <th className="text-right font-medium py-2 px-4">Margin</th>
-                      <th className="text-right font-medium py-2 px-4">Margin %</th>
-                      <th className="text-right font-medium py-2 pl-4">Realization</th>
+                      <th scope="col" className="sticky left-0 z-10 bg-card text-left font-medium py-2 pl-3 pr-4">Project</th>
+                      <th scope="col" className="text-right font-medium py-2 px-4">Billable</th>
+                      <th scope="col" className="text-right font-medium py-2 px-4">Billed</th>
+                      <th scope="col" className="text-right font-medium py-2 px-4">Cost</th>
+                      <th scope="col" className="text-right font-medium py-2 px-4">Margin</th>
+                      <th scope="col" className="text-right font-medium py-2 px-4">Margin %</th>
+                      <th scope="col" className="text-right font-medium py-2 pl-4">Realization</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -310,14 +323,20 @@ export function ProfitabilitySection() {
                               : ""
                           }`}
                         >
-                          <td className="py-2.5 pl-3 pr-4">
+                          <th
+                            scope="row"
+                            className={`sticky left-0 z-10 py-2.5 pl-3 pr-4 text-left font-normal ${
+                              negative ? "bg-rose-50 dark:bg-rose-950/40" : "bg-card"
+                            }`}
+                          >
                             <span className="font-medium text-foreground line-clamp-1">
                               {p.title}
+                              {negative && <span className="sr-only"> (operating at a loss)</span>}
                             </span>
                             <span className="text-[11px] text-muted-foreground font-mono tabular-nums">
                               {formatHours(p.billableHours)} billable
                             </span>
-                          </td>
+                          </th>
                           <td className="py-2.5 px-4 text-right font-mono tabular-nums text-foreground">
                             {formatMoney(p.billableAmount)}
                           </td>
@@ -355,7 +374,7 @@ export function ProfitabilitySection() {
                   {totals && (
                     <tfoot>
                       <tr className="border-t-2 border-border text-sm font-semibold">
-                        <td className="py-2.5 pl-3 pr-4 text-foreground">Total</td>
+                        <th scope="row" className="sticky left-0 z-10 bg-card py-2.5 pl-3 pr-4 text-left text-foreground">Total</th>
                         <td className="py-2.5 px-4 text-right font-mono tabular-nums text-foreground">
                           {formatMoney(totals.billableAmount)}
                         </td>

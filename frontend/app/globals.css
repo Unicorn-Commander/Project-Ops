@@ -156,6 +156,167 @@
   .po-stagger-3    { animation: po-fade-in-up 280ms cubic-bezier(0.2, 0.7, 0.2, 1) 120ms both; }
 }
 
+/* ────────────────────────────────────────────────────────────────────────
+ * Enter/exit animation utilities (CSS-first, dependency-free)
+ *
+ * The Radix-style kit (dialog, dropdown-menu, select, alert-dialog, toast,
+ * tooltip…) is authored against the `tailwindcss-animate` class vocabulary —
+ * `animate-in` / `animate-out` plus the `fade-*`, `zoom-*`, `slide-in-from-*`,
+ * `slide-out-to-*` modifiers, gated on Radix `data-[state=open|closed]`,
+ * `data-[side=*]` and `data-[swipe=end]` attributes. That plugin isn't
+ * installed and Tailwind v4 ships no JS config to register it, so without
+ * these definitions the classes are inert and every overlay popped with no
+ * transition.
+ *
+ * We re-create the exact mechanism here: `animate-in`/`animate-out` run the
+ * `enter`/`exit` keyframes, which read CSS variables; each modifier sets one
+ * of those variables (translate/scale/opacity). Because the class *names*
+ * match what the kit already emits — and Tailwind variants like
+ * `data-[state=open]:animate-in` simply prepend a selector — every existing
+ * combination composes correctly with zero component changes.
+ *
+ * Defaults mirror tailwindcss-animate (200ms, both fill) and are overridable
+ * by the `duration-*` utilities already used in the kit (e.g. dialog's
+ * `duration-200`). Honour prefers-reduced-motion at the bottom.
+ * ──────────────────────────────────────────────────────────────────────── */
+/* The two keyframes the utilities below drive. Each reads CSS variables so a
+ * single pair of keyframes serves every fade/zoom/slide combination — the
+ * modifier utilities only set the variables. */
+@keyframes enter {
+  from {
+    opacity: var(--tw-enter-opacity, 1);
+    transform: translate3d(
+        var(--tw-enter-translate-x, 0),
+        var(--tw-enter-translate-y, 0),
+        0
+      )
+      scale3d(
+        var(--tw-enter-scale, 1),
+        var(--tw-enter-scale, 1),
+        var(--tw-enter-scale, 1)
+      )
+      rotate(var(--tw-enter-rotate, 0));
+  }
+}
+
+@keyframes exit {
+  to {
+    opacity: var(--tw-exit-opacity, 1);
+    transform: translate3d(
+        var(--tw-exit-translate-x, 0),
+        var(--tw-exit-translate-y, 0),
+        0
+      )
+      scale3d(
+        var(--tw-exit-scale, 1),
+        var(--tw-exit-scale, 1),
+        var(--tw-exit-scale, 1)
+      )
+      rotate(var(--tw-exit-rotate, 0));
+  }
+}
+
+/* IMPORTANT: these MUST be registered with Tailwind via `@utility` (not as
+ * plain `.class` rules). Tailwind v4 only generates the variant-prefixed forms
+ * the kit actually emits — `data-[state=open]:animate-in`,
+ * `data-[side=bottom]:slide-in-from-top-2`, `data-[swipe=end]:animate-out` —
+ * when the base name is a known utility. Hand-written `.animate-in {}` would
+ * leave every `data-[state=...]:`-prefixed usage unmatched (verified against
+ * the real Tailwind PostCSS pipeline). */
+
+/* Base enter/exit — run the keyframes. Defaults mirror tailwindcss-animate
+ * (200ms, both fill) and remain overridable by the `duration-*` utilities the
+ * kit already uses (e.g. dialog's `duration-200`). */
+@utility animate-in {
+  animation-name: enter;
+  animation-duration: 200ms;
+  animation-fill-mode: both;
+  /* Reset every channel so a bare `animate-in` is a clean fade-from-nothing
+   * rather than inheriting a stray variable from an earlier rule. */
+  --tw-enter-opacity: initial;
+  --tw-enter-scale: initial;
+  --tw-enter-rotate: initial;
+  --tw-enter-translate-x: initial;
+  --tw-enter-translate-y: initial;
+}
+
+@utility animate-out {
+  animation-name: exit;
+  animation-duration: 200ms;
+  animation-fill-mode: both;
+  --tw-exit-opacity: initial;
+  --tw-exit-scale: initial;
+  --tw-exit-rotate: initial;
+  --tw-exit-translate-x: initial;
+  --tw-exit-translate-y: initial;
+}
+
+/* Fade — opacity channel. `-0` = from/to fully transparent; `-80` is the
+ * toast's near-opaque exit. */
+@utility fade-in-0 { --tw-enter-opacity: 0; }
+@utility fade-out-0 { --tw-exit-opacity: 0; }
+@utility fade-out-80 { --tw-exit-opacity: 0.8; }
+
+/* Zoom — uniform scale channel. `-95` = start/end at 95%. */
+@utility zoom-in-95 { --tw-enter-scale: 0.95; }
+@utility zoom-out-95 { --tw-exit-scale: 0.95; }
+
+/* Slide in (enter) — start the element offset toward the named edge, animate
+ * to rest. Functional (`-*`) utilities cover the spacing-scale integers (`-2`),
+ * arbitrary percentages (`-[48%]`) and fractions (`-1/2`); the named `-full`
+ * (100%) cases are explicit statics. Sign convention matches
+ * tailwindcss-animate: top/left negative, bottom/right positive. */
+@utility slide-in-from-top-* {
+  --tw-enter-translate-y: calc(--value([percentage]) * -1);
+  --tw-enter-translate-y: calc(var(--spacing) * --value(integer) * -1);
+  --tw-enter-translate-y: calc(--value(ratio) * -100%);
+}
+@utility slide-in-from-bottom-* {
+  --tw-enter-translate-y: --value([percentage]);
+  --tw-enter-translate-y: calc(var(--spacing) * --value(integer));
+  --tw-enter-translate-y: calc(--value(ratio) * 100%);
+}
+@utility slide-in-from-left-* {
+  --tw-enter-translate-x: calc(--value([percentage]) * -1);
+  --tw-enter-translate-x: calc(var(--spacing) * --value(integer) * -1);
+  --tw-enter-translate-x: calc(--value(ratio) * -100%);
+}
+@utility slide-in-from-right-* {
+  --tw-enter-translate-x: --value([percentage]);
+  --tw-enter-translate-x: calc(var(--spacing) * --value(integer));
+  --tw-enter-translate-x: calc(--value(ratio) * 100%);
+}
+@utility slide-in-from-top-full { --tw-enter-translate-y: -100%; }
+@utility slide-in-from-bottom-full { --tw-enter-translate-y: 100%; }
+
+/* Slide out (exit) — animate the element out toward the named edge. */
+@utility slide-out-to-top-* {
+  --tw-exit-translate-y: calc(--value([percentage]) * -1);
+  --tw-exit-translate-y: calc(var(--spacing) * --value(integer) * -1);
+  --tw-exit-translate-y: calc(--value(ratio) * -100%);
+}
+@utility slide-out-to-left-* {
+  --tw-exit-translate-x: calc(--value([percentage]) * -1);
+  --tw-exit-translate-x: calc(var(--spacing) * --value(integer) * -1);
+  --tw-exit-translate-x: calc(--value(ratio) * -100%);
+}
+@utility slide-out-to-right-* {
+  --tw-exit-translate-x: --value([percentage]);
+  --tw-exit-translate-x: calc(var(--spacing) * --value(integer));
+  --tw-exit-translate-x: calc(--value(ratio) * 100%);
+}
+@utility slide-out-to-right-full { --tw-exit-translate-x: 100%; }
+
+/* Reduced motion: collapse all enter/exit animation to nothing. The kit also
+ * carries `motion-reduce:animate-none` on the heavy overlays, but covering it
+ * here makes every consumer of these utilities safe by default. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-in,
+  .animate-out {
+    animation: none !important;
+  }
+}
+
 @layer components {
   /* Primary Button Styling - Project Ops Purple */
   .btn-primary,

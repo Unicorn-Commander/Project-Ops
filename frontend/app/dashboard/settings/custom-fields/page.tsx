@@ -469,10 +469,13 @@ function FieldEditorModal({
   }
 
   return (
-    <ModalShell onClose={submitting ? undefined : onClose}>
+    <ModalShell
+      onClose={submitting ? undefined : onClose}
+      labelledBy="cf-editor-title"
+    >
       <div className="flex items-start justify-between mb-4">
         <div>
-          <h3 className="text-lg font-semibold">
+          <h3 id="cf-editor-title" className="text-lg font-semibold">
             {isEdit ? "Edit field" : "New field"}
           </h3>
           <p className="text-xs text-muted-foreground">
@@ -484,7 +487,7 @@ function FieldEditorModal({
           aria-label="Close"
           onClick={onClose}
           disabled={submitting}
-          className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+          className="rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
         >
           <X className="h-5 w-5" />
         </button>
@@ -526,13 +529,15 @@ function FieldEditorModal({
             disabled={submitting || isEdit}
             className={`font-mono ${keyCollision ? "border-red-500" : ""}`}
             maxLength={64}
+            aria-invalid={keyCollision}
+            aria-describedby="cf-key-help"
           />
           {keyCollision ? (
-            <p className="text-xs text-red-500">
+            <p id="cf-key-help" className="text-xs text-red-500">
               A field with this key already exists for this entity.
             </p>
           ) : (
-            <p className="text-xs text-muted-foreground">
+            <p id="cf-key-help" className="text-xs text-muted-foreground">
               {isEdit
                 ? "The stable identity for stored values — immutable."
                 : "Auto-derived from the label. A lowercase slug used as the stored value key."}
@@ -698,9 +703,9 @@ function DeleteConfirmModal({
   onConfirm: () => void;
 }) {
   return (
-    <ModalShell onClose={onCancel}>
+    <ModalShell onClose={onCancel} labelledBy="cf-delete-title">
       <div className="mb-4">
-        <h3 className="text-lg font-semibold">Delete field?</h3>
+        <h3 id="cf-delete-title" className="text-lg font-semibold">Delete field?</h3>
         <p className="text-sm text-muted-foreground">
           <span className="font-medium text-foreground">{def.label}</span> will
           be removed from the {def.entity.toLowerCase()} forms. Values already
@@ -725,14 +730,32 @@ function DeleteConfirmModal({
 function ModalShell({
   children,
   onClose,
+  labelledBy,
 }: {
   children: React.ReactNode;
   onClose?: () => void;
+  /** id of the heading that names this dialog (for aria-labelledby). */
+  labelledBy?: string;
 }) {
+  // Escape closes (matches the kit's Radix dialogs). Bound while mounted only.
+  useEffect(() => {
+    if (!onClose) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
-      <div className="relative bg-card border rounded-lg shadow-lg max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={labelledBy}
+        className="relative bg-card border rounded-lg shadow-lg max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto"
+      >
         {children}
       </div>
     </div>
