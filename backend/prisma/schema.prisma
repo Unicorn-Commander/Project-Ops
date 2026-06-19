@@ -229,6 +229,9 @@ model User {
   forcePasswordChange Boolean?  @default(false)
   // Capacity planning (Wave 2): the user's weekly working-hours budget.
   weeklyCapacityHours Int?      @default(40)
+  // Per-user email notification preferences (v1.10): { events: {...}, digest?: ... }.
+  // null = defaults. In-app notifications are always on; this gates EMAIL only.
+  notificationPreferences Json?
 
   // Relations - Projects
   assignedProjects Project[] @relation("ProjectAssignee")
