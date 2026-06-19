@@ -41,6 +41,7 @@ import { AutomationsModule } from './automations/automations.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { CapacityModule } from './capacity/capacity.module';
 import { ReportingModule } from './reporting/reporting.module';
+import { AgentsModule } from './agents/agents.module';
 
 @Module({
   imports: [
@@ -95,6 +96,7 @@ import { ReportingModule } from './reporting/reporting.module';
     WebhooksModule,
     CapacityModule,
     ReportingModule,
+    AgentsModule,
   ],
   providers: [
     // MembershipService is needed to construct the GLOBAL WorkspaceMembershipGuard

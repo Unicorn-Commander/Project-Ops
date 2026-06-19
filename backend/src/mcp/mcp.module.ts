@@ -14,6 +14,9 @@ import { CapacityModule } from '../capacity/capacity.module';
 import { AutomationsModule } from '../automations/automations.module';
 import { CustomFieldsModule } from '../custom-fields/custom-fields.module';
 import { ClientPortalModule } from '../client-portal/client-portal.module';
+// AgentsModule exports AgentEventsService — McpService injects it @Optional()
+// to record each successful tool call as an agent activity event (via=MCP).
+import { AgentsModule } from '../agents/agents.module';
 
 @Module({
   imports: [
@@ -28,6 +31,7 @@ import { ClientPortalModule } from '../client-portal/client-portal.module';
     // ClientPortalModule exports ApprovalsService (the staff `request` +
     // `listForProject` spine the approval tools wrap).
     ClientPortalModule,
+    AgentsModule,
   ],
   controllers: [McpController],
   providers: [McpService],

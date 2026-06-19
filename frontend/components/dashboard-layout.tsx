@@ -49,6 +49,7 @@ import {
   Gauge,
   Zap,
   LifeBuoy,
+  Bot,
 } from "lucide-react";
 
 interface NavItem {
@@ -73,6 +74,7 @@ const navigation: NavItem[] = [
   { name: "Time entries", href: "/dashboard/time", icon: Clock, group: "Time & Billing" },
   { name: "Timesheets", href: "/dashboard/timesheets", icon: CalendarClock, group: "Time & Billing" },
   { name: "Utilization", href: "/dashboard/utilization", icon: BarChart3, group: "Time & Billing" },
+  { name: "Agents", href: "/dashboard/agents", icon: Bot, managerOnly: true, group: "Time & Billing" },
   { name: "Reports", href: "/dashboard/reports", icon: LineChart, group: "Time & Billing" },
   { name: "Capacity", href: "/dashboard/capacity", icon: Gauge, managerOnly: true, group: "Time & Billing" },
   { name: "Billing", href: "/dashboard/billing", icon: Receipt, managerOnly: true, group: "Time & Billing" },
@@ -105,6 +107,7 @@ function pageTitleFor(pathname: string | null): string {
     "/dashboard/time": "Time entries",
     "/dashboard/timesheets": "Timesheets",
     "/dashboard/utilization": "Utilization",
+    "/dashboard/agents": "Agents",
     "/dashboard/billing": "Billing",
     "/dashboard/organizations": "Organizations",
     "/dashboard/contacts": "Contacts",
