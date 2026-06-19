@@ -19,6 +19,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `BILLABLE_ROLLUP_LIVE` (default off) until the AO AR integration is signed off
   in production.
 
+## [1.11.2] — 2026-06-19
+
+### Added
+
+- **`GET /api/v1/health/integrations`** — operator-facing diagnostics that report
+  each external dependency (database, Keycloak, Brigade, uc-registry, object
+  storage) as `ok` / `down` / `not_configured`. Always returns 200 with a
+  per-integration `{status, configured, detail, latencyMs}`; probes are
+  non-throwing config + reachability checks with fast timeouts (a configured
+  dependency that is unreachable is `down`; an unset optional one is
+  `not_configured`, not a failure). Reuses the existing Prisma/MinIO/registry
+  config so the report mirrors what the app actually talks to.
+
 ## [1.11.1] — 2026-06-19
 
 Completes the v1.11 cost dimension — and fixes a latent production outage the

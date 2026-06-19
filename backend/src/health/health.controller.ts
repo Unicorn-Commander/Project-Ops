@@ -9,6 +9,7 @@ import {
   DiskHealthIndicator,
 } from '@nestjs/terminus';
 import { PrismaHealthIndicator } from './prisma.health';
+import { IntegrationsHealthService } from './integrations.health';
 import { Public } from '../common/decorators/public.decorator';
 import { SkipWorkspaceMembership } from '../common/workspace/skip-workspace-membership.decorator';
 
@@ -29,6 +30,7 @@ export class HealthController {
     private memory: MemoryHealthIndicator,
     private disk: DiskHealthIndicator,
     private prismaHealth: PrismaHealthIndicator,
+    private integrationsHealth: IntegrationsHealthService,
   ) {}
 
   @Get()
@@ -58,5 +60,15 @@ export class HealthController {
   @ApiResponse({ status: 503, description: 'Service is not ready' })
   readiness() {
     return this.health.check([() => this.prismaHealth.isHealthy('database')]);
+  }
+
+  @Get('integrations')
+  @ApiOperation({
+    summary: 'External integration status (DB, Keycloak, Brigade, registry, storage)',
+  })
+  @ApiResponse({ status: 200, description: 'Per-integration status report (always 200)' })
+  integrations() {
+    // Operator diagnostics: always 200, with per-integration ok/down/not_configured.
+    return this.integrationsHealth.check();
   }
 }
