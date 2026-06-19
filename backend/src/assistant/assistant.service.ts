@@ -16,6 +16,7 @@ import { ChatMessageDto } from './dto/chat.dto';
 // an AgentEvent; if not wired, capture is skipped (app still boots).
 import { AgentEventsService } from '../agents/agent-events.service';
 import { WithWorkspaceClaim } from '../common/workspace/workspace.util';
+import { computeTurnCostUsd, loadTokenPrices } from './assistant-pricing';
 
 @Injectable()
 export class AssistantService {
@@ -141,18 +142,16 @@ export class AssistantService {
   }
 
   /**
-   * Record one `assistant.turn` AgentEvent. Token usage is pulled from the
-   * Brigade response IF it surfaces it — we probe the common shapes
-   * (`usage.{prompt,completion}_tokens` / `usage.{input,output}_tokens`,
-   * top-level `tokens_in`/`tokens_out`). Brigade's non-streaming v1 reply does
-   * not currently include usage in the fields this proxy reads, so tokens are
-   * typically null today.
+   * Record one `assistant.turn` AgentEvent. Brigade's non-streaming reply DOES
+   * surface real token usage on success (`usage.{prompt,completion}_tokens`) plus
+   * the resolved `model`; we capture both. (We also probe the `input/output` and
+   * top-level `tokens_in/out` shapes defensively.)
    *
-   * COST: left null. There is no per-model price wired into this proxy (the LLM
-   * runs behind Brigade, which meters its own spend via Lago). When a price
-   * becomes configurable here, compute costUsd from the captured tokens.
-   * TODO(cost): wire a configurable $/1k-token price (env) once Brigade exposes
-   * the model + token counts on the chat reply, then set costUsd.
+   * COST: derived from the captured tokens via the per-model price table in
+   * `assistant-pricing.ts` (overridable by the `ASSISTANT_TOKEN_PRICES` env).
+   * The assistant runs a LOCAL, free-tier model today → truthful $0. An unknown/
+   * unpriced model yields null (the ledger shows "—") rather than a fabricated
+   * cost. Point the assistant at a billed model + add its price to get real $.
    */
   private captureTurn(
     user: User & Partial<WithWorkspaceClaim>,
@@ -174,6 +173,15 @@ export class AssistantService {
         usage.completionTokens,
         data?.tokens_out,
       );
+      const model = typeof data?.model === 'string' ? data.model : null;
+      const prices = loadTokenPrices(this.config.get<string>('ASSISTANT_TOKEN_PRICES'));
+      const costUsd = computeTurnCostUsd(model, tokensIn, tokensOut, prices);
+
+      const messageId = data?.id || data?.messageId;
+      const details =
+        model || messageId
+          ? { ...(model ? { model } : {}), ...(messageId ? { messageId } : {}) }
+          : null;
 
       void this.agentEvents.recordForUser(user, {
         actorKind: AgentActorKind.ASSISTANT,
@@ -184,9 +192,8 @@ export class AssistantService {
         projectId: body.projectId ?? null,
         tokensIn,
         tokensOut,
-        // costUsd intentionally null — see method doc (no price wired here).
-        costUsd: null,
-        details: data?.id || data?.messageId ? { messageId: data.id || data.messageId } : null,
+        costUsd,
+        details,
       });
     } catch (err) {
       this.logger.debug(`assistant turn capture skipped: ${(err as Error).message}`);

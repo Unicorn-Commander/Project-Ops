@@ -19,6 +19,37 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `BILLABLE_ROLLUP_LIVE` (default off) until the AO AR integration is signed off
   in production.
 
+## [1.11.1] — 2026-06-19
+
+Completes the v1.11 cost dimension — and fixes a latent production outage the
+agent ledger surfaced: the in-app assistant had **never** successfully answered.
+
+### Fixed
+
+- **In-app assistant was completely broken (operational / Brigade-side).** The
+  `project-ops-assistant` Brigade agent ran a model loaded at a **2048-token**
+  context, but the agent's prompt (its injected MCP tool schemas + system
+  prompt) is **~5,300 tokens** — so every call failed with a context-overflow
+  (`exceed_context_size_error`) and the assistant returned 500 on 100% of
+  requests. Repointed the agent to **`Qwen3.6-35B-A3B`** (32k context,
+  local/sovereign, no-think, a proven-reliable tool-caller) — it now answers in
+  ~11s with real token usage and no `<think>` leakage. (The agent's graphiti
+  memory subsystem, broken for the same reason, recovers too.) *Note: this is a
+  live `brigade_db.agents` change; persist it in Brigade's agent seed so a
+  Brigade redeploy doesn't revert to the broken model.*
+
+### Added
+
+- **Assistant-turn cost attribution.** `captureTurn` now records the resolved
+  `model` and computes `costUsd` from a per-model price table
+  (`assistant-pricing.ts`, overridable via the `ASSISTANT_TOKEN_PRICES` env).
+  Brigade returns real token usage on success (it always did — the prior
+  "usage is null" code comment was stale), so tokens were already captured; this
+  makes **cost** real too. The current local/sovereign model is **free → a
+  truthful $0**; an unknown/unpriced model yields `null` (the ledger shows "—")
+  rather than a fabricated cost. Point the assistant at a billed model + add its
+  price to surface real dollars.
+
 ## [1.11.0] — 2026-06-19
 
 The **agent activity & usage ledger** — the agent analog of Timesheets /
