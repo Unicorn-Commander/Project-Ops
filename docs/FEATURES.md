@@ -445,11 +445,32 @@ print-friendly for a paper status report.
 
 - **In-app notifications** — a bell in the top bar with an unread badge; the
   dropdown lists recent items (each links to its entity) with "Mark all as
-  read". It polls ~30s and pauses when the tab is hidden.
+  read". It polls ~30s and pauses when the tab is hidden. Always on.
+- **Email notifications** — opt in to emails for the events you care about at
+  **Settings → Notifications**: a master "Email notifications" switch plus a
+  per-event map (task assigned, @mention, approval requested, status changes, …),
+  with the high-signal events on by default. Email respects your preferences;
+  in-app notifications stay on regardless.
 - **@mentions** — mention a teammate in a task comment to notify them.
 
 Notifications also back the automations **notify** action and assignment
 events.
+
+---
+
+## Guidance & onboarding
+
+Project Ops explains itself as you go.
+
+- **Onboarding** — first-run staff get a short welcome tour and a "getting
+  started" checklist (create your first project, add a task, try ⌘K, set up
+  custom fields, explore Help) that checks items off as you complete them, and
+  re-opens any time from the dashboard. Clients get a warm welcome in the portal.
+- **Tooltips** — default-on, dismissible help hints sit beside non-obvious
+  controls and deep-link to the matching Help-center article. Turn them off, or
+  reset tips/tours, at **Settings → Help & guidance**.
+- **Help center** — `/dashboard/help`: searchable, categorized guides for every
+  feature.
 
 ---
 

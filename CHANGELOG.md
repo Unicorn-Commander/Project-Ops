@@ -19,6 +19,59 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `BILLABLE_ROLLUP_LIVE` (default off) until the AO AR integration is signed off
   in production.
 
+## [1.10.0] — 2026-06-18
+
+The "best-in-class → no-asterisk" pass: agent-native parity for the Wave 2
+features, an in-app guidance layer (onboarding + tooltips), email notifications
+with per-user preferences, a client-portal glow-up, and an accessibility +
+mobile hardening sweep.
+
+### Added
+
+- **MCP agent parity for Wave 2.** 12 new MCP tools — `get_portfolio_report`,
+  `get_profitability_report`, `get_throughput_report`, `get_team_capacity`,
+  `get_my_capacity`, `list_automations`, `create_automation`,
+  `set_automation_enabled`, `delete_automation`, `list_custom_fields`,
+  `list_project_approvals`, `request_approval` — plus `customFields` /
+  `recurrenceRule` / `estimatedHours` on the task & project create/update tools
+  (43 tools total). All run the same workspace-RLS chokepoint + role gates as the
+  REST API; 6 new scopes registered; the `.well-known/mcps.json` manifest advertises
+  them to the federation.
+- **In-app guidance.** A first-run onboarding experience (a welcome tour + a
+  done-detecting "getting started" checklist) for staff and a warm welcome for
+  clients, plus default-on, dismissible **tooltips** across the app that explain
+  each non-obvious control and deep-link to the matching Help-center article. A
+  "Show help tips" toggle + "reset tips/tours" live in Settings.
+- **Email notifications + preferences.** Per-user email preferences (a master
+  toggle + per-event switches) at Settings → Notifications, wired to a
+  preference-gated email listener over the domain events (in-app notifications
+  stay always-on). `GET`/`PATCH /notifications/preferences`;
+  `User.notificationPreferences`.
+
+### Changed
+
+- **Client portal glow-up.** A hospitality pass on the customer-facing portal —
+  a branded welcome hero, friendlier nav, elevated cards + empty states, a
+  reassuring approvals page, a trustworthy invoices page with a confident Pay
+  deep-link, and a client first-run welcome. Data wiring unchanged.
+- **Accessibility.** Clickable cards are keyboard-operable (role=button +
+  Enter/Space); the sidebar drawer manages focus + Escape + ARIA; nav uses
+  `aria-current`; data tables get captions / `scope` / `aria-sort`; charts get
+  `role="img"` + spoken data summaries; color-coded states carry text
+  reinforcement; icon-only controls are labelled.
+- **Mobile.** Dense reports/profitability tables degrade to sticky-first-column
+  scroll under `md:`; org modals, the kanban filter bar, and settings grids
+  reflow; touch targets ≥40px.
+
+### Fixed
+
+- **Dead animation utilities.** The kit's `animate-in`/`fade-in`/`zoom-in`/
+  `slide-in` classes were silent no-ops (no `tailwindcss-animate`, Tailwind v4);
+  defined them the v4 way (`@utility` + CSS-var keyframes) so dialogs, dropdowns,
+  tooltips, and popovers animate, with a `prefers-reduced-motion` guard.
+- Retired an inline, un-gated task-assigned email in `tasks.service` so the new
+  preference-gated listener is the single source (no more double-email).
+
 ## [1.9.0] — 2026-06-18
 
 Wave 2 — the feature set that closes the gap to a best-in-class PM tool:
