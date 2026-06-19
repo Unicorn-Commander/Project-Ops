@@ -67,6 +67,7 @@ import { CustomFieldValues } from "@/components/custom-fields/custom-field-input
 import { CustomFieldEntity } from "@/lib/custom-fields-api";
 import { Repeat, Timer, SlidersHorizontal } from "lucide-react";
 import { parseRecurrenceRule } from "@/components/custom-fields/recurrence-picker";
+import { HelpHint } from "@/components/guidance";
 
 interface TaskDetailsModalProps {
   isOpen: boolean;
@@ -604,6 +605,10 @@ export function TaskDetailsModal({
               <h3 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-2">
                 <Timer className="h-4 w-4" />
                 ESTIMATED HOURS
+                <HelpHint learnMore={{ category: "capacity", article: "capacity-overview" }}>
+                  The effort budgeted for this task. Estimates roll up into
+                  capacity planning to show who's over- or under-committed.
+                </HelpHint>
               </h3>
               <p className="text-foreground">
                 {Number(task.estimatedHours)}{" "}
@@ -618,6 +623,10 @@ export function TaskDetailsModal({
               <h3 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-2">
                 <Repeat className="h-4 w-4" />
                 REPEATS
+                <HelpHint learnMore={{ category: "recurring", article: "repeats" }}>
+                  This task recurs on a schedule — Project Ops materializes the
+                  next instance automatically when one is due.
+                </HelpHint>
               </h3>
               <p className="text-foreground">{recurrenceSummary}</p>
             </div>
@@ -640,8 +649,13 @@ export function TaskDetailsModal({
 
         {/* Actions */}
         <div className="mb-6 pb-6 border-b">
-          <h3 className="text-sm font-semibold text-muted-foreground mb-3">
+          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground mb-3">
             ACTIONS
+            <HelpHint learnMore={{ category: "projects-tasks", article: "tasks" }}>
+              Change the task's status — Pending, In progress, Waiting for
+              client, Completed, or Cancelled. Status also moves with a drag on
+              the Kanban board.
+            </HelpHint>
           </h3>
           <div className="flex flex-wrap gap-3">
             <Select

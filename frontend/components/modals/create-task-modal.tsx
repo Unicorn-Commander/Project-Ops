@@ -30,12 +30,13 @@ import {
 } from "@/lib/task-validation";
 import { Loader2 } from "lucide-react";
 import api from "@/lib/api";
-import { CustomFieldsSection } from "@/components/custom-fields/custom-field-inputs";
+import { CustomFieldInputs } from "@/components/custom-fields/custom-field-inputs";
 import { RecurrencePicker } from "@/components/custom-fields/recurrence-picker";
 import {
   CustomFieldEntity,
   type CustomFieldValueMap,
 } from "@/lib/custom-fields-api";
+import { FieldHint, HelpHint } from "@/components/guidance";
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -83,6 +84,9 @@ export function CreateTaskModal({
   const [projects, setProjects] = useState<Project[]>([]);
   // New fields (not part of the zod schema — kept as plain state).
   const [customFields, setCustomFields] = useState<CustomFieldValueMap>({});
+  // Hide the custom-fields heading (and its hint) when the workspace has no
+  // TASK fields defined — mirrors the auto-hide CustomFieldsSection gave us.
+  const [hasCustomFields, setHasCustomFields] = useState(false);
   const [recurrenceRule, setRecurrenceRule] = useState("");
   const [estimatedHours, setEstimatedHours] = useState("");
   const { toast } = useToast();
@@ -273,6 +277,11 @@ export function CreateTaskModal({
                 <div>
                   <Label htmlFor="type">
                     Task Type <span className="text-red-500">*</span>
+                    <FieldHint learnMore={{ category: "projects-tasks", article: "tasks" }}>
+                      What kind of work this is — Task, Milestone, Deliverable,
+                      Review, Meeting, or Research — so boards and the schedule
+                      can tell milestones apart from routine work.
+                    </FieldHint>
                   </Label>
                   <Select
                     value={taskType}
@@ -303,6 +312,11 @@ export function CreateTaskModal({
                 <div>
                   <Label htmlFor="priority">
                     Priority <span className="text-red-500">*</span>
+                    <FieldHint learnMore={{ category: "projects-tasks", article: "tasks" }}>
+                      How urgent this task is — Low, Medium, High, or Urgent.
+                      It's colour-coded everywhere the task appears so the
+                      urgent ones stand out at a glance.
+                    </FieldHint>
                   </Label>
                   <Select
                     value={priority}
@@ -421,13 +435,25 @@ export function CreateTaskModal({
 
           {/* Scheduling — estimate + recurrence */}
           <div>
-            <h3 className="text-lg font-semibold text-foreground mb-4 border-b pb-2">
+            <h3 className="flex items-center gap-1.5 text-lg font-semibold text-foreground mb-4 border-b pb-2">
               Scheduling
+              <HelpHint learnMore={{ category: "recurring", article: "repeats" }}>
+                Set a “Repeats” rule and Project Ops materializes the next
+                instance automatically — for work on a cadence like a weekly
+                report or a monthly close.
+              </HelpHint>
             </h3>
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="estimatedHours">Estimated hours</Label>
+                  <Label htmlFor="estimatedHours">
+                    Estimated hours
+                    <FieldHint learnMore={{ category: "capacity", article: "capacity-overview" }}>
+                      Your best guess at the effort this task takes, in hours.
+                      Estimates roll up into capacity planning to show who's
+                      over- or under-committed.
+                    </FieldHint>
+                  </Label>
                   <Input
                     id="estimatedHours"
                     type="number"
@@ -447,12 +473,26 @@ export function CreateTaskModal({
             </div>
           </div>
 
-          {/* Custom fields — workspace-defined TASK attributes */}
-          <CustomFieldsSection
-            entity={CustomFieldEntity.TASK}
-            values={customFields}
-            onChange={setCustomFields}
-          />
+          {/* Custom fields — workspace-defined TASK attributes. Bare inputs +
+              an owned heading so we can hang a hint on it; hidden when none. */}
+          <div className={hasCustomFields ? "" : "hidden"}>
+            {hasCustomFields && (
+              <h3 className="flex items-center gap-1.5 text-lg font-semibold text-foreground mb-4 border-b pb-2">
+                Custom fields
+                <HelpHint learnMore={{ category: "custom-fields", article: "custom-fields-overview" }}>
+                  Workspace-specific attributes an admin added to tasks — a
+                  client code, a billing category, a launch date. Fill in the
+                  values as you work.
+                </HelpHint>
+              </h3>
+            )}
+            <CustomFieldInputs
+              entity={CustomFieldEntity.TASK}
+              values={customFields}
+              onChange={setCustomFields}
+              onDefinitionsLoaded={(defs) => setHasCustomFields(defs.length > 0)}
+            />
+          </div>
 
           {/* Action Buttons */}
           <div className="flex justify-end gap-3 pt-4 border-t">

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
+import { HelpHint } from "@/components/guidance";
 import { useHydrated } from "@/lib/use-hydrated";
 import { cn } from "@/lib/utils";
 import {
@@ -134,8 +135,17 @@ export function WebhookDeliveriesDrawer({
           {/* Header */}
           <div className="flex items-start justify-between gap-3 border-b p-4">
             <div className="min-w-0">
-              <DialogPrimitive.Title className="text-base font-semibold">
+              <DialogPrimitive.Title className="flex items-center gap-1.5 text-base font-semibold">
                 Recent deliveries
+                <HelpHint
+                  side="bottom"
+                  learnMore={{ category: "webhooks", article: "webhooks-overview" }}
+                >
+                  Every attempt to POST to this endpoint, newest first — with the status,
+                  response code, retry count, and the exact payload sent. <span className="font-semibold">Send
+                  test</span> fires a sample <span className="font-mono">ping</span> event so you
+                  can confirm your receiver before going live.
+                </HelpHint>
               </DialogPrimitive.Title>
               <DialogPrimitive.Description className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
                 {endpoint?.url ?? ""}

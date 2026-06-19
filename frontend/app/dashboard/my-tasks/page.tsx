@@ -10,6 +10,7 @@ import { TaskList } from "@/components/tasks/task-list";
 import { CreateTaskModal } from "@/components/modals/create-task-modal";
 import { TaskDetailsModal } from "@/components/modals/task-details-modal";
 import { EditTaskModal } from "@/components/modals/edit-task-modal";
+import { HelpHint } from "@/components/guidance";
 import {
   getTasks,
   getOverdueTasks,
@@ -436,8 +437,12 @@ export default function MyTasksPage() {
       <div className="po-page-enter space-y-6">
         {/* Header — page title is in the top bar; subtitle + CTA only */}
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <p className="text-sm text-muted-foreground">
+          <p className="inline-flex items-center gap-1 text-sm text-muted-foreground">
             Tasks assigned to you, sorted by due date.
+            <HelpHint learnMore={{ category: "projects-tasks", article: "tasks" }}>
+              Every task assigned to you across projects. A task carries a
+              status, priority, type, due date, and effort estimate.
+            </HelpHint>
           </p>
           <div className="flex items-center gap-2">
             <ExportCsvButton

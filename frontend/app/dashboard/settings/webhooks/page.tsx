@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { HelpHint } from "@/components/guidance";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,6 +66,13 @@ import { WebhookDeliveriesDrawer } from "@/components/webhooks/webhook-deliverie
  * log, and delete an endpoint. The signing secret follows a strict show-once
  * contract (see {@link WebhookSecretDialog}).
  */
+
+// Every hint on this surface deep-links to the one webhooks explainer.
+const WEBHOOKS_HELP = {
+  category: "webhooks",
+  article: "webhooks-overview",
+} as const;
+
 export default function WebhooksSettingsPage() {
   const { toast } = useToast();
 
@@ -250,7 +259,21 @@ export default function WebhooksSettingsPage() {
         </Link>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Webhooks</h1>
+            <h1 className="flex items-center gap-2 text-3xl font-bold text-foreground">
+              Webhooks
+              <HelpHint
+                icon="info"
+                side="bottom"
+                size={18}
+                aria-label="About webhooks"
+                learnMore={WEBHOOKS_HELP}
+              >
+                Register an HTTPS endpoint and Project-Ops POSTs a signed JSON payload to it
+                whenever a task or project event you subscribe to happens — handy for syncing
+                work into Slack, a CI job, or your own automation. Failed deliveries retry, and
+                every attempt is logged.
+              </HelpHint>
+            </h1>
             <p className="mt-1 text-muted-foreground">
               Get notified at your own URL when things happen in this workspace.
               Each delivery is signed so you can verify it came from Project-Ops.
@@ -286,9 +309,26 @@ export default function WebhooksSettingsPage() {
         </div>
 
         {loading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading webhooks…
-          </div>
+          <ul className="space-y-3">
+            {[0, 1].map((i) => (
+              <li key={i} className="rounded-md border p-4">
+                <div className="flex items-start gap-4">
+                  <div className="min-w-0 flex-1 space-y-2.5">
+                    <Skeleton className="h-4 w-2/3" />
+                    <div className="flex gap-1.5">
+                      <Skeleton className="h-4 w-24 rounded" />
+                      <Skeleton className="h-4 w-28 rounded" />
+                    </div>
+                    <Skeleton className="h-3 w-40" />
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Skeleton className="h-6 w-11 rounded-full" />
+                    <Skeleton className="h-8 w-8 rounded-md" />
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
         ) : error ? (
           <div className="space-y-3">
             <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm">
@@ -500,6 +540,17 @@ function WebhookRow({
             <span className="flex items-center gap-1">
               <KeyRound className="h-3 w-3" />
               <span className="font-mono">{endpoint.secretHint}</span>
+              <HelpHint
+                side="top"
+                size={12}
+                aria-label="About the signing secret"
+                learnMore={WEBHOOKS_HELP}
+              >
+                A non-reversible hint at this endpoint&apos;s signing secret. The full secret
+                (<span className="font-mono">whsec_…</span>) is your HMAC key and is shown only
+                once — at create or when you rotate it. Use it to verify the{" "}
+                <span className="font-mono">X-ProjectOps-Signature</span> on every delivery.
+              </HelpHint>
             </span>
             <span aria-hidden>·</span>
             <span className="flex items-center gap-1.5">

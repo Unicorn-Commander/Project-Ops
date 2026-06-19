@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { HelpHint } from "@/components/guidance";
 import { useToast } from "@/components/ui/use-toast";
 import {
   AlertDialog,
@@ -190,7 +191,21 @@ export default function AutomationsPage() {
                 <Zap className="h-6 w-6 text-white" strokeWidth={2.25} />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-foreground">Automations</h1>
+                <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
+                  Automations
+                  <HelpHint
+                    icon="info"
+                    side="bottom"
+                    size={16}
+                    aria-label="About automations"
+                    learnMore={{ category: "automations", article: "automations-overview" }}
+                  >
+                    No-code <span className="font-semibold">When → If → Then</span> rules.
+                    When a matching event fires, Project-Ops checks your conditions and runs
+                    your actions — assigning, commenting, setting statuses, or notifying — with
+                    no one lifting a finger.
+                  </HelpHint>
+                </h1>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Rules that run themselves — when something happens, do this.
                 </p>

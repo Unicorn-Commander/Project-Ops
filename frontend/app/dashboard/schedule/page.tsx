@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/use-toast";
 import { Gantt, type ScheduleProject } from "@/components/schedule/gantt";
+import { HelpHint } from "@/components/guidance";
 import api from "@/lib/api";
 import { format } from "date-fns";
 
@@ -76,7 +77,17 @@ export default function SchedulePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Master Schedule</h1>
+        <h1 className="inline-flex items-center gap-1.5 text-3xl font-bold text-foreground">
+          Master Schedule
+          <HelpHint
+            side="right"
+            size={16}
+            learnMore={{ category: "projects-tasks", article: "schedule" }}
+          >
+            A timeline (Gantt) across projects. Due dates place each bar and task
+            dependencies order them. Drag a bar to reschedule.
+          </HelpHint>
+        </h1>
         <p className="text-muted-foreground mt-1">
           Every project on one timeline — grouped by customer, product, owner,
           or status. Bars carry live progress; diamonds mark due dates. Drag a

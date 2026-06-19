@@ -24,6 +24,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { HelpHint } from "@/components/guidance";
 import { useToast } from "@/components/ui/use-toast";
 import { statusBadgeClass } from "@/lib/badge-styles";
 import {
@@ -281,6 +282,14 @@ export function PortfolioSection() {
             <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
               <FolderKanban className="h-4 w-4 text-muted-foreground" />
               Project health
+              <HelpHint
+                learnMore={{ category: "reports", article: "reports-overview" }}
+              >
+                Budget burn, billing, and completion per project. The hours bar shows logged
+                against budgeted; a project that&apos;s logged more hours than budgeted is
+                flagged <span className="font-semibold text-rose-600 dark:text-rose-400">Over
+                budget</span> with a red row. Click any column to sort.
+              </HelpHint>
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
               Budget burn, billing, and completion across every project. Click a
@@ -300,6 +309,7 @@ export function PortfolioSection() {
                     sortDir={sortDir}
                     onSort={toggleSort}
                     align="left"
+                    className="pl-3"
                   />
                   <SortableTh
                     label="Client"
@@ -367,14 +377,16 @@ function ProjectRow({ p }: { p: PortfolioProject }) {
   return (
     <tr
       className={`border-b border-border/60 last:border-0 ${
-        p.overBudget ? "bg-rose-500/[0.04]" : ""
+        p.overBudget
+          ? "bg-rose-500/[0.05] shadow-[inset_3px_0_0_0] shadow-rose-500/70 dark:shadow-rose-400/70"
+          : ""
       }`}
     >
-      <td className="py-2.5 pr-4">
+      <td className="py-2.5 pl-3 pr-4">
         <div className="flex items-center gap-2">
           <span className="font-medium text-foreground">{p.projectNumber}</span>
           {p.overBudget && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 dark:text-rose-300">
+            <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">
               <AlertTriangle className="h-2.5 w-2.5" />
               Over budget
             </span>
@@ -384,8 +396,8 @@ function ProjectRow({ p }: { p: PortfolioProject }) {
           {p.title}
         </span>
       </td>
-      <td className="py-2.5 px-4 text-muted-foreground">
-        {p.clientName ?? "—"}
+      <td className="py-2.5 px-4 text-muted-foreground/80">
+        {p.clientName ?? <span className="text-muted-foreground/40">—</span>}
       </td>
       <td className="py-2.5 px-4">
         <span
@@ -422,6 +434,7 @@ function SortableTh({
   sortDir,
   onSort,
   align,
+  className,
 }: {
   label: string;
   col: SortKey;
@@ -429,12 +442,13 @@ function SortableTh({
   sortDir: SortDir;
   onSort: (k: SortKey) => void;
   align: "left" | "right";
+  className?: string;
 }) {
   const active = sortKey === col;
   const Icon = !active ? ArrowUpDown : sortDir === "asc" ? ArrowUp : ArrowDown;
   return (
     <th
-      className={`font-medium py-2 ${align === "right" ? "text-right pl-4" : "text-left pr-4"}`}
+      className={`font-medium py-2 ${align === "right" ? "text-right pl-4" : "text-left pr-4"} ${className ?? ""}`}
     >
       <button
         type="button"

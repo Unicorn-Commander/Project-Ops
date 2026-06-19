@@ -1,20 +1,30 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, FileText, FolderOpen, Calendar, User } from "lucide-react";
+import {
+  Loader2,
+  FileText,
+  FolderOpen,
+  Calendar,
+  User,
+  ArrowRight,
+  ClipboardCheck,
+} from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import api from "@/lib/api";
-import {
-  statusBadgeClass,
-  priorityBadgeClass,
-  iconWellClass,
-} from "@/lib/badge-styles";
+import { statusBadgeClass, priorityBadgeClass } from "@/lib/badge-styles";
+import { getStoredWorkspaces } from "@/lib/workspace";
+import { useHydrated } from "@/lib/use-hydrated";
 import { format } from "date-fns";
 import Link from "next/link";
+import {
+  PortalHeader,
+  PortalWelcome,
+  StatCard,
+  PortalEmpty,
+} from "@/components/portal";
 
 interface DashboardData {
   totalProjects: number;
@@ -39,10 +49,26 @@ interface DashboardData {
 }
 
 export default function ClientPortalDashboard() {
-  const router = useRouter();
   const { toast } = useToast();
+  const hydrated = useHydrated();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
+
+  // Identity for the hero. Read in an effect (localStorage) so the server and
+  // first client render agree — see lib/use-hydrated. #418-safe.
+  const [firstName, setFirstName] = useState<string | null>(null);
+  const [orgName, setOrgName] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("user");
+      if (raw) setFirstName(JSON.parse(raw)?.firstName ?? null);
+    } catch {
+      /* best-effort personalisation */
+    }
+    const ws = getStoredWorkspaces();
+    if (ws.length > 0) setOrgName(ws[0].displayName ?? null);
+  }, []);
 
   useEffect(() => {
     loadDashboard();
@@ -66,89 +92,90 @@ export default function ClientPortalDashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="flex min-h-[400px] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   if (!data) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <p className="text-muted-foreground">Unable to load dashboard data</p>
+      <div className="space-y-8">
+        <PortalHeader firstName={firstName} orgName={orgName} />
+        <PortalEmpty
+          icon={FileText}
+          title="We couldn't load your dashboard"
+          body="Please refresh the page in a moment. If it keeps happening, reach out to your team and we'll sort it out."
+        />
       </div>
     );
   }
 
+  const hasProjects = data.totalProjects > 0;
+
   return (
-    <div className="space-y-6">
-      {/* Welcome Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Welcome to Your Portal</h1>
-        <p className="text-muted-foreground mt-1">
-          View and manage your projects and documents
-        </p>
+    <div className="space-y-8">
+      {/* Branded welcome hero */}
+      <PortalHeader firstName={firstName} orgName={orgName} />
+
+      {/* First-run welcome — dismissible, persists via the guidance kit. */}
+      <PortalWelcome hasProjects={hasProjects} />
+
+      {/* Summary */}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <StatCard
+          icon={FileText}
+          tone="primary"
+          label="Your projects"
+          value={data.totalProjects}
+          hint={hasProjects ? "Active work we're doing together" : "Nothing here just yet"}
+          href="/client-portal/projects"
+          linkLabel="View all projects"
+        />
+        <StatCard
+          icon={FolderOpen}
+          tone="violet"
+          label="Shared documents"
+          value={data.totalDocuments}
+          hint={
+            data.totalDocuments > 0
+              ? "Files we've shared with you"
+              : "Documents will appear here"
+          }
+          href="/client-portal/documents"
+          linkLabel="View all documents"
+        />
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Total Projects Card */}
-        <Card className="p-6 bg-card border-border">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Total Projects</p>
-              <p className="text-3xl font-bold text-foreground mt-2">
-                {data.totalProjects}
-              </p>
-            </div>
-            <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${iconWellClass("primary")}`}>
-              <FileText className="w-6 h-6" />
-            </div>
+      {/* Recent projects */}
+      <Card className="bg-card">
+        <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-5">
+          <div>
+            <h2 className="text-lg font-bold text-foreground">Recent projects</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              The latest of what we're working on for you
+            </p>
           </div>
-          <Link href="/client-portal/projects">
-            <Button
-              variant="link"
-              className="text-primary hover:text-primary/90 p-0 mt-4"
+          {hasProjects && (
+            <Link
+              href="/client-portal/projects"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
             >
-              View all projects →
-            </Button>
-          </Link>
-        </Card>
-
-        {/* Total Documents Card */}
-        <Card className="p-6 bg-card border-border">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Total Documents</p>
-              <p className="text-3xl font-bold text-foreground mt-2">
-                {data.totalDocuments}
-              </p>
-            </div>
-            <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${iconWellClass("orange")}`}>
-              <FolderOpen className="w-6 h-6" />
-            </div>
-          </div>
-          <Link href="/client-portal/documents">
-            <Button
-              variant="link"
-              className="text-primary hover:text-primary/90 p-0 mt-4"
-            >
-              View all documents →
-            </Button>
-          </Link>
-        </Card>
-      </div>
-
-      {/* Recent Projects */}
-      <Card className="bg-card border-border">
-        <div className="p-6 border-b border-border">
-          <h2 className="text-xl font-bold text-foreground">Recent Projects</h2>
+              See all
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          )}
         </div>
 
         {data.recentProjects.length === 0 ? (
-          <div className="p-12 text-center">
-            <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">No projects yet</p>
+          <div className="p-6">
+            <PortalEmpty
+              icon={ClipboardCheck}
+              iconTone="primary"
+              title="Your projects will show up here"
+              body="As soon as we start work together, you'll see every project, its progress, and the documents we share — all in one place."
+              className="border-dashed"
+            />
           </div>
         ) : (
           <div className="divide-y divide-border">
@@ -156,12 +183,12 @@ export default function ClientPortalDashboard() {
               <Link
                 key={project_.id}
                 href={`/client-portal/projects/${project_.id}`}
-                className="block p-6 hover:bg-muted/30 transition-colors"
+                className="group block px-6 py-5 transition-colors hover:bg-muted/40"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="text-sm font-mono text-muted-foreground">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs text-muted-foreground">
                         #{project_.projectNumber}
                       </span>
                       <Badge className={statusBadgeClass(project_.status)}>
@@ -171,49 +198,37 @@ export default function ClientPortalDashboard() {
                         {project_.priority}
                       </Badge>
                     </div>
-                    <h3 className="text-lg font-semibold text-foreground mb-2">
+                    <h3 className="text-base font-semibold text-foreground transition-colors group-hover:text-primary">
                       {project_.title}
                     </h3>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                       {project_.assignedTo && (
-                        <div className="flex items-center gap-1">
-                          <User className="w-4 h-4" />
-                          <span>
-                            {project_.assignedTo.firstName} {project_.assignedTo.lastName}
-                          </span>
-                        </div>
+                        <span className="inline-flex items-center gap-1.5">
+                          <User className="h-4 w-4" />
+                          {project_.assignedTo.firstName}{" "}
+                          {project_.assignedTo.lastName}
+                        </span>
                       )}
-                      <div className="flex items-center gap-1">
-                        <FolderOpen className="w-4 h-4" />
-                        <span>{project_._count.documents} documents</span>
-                      </div>
+                      <span className="inline-flex items-center gap-1.5">
+                        <FolderOpen className="h-4 w-4" />
+                        {project_._count.documents}{" "}
+                        {project_._count.documents === 1 ? "document" : "documents"}
+                      </span>
                       {project_.dueDate && (
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-4 h-4" />
-                          <span>Due {format(new Date(project_.dueDate), "MMM d, yyyy")}</span>
-                        </div>
+                        <span className="inline-flex items-center gap-1.5">
+                          <Calendar className="h-4 w-4" />
+                          Due{" "}
+                          {hydrated
+                            ? format(new Date(project_.dueDate), "MMM d, yyyy")
+                            : "—"}
+                        </span>
                       )}
                     </div>
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    {format(new Date(project_.createdAt), "MMM d, yyyy")}
-                  </div>
+                  <ArrowRight className="mt-1 h-5 w-5 shrink-0 text-muted-foreground/50 transition-all group-hover:translate-x-0.5 group-hover:text-primary" />
                 </div>
               </Link>
             ))}
-          </div>
-        )}
-
-        {data.recentProjects.length > 0 && (
-          <div className="p-4 border-t border-border text-center">
-            <Link href="/client-portal/projects">
-              <Button
-                variant="outline"
-                className="text-primary border-primary hover:bg-primary hover:text-primary-foreground"
-              >
-                View All Projects
-              </Button>
-            </Link>
           </div>
         )}
       </Card>

@@ -19,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { HelpHint } from "@/components/guidance";
 import {
   Select,
   SelectContent,
@@ -93,6 +94,12 @@ interface DraftAction {
 
 let keySeq = 1;
 const nextKey = () => keySeq++;
+
+// Every hint in the builder deep-links to the one automations explainer.
+const AUTOMATIONS_HELP = {
+  category: "automations",
+  article: "automations-overview",
+} as const;
 
 function toDraftConditions(conditions: AutomationCondition[]): DraftCondition[] {
   return conditions.map((c) => ({
@@ -328,6 +335,10 @@ export function RuleBuilder({
             <div className="flex items-center gap-2">
               <StepBadge tone="bg-blue-500/15 text-blue-600 dark:text-blue-300">When</StepBadge>
               <h3 className="text-sm font-semibold text-foreground">this happens</h3>
+              <HelpHint side="right" learnMore={AUTOMATIONS_HELP}>
+                The trigger — the event that starts the rule, like a task being created,
+                its status changing, or a comment being posted. Every rule has exactly one.
+              </HelpHint>
             </div>
             <Select
               value={trigger}
@@ -361,6 +372,12 @@ export function RuleBuilder({
                   these conditions are met{" "}
                   <span className="font-normal text-muted-foreground">(all must match — optional)</span>
                 </h3>
+                <HelpHint side="right" learnMore={AUTOMATIONS_HELP}>
+                  Optional filters on the event. Each condition compares a field — like
+                  priority or the new status — using an operator (is, is not, contains,
+                  greater than, less than). <span className="font-semibold">All</span> conditions
+                  must pass (logical AND). Leave them empty to run every time.
+                </HelpHint>
               </div>
             </div>
 
@@ -477,6 +494,12 @@ export function RuleBuilder({
               <h3 className="text-sm font-semibold text-foreground">
                 do this <span className="font-normal text-muted-foreground">(in order)</span>
               </h3>
+              <HelpHint side="right" learnMore={AUTOMATIONS_HELP}>
+                The actions that run when the trigger fires and the conditions pass, top to
+                bottom. Five are available: assign the task, set its status, add a comment,
+                create a new task, or notify someone. A built-in loop guard stops a rule&apos;s
+                own writes from re-triggering itself.
+              </HelpHint>
             </div>
             {errors.actions && <p className="text-sm text-rose-600">{errors.actions}</p>}
 

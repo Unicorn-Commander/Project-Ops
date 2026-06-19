@@ -10,6 +10,11 @@ import { CreateProjectModal } from "@/components/modals/create-project-modal";
 import { TaskDetailsModal } from "@/components/modals/task-details-modal";
 import { EditTaskModal } from "@/components/modals/edit-task-modal";
 import { TopContactsWidget } from "@/components/dashboard/top-contacts-widget";
+import {
+  StaffOnboarding,
+  GettingStartedButton,
+} from "@/components/onboarding";
+import { HelpHint } from "@/components/guidance";
 import api from "@/lib/api";
 import { getMyTasks, Task, TaskStatus } from "@/lib/tasks-api";
 import { useAuthStore } from "@/lib/store";
@@ -235,11 +240,26 @@ export default function DashboardPage() {
               Here's what's happening across your projects today.
             </p>
           </div>
-          <Button onClick={() => setIsCreateModalOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            New project
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Re-opens the first-run checklist after it's been dismissed.
+                Lives on the page (not the nav) per the onboarding brief; it
+                self-hides until the checklist has been completed/dismissed. */}
+            <GettingStartedButton />
+            <Button onClick={() => setIsCreateModalOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              New project
+            </Button>
+          </div>
         </div>
+
+        {/* First-run onboarding — auto-start welcome tour + a dismissible
+            checklist. Real "done" signals come from data already loaded above:
+            has-projects from the project list, has-tasks from My Tasks. */}
+        <StaffOnboarding
+          hasProjects={allProjects.length > 0}
+          hasTasks={myTasks.length > 0}
+          onCreateProject={() => setIsCreateModalOpen(true)}
+        />
 
       <div>
         {/* Stats Grid — each card carries its tone via a 4px left stripe + a
@@ -248,14 +268,22 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {([
             { label: "Total projects", value: stats.totalProjects,      icon: FileText,    tone: "primary" as const, href: "/dashboard/projects",
-              stripe: "border-l-foreground/40 dark:border-l-foreground/40", wash: "bg-foreground/[0.03] dark:bg-foreground/[0.04]" },
+              stripe: "border-l-foreground/40 dark:border-l-foreground/40", wash: "bg-foreground/[0.03] dark:bg-foreground/[0.04]",
+              hint: "Every project in this workspace — active, completed, and archived.",
+              learnMore: { category: "projects-tasks", article: "projects" } },
             { label: "Active",         value: stats.activeProjects,     icon: Clock,       tone: "amber" as const,   href: "/dashboard/projects",
-              stripe: "border-l-amber-500 dark:border-l-amber-400",   wash: "bg-amber-500/10 dark:bg-amber-400/10" },
+              stripe: "border-l-amber-500 dark:border-l-amber-400",   wash: "bg-amber-500/10 dark:bg-amber-400/10",
+              hint: "Projects currently in progress — not yet completed or archived.",
+              learnMore: { category: "projects-tasks", article: "projects" } },
             { label: "Completed",      value: stats.completedProjects,  icon: CheckCircle2,tone: "emerald" as const, href: "/dashboard/projects",
-              stripe: "border-l-emerald-500 dark:border-l-emerald-400", wash: "bg-emerald-500/10 dark:bg-emerald-400/10" },
+              stripe: "border-l-emerald-500 dark:border-l-emerald-400", wash: "bg-emerald-500/10 dark:bg-emerald-400/10",
+              hint: "Projects marked Completed. They stay here until archived.",
+              learnMore: { category: "projects-tasks", article: "projects" } },
             { label: "Due this week",  value: stats.upcomingDeadlines,  icon: AlertCircle, tone: "rose" as const,    href: "/dashboard/my-tasks",
-              stripe: "border-l-rose-500 dark:border-l-rose-400",     wash: "bg-rose-500/10 dark:bg-rose-400/10" },
-          ]).map(({ label, value, icon: Icon, tone, href, stripe, wash }) => (
+              stripe: "border-l-rose-500 dark:border-l-rose-400",     wash: "bg-rose-500/10 dark:bg-rose-400/10",
+              hint: "Tasks assigned to you with a due date in the next seven days.",
+              learnMore: { category: "projects-tasks", article: "tasks" } },
+          ]).map(({ label, value, icon: Icon, tone, href, stripe, wash, hint, learnMore }) => (
             <Card
               key={label}
               onClick={() => router.push(href)}
@@ -263,8 +291,14 @@ export default function DashboardPage() {
             >
               <div className="flex items-start justify-between">
                 <div className="space-y-1.5">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  <p className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                     {label}
+                    {/* Stop card navigation when the user reaches for the hint. */}
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <HelpHint side="top" learnMore={learnMore} size={12}>
+                        {hint}
+                      </HelpHint>
+                    </span>
                   </p>
                   <p className="text-3xl font-semibold tracking-tight text-foreground tabular-nums">
                     {value}

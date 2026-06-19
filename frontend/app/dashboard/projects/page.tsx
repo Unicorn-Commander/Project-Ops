@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { CreateProjectModal } from "@/components/modals/create-project-modal";
 import { EditProjectModal } from "@/components/modals/edit-project-modal";
+import { HelpHint } from "@/components/guidance";
 import { StatusUpdate } from "@/components/project/status-update";
 import { AssignProject } from "@/components/project/assign-project";
 import api from "@/lib/api";
@@ -508,8 +509,12 @@ export default function ProjectsPage() {
     <div className="po-page-enter space-y-6">
       {/* Header — title lives in the top bar; this is just the action row */}
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
+        <p className="inline-flex items-center gap-1 text-sm text-muted-foreground">
           Every project you can see, newest first.
+          <HelpHint learnMore={{ category: "projects-tasks", article: "projects" }}>
+            A project groups the tasks, documents, time, and billing for one
+            engagement — each with an auto-assigned number and an optional client.
+          </HelpHint>
         </p>
         <div className="flex items-center gap-2">
           <ExportCsvButton

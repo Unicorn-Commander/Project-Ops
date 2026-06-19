@@ -4,14 +4,15 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
-  FileText,
   FolderOpen,
   ClipboardCheck,
   Receipt,
+  FileText,
   LogOut,
-  User,
+  Sparkles,
 } from "lucide-react";
 
 interface ClientPortalLayoutProps {
@@ -47,37 +48,27 @@ export default function ClientPortalLayout({ children }: ClientPortalLayoutProps
     router.push("/auth/login");
   };
 
+  // Friendly, plain-language labels — the portal speaks to a client, not staff.
   const navigation = [
-    {
-      name: "Dashboard",
-      href: "/client-portal/dashboard",
-      icon: LayoutDashboard,
-    },
-    {
-      name: "My Projects",
-      href: "/client-portal/projects",
-      icon: FileText,
-    },
-    {
-      name: "Approvals",
-      href: "/client-portal/approvals",
-      icon: ClipboardCheck,
-    },
-    {
-      name: "Invoices",
-      href: "/client-portal/invoices",
-      icon: Receipt,
-    },
-    {
-      name: "Documents",
-      href: "/client-portal/documents",
-      icon: FolderOpen,
-    },
+    { name: "Home", href: "/client-portal/dashboard", icon: LayoutDashboard },
+    { name: "Projects", href: "/client-portal/projects", icon: FileText },
+    { name: "Approvals", href: "/client-portal/approvals", icon: ClipboardCheck },
+    { name: "Invoices", href: "/client-portal/invoices", icon: Receipt },
+    { name: "Documents", href: "/client-portal/documents", icon: FolderOpen },
   ];
 
   if (!user) {
     return null;
   }
+
+  const initials =
+    `${(user.firstName ?? "").charAt(0)}${(user.lastName ?? "").charAt(0)}`
+      .toUpperCase()
+      .trim() || "·";
+
+  /** A nav item is active if the path matches it or sits beneath it. */
+  const isActive = (href: string) =>
+    pathname === href || pathname?.startsWith(`${href}/`);
 
   return (
     <div className="min-h-screen bg-background">
@@ -89,24 +80,34 @@ export default function ClientPortalLayout({ children }: ClientPortalLayoutProps
         Skip to content
       </a>
 
-      {/* Top Navigation */}
-      <header className="bg-card border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <div className="flex items-center">
-              <Link href="/client-portal/dashboard" className="flex items-center">
-                <span className="text-2xl font-bold text-primary">
+      {/* Sticky chrome: brand bar + nav, with a subtle backdrop blur so content
+          scrolls gracefully beneath it. */}
+      <header className="sticky top-0 z-40 border-b border-border bg-card/85 backdrop-blur supports-[backdrop-filter]:bg-card/75">
+        {/* Brand row */}
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 items-center justify-between gap-4">
+            <Link
+              href="/client-portal/dashboard"
+              className="group flex items-center gap-2.5"
+            >
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm">
+                <Sparkles className="h-5 w-5" strokeWidth={2} />
+              </span>
+              <span className="flex flex-col leading-none">
+                <span className="text-base font-bold tracking-tight text-foreground">
                   Project Ops
                 </span>
-                <span className="ml-2 text-sm text-muted-foreground">Client Portal</span>
-              </Link>
-            </div>
+                <span className="mt-0.5 text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">
+                  Client Portal
+                </span>
+              </span>
+            </Link>
 
-            {/* User Info & Logout */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <User className="w-5 h-5 text-muted-foreground" />
+            <div className="flex items-center gap-3">
+              <div className="hidden items-center gap-2.5 sm:flex">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
+                  {initials}
+                </span>
                 <span className="text-sm font-medium text-foreground">
                   {user.firstName} {user.lastName}
                 </span>
@@ -117,49 +118,57 @@ export default function ClientPortalLayout({ children }: ClientPortalLayoutProps
                 onClick={handleLogout}
                 className="text-muted-foreground hover:text-foreground"
               >
-                <LogOut className="w-4 h-4 mr-2" />
-                Logout
+                <LogOut className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Sign out</span>
               </Button>
             </div>
           </div>
         </div>
-      </header>
 
-      {/* Navigation Tabs */}
-      <div className="bg-card border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <nav className="flex gap-6">
+        {/* Nav row */}
+        <div className="mx-auto max-w-6xl px-2 sm:px-6 lg:px-8">
+          <nav
+            className="flex gap-1 overflow-x-auto"
+            aria-label="Portal sections"
+          >
             {navigation.map((item) => {
-              const isActive = pathname === item.href;
+              const active = isActive(item.href);
               const Icon = item.icon;
-
               return (
                 <Link
                   key={item.name}
                   href={item.href}
-                  className={`
-                    flex items-center gap-2 px-3 py-4 text-sm font-medium border-b-2 transition-colors
-                    ${
-                      isActive
-                        ? "border-primary text-primary"
-                        : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-                    }
-                  `}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "relative flex items-center gap-2 whitespace-nowrap rounded-t-lg px-3.5 py-3 text-sm font-medium transition-colors",
+                    active
+                      ? "text-primary"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className="h-4 w-4" strokeWidth={2} />
                   {item.name}
+                  {/* Active underline — a rounded bar that reads cleaner than a
+                      square 2px border. */}
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "absolute inset-x-2 -bottom-px h-0.5 rounded-full transition-colors",
+                      active ? "bg-primary" : "bg-transparent",
+                    )}
+                  />
                 </Link>
               );
             })}
           </nav>
         </div>
-      </div>
+      </header>
 
-      {/* Main Content */}
+      {/* Main content — generous vertical rhythm, gentle entrance. */}
       <main
         id="main-content"
         tabIndex={-1}
-        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 focus:outline-none"
+        className="po-page-enter mx-auto max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-10 lg:px-8"
       >
         {children}
       </main>

@@ -22,8 +22,9 @@ import { Textarea } from "@/components/ui/textarea";
 import api from "@/lib/api";
 import { getContacts, type Contact } from "@/lib/contacts-api";
 import { Search, Plus, X } from "lucide-react";
-import { CustomFieldsSection } from "@/components/custom-fields/custom-field-inputs";
+import { CustomFieldInputs } from "@/components/custom-fields/custom-field-inputs";
 import { RecurrencePicker } from "@/components/custom-fields/recurrence-picker";
+import { FieldHint, HelpHint } from "@/components/guidance";
 import {
   CustomFieldEntity,
   type CustomFieldValueMap,
@@ -119,6 +120,8 @@ export function EditProjectModal({
   const [showClientSelector, setShowClientSelector] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
   const [customFields, setCustomFields] = useState<CustomFieldValueMap>({});
+  // Hide the custom-fields heading (and hint) when no PROJECT fields exist.
+  const [hasCustomFields, setHasCustomFields] = useState(false);
   const [recurrenceRule, setRecurrenceRule] = useState("");
   const { toast } = useToast();
 
@@ -445,7 +448,14 @@ export function EditProjectModal({
           {/* Status, Priority */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="status">Status</Label>
+              <Label htmlFor="status">
+                Status
+                <FieldHint learnMore={{ category: "projects-tasks", article: "projects" }}>
+                  Where the project stands — New, In progress, Under review, On
+                  hold, Completed, or Archived. It drives the dashboard counts
+                  and the status charts.
+                </FieldHint>
+              </Label>
               <Select
                 value={formData.status}
                 onValueChange={(value) =>
@@ -466,7 +476,14 @@ export function EditProjectModal({
             </div>
 
             <div>
-              <Label htmlFor="priority">Priority</Label>
+              <Label htmlFor="priority">
+                Priority
+                <FieldHint learnMore={{ category: "projects-tasks", article: "projects" }}>
+                  How urgent this project is — Low, Medium, High, or Urgent.
+                  It's colour-coded across lists and the schedule so the
+                  pressing work stands out.
+                </FieldHint>
+              </Label>
               <Select
                 value={formData.priority}
                 onValueChange={(value) =>
@@ -580,7 +597,13 @@ export function EditProjectModal({
 
               {/* Payment Status */}
               <div>
-                <Label htmlFor="paymentStatus">Payment Status</Label>
+                <Label htmlFor="paymentStatus">
+                  Payment Status
+                  <FieldHint learnMore={{ category: "time-billing", article: "billing" }}>
+                    Where this project's invoice stands — Unpaid, Partially
+                    paid, Paid, Overdue, or Cancelled.
+                  </FieldHint>
+                </Label>
                 <Select
                   value={formData.paymentStatus}
                   onValueChange={(value) =>
@@ -602,7 +625,14 @@ export function EditProjectModal({
 
               {/* Billing Amount */}
               <div>
-                <Label htmlFor="billingAmount">Billing Amount</Label>
+                <Label htmlFor="billingAmount">
+                  Billing Amount
+                  <FieldHint learnMore={{ category: "time-billing", article: "billing" }}>
+                    The total you're invoicing the client for this project.
+                    Amount Paid is tracked against it to surface what's
+                    outstanding.
+                  </FieldHint>
+                </Label>
                 <Input
                   id="billingAmount"
                   type="number"
@@ -693,7 +723,14 @@ export function EditProjectModal({
 
           {/* Recurrence */}
           <div className="pt-4 border-t">
-            <h3 className="text-lg font-semibold mb-4">Recurrence</h3>
+            <h3 className="flex items-center gap-1.5 text-lg font-semibold mb-4">
+              Recurrence
+              <HelpHint learnMore={{ category: "recurring", article: "repeats" }}>
+                Set a “Repeats” rule and Project Ops materializes the next
+                instance automatically — for recurring engagements like a
+                monthly retainer.
+              </HelpHint>
+            </h3>
             <RecurrencePicker
               value={recurrenceRule}
               onChange={setRecurrenceRule}
@@ -701,14 +738,26 @@ export function EditProjectModal({
             />
           </div>
 
-          {/* Custom fields — workspace-defined PROJECT attributes (self-hides
-              header + spacing when the workspace has no project fields). */}
-          <CustomFieldsSection
-            entity={CustomFieldEntity.PROJECT}
-            values={customFields}
-            onChange={setCustomFields}
-            title="Custom Fields"
-          />
+          {/* Custom fields — workspace-defined PROJECT attributes. Bare inputs +
+              an owned heading so we can hang a hint on it; hidden when none. */}
+          <div className={hasCustomFields ? "" : "hidden"}>
+            {hasCustomFields && (
+              <h3 className="flex items-center gap-1.5 text-lg font-semibold mb-4">
+                Custom Fields
+                <HelpHint learnMore={{ category: "custom-fields", article: "custom-fields-overview" }}>
+                  Workspace-specific attributes an admin added to projects — a
+                  matter number, an engagement type, a target date. Fill in the
+                  values as you go.
+                </HelpHint>
+              </h3>
+            )}
+            <CustomFieldInputs
+              entity={CustomFieldEntity.PROJECT}
+              values={customFields}
+              onChange={setCustomFields}
+              onDefinitionsLoaded={(defs) => setHasCustomFields(defs.length > 0)}
+            />
+          </div>
 
           {/* Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t">

@@ -23,6 +23,7 @@ import { SegmentedTabs } from "@/components/reporting/shared";
 import { PortfolioSection } from "@/components/reporting/portfolio-section";
 import { ProfitabilitySection } from "@/components/reporting/profitability-section";
 import { ThroughputSection } from "@/components/reporting/throughput-section";
+import { HelpHint } from "@/components/guidance";
 import { FolderKanban, TrendingUp, Activity } from "lucide-react";
 
 type Tab = "portfolio" | "profitability" | "throughput";
@@ -40,7 +41,21 @@ export default function ReportsPage() {
     <div className="po-page-enter space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">Reports</h1>
+          <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground">
+            Reports
+            <HelpHint
+              icon="info"
+              side="bottom"
+              learnMore={{ category: "reports", article: "reports-overview" }}
+            >
+              Three views of how the business is doing, each a chart plus a table:{" "}
+              <span className="font-semibold">Portfolio</span> (project health — budget vs
+              logged, over-budget),{" "}
+              <span className="font-semibold">Profitability</span> (margin &amp; realization —
+              managers only), and <span className="font-semibold">Throughput</span> (completed
+              work over time).
+            </HelpHint>
+          </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Portfolio health, profitability, and delivery throughput across your
             workspace.

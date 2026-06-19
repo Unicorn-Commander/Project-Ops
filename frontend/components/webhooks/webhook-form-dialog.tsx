@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
+import { FieldHint } from "@/components/guidance";
 import { Loader2 } from "lucide-react";
 import {
   WEBHOOK_EVENTS,
@@ -205,7 +206,16 @@ export function WebhookFormDialog({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label>Events</Label>
+              <Label>
+                Events
+                <FieldHint
+                  learnMore={{ category: "webhooks", article: "webhooks-overview" }}
+                >
+                  The task and project lifecycle events this endpoint subscribes to. A delivery
+                  fires the moment one happens. Pick at least one — an endpoint with no events
+                  would never fire.
+                </FieldHint>
+              </Label>
               <button
                 type="button"
                 onClick={toggleAll}

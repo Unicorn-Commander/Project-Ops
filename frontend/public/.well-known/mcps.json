@@ -20,7 +20,13 @@
       "write:organizations",
       "write:billing",
       "read:time",
-      "write:time"
+      "write:time",
+      "read:reports",
+      "read:capacity",
+      "read:automations",
+      "write:automations",
+      "read:approvals",
+      "write:approvals"
     ],
     "federated_auth": {
       "type": "brigade_jwt",
@@ -60,8 +66,17 @@
     },
     {
       "name": "create_project",
-      "description": "Create a new project. Auto-assigns the next project number. Defaults: status NEW, priority MEDIUM, assignee = caller. CLIENT-role users cannot call this.",
-      "input_schema": { "type": "object", "properties": { "title": { "type": "string", "maxLength": 200 }, "clientName": { "type": "string", "maxLength": 200 }, "clientEmail": { "type": "string" }, "description": { "type": "string" }, "priority": { "type": "string" }, "projectType": { "type": "string" }, "dueDate": { "type": "string", "description": "ISO date or datetime" }, "organizationId": { "type": "string" }, "assignedToId": { "type": "string" } }, "required": ["title", "clientName"] },
+      "description": "Create a new project. Auto-assigns the next project number. Defaults: status NEW, priority MEDIUM, assignee = caller. CLIENT-role users cannot call this. Optional customFields (object keyed by the workspace PROJECT custom-field key — validated + stored under metadata.customFields) and recurrenceRule (RRULE subset).",
+      "input_schema": { "type": "object", "properties": { "title": { "type": "string", "maxLength": 200 }, "clientName": { "type": "string", "maxLength": 200 }, "clientEmail": { "type": "string" }, "description": { "type": "string" }, "priority": { "type": "string" }, "projectType": { "type": "string" }, "dueDate": { "type": "string", "description": "ISO date or datetime" }, "organizationId": { "type": "string" }, "assignedToId": { "type": "string" }, "customFields": { "type": "object", "description": "Map of PROJECT custom-field key -> value; validated against the workspace definitions." }, "recurrenceRule": { "type": "string", "description": "RRULE subset, e.g. \"FREQ=WEEKLY;INTERVAL=1\"." } }, "required": ["title", "clientName"] },
+      "scopes_required": ["write:projects"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 500
+    },
+    {
+      "name": "update_project",
+      "description": "Patch a project. Identify by id or projectNumber. Only the fields you pass are updated. organizationId reassigns the project (pass null to detach). CLIENT-role users cannot call this. Optional customFields (object keyed by the workspace PROJECT custom-field key — validated + merged into metadata.customFields, preserving other metadata) and recurrenceRule (RRULE subset; null clears it).",
+      "input_schema": { "type": "object", "properties": { "id": { "type": "string" }, "projectNumber": { "type": "string" }, "title": { "type": "string", "maxLength": 200 }, "description": { "type": "string" }, "clientName": { "type": "string", "maxLength": 200 }, "organizationId": { "type": ["string", "null"] }, "priority": { "type": "string" }, "dueDate": { "type": ["string", "null"] }, "assignedToId": { "type": "string" }, "customFields": { "type": "object", "description": "Map of PROJECT custom-field key -> value; validated and merged into metadata.customFields." }, "recurrenceRule": { "type": ["string", "null"], "description": "RRULE subset; null clears the recurrence." } } },
       "scopes_required": ["write:projects"],
       "tier_required": "free",
       "read_only": false,
@@ -96,8 +111,17 @@
     },
     {
       "name": "create_task",
-      "description": "Create a task under a project. Requires projectId (UUID). Optional type, status, priority, dueDate, assignee.",
-      "input_schema": { "type": "object", "properties": { "projectId": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "type": { "type": "string" }, "status": { "type": "string" }, "priority": { "type": "string" }, "dueDate": { "type": "string" }, "assignedToId": { "type": "string" } }, "required": ["projectId", "title"] },
+      "description": "Create a task under a project. Requires projectId (UUID). Optional type, status, priority, dueDate, assignee. Optional customFields (object keyed by the workspace TASK custom-field key — validated + stored under metadata.customFields), recurrenceRule (RRULE subset, e.g. \"FREQ=WEEKLY;INTERVAL=1\", makes this a recurrence template), and estimatedHours (effort estimate used by capacity planning).",
+      "input_schema": { "type": "object", "properties": { "projectId": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "type": { "type": "string" }, "status": { "type": "string" }, "priority": { "type": "string" }, "dueDate": { "type": "string" }, "assignedToId": { "type": "string" }, "customFields": { "type": "object", "description": "Map of TASK custom-field key -> value; validated against the workspace definitions." }, "recurrenceRule": { "type": "string", "description": "RRULE subset, e.g. \"FREQ=WEEKLY;INTERVAL=1\"." }, "estimatedHours": { "type": "number", "minimum": 0, "description": "Effort estimate (hours) used by capacity planning." } }, "required": ["projectId", "title"] },
+      "scopes_required": ["write:tasks"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 500
+    },
+    {
+      "name": "update_task",
+      "description": "Patch a task. Required: taskId. Only the fields you pass are updated. projectId or projectNumber reparents the task to a different project the caller can see. CLIENT-role users cannot call this. Optional customFields (object keyed by the workspace TASK custom-field key — validated + merged into metadata.customFields, preserving other metadata), recurrenceRule (RRULE subset; null clears it), and estimatedHours (null clears it).",
+      "input_schema": { "type": "object", "properties": { "taskId": { "type": "string" }, "title": { "type": "string", "maxLength": 200 }, "description": { "type": "string" }, "type": { "type": "string" }, "priority": { "type": "string" }, "dueDate": { "type": ["string", "null"] }, "assignedToId": { "type": "string" }, "projectId": { "type": "string" }, "projectNumber": { "type": "string" }, "customFields": { "type": "object", "description": "Map of TASK custom-field key -> value; validated and merged into metadata.customFields." }, "recurrenceRule": { "type": ["string", "null"], "description": "RRULE subset; null clears the recurrence." }, "estimatedHours": { "type": ["number", "null"], "minimum": 0, "description": "Effort estimate (hours); null clears it." } }, "required": ["taskId"] },
       "scopes_required": ["write:tasks"],
       "tier_required": "free",
       "read_only": false,
@@ -255,6 +279,114 @@
       "tier_required": "free",
       "read_only": false,
       "expected_latency_ms": 1500
+    },
+    {
+      "name": "get_portfolio_report",
+      "description": "Per-project health roll-up + workspace totals: budgeted vs logged hours, accrued billable vs budget amount, % complete, status, and an over-budget flag. Scoped to the projects the caller can see. Read-only.",
+      "input_schema": { "type": "object", "properties": {} },
+      "scopes_required": ["read:reports"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 400
+    },
+    {
+      "name": "get_profitability_report",
+      "description": "Per-project + workspace profitability: billable amount, cost basis, margin, margin %, and realization (billed/billable) over an optional from/to ISO window. Exposes internal cost/margin, so MANAGER/ADMIN only. Read-only.",
+      "input_schema": { "type": "object", "properties": { "from": { "type": "string" }, "to": { "type": "string" } } },
+      "scopes_required": ["read:reports"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 400
+    },
+    {
+      "name": "get_throughput_report",
+      "description": "Tasks + projects COMPLETED over a window, bucketed by ISO week, plus a status breakdown of tasks created in-window. Defaults to the trailing 12 weeks when from/to are omitted. Read-only.",
+      "input_schema": { "type": "object", "properties": { "from": { "type": "string" }, "to": { "type": "string" } } },
+      "scopes_required": ["read:reports"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 400
+    },
+    {
+      "name": "get_team_capacity",
+      "description": "Per-user committed hours (sum of estimatedHours on in-window, not-done assigned tasks) vs pro-rated weekly capacity across a date window (defaults to the current week), with over-allocation flags + workspace totals. A planning surface — MANAGER/ADMIN only. Read-only.",
+      "input_schema": { "type": "object", "properties": { "from": { "type": "string" }, "to": { "type": "string" } } },
+      "scopes_required": ["read:capacity"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 350
+    },
+    {
+      "name": "get_my_capacity",
+      "description": "The calling user's OWN committed load vs capacity over a date window (defaults to the current week). Any active member may call it; a non-member is refused. Read-only.",
+      "input_schema": { "type": "object", "properties": { "from": { "type": "string" }, "to": { "type": "string" } } },
+      "scopes_required": ["read:capacity"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 300
+    },
+    {
+      "name": "list_automations",
+      "description": "List the workspace automation rules, newest first. Optional filters: trigger (TASK_CREATED, TASK_STATUS_CHANGED, TASK_ASSIGNED, TASK_COMPLETED, PROJECT_CREATED, PROJECT_STATUS_CHANGED, COMMENT_CREATED) and enabled. MANAGER/ADMIN only.",
+      "input_schema": { "type": "object", "properties": { "trigger": { "type": "string" }, "enabled": { "type": "boolean" } } },
+      "scopes_required": ["read:automations"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 250
+    },
+    {
+      "name": "create_automation",
+      "description": "Create a rule { name, trigger, conditions[], actions[] }. trigger is one of the AutomationTrigger values. conditions is an optional array of { field, op (eq|neq|contains|gt|lt), value } — ALL must match (AND). actions is a required non-empty array of { type, params }; type is one of assign_task / set_status / add_comment / create_task / notify. enabled defaults to true. MANAGER/ADMIN only.",
+      "input_schema": { "type": "object", "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 200 }, "trigger": { "type": "string" }, "conditions": { "type": "array", "items": { "type": "object" } }, "actions": { "type": "array", "items": { "type": "object" }, "minItems": 1 }, "enabled": { "type": "boolean" } }, "required": ["name", "trigger", "actions"] },
+      "scopes_required": ["write:automations"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 450
+    },
+    {
+      "name": "set_automation_enabled",
+      "description": "Toggle a rule on or off by id without changing its trigger/conditions/actions. MANAGER/ADMIN only.",
+      "input_schema": { "type": "object", "properties": { "id": { "type": "string" }, "enabled": { "type": "boolean" } }, "required": ["id", "enabled"] },
+      "scopes_required": ["write:automations"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 350
+    },
+    {
+      "name": "delete_automation",
+      "description": "Permanently delete an automation rule by id. MANAGER/ADMIN only.",
+      "input_schema": { "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"] },
+      "scopes_required": ["write:automations"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 350
+    },
+    {
+      "name": "list_custom_fields",
+      "description": "List the workspace custom-field DEFINITIONS for an entity (key, label, type, options, required, position), ordered by position then label. Required: entity ('TASK' or 'PROJECT'). Use the returned keys when setting customFields values via create_task / update_task / create_project / update_project. Read-only.",
+      "input_schema": { "type": "object", "properties": { "entity": { "type": "string", "description": "'TASK' or 'PROJECT'" } }, "required": ["entity"] },
+      "scopes_required": ["read:projects"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 250
+    },
+    {
+      "name": "list_project_approvals",
+      "description": "List ALL client approvals on a project — the requesting staff's view of live client decisions (pending first). Requires projectId. Staff only (CLIENT-role users cannot call this).",
+      "input_schema": { "type": "object", "properties": { "projectId": { "type": "string" } }, "required": ["projectId"] },
+      "scopes_required": ["read:approvals"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 300
+    },
+    {
+      "name": "request_approval",
+      "description": "Request a client approval on a document / deliverable / project (status PENDING). entityType is one of the ApprovalEntityType values; entityId is the id of the thing being submitted. Optional projectId (drives client scoping), approverContactId (a specific contact; else any portal client on the linked project's contact may act), and note. Staff only (CLIENT-role users cannot call this).",
+      "input_schema": { "type": "object", "properties": { "entityType": { "type": "string" }, "entityId": { "type": "string" }, "projectId": { "type": "string" }, "approverContactId": { "type": "string" }, "note": { "type": "string", "maxLength": 5000 } }, "required": ["entityType", "entityId"] },
+      "scopes_required": ["write:approvals"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 450
     }
   ],
   "resources": [

@@ -9,13 +9,13 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Loader2,
   ArrowLeft,
-  FileText,
   FolderOpen,
   Calendar,
   User,
   MessageSquare,
-  DollarSign,
+  Receipt,
   Send,
+  FileText,
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useHydrated } from "@/lib/use-hydrated";
@@ -32,6 +32,7 @@ import {
 } from "@/lib/portal-api";
 import { format } from "date-fns";
 import Link from "next/link";
+import { PortalEmpty, money, formatFileSize } from "@/components/portal";
 
 interface ProjectDetails {
   id: string;
@@ -153,16 +154,10 @@ export default function ProjectDetailsPage() {
     }
   };
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="flex min-h-[400px] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -171,186 +166,249 @@ export default function ProjectDetailsPage() {
     return null;
   }
 
+  const outstanding =
+    projectData.billingAmount != null
+      ? projectData.billingAmount - (projectData.amountPaid || 0)
+      : null;
+
   return (
     <div className="space-y-6">
-      {/* Back Button */}
+      {/* Back */}
       <Link href="/client-portal/projects">
-        <Button variant="ghost" className="text-primary hover:text-primary/90">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Projects
+        <Button variant="ghost" className="-ml-2 text-muted-foreground hover:text-foreground no-print">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to projects
         </Button>
       </Link>
 
-      {/* Project Header */}
-      <Card className="p-6 bg-card border-border">
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <span className="text-lg font-mono text-muted-foreground">
-              #{projectData.projectNumber}
-            </span>
-            <Badge className={statusBadgeClass(projectData.status)}>
-              {projectData.status.replace("_", " ")}
-            </Badge>
-            <Badge className={priorityBadgeClass(projectData.priority)}>
-              {projectData.priority}
-            </Badge>
+      {/* Project header */}
+      <Card className="overflow-hidden bg-card">
+        <div className="bg-gradient-to-br from-primary/[0.06] to-transparent p-6">
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-sm text-muted-foreground">
+                #{projectData.projectNumber}
+              </span>
+              <Badge className={statusBadgeClass(projectData.status)}>
+                {projectData.status.replace("_", " ")}
+              </Badge>
+              <Badge className={priorityBadgeClass(projectData.priority)}>
+                {projectData.priority}
+              </Badge>
+            </div>
+            {hydrated && (
+              <span className="text-sm text-muted-foreground">
+                Started {format(new Date(projectData.createdAt), "MMM d, yyyy")}
+              </span>
+            )}
           </div>
-          <span className="text-sm text-muted-foreground">
-            Created {format(new Date(projectData.createdAt), "MMM d, yyyy")}
-          </span>
+
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            {projectData.title}
+          </h1>
+
+          {projectData.description && (
+            <p className="mt-2 max-w-2xl leading-relaxed text-muted-foreground">
+              {projectData.description}
+            </p>
+          )}
         </div>
 
-        <h1 className="text-2xl font-bold text-foreground mb-2">
-          {projectData.title}
-        </h1>
-
-        {projectData.description && (
-          <p className="text-muted-foreground mb-4">{projectData.description}</p>
+        {(projectData.assignedTo || projectData.dueDate) && (
+          <div className="grid grid-cols-1 gap-4 border-t border-border p-6 sm:grid-cols-2">
+            {projectData.assignedTo && (
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                  <User className="h-5 w-5" strokeWidth={1.9} />
+                </span>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Your point of contact
+                  </p>
+                  <p className="text-sm font-medium text-foreground">
+                    {projectData.assignedTo.firstName} {projectData.assignedTo.lastName}
+                  </p>
+                </div>
+              </div>
+            )}
+            {projectData.dueDate && hydrated && (
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-300">
+                  <Calendar className="h-5 w-5" strokeWidth={1.9} />
+                </span>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Target date
+                  </p>
+                  <p className="text-sm font-medium text-foreground">
+                    {format(new Date(projectData.dueDate), "MMM d, yyyy")}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
         )}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-border">
-          {projectData.assignedTo && (
-            <div className="flex items-center gap-2">
-              <User className="w-5 h-5 text-muted-foreground" />
-              <div>
-                <p className="text-xs text-muted-foreground">Assigned To</p>
-                <p className="text-sm font-medium text-foreground">
-                  {projectData.assignedTo.firstName} {projectData.assignedTo.lastName}
-                </p>
-              </div>
-            </div>
-          )}
-          {projectData.dueDate && (
-            <div className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-muted-foreground" />
-              <div>
-                <p className="text-xs text-muted-foreground">Due Date</p>
-                <p className="text-sm font-medium text-foreground">
-                  {format(new Date(projectData.dueDate), "MMM d, yyyy")}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
       </Card>
 
-      {/* Billing Information */}
-      {projectData.billingAmount && (
-        <Card className="p-6 bg-card border-border">
-          <div className="flex items-center gap-2 mb-4">
-            <DollarSign className="w-5 h-5 text-primary" />
-            <h2 className="text-lg font-bold text-foreground">Billing Information</h2>
+      {/* Billing */}
+      {projectData.billingAmount != null && (
+        <Card className="overflow-hidden bg-card">
+          <div className="flex items-center gap-2 border-b border-border px-6 py-4">
+            <Receipt className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-bold text-foreground">Billing</h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {projectData.invoiceNumber && (
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Invoice Number</p>
-                <p className="text-sm font-medium text-foreground">
-                  {projectData.invoiceNumber}
-                </p>
-              </div>
-            )}
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Total Amount</p>
-              <p className="text-sm font-medium text-foreground">
-                ${projectData.billingAmount.toFixed(2)}
+          <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
+            <div className="p-5">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Total
+              </p>
+              <p className="mt-1 text-lg font-semibold text-foreground">
+                {money(projectData.billingAmount)}
               </p>
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Amount Paid</p>
-              <p className="text-sm font-medium text-foreground">
-                ${(projectData.amountPaid || 0).toFixed(2)}
+            <div className="p-5">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Paid
+              </p>
+              <p className="mt-1 text-lg font-semibold text-foreground">
+                {money(projectData.amountPaid || 0)}
               </p>
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Outstanding Balance</p>
-              <p className="text-sm font-medium text-foreground">
-                ${(projectData.billingAmount - (projectData.amountPaid || 0)).toFixed(2)}
+            <div className="p-5">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Balance
+              </p>
+              <p className="mt-1 text-lg font-semibold text-foreground">
+                {money(outstanding)}
               </p>
             </div>
-            {projectData.paymentStatus && (
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Payment Status</p>
-                <Badge className={paymentStatusBadgeClass(projectData.paymentStatus)}>
-                  {projectData.paymentStatus.replace("_", " ")}
-                </Badge>
+            <div className="flex flex-col justify-center p-5">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Status
+              </p>
+              <div className="mt-1.5">
+                {projectData.paymentStatus ? (
+                  <Badge className={paymentStatusBadgeClass(projectData.paymentStatus)}>
+                    {projectData.paymentStatus.replace("_", " ")}
+                  </Badge>
+                ) : (
+                  <span className="text-sm text-muted-foreground">—</span>
+                )}
               </div>
-            )}
-            {projectData.paymentDueDate && (
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Payment Due</p>
-                <p className="text-sm font-medium text-foreground">
-                  {format(new Date(projectData.paymentDueDate), "MMM d, yyyy")}
-                </p>
-              </div>
-            )}
+            </div>
           </div>
 
-          {projectData.billingNotes && (
-            <div className="mt-4 pt-4 border-t border-border">
-              <p className="text-xs text-muted-foreground mb-1">Notes</p>
-              <p className="text-sm text-foreground">{projectData.billingNotes}</p>
+          {(projectData.invoiceNumber ||
+            (projectData.paymentDueDate && hydrated) ||
+            projectData.billingNotes) && (
+            <div className="space-y-3 border-t border-border px-6 py-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {projectData.invoiceNumber && (
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Invoice number
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-foreground">
+                      {projectData.invoiceNumber}
+                    </p>
+                  </div>
+                )}
+                {projectData.paymentDueDate && hydrated && (
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Payment due
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-foreground">
+                      {format(new Date(projectData.paymentDueDate), "MMM d, yyyy")}
+                    </p>
+                  </div>
+                )}
+              </div>
+              {projectData.billingNotes && (
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Notes
+                  </p>
+                  <p className="mt-1 text-sm text-foreground">
+                    {projectData.billingNotes}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </Card>
       )}
 
       {/* Documents */}
-      <Card className="bg-card border-border">
-        <div className="p-6 border-b border-border">
-          <div className="flex items-center gap-2">
-            <FolderOpen className="w-5 h-5 text-primary" />
-            <h2 className="text-lg font-bold text-foreground">
-              Documents ({projectData.documents.length})
-            </h2>
-          </div>
+      <Card className="overflow-hidden bg-card">
+        <div className="flex items-center gap-2 border-b border-border px-6 py-4">
+          <FolderOpen className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-bold text-foreground">
+            Documents{" "}
+            <span className="font-normal text-muted-foreground">
+              ({projectData.documents.length})
+            </span>
+          </h2>
         </div>
 
         {projectData.documents.length === 0 ? (
-          <div className="p-12 text-center">
-            <FolderOpen className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">No documents uploaded yet</p>
+          <div className="p-6">
+            <PortalEmpty
+              icon={FolderOpen}
+              title="No documents yet"
+              body="Files your team shares on this project will show up here."
+              className="border-dashed"
+            />
           </div>
         ) : (
           <div className="divide-y divide-border">
             {projectData.documents.map((doc) => (
-              <div key={doc.id} className="p-4 hover:bg-muted/30">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <p className="font-medium text-foreground">{doc.fileName}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatFileSize(doc.fileSize)} • Uploaded by{" "}
-                      {doc.uploadedBy.firstName} {doc.uploadedBy.lastName} •{" "}
-                      {format(new Date(doc.uploadedAt), "MMM d, yyyy")}
+              <div
+                key={doc.id}
+                className="flex items-start justify-between gap-4 px-6 py-4 transition-colors hover:bg-muted/30"
+              >
+                <div className="flex min-w-0 flex-1 items-start gap-3.5">
+                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-500/15 text-zinc-600 dark:text-zinc-300">
+                    <FileText className="h-5 w-5" strokeWidth={1.9} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-foreground">
+                      {doc.fileName}
+                    </p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {formatFileSize(doc.fileSize)} · {doc.uploadedBy.firstName}{" "}
+                      {doc.uploadedBy.lastName}
+                      {hydrated && (
+                        <> · {format(new Date(doc.uploadedAt), "MMM d, yyyy")}</>
+                      )}
                     </p>
                   </div>
-                  <Badge className={statusBadgeClass(doc.status)}>
-                    {doc.status}
-                  </Badge>
                 </div>
+                <Badge className={statusBadgeClass(doc.status)}>{doc.status}</Badge>
               </div>
             ))}
           </div>
         )}
       </Card>
 
-      {/* Comments — two-way discussion */}
-      <Card className="bg-card border-border">
-        <div className="p-6 border-b border-border">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-primary" />
-            <h2 className="text-lg font-bold text-foreground">
-              Discussion ({comments.length})
-            </h2>
-          </div>
+      {/* Discussion — two-way conversation */}
+      <Card className="overflow-hidden bg-card">
+        <div className="flex items-center gap-2 border-b border-border px-6 py-4">
+          <MessageSquare className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-bold text-foreground">
+            Discussion{" "}
+            <span className="font-normal text-muted-foreground">
+              ({comments.length})
+            </span>
+          </h2>
         </div>
 
         {/* Composer */}
-        <div className="p-4 border-b border-border space-y-3">
+        <div className="space-y-3 border-b border-border p-5">
           <Textarea
-            aria-label="Write a comment"
-            placeholder="Write a comment to your team…"
+            aria-label="Write a message to your team"
+            placeholder="Write a message to your team…"
             value={commentDraft}
             onChange={(e) => setCommentDraft(e.target.value)}
             disabled={postingComment}
@@ -365,7 +423,7 @@ export default function ProjectDetailsPage() {
           />
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">
-              Press ⌘/Ctrl + Enter to post
+              Press ⌘/Ctrl + Enter to send
             </span>
             <Button
               onClick={handlePostComment}
@@ -373,46 +431,66 @@ export default function ProjectDetailsPage() {
               className="bg-primary hover:bg-primary/90"
             >
               {postingComment ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <Send className="w-4 h-4 mr-2" />
+                <Send className="mr-2 h-4 w-4" />
               )}
-              Post comment
+              Send message
             </Button>
           </div>
         </div>
 
         {comments.length === 0 ? (
-          <div className="p-12 text-center">
-            <MessageSquare className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">
-              No comments yet — start the conversation above.
-            </p>
+          <div className="p-6">
+            <PortalEmpty
+              icon={MessageSquare}
+              title="Start the conversation"
+              body="Questions, feedback, or just a hello — your team will see your message and reply right here."
+              className="border-dashed"
+            />
           </div>
         ) : (
           <div className="divide-y divide-border">
-            {comments.map((comment) => (
-              <div key={comment.id} className="p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="font-medium text-foreground">
-                    {comment.author?.name ?? "Unknown"}
+            {comments.map((comment) => {
+              const isYou = comment.author?.role === "CLIENT";
+              const name = comment.author?.name ?? "Unknown";
+              const initials =
+                name
+                  .split(" ")
+                  .map((p) => p.charAt(0))
+                  .slice(0, 2)
+                  .join("")
+                  .toUpperCase() || "·";
+              return (
+                <div key={comment.id} className="flex gap-3.5 p-5">
+                  <span
+                    className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                      isYou
+                        ? "bg-primary/15 text-primary"
+                        : "bg-zinc-500/15 text-zinc-600 dark:text-zinc-300"
+                    }`}
+                  >
+                    {initials}
                   </span>
-                  {comment.author?.role === "CLIENT" && (
-                    <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-300">
-                      You
-                    </Badge>
-                  )}
-                  {hydrated && (
-                    <span className="text-sm text-muted-foreground">
-                      {format(new Date(comment.createdAt), "MMM d, yyyy h:mm a")}
-                    </span>
-                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-foreground">{name}</span>
+                      {isYou && (
+                        <Badge className="bg-primary/15 text-primary">You</Badge>
+                      )}
+                      {hydrated && (
+                        <span className="text-xs text-muted-foreground">
+                          {format(new Date(comment.createdAt), "MMM d, yyyy · h:mm a")}
+                        </span>
+                      )}
+                    </div>
+                    <p className="whitespace-pre-wrap leading-relaxed text-foreground">
+                      {comment.content}
+                    </p>
+                  </div>
                 </div>
-                <p className="text-foreground whitespace-pre-wrap">
-                  {comment.content}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>

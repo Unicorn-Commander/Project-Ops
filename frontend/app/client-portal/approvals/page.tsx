@@ -15,11 +15,13 @@ import {
   FileText,
   Package,
   FolderKanban,
+  ShieldCheck,
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useHydrated } from "@/lib/use-hydrated";
 import { format } from "date-fns";
 import Link from "next/link";
+import { PortalPageHeader, PortalEmpty } from "@/components/portal";
 import {
   getApprovals,
   decideApproval,
@@ -37,7 +39,8 @@ const ENTITY_ICON: Record<ApprovalEntityType, typeof FileText> = {
   PROJECT: FolderKanban,
 };
 
-/** A single decision a client can take, with its presentation. */
+/** A single decision a client can take, with its presentation + plain-language
+ *  "what happens next" so the choice never feels consequential-but-unclear. */
 const DECISIONS: Array<{
   value: ApprovalDecision;
   label: string;
@@ -146,14 +149,16 @@ export default function ClientApprovalsPage() {
   const renderEntity = (approval: PortalApproval) => {
     const Icon = ENTITY_ICON[approval.entityType] ?? FileText;
     return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Icon className="w-4 h-4" />
-        <span className="font-medium text-foreground">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
+          <Icon className="h-4 w-4 text-primary" />
           {entityTypeLabel(approval.entityType)}
         </span>
         {approval.project && (
           <>
-            <span aria-hidden>·</span>
+            <span aria-hidden className="text-muted-foreground/50">
+              ·
+            </span>
             <Link
               href={`/client-portal/projects/${approval.project.id}`}
               className="text-primary hover:underline"
@@ -171,27 +176,24 @@ export default function ClientApprovalsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="flex min-h-[400px] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Approvals</h1>
-        <p className="text-muted-foreground mt-1">
-          Review what your team has sent you and approve, request changes, or
-          reject — with an optional note.
-        </p>
-      </div>
+    <div className="space-y-8">
+      <PortalPageHeader
+        icon={ClipboardCheck}
+        title="Approvals"
+        subtitle="When your team sends work for sign-off, it lands here. Take your time — nothing changes until you decide."
+      />
 
       {/* Pending — needs your action */}
       <section aria-labelledby="pending-heading" className="space-y-4">
-        <div className="flex items-center gap-2">
-          <h2 id="pending-heading" className="text-xl font-bold text-foreground">
+        <div className="flex items-center gap-2.5">
+          <h2 id="pending-heading" className="text-lg font-bold text-foreground">
             Waiting on you
           </h2>
           {pending.length > 0 && (
@@ -202,89 +204,107 @@ export default function ClientApprovalsPage() {
         </div>
 
         {pending.length === 0 ? (
-          <Card className="p-12 text-center bg-card border-border">
-            <ClipboardCheck className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">
-              You&apos;re all caught up — nothing is waiting for your approval.
-            </p>
-          </Card>
+          <PortalEmpty
+            icon={CheckCircle2}
+            iconTone="emerald"
+            title="You're all caught up"
+            body="Nothing is waiting for your approval right now. When your team shares something for sign-off, you'll find it here."
+          />
         ) : (
-          <div className="space-y-4">
-            {pending.map((approval) => {
-              const inFlight = submitting[approval.id];
-              const busy = Boolean(inFlight);
-              return (
-                <Card
-                  key={approval.id}
-                  className="p-6 bg-card border-border space-y-4"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-2">
-                      {renderEntity(approval)}
-                      {approval.note && (
-                        <p className="text-foreground">{approval.note}</p>
-                      )}
-                    </div>
-                    <span className="text-sm text-muted-foreground whitespace-nowrap">
-                      {hydrated
-                        ? `Requested ${format(new Date(approval.createdAt), "MMM d, yyyy")}`
-                        : "Requested"}
-                    </span>
-                  </div>
+          <>
+            {/* A calm, reassuring preamble so the section never feels like a
+                pile of obligations. */}
+            <div className="flex items-start gap-3 rounded-xl border border-border bg-primary/[0.04] px-4 py-3 text-sm text-muted-foreground">
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+              <p>
+                Review each item below, then choose to{" "}
+                <span className="font-medium text-foreground">approve</span>,{" "}
+                <span className="font-medium text-foreground">request changes</span>, or{" "}
+                <span className="font-medium text-foreground">reject</span>. You can add a
+                note with any choice, and your team is notified right away.
+              </p>
+            </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor={`note-${approval.id}`}>
-                      Add a note{" "}
-                      <span className="font-normal text-muted-foreground">
-                        (optional)
-                      </span>
-                    </Label>
-                    <Textarea
-                      id={`note-${approval.id}`}
-                      placeholder="Anything you'd like your team to know about this decision…"
-                      value={notes[approval.id] ?? ""}
-                      onChange={(e) =>
-                        setNotes((n) => ({ ...n, [approval.id]: e.target.value }))
-                      }
-                      disabled={busy}
-                      rows={2}
-                    />
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {DECISIONS.map(({ value, label, icon: Icon, className }) => (
-                      <Button
-                        key={value}
-                        type="button"
-                        className={className}
-                        disabled={busy}
-                        onClick={() => handleDecide(approval, value)}
-                      >
-                        {inFlight === value ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <Icon className="w-4 h-4 mr-2" />
+            <div className="space-y-4">
+              {pending.map((approval) => {
+                const inFlight = submitting[approval.id];
+                const busy = Boolean(inFlight);
+                return (
+                  <Card
+                    key={approval.id}
+                    className="space-y-4 border-l-4 border-l-amber-400/70 bg-card p-6"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                          Needs your approval
+                        </p>
+                        {renderEntity(approval)}
+                        {approval.note && (
+                          <p className="text-sm text-foreground">{approval.note}</p>
                         )}
-                        {label}
-                      </Button>
-                    ))}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
+                      </div>
+                      <span className="whitespace-nowrap text-sm text-muted-foreground">
+                        {hydrated
+                          ? `Requested ${format(new Date(approval.createdAt), "MMM d, yyyy")}`
+                          : "Requested"}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor={`note-${approval.id}`}>
+                        Add a note{" "}
+                        <span className="font-normal text-muted-foreground">
+                          (optional)
+                        </span>
+                      </Label>
+                      <Textarea
+                        id={`note-${approval.id}`}
+                        placeholder="Anything you'd like your team to know about this decision…"
+                        value={notes[approval.id] ?? ""}
+                        onChange={(e) =>
+                          setNotes((n) => ({ ...n, [approval.id]: e.target.value }))
+                        }
+                        disabled={busy}
+                        rows={2}
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {DECISIONS.map(({ value, label, icon: Icon, className }) => (
+                        <Button
+                          key={value}
+                          type="button"
+                          className={className}
+                          disabled={busy}
+                          onClick={() => handleDecide(approval, value)}
+                        >
+                          {inFlight === value ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Icon className="mr-2 h-4 w-4" />
+                          )}
+                          {label}
+                        </Button>
+                      ))}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </>
         )}
       </section>
 
       {/* History — already decided */}
       {decided.length > 0 && (
         <section aria-labelledby="history-heading" className="space-y-4">
-          <h2 id="history-heading" className="text-xl font-bold text-foreground">
+          <h2 id="history-heading" className="text-lg font-bold text-foreground">
             Decision history
           </h2>
-          <Card className="bg-card border-border divide-y divide-border">
+          <Card className="divide-y divide-border bg-card">
             {decided.map((approval) => (
-              <div key={approval.id} className="p-6 space-y-2">
+              <div key={approval.id} className="space-y-2 p-6">
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-2">
                     {renderEntity(approval)}

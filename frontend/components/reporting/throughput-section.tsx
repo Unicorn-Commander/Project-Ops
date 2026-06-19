@@ -29,6 +29,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { HelpHint } from "@/components/guidance";
 import { useToast } from "@/components/ui/use-toast";
 import {
   getThroughputReport,
@@ -161,6 +162,14 @@ export function ThroughputSection() {
             taskSeries.length > 0
               ? `${report?.tasksCompleted.total ?? 0} task${report?.tasksCompleted.total === 1 ? "" : "s"} completed across ${taskSeries.length} period${taskSeries.length === 1 ? "" : "s"}`
               : "No tasks completed in this period"
+          }
+          hint={
+            <HelpHint
+              learnMore={{ category: "reports", article: "reports-overview" }}
+            >
+              Your delivery pace — how many tasks finished in each period of the selected
+              range. A simple pulse on how much work the team is getting done over time.
+            </HelpHint>
           }
         />
         <div className="h-72">

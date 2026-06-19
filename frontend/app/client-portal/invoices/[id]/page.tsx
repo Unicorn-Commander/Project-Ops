@@ -11,21 +11,17 @@ import {
   Receipt,
   CreditCard,
   ExternalLink,
+  CheckCircle2,
+  ShieldCheck,
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useHydrated } from "@/lib/use-hydrated";
 import { paymentStatusBadgeClass } from "@/lib/badge-styles";
+import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import Link from "next/link";
+import { money } from "@/components/portal";
 import { getInvoice, type PortalInvoice } from "@/lib/portal-api";
-
-function money(amount: number | null | undefined): string {
-  if (amount == null) return "—";
-  return amount.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-  });
-}
 
 export default function InvoiceDetailPage() {
   const params = useParams();
@@ -74,8 +70,8 @@ export default function InvoiceDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="flex min-h-[400px] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -84,6 +80,8 @@ export default function InvoiceDetailPage() {
 
   const isAbsolutePayUrl =
     !!invoice.payUrl && /^https?:\/\//i.test(invoice.payUrl);
+  const balance = invoice.balanceDue ?? 0;
+  const fullyPaid = balance <= 0;
 
   const fields: Array<{ label: string; value: string }> = [
     { label: "Invoice number", value: invoice.invoiceNumber || "Draft invoice" },
@@ -115,19 +113,21 @@ export default function InvoiceDetailPage() {
     <div className="space-y-6">
       {/* Back */}
       <Link href="/client-portal/invoices">
-        <Button variant="ghost" className="text-primary hover:text-primary/90">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Invoices
+        <Button variant="ghost" className="-ml-2 text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to invoices
         </Button>
       </Link>
 
       {/* Invoice header */}
-      <Card className="p-6 bg-card border-border">
-        <div className="flex items-start justify-between gap-4 mb-6">
-          <div className="flex items-center gap-3">
-            <Receipt className="w-6 h-6 text-primary" />
+      <Card className="overflow-hidden bg-card">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border bg-gradient-to-br from-primary/[0.06] to-transparent p-6">
+          <div className="flex items-center gap-3.5">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/15 text-primary">
+              <Receipt className="h-6 w-6" strokeWidth={1.9} />
+            </span>
             <div>
-              <h1 className="text-2xl font-bold text-foreground">
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">
                 {invoice.invoiceNumber || "Draft invoice"}
               </h1>
               <Link
@@ -140,59 +140,91 @@ export default function InvoiceDetailPage() {
             </div>
           </div>
           {invoice.paymentStatus && (
-            <Badge className={paymentStatusBadgeClass(invoice.paymentStatus)}>
+            <Badge className={cn("text-sm", paymentStatusBadgeClass(invoice.paymentStatus))}>
               {invoice.paymentStatus.replace(/_/g, " ")}
             </Badge>
           )}
         </div>
 
-        {/* Amount breakdown */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 py-4 border-y border-border">
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">Total amount</p>
-            <p className="text-lg font-semibold text-foreground">
+        {/* Amount breakdown — the balance is the hero figure. */}
+        <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+          <div className="p-6">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Total amount
+            </p>
+            <p className="mt-1.5 text-xl font-semibold text-foreground">
               {money(invoice.billingAmount)}
             </p>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">Amount paid</p>
-            <p className="text-lg font-semibold text-foreground">
+          <div className="p-6">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Amount paid
+            </p>
+            <p className="mt-1.5 text-xl font-semibold text-foreground">
               {money(invoice.amountPaid)}
             </p>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">Balance due</p>
-            <p className="text-lg font-semibold text-foreground">
-              {money(invoice.balanceDue)}
+          <div className={cn("p-6", !fullyPaid && "bg-amber-500/[0.06]")}>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Balance due
+            </p>
+            <p
+              className={cn(
+                "mt-1.5 text-xl font-bold",
+                fullyPaid
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-foreground",
+              )}
+            >
+              {fullyPaid ? money(0) : money(balance)}
             </p>
           </div>
         </div>
 
         {/* Detail fields */}
-        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
+        <dl className="grid grid-cols-1 gap-4 border-t border-border p-6 sm:grid-cols-2">
           {fields.map((f) => (
             <div key={f.label}>
-              <dt className="text-xs text-muted-foreground mb-1">{f.label}</dt>
-              <dd className="text-sm font-medium text-foreground">{f.value}</dd>
+              <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {f.label}
+              </dt>
+              <dd className="mt-1 text-sm font-medium text-foreground">{f.value}</dd>
             </div>
           ))}
         </dl>
 
-        {/* Pay — deep-link only (shown only when there's an open balance) */}
-        {invoice.payUrl && (
-          <div className="mt-6 pt-6 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <p className="text-sm text-muted-foreground">
-              {money(invoice.balanceDue)} is outstanding on this invoice.
-            </p>
+        {/* Pay — deep-link only (shown only when there's an open balance). */}
+        {invoice.payUrl ? (
+          <div className="flex flex-col gap-3 border-t border-border bg-muted/30 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-2.5 text-sm text-muted-foreground">
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+              <p>
+                <span className="font-semibold text-foreground">
+                  {money(balance)}
+                </span>{" "}
+                is outstanding. You'll be taken to a secure checkout to pay — we
+                never store your card details.
+              </p>
+            </div>
             <Button
-              className="bg-primary hover:bg-primary/90"
+              size="lg"
+              className="bg-primary shadow-sm hover:bg-primary/90"
               onClick={handlePay}
             >
-              <CreditCard className="w-4 h-4 mr-2" />
+              <CreditCard className="mr-2 h-4 w-4" />
               Pay invoice
-              {isAbsolutePayUrl && <ExternalLink className="w-4 h-4 ml-2" />}
+              {isAbsolutePayUrl && <ExternalLink className="ml-2 h-4 w-4" />}
             </Button>
           </div>
+        ) : (
+          fullyPaid && (
+            <div className="flex items-center gap-2.5 border-t border-border bg-emerald-500/[0.06] p-6 text-sm">
+              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <p className="font-medium text-foreground">
+                This invoice is fully paid — thank you!
+              </p>
+            </div>
+          )
         )}
       </Card>
     </div>

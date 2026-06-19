@@ -55,6 +55,7 @@ import { statusBadgeClass } from '@/lib/badge-styles';
 import { TaskDetailsModal } from '@/components/modals/task-details-modal';
 import { CreateTaskModal } from '@/components/modals/create-task-modal';
 import { EditTaskModal } from '@/components/modals/edit-task-modal';
+import { HelpHint } from '@/components/guidance';
 import api from '@/lib/api';
 
 // Interfaces — Organization comes from lib/organizations-api, Task from
@@ -565,8 +566,12 @@ export default function KanbanPage() {
     <div className="po-page-enter space-y-6">
       {/* Header — title lives in the top bar; just the action row + hint */}
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
+        <p className="inline-flex items-center gap-1 text-sm text-muted-foreground">
           Drag and drop tasks to update their status.
+          <HelpHint learnMore={{ category: "projects-tasks", article: "kanban" }}>
+            Each column is a task status. Drag a card to another column to change
+            its status — no form needed.
+          </HelpHint>
         </p>
         <Button
           onClick={() => {

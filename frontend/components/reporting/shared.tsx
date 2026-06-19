@@ -157,10 +157,13 @@ export function ChartHeader({
   icon: Icon,
   title,
   subtitle,
+  /** Optional guidance affordance (e.g. a <HelpHint>) shown after the title. */
+  hint,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   subtitle?: string;
+  hint?: React.ReactNode;
 }) {
   return (
     <div className="flex items-center justify-between mb-4">
@@ -168,6 +171,7 @@ export function ChartHeader({
         <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
           <Icon className="h-4 w-4 text-muted-foreground" />
           {title}
+          {hint}
         </h3>
         {subtitle && (
           <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>

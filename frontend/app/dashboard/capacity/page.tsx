@@ -48,6 +48,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { HelpHint } from "@/components/guidance";
 import { useToast } from "@/components/ui/use-toast";
 import { iconWellClass } from "@/lib/badge-styles";
 import { useAuthStore } from "@/lib/store";
@@ -86,6 +87,12 @@ function weekWindow(today: Date, weekOffset: number): Win {
 }
 
 type Mode = "team" | "me";
+
+// Every hint on this surface deep-links to the one capacity explainer.
+const CAPACITY_HELP = {
+  category: "capacity",
+  article: "capacity-overview",
+} as const;
 
 // ---------------------------------------------------------------------------
 // Page
@@ -309,6 +316,13 @@ export default function CapacityPage() {
             value={fmtHours(totals.committedHours)}
             tone="violet"
             icon={CalendarRange}
+            help={
+              <HelpHint learnMore={CAPACITY_HELP}>
+                Total estimated hours on every assigned task in this window. Tasks with no
+                estimate aren&apos;t counted here — the &quot;unestimated&quot; warning flags
+                them so this total isn&apos;t quietly understating the real load.
+              </HelpHint>
+            }
             hint={
               totals.unestimatedCount > 0
                 ? `${totals.unestimatedCount} unestimated task${
@@ -434,10 +448,17 @@ function Header({
 }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <p className="text-sm text-muted-foreground">
+      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
         {mode === "team"
           ? "Who’s over-committed and who has headroom — committed task hours against capacity."
           : "Your committed task hours against your available capacity."}
+        <HelpHint icon="info" side="right" learnMore={CAPACITY_HELP}>
+          Capacity planning stacks each person&apos;s{" "}
+          <span className="font-semibold">committed</span> hours (the estimates on the tasks
+          assigned to them) against their <span className="font-semibold">capacity</span> for
+          the window (their weekly hours, pro-rated). It&apos;s driven by task estimates, so
+          unestimated work is flagged rather than silently uncounted.
+        </HelpHint>
       </p>
       <div className="inline-flex items-center gap-2">
         <div className="inline-flex items-center rounded-lg border border-border bg-muted/40 p-1">
@@ -483,18 +504,24 @@ function StatCard({
   tone,
   icon: Icon,
   hint,
+  help,
 }: {
   label: string;
   value: string;
   tone: Parameters<typeof iconWellClass>[0];
   icon: React.ComponentType<{ className?: string }>;
   hint?: string;
+  /** Optional guidance affordance (a <HelpHint>) shown after the label. */
+  help?: React.ReactNode;
 }) {
   return (
     <Card className="p-4 transition-shadow hover:shadow-md">
       <div className="flex items-center justify-between">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-muted-foreground">{label}</p>
+          <p className="flex items-center gap-1 text-sm font-medium text-muted-foreground">
+            {label}
+            {help}
+          </p>
           <p className="mt-1 font-mono text-2xl font-bold tabular-nums text-foreground">
             {value}
           </p>
@@ -550,6 +577,13 @@ function PersonalSummary({ row }: { row: UserCapacityRow }) {
         value={String(row.unestimatedCount)}
         tone={row.unestimatedCount > 0 ? "amber" : "emerald"}
         icon={AlertTriangle}
+        help={
+          <HelpHint learnMore={CAPACITY_HELP}>
+            Assigned tasks with no time estimate. They don&apos;t add to your committed hours,
+            so your load could really be higher than it looks. Add an estimate on each to make
+            the picture accurate.
+          </HelpHint>
+        }
         hint={
           row.unestimatedCount > 0
             ? "tasks without an estimate"
@@ -575,6 +609,15 @@ function LoadLegend() {
           <span className="text-muted-foreground">{it.label}</span>
         </span>
       ))}
+      <HelpHint learnMore={CAPACITY_HELP}>
+        Utilization is committed ÷ capacity. The bands read at a glance:{" "}
+        <span className="font-semibold text-emerald-600 dark:text-emerald-400">green</span> is
+        comfortable headroom (under 85%),{" "}
+        <span className="font-semibold text-amber-600 dark:text-amber-400">amber</span> is at
+        risk (85–100%), and{" "}
+        <span className="font-semibold text-rose-600 dark:text-rose-400">red</span> means
+        over-allocated (past 100% — committed beyond capacity).
+      </HelpHint>
     </div>
   );
 }

@@ -15,6 +15,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import { HelpHint, FieldHint } from "@/components/guidance";
 import { iconWellClass } from "@/lib/badge-styles";
 import {
   ChevronLeft,
@@ -57,6 +60,12 @@ const ENTITY_GROUPS: { entity: CustomFieldEntity; title: string; blurb: string }
 ];
 
 const TYPE_OPTIONS = Object.values(CustomFieldType);
+
+// Every hint on this surface deep-links to the one custom-fields explainer.
+const CUSTOM_FIELDS_HELP = {
+  category: "custom-fields",
+  article: "custom-fields-overview",
+} as const;
 
 export default function CustomFieldsSettingsPage() {
   const { toast } = useToast();
@@ -131,7 +140,21 @@ export default function CustomFieldsSettingsPage() {
           <ChevronLeft className="h-4 w-4" />
           Settings
         </Link>
-        <h1 className="text-3xl font-bold text-foreground">Custom fields</h1>
+        <h1 className="flex items-center gap-2 text-3xl font-bold text-foreground">
+          Custom fields
+          <HelpHint
+            icon="info"
+            side="bottom"
+            size={18}
+            aria-label="About custom fields"
+            learnMore={CUSTOM_FIELDS_HELP}
+          >
+            Capture the attributes your team cares about that aren&apos;t built in — a client
+            matter number, a billing category, a launch date, a yes/no flag. Fields are
+            defined per workspace and attached to either tasks or projects, then everyone
+            fills in the values as they work.
+          </HelpHint>
+        </h1>
         <p className="text-muted-foreground mt-1">
           Define your own attributes on tasks and projects. They show up in the
           create/edit forms and on task details.
@@ -139,11 +162,24 @@ export default function CustomFieldsSettingsPage() {
       </div>
 
       {loading ? (
-        <Card className="p-6">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading custom fields…
-          </div>
-        </Card>
+        <div className="space-y-6">
+          {[0, 1].map((i) => (
+            <Card key={i} className="p-6">
+              <div className="mb-6 flex items-center gap-3">
+                <Skeleton className="h-9 w-9 rounded-md" />
+                <div className="space-y-2">
+                  <Skeleton className="h-5 w-32" />
+                  <Skeleton className="h-3 w-56" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                {[0, 1].map((j) => (
+                  <Skeleton key={j} className="h-12 w-full rounded-md" />
+                ))}
+              </div>
+            </Card>
+          ))}
+        </div>
       ) : error ? (
         <Card className="p-6">
           <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm">
@@ -238,15 +274,19 @@ function EntityGroupCard({
       </div>
 
       {definitions.length === 0 ? (
-        <div className="rounded-md border border-dashed p-6 text-center">
-          <p className="text-sm text-muted-foreground mb-3">
-            No custom fields yet.
-          </p>
-          <Button variant="outline" onClick={onCreate}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add your first field
-          </Button>
-        </div>
+        <EmptyState
+          icon={SlidersHorizontal}
+          iconTone="blue"
+          title="No custom fields yet"
+          body={`Add a field and it shows up on every ${title.toLowerCase().replace(" fields", "")}'s create and edit form.`}
+          action={
+            <Button variant="outline" onClick={onCreate}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add your first field
+            </Button>
+          }
+          className="border-0"
+        />
       ) : (
         <div className="rounded-md border divide-y">
           {definitions.map((def) => (
@@ -466,7 +506,15 @@ function FieldEditorModal({
 
         {/* Key — auto-derived, editable on create only */}
         <div className="space-y-2">
-          <Label htmlFor="cf-key">Key</Label>
+          <Label htmlFor="cf-key">
+            Key
+            <FieldHint learnMore={CUSTOM_FIELDS_HELP}>
+              The stable identifier stored values are saved under. It&apos;s auto-derived from
+              the label as a lowercase slug and can be set when you create the field —
+              but once saved it&apos;s <span className="font-semibold">immutable</span>, so
+              existing values never lose their home.
+            </FieldHint>
+          </Label>
           <Input
             id="cf-key"
             value={effectiveKey}
@@ -494,7 +542,14 @@ function FieldEditorModal({
 
         {/* Type */}
         <div className="space-y-2">
-          <Label htmlFor="cf-type">Type</Label>
+          <Label htmlFor="cf-type">
+            Type
+            <FieldHint learnMore={CUSTOM_FIELDS_HELP}>
+              What kind of value the field holds: Text, Number, Date, Select (one choice),
+              Multi-select (any number of choices), or Checkbox (true/false). Select and
+              Multi-select need a list of options you define below.
+            </FieldHint>
+          </Label>
           <Select
             value={type}
             onValueChange={(v) => setType(v as CustomFieldType)}
@@ -588,7 +643,13 @@ function FieldEditorModal({
             <p className="text-xs text-muted-foreground">Lower shows first.</p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="cf-required">Required</Label>
+            <Label htmlFor="cf-required">
+              Required
+              <FieldHint learnMore={CUSTOM_FIELDS_HELP}>
+                When on, this field must be filled in before a {entity === CustomFieldEntity.TASK ? "task" : "project"}{" "}
+                can be saved. Leave it off to keep the field optional.
+              </FieldHint>
+            </Label>
             <div className="flex items-center gap-2 h-10">
               <Switch
                 id="cf-required"

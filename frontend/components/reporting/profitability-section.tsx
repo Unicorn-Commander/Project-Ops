@@ -28,6 +28,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { HelpHint } from "@/components/guidance";
 import { useToast } from "@/components/ui/use-toast";
 import {
   getProfitabilityReport,
@@ -268,6 +269,14 @@ export function ProfitabilitySection() {
                 <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
                   <TrendingUp className="h-4 w-4 text-muted-foreground" />
                   Profitability by project
+                  <HelpHint
+                    learnMore={{ category: "reports", article: "reports-overview" }}
+                  >
+                    <span className="font-semibold">Margin</span> is billed minus cost basis;{" "}
+                    <span className="font-semibold">Realization</span> is how much of the
+                    billable value you actually billed (billed ÷ billable). Because this exposes
+                    cost and margin, the whole report is limited to managers and admins.
+                  </HelpHint>
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Billable value, billed, cost basis, margin and realization per
@@ -280,7 +289,7 @@ export function ProfitabilitySection() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
-                      <th className="text-left font-medium py-2 pr-4">Project</th>
+                      <th className="text-left font-medium py-2 pl-3 pr-4">Project</th>
                       <th className="text-right font-medium py-2 px-4">Billable</th>
                       <th className="text-right font-medium py-2 px-4">Billed</th>
                       <th className="text-right font-medium py-2 px-4">Cost</th>
@@ -295,9 +304,13 @@ export function ProfitabilitySection() {
                       return (
                         <tr
                           key={p.projectId}
-                          className="border-b border-border/60 last:border-0"
+                          className={`border-b border-border/60 last:border-0 ${
+                            negative
+                              ? "bg-rose-500/[0.05] shadow-[inset_3px_0_0_0] shadow-rose-500/70 dark:shadow-rose-400/70"
+                              : ""
+                          }`}
                         >
-                          <td className="py-2.5 pr-4">
+                          <td className="py-2.5 pl-3 pr-4">
                             <span className="font-medium text-foreground line-clamp-1">
                               {p.title}
                             </span>
@@ -342,7 +355,7 @@ export function ProfitabilitySection() {
                   {totals && (
                     <tfoot>
                       <tr className="border-t-2 border-border text-sm font-semibold">
-                        <td className="py-2.5 pr-4 text-foreground">Total</td>
+                        <td className="py-2.5 pl-3 pr-4 text-foreground">Total</td>
                         <td className="py-2.5 px-4 text-right font-mono tabular-nums text-foreground">
                           {formatMoney(totals.billableAmount)}
                         </td>

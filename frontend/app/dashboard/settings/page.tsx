@@ -12,7 +12,6 @@ import api from "@/lib/api";
 import {
   User,
   Lock,
-  Bell,
   Shield,
   Mail,
   ChevronRight,
@@ -23,6 +22,8 @@ import {
 import Link from "next/link";
 import { ApiTokensCard } from "./api-tokens-card";
 import { WorkspacesCard } from "./workspaces-card";
+import { NotificationPreferencesCard } from "@/components/settings/notification-preferences-card";
+import { GuidanceControlsCard } from "@/components/settings/guidance-controls-card";
 
 export default function SettingsPage() {
   const { user, setUser } = useAuthStore();
@@ -181,40 +182,11 @@ export default function SettingsPage() {
       {/* API tokens — Personal Access Tokens for the customer's own MCP clients. */}
       <ApiTokensCard />
 
-      {/* Notifications — placeholder honest about not yet being wired. */}
-      <Card className="p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <div className={`inline-flex h-9 w-9 items-center justify-center rounded-md ${iconWellClass("amber")}`}>
-            <Bell className="h-5 w-5" strokeWidth={1.75} />
-          </div>
-          <div>
-            <h2 className="text-xl font-semibold">Notifications</h2>
-            <p className="text-xs text-muted-foreground">
-              Coming soon. These toggles are a placeholder. Per-user
-              notification preferences land alongside the email-send pipeline,
-              once the backend exposes a preferences endpoint.
-            </p>
-          </div>
-        </div>
-        <div
-          className="space-y-3 opacity-60 pointer-events-none"
-          aria-hidden="true"
-        >
-          {[
-            { label: "Email notifications", body: "Receive email updates about your projects." },
-            { label: "Project status changes", body: "Get notified when project status changes." },
-            { label: "Document uploads", body: "Alerts when new documents are uploaded." },
-          ].map(({ label, body }) => (
-            <div key={label} className="flex items-center justify-between rounded-md border p-4">
-              <div>
-                <p className="font-medium">{label}</p>
-                <p className="text-sm text-muted-foreground">{body}</p>
-              </div>
-              <input type="checkbox" className="h-4 w-4" defaultChecked disabled />
-            </div>
-          ))}
-        </div>
-      </Card>
+      {/* Notifications — real email preferences wired to /notifications/preferences. */}
+      <NotificationPreferencesCard />
+
+      {/* Help & guidance — in-app tips master switch + reset/replay tour. */}
+      <GuidanceControlsCard />
 
       {/* Admin Settings */}
       {user?.role === "ADMIN" && (
