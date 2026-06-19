@@ -1,41 +1,24 @@
 -- Federation principals — idempotent seed.
 --
--- UC suite apps that federate INTO Project-Ops (reading / acting on behalf of
--- the workspace, brokered by Brigade) need a Project-Ops `users` row so their
--- KC service-account subject resolves to a real, role-scoped user. Without it,
--- the federated call authenticates but resolves to no user → 401 / empty panel.
+-- UC suite apps that federate INTO Project-Ops (brokered by Brigade) authenticate
+-- as a SYNTHETIC principal — JwtStrategy → AuthService.buildFederationPrincipal:
+--   id = 'federation:<app>', keycloakId = null, and NO `users` row.
+-- PO authorizes that principal by a `memberships` row whose userKey = its
+-- membershipKey (= `keycloakId ?? id` = 'federation:<app>') — NOT the token `sub`,
+-- and NOT a DB users row. A `users` row keyed on the KC service-account sub is
+-- DEAD WEIGHT: PO never resolves a DB user for a federation actor (the synthetic
+-- branch in validateJwtPayload returns before any user lookup).
 --
--- Apply (idempotent — safe to re-run) as the DB OWNER:
---   docker exec -i project-ops-postgres \
---     psql -U project_ops_admin -d project_ops -f - < federation-principals.sql
+-- So provisioning a federating app = ONE membership per (app, workspace) +
+-- listing the app in PROJECT_OPS_FEDERATION_ACTORS (env, provisioned separately).
 --
--- Two more pieces, provisioned separately (NOT here, because they are
--- env-specific):
---   1. PROJECT_OPS_FEDERATION_ACTORS env must list the actor (see .env) so the
---      FederationActorGuard admits it.
---   2. A `memberships` row per workspace the actor may access
---      (userKey = the principal's id below, workspaceId = the target workspace,
---      role MEMBER, status ACTIVE) — workspace ids differ per environment.
+-- Apply (idempotent) as the DB owner:
+--   docker exec -i project-ops-postgres psql -U project_ops_admin -d project_ops -f - < federation-principals.sql
 --
--- Convention per principal: id = keycloakId = the app's KC service-account
--- `sub` (Brigade preserves it on the federated call). role = STAFF so it can
--- read across the workspace (CLIENT is org-restricted). password NULL (no login).
+-- ⚠️ workspaceId is ENV-SPECIFIC. Below = the dogfood MU workspace; set the prod
+-- workspace id when provisioning prod. `memberships` is NOT RLS-tenanted (control table).
 
--- customer-ops — federates a read-only projects panel into Customer-Ops (2026-06-19).
-INSERT INTO users (id, email, username, "firstName", "lastName", role, "keycloakId", "isActive", "updatedAt")
-VALUES (
-  'd0b3c214-5350-4b99-a722-8803444c2750',
-  'customer-ops@federation.local',
-  'customer-ops',
-  'Customer-Ops',
-  'Federation',
-  'STAFF',
-  'd0b3c214-5350-4b99-a722-8803444c2750',
-  true,
-  now()
-)
-ON CONFLICT (id) DO UPDATE SET
-  role = 'STAFF',
-  "isActive" = true,
-  "keycloakId" = EXCLUDED."keycloakId",
-  "updatedAt" = now();
+-- customer-ops — read-only projects panel into Customer-Ops (2026-06-19).
+INSERT INTO memberships ("userKey", "workspaceId", role, status, "isDefault")
+VALUES ('federation:customer-ops', '019e50a3-d995-723f-ab66-0f765f92c0f4', 'MEMBER', 'ACTIVE', false)
+ON CONFLICT ("userKey", "workspaceId") DO UPDATE SET role = 'MEMBER', status = 'ACTIVE';
