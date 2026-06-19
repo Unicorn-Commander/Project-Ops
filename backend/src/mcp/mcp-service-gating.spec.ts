@@ -59,6 +59,11 @@ function makeService(resolvedWorkspace: string): McpService {
     noop, // reports
     noop, // rollup
     noop, // events (EventEmitter2) — gate tests deny before the tool body
+    noop, // reporting (Wave 2)
+    noop, // capacity (Wave 2)
+    noop, // automations (Wave 2)
+    noop, // customFields (Wave 2)
+    noop, // approvals (Wave 2)
   );
   // Silence the service logger.
   (svc as any).logger = new Logger('test');
@@ -148,5 +153,35 @@ describe('McpService tool gating (RBAC + workspace)', () => {
     // Drift wins: workspace_denied, not scope_denied (even though read:projects
     // is granted) — the bound-workspace check is the outermost fence.
     expect(body.error).toBe('workspace_denied');
+  });
+
+  // Wave 2 tools ride the SAME PAT-scope wrapper. These pin that the new tools
+  // are registered AND mapped in MCP_TOOL_SCOPE_MAP (an unmapped tool would
+  // fail closed with "(no mapping)"), so PAT scoping works for them.
+  it('Wave 2 reporting tool is scope-gated — denied without read:reports', async () => {
+    const svc = makeService('ws-1');
+    await svc.createServerForUser(adminUser(), ['read:projects'], 'tok', null);
+    const portfolio = registered.get('get_portfolio_report')!;
+    const body = payload(await portfolio({}));
+    expect(body.error).toBe('scope_denied');
+    expect(body.required_scope).toBe('read:reports');
+  });
+
+  it('Wave 2 reporting tool passes the gate when read:reports is granted', async () => {
+    const svc = makeService('ws-1');
+    await svc.createServerForUser(adminUser(), ['read:reports'], 'tok', null);
+    const portfolio = registered.get('get_portfolio_report')!;
+    // Granted -> gate passes, the (real, service-backed) body runs and throws
+    // (no stubbed reporting service wired) -> proves no scope denial.
+    await expect(Promise.resolve(portfolio({}))).rejects.toBeDefined();
+  });
+
+  it('Wave 2 automation write tool is scope-gated — denied without write:automations', async () => {
+    const svc = makeService('ws-1');
+    await svc.createServerForUser(adminUser(), ['read:automations'], 'tok', null);
+    const del = registered.get('delete_automation')!;
+    const body = payload(await del({ id: 'r1' }));
+    expect(body.error).toBe('scope_denied');
+    expect(body.required_scope).toBe('write:automations');
   });
 });

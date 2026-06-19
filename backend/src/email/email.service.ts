@@ -16,6 +16,11 @@ import { getTaskReminderEmailTemplate } from './templates/task-reminder.template
 import { getTaskAssignedEmailTemplate } from './templates/task-assigned.template';
 import { getDocumentUploadEmailTemplate } from './templates/document-upload.template';
 import { getProjectStatusUpdateEmailTemplate } from './templates/project-status-update.template';
+import {
+  NotificationEmailContent,
+  getNotificationEmailHtml,
+  getNotificationEmailText,
+} from './templates/notification.template';
 
 @Injectable()
 export class EmailService {
@@ -614,6 +619,51 @@ export class EmailService {
         success: false,
         message: `Failed to send email: ${error.message}`,
       };
+    }
+  }
+
+  /**
+   * Send a generic, template-driven NOTIFICATION email (subject + one-line body
+   * + a deep-link CTA). This is the single send path the notifications module
+   * uses for per-event emails: it REUSES the same SMTP transporter, the same
+   * from-name/from-email resolution, and the same resilient try/catch contract
+   * as every other method here (returns `{ success, message }`, never throws on
+   * an SMTP failure). The CALLER (the notifications email listener) owns the
+   * per-user preference gate; this method just renders + sends.
+   *
+   * Sends BOTH an HTML and a plain-text part (multipart/alternative) for better
+   * deliverability and text-only clients.
+   */
+  async sendNotificationEmail(
+    to: string,
+    recipientName: string,
+    content: NotificationEmailContent,
+  ): Promise<{ success: boolean; message: string }> {
+    const transporter = await this.createTransporter();
+    if (!transporter) {
+      this.logger.warn('Email not configured. Skipping notification email.');
+      return { success: false, message: 'Email service not configured' };
+    }
+
+    const config = await this.prisma.emailConfig.findFirst({ where: { isEnabled: true } });
+    const fromName =
+      config?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
+    const fromEmail = config?.fromEmail || this.configService.get<string>('SMTP_USER', '');
+
+    try {
+      const info = await transporter.sendMail({
+        from: `"${fromName}" <${fromEmail}>`,
+        to,
+        subject: content.subject,
+        text: getNotificationEmailText(content, recipientName, fromName),
+        html: getNotificationEmailHtml(content, recipientName, fromName),
+      });
+
+      this.logger.log(`Notification email sent to ${to}. Message ID: ${info.messageId}`);
+      return { success: true, message: `Notification email sent to ${to}` };
+    } catch (error) {
+      this.logger.error(`Failed to send notification email to ${to}`, error);
+      return { success: false, message: `Failed to send email: ${error.message}` };
     }
   }
 

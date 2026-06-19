@@ -15,7 +15,7 @@ import { User } from '@prisma/client';
 import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
 import { MinioService } from '../documents/minio.service';
-import { ProjectOpsTools, TimeTrackingDeps } from './mcp.tools';
+import { ProjectOpsTools, TimeTrackingDeps, Wave2Deps } from './mcp.tools';
 import { MCP_TOOL_SCOPE_MAP } from '../auth/pat/pat.constants';
 import { TriageService } from '../triage/triage.service';
 import { timeTrackingEnabled } from '../common/workspace/feature-flags';
@@ -25,6 +25,13 @@ import { TimeEntryService } from '../time-tracking/time-entry.service';
 import { TimesheetService } from '../time-tracking/timesheet.service';
 import { ReportsService } from '../time-tracking/reports.service';
 import { BillableRollupService } from '../time-tracking/billing/billable-rollup.service';
+// Wave 2 services — the MCP tools delegate to these so agents share the REST
+// controllers' RBAC + workspace-RLS + validation (one code path).
+import { ReportingService } from '../reporting/reporting.service';
+import { CapacityService } from '../capacity/capacity.service';
+import { AutomationsService } from '../automations/automations.service';
+import { CustomFieldsService } from '../custom-fields/custom-fields.service';
+import { ApprovalsService } from '../client-portal/approvals/approvals.service';
 
 @Injectable()
 export class McpService {
@@ -45,6 +52,14 @@ export class McpService {
     // `task.comment.created` event the REST TasksService does, fanning out
     // @mention notifications identically.
     private readonly events: EventEmitter2,
+    // Wave 2 services (reporting / capacity / automations / custom-fields /
+    // approvals) — injected via their exporting modules (McpModule imports
+    // them) and handed to ProjectOpsTools as Wave2Deps.
+    private readonly reporting: ReportingService,
+    private readonly capacity: CapacityService,
+    private readonly automations: AutomationsService,
+    private readonly customFields: CustomFieldsService,
+    private readonly approvals: ApprovalsService,
   ) {}
 
   /**
@@ -152,6 +167,13 @@ export class McpService {
       rollup: this.rollup,
       workspace: this.workspace,
     };
+    const wave2Deps: Wave2Deps = {
+      reporting: this.reporting,
+      capacity: this.capacity,
+      automations: this.automations,
+      customFields: this.customFields,
+      approvals: this.approvals,
+    };
     const tools = new ProjectOpsTools(
       this.prisma,
       this.minio,
@@ -161,6 +183,7 @@ export class McpService {
       bearerToken ?? null,
       this.workspace,
       this.events,
+      wave2Deps,
     );
 
     server.registerTool(
@@ -359,7 +382,9 @@ export class McpService {
         description:
           'Create a new project. Auto-assigns the next P-XXXXX number. ' +
           'Defaults: status NEW, priority MEDIUM, assignee = caller. ' +
-          'CLIENT-role users cannot call this.',
+          'CLIENT-role users cannot call this. Optional customFields (object ' +
+          'keyed by the workspace PROJECT custom-field key — validated + stored ' +
+          'under metadata.customFields) and recurrenceRule (RRULE subset).',
         inputSchema: {
           title: z.string().min(1).max(200),
           description: z.string().optional(),
@@ -368,6 +393,8 @@ export class McpService {
           priority: z.string().optional(),
           dueDate: z.string().optional(),
           assignedToId: z.string().optional(),
+          customFields: z.record(z.string(), z.any()).optional(),
+          recurrenceRule: z.string().optional(),
         },
       },
       async (args: any) => wrap(await tools.createProject(user, args)),
@@ -398,7 +425,9 @@ export class McpService {
           'Patch a project. Identify by id or projectNumber. Only the fields ' +
           'you pass are updated. organizationId reassigns the project to a ' +
           'different organization (pass null to detach). CLIENT-role users ' +
-          'cannot call this.',
+          'cannot call this. Optional customFields (object keyed by the workspace ' +
+          'PROJECT custom-field key — validated + merged into metadata.customFields, ' +
+          'preserving other metadata) and recurrenceRule (RRULE subset; null clears it).',
         inputSchema: {
           id: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -409,6 +438,8 @@ export class McpService {
           priority: z.string().optional(),
           dueDate: z.string().nullable().optional(),
           assignedToId: z.string().optional(),
+          customFields: z.record(z.string(), z.any()).optional(),
+          recurrenceRule: z.string().nullable().optional(),
         },
       },
       async (args: any) => wrap(await tools.updateProject(user, args)),
@@ -421,7 +452,11 @@ export class McpService {
         description:
           'Patch a task. Required: taskId. Only fields passed are updated. ' +
           'projectId or projectNumber reparents the task to a different ' +
-          'project the caller can see. CLIENT-role users cannot call this.',
+          'project the caller can see. CLIENT-role users cannot call this. ' +
+          'Optional customFields (object keyed by the workspace TASK custom-field ' +
+          'key — validated + merged into metadata.customFields, preserving other ' +
+          'metadata), recurrenceRule (RRULE subset; null clears it), and ' +
+          'estimatedHours (null clears it).',
         inputSchema: {
           taskId: z.string().min(1),
           title: z.string().min(1).max(200).optional(),
@@ -432,6 +467,9 @@ export class McpService {
           assignedToId: z.string().optional(),
           projectId: z.string().optional(),
           projectNumber: z.string().optional(),
+          customFields: z.record(z.string(), z.any()).optional(),
+          recurrenceRule: z.string().nullable().optional(),
+          estimatedHours: z.number().min(0).nullable().optional(),
         },
       },
       async (args: any) => wrap(await tools.updateTask(user, args)),
@@ -444,7 +482,12 @@ export class McpService {
         description:
           'Create a task on a project the caller can see. Identify the project ' +
           'by projectId or projectNumber. Defaults: type OTHER, priority MEDIUM, ' +
-          'assignee = caller. CLIENT-role users cannot call this.',
+          'assignee = caller. CLIENT-role users cannot call this. Optional ' +
+          'customFields (object keyed by the workspace TASK custom-field key — ' +
+          'validated + stored under metadata.customFields), recurrenceRule (an ' +
+          'RRULE subset, e.g. "FREQ=WEEKLY;INTERVAL=1", makes this a recurrence ' +
+          'template), and estimatedHours (effort estimate used by capacity ' +
+          'planning).',
         inputSchema: {
           projectId: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -454,6 +497,9 @@ export class McpService {
           priority: z.string().optional(),
           dueDate: z.string().optional(),
           assignedToId: z.string().optional(),
+          customFields: z.record(z.string(), z.any()).optional(),
+          recurrenceRule: z.string().optional(),
+          estimatedHours: z.number().min(0).optional(),
         },
       },
       async (args: any) => wrap(await tools.createTask(user, args)),
@@ -591,6 +637,210 @@ export class McpService {
         },
       },
       async (args: any) => wrap(await tools.updateBillingFields(user, args)),
+    );
+
+    // ── Wave 2 tools (reporting / capacity / automations / custom-fields /
+    //    approvals) — delegate to the same services the REST controllers use,
+    //    so RBAC + workspace RLS + validation are shared. Not feature-flag
+    //    gated; PAT scope gating is via MCP_TOOL_SCOPE_MAP. ──
+
+    server.registerTool(
+      'get_portfolio_report',
+      {
+        title: 'Portfolio health report',
+        description:
+          'Per-project health roll-up + workspace totals: budgeted vs logged ' +
+          'hours, accrued billable vs budget amount, % complete, status, and an ' +
+          'over-budget flag. Scoped to the projects the caller can see. Read-only.',
+        inputSchema: {},
+      },
+      async (args: any) => wrap(await tools.getPortfolioReport(user, args)),
+    );
+
+    server.registerTool(
+      'get_profitability_report',
+      {
+        title: 'Profitability report (MANAGER/ADMIN)',
+        description:
+          'Per-project + workspace profitability: billable amount, cost basis, ' +
+          'margin, margin %, and realization (billed/billable) over an optional ' +
+          'from/to ISO window. Exposes internal cost/margin, so MANAGER/ADMIN only. ' +
+          'Read-only.',
+        inputSchema: {
+          from: z.string().optional(),
+          to: z.string().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.getProfitabilityReport(user, args)),
+    );
+
+    server.registerTool(
+      'get_throughput_report',
+      {
+        title: 'Throughput report',
+        description:
+          'Tasks + projects COMPLETED over a window, bucketed by ISO week, plus a ' +
+          'status breakdown of tasks created in-window. Defaults to the trailing ' +
+          '12 weeks when from/to are omitted. Read-only.',
+        inputSchema: {
+          from: z.string().optional(),
+          to: z.string().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.getThroughputReport(user, args)),
+    );
+
+    server.registerTool(
+      'get_team_capacity',
+      {
+        title: 'Team capacity report (MANAGER/ADMIN)',
+        description:
+          'Per-user committed hours (sum of estimatedHours on in-window, not-done ' +
+          'assigned tasks) vs pro-rated weekly capacity across a date window ' +
+          '(defaults to the current week), with over-allocation flags + workspace ' +
+          'totals. A planning surface — MANAGER/ADMIN only. Read-only.',
+        inputSchema: {
+          from: z.string().optional(),
+          to: z.string().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.getTeamCapacity(user, args)),
+    );
+
+    server.registerTool(
+      'get_my_capacity',
+      {
+        title: 'My capacity',
+        description:
+          "The calling user's OWN committed load vs capacity over a date window " +
+          '(defaults to the current week). Any active member may call it; a ' +
+          'non-member is refused. Read-only.',
+        inputSchema: {
+          from: z.string().optional(),
+          to: z.string().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.getMyCapacity(user, args)),
+    );
+
+    server.registerTool(
+      'list_automations',
+      {
+        title: 'List automation rules (MANAGER/ADMIN)',
+        description:
+          'List the workspace automation rules, newest first. Optional filters: ' +
+          'trigger (TASK_CREATED, TASK_STATUS_CHANGED, TASK_ASSIGNED, ' +
+          'TASK_COMPLETED, PROJECT_CREATED, PROJECT_STATUS_CHANGED, ' +
+          'COMMENT_CREATED) and enabled. MANAGER/ADMIN only.',
+        inputSchema: {
+          trigger: z.string().optional(),
+          enabled: z.boolean().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.listAutomations(user, args)),
+    );
+
+    server.registerTool(
+      'create_automation',
+      {
+        title: 'Create an automation rule (MANAGER/ADMIN)',
+        description:
+          'Create a rule { name, trigger, conditions[], actions[] }. trigger is ' +
+          'one of the AutomationTrigger values. conditions is an optional array of ' +
+          '{ field, op (eq|neq|contains|gt|lt), value } — ALL must match (AND). ' +
+          'actions is a required non-empty array of { type, params }; type is one ' +
+          'of assign_task / set_status / add_comment / create_task / notify. ' +
+          'enabled defaults to true. MANAGER/ADMIN only.',
+        inputSchema: {
+          name: z.string().min(1).max(200),
+          trigger: z.string().min(1),
+          conditions: z.array(z.any()).optional(),
+          actions: z.array(z.any()).min(1),
+          enabled: z.boolean().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.createAutomation(user, args)),
+    );
+
+    server.registerTool(
+      'set_automation_enabled',
+      {
+        title: 'Enable/disable an automation rule (MANAGER/ADMIN)',
+        description:
+          'Toggle a rule on or off by id without changing its trigger/conditions/' +
+          'actions. MANAGER/ADMIN only.',
+        inputSchema: {
+          id: z.string().min(1),
+          enabled: z.boolean(),
+        },
+      },
+      async (args: any) => wrap(await tools.setAutomationEnabled(user, args)),
+    );
+
+    server.registerTool(
+      'delete_automation',
+      {
+        title: 'Delete an automation rule (MANAGER/ADMIN)',
+        description: 'Permanently delete an automation rule by id. MANAGER/ADMIN only.',
+        inputSchema: {
+          id: z.string().min(1),
+        },
+      },
+      async (args: any) => wrap(await tools.deleteAutomation(user, args)),
+    );
+
+    server.registerTool(
+      'list_custom_fields',
+      {
+        title: 'List custom-field definitions',
+        description:
+          'List the workspace custom-field DEFINITIONS for an entity (key, label, ' +
+          'type, options, required, position), ordered by position then label. ' +
+          "Required: entity ('TASK' or 'PROJECT'). Use the returned keys when " +
+          'setting customFields values via create_task / update_task / ' +
+          'create_project / update_project.',
+        inputSchema: {
+          entity: z.string().min(1),
+        },
+      },
+      async (args: any) => wrap(await tools.listCustomFields(user, args)),
+    );
+
+    server.registerTool(
+      'list_project_approvals',
+      {
+        title: 'List approvals on a project (staff)',
+        description:
+          "List ALL client approvals on a project — the requesting staff's view of " +
+          'live client decisions (pending first). Requires projectId. Staff only ' +
+          '(CLIENT-role users cannot call this).',
+        inputSchema: {
+          projectId: z.string().min(1),
+        },
+      },
+      async (args: any) => wrap(await tools.listProjectApprovals(user, args)),
+    );
+
+    server.registerTool(
+      'request_approval',
+      {
+        title: 'Request a client approval (staff)',
+        description:
+          'Request a client approval on a document / deliverable / project ' +
+          '(status PENDING). entityType is one of the ApprovalEntityType values; ' +
+          'entityId is the id of the thing being submitted. Optional projectId ' +
+          '(drives client scoping), approverContactId (a specific contact; else ' +
+          "any portal client on the linked project's contact may act), and note. " +
+          'Staff only (CLIENT-role users cannot call this).',
+        inputSchema: {
+          entityType: z.string().min(1),
+          entityId: z.string().min(1),
+          projectId: z.string().optional(),
+          approverContactId: z.string().optional(),
+          note: z.string().max(5000).optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.requestApproval(user, args)),
     );
 
     // ── Time tracking tools (gated by TIME_TRACKING_ENABLED) ──
@@ -758,7 +1008,7 @@ export class McpService {
           title: 'Sync invoice status from Accounting-Ops',
           description:
             'Pull current status (sent/partial/paid/overdue) for billed entries from Accounting-Ops ' +
-            'and mirror it onto the linked projects. Uses the caller\'s token.',
+            "and mirror it onto the linked projects. Uses the caller's token.",
           inputSchema: {},
         },
         async (args: any) => wrap(await tools.syncInvoiceStatus(user, args)),

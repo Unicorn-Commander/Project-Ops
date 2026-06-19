@@ -1,8 +1,9 @@
-import { Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { NotificationsService } from './notifications.service';
 import { QueryNotificationsDto } from './dto/query-notifications.dto';
+import { UpdatePreferencesDto } from './dto/update-preferences.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
@@ -64,6 +65,29 @@ export class NotificationsController {
   async unreadCount(@CurrentWorkspace() workspaceId: string, @CurrentUser() user: User) {
     const count = await this.notificationsService.unreadCount(workspaceId, user);
     return { count };
+  }
+
+  // ── Email preferences ──────────────────────────────────────────────────────
+  // Per-user EMAIL delivery preferences (closes the Settings "Notifications —
+  // coming soon" stub). These are workspace-AGNOSTIC (stored on the global User
+  // row) — they govern EMAIL only; in-app notifications above are always on.
+
+  @Get('preferences')
+  @ApiOperation({
+    summary: "Get the current user's email-notification preferences (merged over defaults)",
+  })
+  @ApiOkResponse({ description: '{ email, events: {...} }' })
+  getPreferences(@CurrentUser() user: User) {
+    return this.notificationsService.getPreferences(user);
+  }
+
+  @Patch('preferences')
+  @ApiOperation({
+    summary: "Partially update the current user's email-notification preferences",
+  })
+  @ApiOkResponse({ description: 'The full updated preferences' })
+  updatePreferences(@CurrentUser() user: User, @Body() body: UpdatePreferencesDto) {
+    return this.notificationsService.updatePreferences(user, body);
   }
 
   @Patch(':id/read')

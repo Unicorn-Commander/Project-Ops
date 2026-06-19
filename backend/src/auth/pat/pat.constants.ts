@@ -33,6 +33,14 @@ export const PAT_AVAILABLE_SCOPES = [
   'write:billing',
   'read:time',
   'write:time',
+  // Wave 2 surfaces (reporting / capacity / automations / custom-fields /
+  // approvals). Reads are gated by a read:* scope; mutations by write:*.
+  'read:reports',
+  'read:capacity',
+  'read:automations',
+  'write:automations',
+  'read:approvals',
+  'write:approvals',
 ] as const;
 
 export type PatScope = (typeof PAT_AVAILABLE_SCOPES)[number];
@@ -89,4 +97,24 @@ export const MCP_TOOL_SCOPE_MAP: Record<string, PatScope> = {
   // billable rollup — write:billing
   create_billable_draft: 'write:billing',
   sync_invoice_status: 'write:billing',
+  // Wave 2 — reporting (read:reports)
+  get_portfolio_report: 'read:reports',
+  get_profitability_report: 'read:reports',
+  get_throughput_report: 'read:reports',
+  // Wave 2 — capacity (read:capacity)
+  get_team_capacity: 'read:capacity',
+  get_my_capacity: 'read:capacity',
+  // Wave 2 — automations (read:automations / write:automations)
+  list_automations: 'read:automations',
+  create_automation: 'write:automations',
+  set_automation_enabled: 'write:automations',
+  delete_automation: 'write:automations',
+  // Wave 2 — custom-field DEFINITIONS read. Reuses read:projects (these
+  // describe the shape of projects/tasks; no dedicated scope is minted for a
+  // single definitions read). Setting custom-field VALUES rides the existing
+  // write:tasks / write:projects scopes via create_task/update_task/etc.
+  list_custom_fields: 'read:projects',
+  // Wave 2 — approvals (read:approvals / write:approvals)
+  list_project_approvals: 'read:approvals',
+  request_approval: 'write:approvals',
 };

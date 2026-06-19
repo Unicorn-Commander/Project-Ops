@@ -715,41 +715,11 @@ export class TasksService {
       });
     }
 
-    // Side effect OUTSIDE the tx: notify the new assignee.
-    if (updatedTask.assignedTo?.email) {
-      const frontendUrl = this.configService.get<string>(
-        'FRONTEND_URL',
-        'https://projectops.magicunicorn.dev',
-      );
-      const taskUrl = `${frontendUrl}/dashboard/projects/${updatedTask.projectId}?task=${updatedTask.id}`;
-      const assignedByName = updatedTask.createdBy
-        ? `${updatedTask.createdBy.firstName} ${updatedTask.createdBy.lastName}`.trim()
-        : 'Project Ops';
-      const dueDate = updatedTask.dueDate
-        ? new Date(updatedTask.dueDate).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          })
-        : null;
-
-      this.emailService
-        .sendTaskAssignedEmail(
-          updatedTask.assignedTo.email,
-          `${updatedTask.assignedTo.firstName} ${updatedTask.assignedTo.lastName}`.trim() ||
-            updatedTask.assignedTo.email,
-          updatedTask.title,
-          updatedTask.project.projectNumber,
-          updatedTask.project.title,
-          assignedByName,
-          dueDate,
-          taskUrl,
-        )
-        .catch((err) =>
-          this.logger.warn(`Failed to send task-assigned email for task ${id}: ${err.message}`),
-        );
-    }
-
+    // Assignment email is now owned by the preference-gated notification email
+    // listener (notifications/notification-email.listener.ts), which fires off the
+    // emitted `task.assigned` event and respects the recipient's notification
+    // preferences. The inline un-gated send was removed to avoid double-emailing
+    // and to make the task_assigned preference actually take effect.
     return updatedTask;
   }
 

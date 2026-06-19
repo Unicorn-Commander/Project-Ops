@@ -1,5 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
+import { DEFAULT_PREFERENCES, PreferenceKey } from './notification-preferences';
 
 /**
  * Unit tests for NotificationsService. Mirrors the CommentsService spec style:
@@ -284,5 +285,87 @@ describe('NotificationsService.createMentionNotifications', () => {
     expect(rows).toEqual([]);
     // Short-circuits BEFORE opening a workspace tx.
     expect(workspaceContext.runInWorkspace).not.toHaveBeenCalled();
+  });
+});
+
+describe('NotificationsService email preferences', () => {
+  // These read/write the GLOBAL User row directly via prisma (not workspace tx),
+  // so we inject a prisma mock rather than route through workspaceContext.
+  function makePrefService(userRow: any) {
+    const prismaUser = {
+      findUnique: jest.fn(async () => userRow),
+      update: jest.fn(async ({ data }: any) => ({ ...userRow, ...data })),
+    };
+    const svc = new NotificationsService(
+      { user: prismaUser } as any,
+      {} as any,
+      {} as any,
+    );
+    return { svc, prismaUser };
+  }
+
+  it('getPreferences: null column => full defaults', async () => {
+    const { svc } = makePrefService({ notificationPreferences: null });
+    const p = await svc.getPreferences({ id: 'u1' } as any);
+    expect(p).toEqual(DEFAULT_PREFERENCES);
+  });
+
+  it('getPreferences: merges a partial stored map over defaults', async () => {
+    const { svc } = makePrefService({
+      notificationPreferences: {
+        email: false,
+        events: { [PreferenceKey.PROJECT_STATUS_CHANGED]: true },
+      },
+    });
+    const p = await svc.getPreferences({ id: 'u1' } as any);
+    expect(p.email).toBe(false);
+    expect(p.events[PreferenceKey.PROJECT_STATUS_CHANGED]).toBe(true);
+    expect(p.events[PreferenceKey.TASK_ASSIGNED]).toBe(true); // default kept
+  });
+
+  it('updatePreferences: shallow-merges the patch and persists the full object scoped to the user', async () => {
+    const { svc, prismaUser } = makePrefService({ notificationPreferences: null });
+    const out = await svc.updatePreferences({ id: 'u1' } as any, {
+      events: { [PreferenceKey.TASK_ASSIGNED]: false },
+    });
+
+    expect(out.events[PreferenceKey.TASK_ASSIGNED]).toBe(false); // changed
+    expect(out.events[PreferenceKey.MENTION]).toBe(true); // untouched default
+    const args = prismaUser.update.mock.calls[0][0];
+    expect(args.where).toEqual({ id: 'u1' });
+    expect(args.data.notificationPreferences.events[PreferenceKey.TASK_ASSIGNED]).toBe(false);
+  });
+
+  it('resolveEmailRecipient: returns email/name/prefs for an active user', async () => {
+    const { svc } = makePrefService({
+      email: 'bob@x.co',
+      firstName: 'Bob',
+      lastName: 'Lee',
+      isActive: true,
+      notificationPreferences: null,
+    });
+    const r = await svc.resolveEmailRecipient('u-bob');
+    expect(r).toMatchObject({ email: 'bob@x.co', name: 'Bob Lee' });
+    expect(r!.preferences).toEqual(DEFAULT_PREFERENCES);
+  });
+
+  it('resolveEmailRecipient: null for an inactive user or one with no email', async () => {
+    const inactive = makePrefService({
+      email: 'x@x.co',
+      firstName: 'X',
+      lastName: 'Y',
+      isActive: false,
+      notificationPreferences: null,
+    });
+    expect(await inactive.svc.resolveEmailRecipient('u')).toBeNull();
+
+    const noEmail = makePrefService({
+      email: null,
+      firstName: 'X',
+      lastName: 'Y',
+      isActive: true,
+      notificationPreferences: null,
+    });
+    expect(await noEmail.svc.resolveEmailRecipient('u')).toBeNull();
   });
 });

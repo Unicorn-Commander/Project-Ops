@@ -8,7 +8,14 @@
  */
 
 import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
-import { Prisma, User, UserRole } from '@prisma/client';
+import {
+  ApprovalEntityType,
+  AutomationTrigger,
+  CustomFieldEntity,
+  Prisma,
+  User,
+  UserRole,
+} from '@prisma/client';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MinioService } from '../documents/minio.service';
 import { v4 as uuidv4 } from 'uuid';
@@ -23,10 +30,15 @@ import type { TimesheetService } from '../time-tracking/timesheet.service';
 import type { ReportsService } from '../time-tracking/reports.service';
 import type { BillableRollupService } from '../time-tracking/billing/billable-rollup.service';
 import type { WorkspaceContextService } from '../common/workspace/workspace-context.service';
-import {
-  resolveWorkspaceId,
-  defaultWorkspaceId,
-} from '../common/workspace/workspace.util';
+// Wave 2 services (type-only imports — erased at compile time, so no runtime
+// cycle). The MCP tools delegate to these exact services so an agent inherits
+// their RBAC + workspace-RLS + validation, identical to the REST controllers.
+import type { ReportingService } from '../reporting/reporting.service';
+import type { CapacityService } from '../capacity/capacity.service';
+import type { AutomationsService } from '../automations/automations.service';
+import type { CustomFieldsService } from '../custom-fields/custom-fields.service';
+import type { ApprovalsService } from '../client-portal/approvals/approvals.service';
+import { resolveWorkspaceId, defaultWorkspaceId } from '../common/workspace/workspace.util';
 
 type Logger = { log: (msg: string) => void; warn: (msg: string) => void };
 
@@ -42,6 +54,22 @@ export interface TimeTrackingDeps {
   reports: ReportsService;
   rollup: BillableRollupService;
   workspace: WorkspaceContextService;
+}
+
+/**
+ * Wave 2 service surface injected into ProjectOpsTools so the reporting /
+ * capacity / automations / custom-fields / approvals MCP tools delegate to the
+ * SAME services the REST controllers use (one source of truth for RBAC,
+ * workspace RLS, and input validation). All optional so the pure-function RBAC
+ * unit tests can construct ProjectOpsTools without wiring them; each tool
+ * surfaces a clear error if its service wasn't provided.
+ */
+export interface Wave2Deps {
+  reporting: ReportingService;
+  capacity: CapacityService;
+  automations: AutomationsService;
+  customFields: CustomFieldsService;
+  approvals: ApprovalsService;
 }
 
 // Mime types whose bytes can be returned as text. Office formats are
@@ -108,6 +136,9 @@ export class ProjectOpsTools {
     // pure-function RBAC unit tests can construct the tools without it; when
     // absent, addTaskComment simply skips the (best-effort) domain emit.
     private readonly events?: EventEmitter2,
+    // Wave 2 services (reporting / capacity / automations / custom-fields /
+    // approvals). Optional for the same reason as the others.
+    private readonly wave2?: Wave2Deps,
   ) {}
 
   // ── Workspace (suite tenancy, Phase 2 G2) ────────────────
@@ -179,7 +210,10 @@ export class ProjectOpsTools {
     return this.requireTt().workspace.resolveAuthorized(user);
   }
 
-  async startTimer(user: User, args: { projectId?: string; taskId?: string; description?: string }) {
+  async startTimer(
+    user: User,
+    args: { projectId?: string; taskId?: string; description?: string },
+  ) {
     const tt = this.requireTt();
     const res = await tt.timer.startTimer(await this.workspaceFor(user), user, args);
     this.logger.log(`MCP start_timer: user=${user.email}`);
@@ -254,10 +288,15 @@ export class ProjectOpsTools {
     },
   ) {
     const tt = this.requireTt();
-    const res = await tt.rollup.createBillableDraft(await this.workspaceFor(user), user, args as any, {
-      bearerToken: this.bearerToken,
-      actingUser: { id: user.id, email: user.email },
-    });
+    const res = await tt.rollup.createBillableDraft(
+      await this.workspaceFor(user),
+      user,
+      args as any,
+      {
+        bearerToken: this.bearerToken,
+        actingUser: { id: user.id, email: user.email },
+      },
+    );
     this.logger.log(`MCP create_billable_draft: user=${user.email} status=${(res as any).status}`);
     return res;
   }
@@ -270,10 +309,7 @@ export class ProjectOpsTools {
     });
   }
 
-  async listMyProjects(
-    user: User,
-    args: { status?: string; limit?: number },
-  ) {
+  async listMyProjects(user: User, args: { status?: string; limit?: number }) {
     const where: Prisma.ProjectWhereInput = {
       ...buildVisibilityFilter(user),
       ...(args.status ? { status: args.status as any } : {}),
@@ -345,10 +381,7 @@ export class ProjectOpsTools {
     return project;
   }
 
-  async listMyTasks(
-    user: User,
-    args: { status?: string; limit?: number },
-  ) {
+  async listMyTasks(user: User, args: { status?: string; limit?: number }) {
     const tasks = await this.runScoped(user, (tx) =>
       tx.task.findMany({
         where: {
@@ -442,46 +475,40 @@ export class ProjectOpsTools {
     return { recent_comments: comments, recent_task_updates: taskUpdates };
   }
 
-  async addTaskComment(
-    user: User,
-    args: { taskId: string; content: string },
-  ) {
+  async addTaskComment(user: User, args: { taskId: string; content: string }) {
     // Capture the resolved workspace + created comment so we can emit the
     // domain event AFTER the tx commits (mirrors TasksService.addComment).
-    const { comment, workspaceId } = await this.runScoped(
-      user,
-      async (tx, workspaceId) => {
-        const task = await tx.task.findFirst({
-          where: {
-            id: args.taskId,
-            project: buildVisibilityFilter(user),
-          },
-          select: { id: true, projectId: true },
-        });
-        if (!task) {
-          throw new Error("Task not found or you don't have access");
-        }
-        const created = await tx.taskComment.create({
-          data: {
-            taskId: task.id,
-            // Stamp the active workspace — RLS WITH CHECK rejects a NULL
-            // workspaceId row (this was the one MCP create missing it; caught
-            // live by the fence on 2026-06-10).
-            workspaceId,
-            authorId: user.id,
-            content: args.content,
-          },
-          select: {
-            id: true,
-            content: true,
-            createdAt: true,
-            author: { select: { firstName: true, lastName: true } },
-          },
-        });
-        this.logger.log(`MCP add_task_comment: user=${user.email} task=${task.id}`);
-        return { comment: created, workspaceId };
-      },
-    );
+    const { comment, workspaceId } = await this.runScoped(user, async (tx, workspaceId) => {
+      const task = await tx.task.findFirst({
+        where: {
+          id: args.taskId,
+          project: buildVisibilityFilter(user),
+        },
+        select: { id: true, projectId: true },
+      });
+      if (!task) {
+        throw new Error("Task not found or you don't have access");
+      }
+      const created = await tx.taskComment.create({
+        data: {
+          taskId: task.id,
+          // Stamp the active workspace — RLS WITH CHECK rejects a NULL
+          // workspaceId row (this was the one MCP create missing it; caught
+          // live by the fence on 2026-06-10).
+          workspaceId,
+          authorId: user.id,
+          content: args.content,
+        },
+        select: {
+          id: true,
+          content: true,
+          createdAt: true,
+          author: { select: { firstName: true, lastName: true } },
+        },
+      });
+      this.logger.log(`MCP add_task_comment: user=${user.email} task=${task.id}`);
+      return { comment: created, workspaceId };
+    });
 
     // Domain event for downstream @mention fan-out (notifications module).
     // Emitted OUTSIDE the workspace tx so a listener that re-queries the DB
@@ -509,21 +536,18 @@ export class ProjectOpsTools {
   // Exposed for testing — same behaviour as before.
   assertCanWrite(user: User) {
     if (user.role === UserRole.CLIENT) {
-      throw new Error("Read-only role — clients cannot create or update.");
+      throw new Error('Read-only role — clients cannot create or update.');
     }
   }
 
   // Org creation mirrors the REST endpoint's @Roles(ADMIN, MANAGER) guard.
   assertCanManageOrgs(user: User) {
     if (user.role !== UserRole.ADMIN && user.role !== UserRole.MANAGER) {
-      throw new Error("Only ADMIN or MANAGER roles can create organizations.");
+      throw new Error('Only ADMIN or MANAGER roles can create organizations.');
     }
   }
 
-  async listOrganizations(
-    user: User,
-    args: { type?: string; isActive?: boolean; limit?: number },
-  ) {
+  async listOrganizations(user: User, args: { type?: string; isActive?: boolean; limit?: number }) {
     const where: Prisma.OrganizationWhereInput = {
       ...(args.type ? { type: args.type.toUpperCase() as any } : {}),
       ...(args.isActive !== undefined ? { isActive: args.isActive } : {}),
@@ -565,7 +589,7 @@ export class ProjectOpsTools {
           where: { userId: user.id, organizationId: args.id },
           select: { id: true },
         });
-        if (!contact) throw new Error("Organization not found or no access.");
+        if (!contact) throw new Error('Organization not found or no access.');
       }
       return tx.organization.findUnique({
         where: { id: args.id },
@@ -607,9 +631,7 @@ export class ProjectOpsTools {
     if (args.type) {
       const validTypes = ['AGENCY', 'BUSINESS', 'INDIVIDUAL', 'PARTNER'];
       if (!validTypes.includes(args.type.toUpperCase())) {
-        throw new Error(
-          `Invalid type '${args.type}'. Must be one of: ${validTypes.join(', ')}.`,
-        );
+        throw new Error(`Invalid type '${args.type}'. Must be one of: ${validTypes.join(', ')}.`);
       }
     }
     if (args.parentOrgId && args.parentOrgId === args.id) {
@@ -669,9 +691,7 @@ export class ProjectOpsTools {
         },
       });
     });
-    this.logger.log(
-      `MCP update_organization: user=${user.email} org=${updated.id}`,
-    );
+    this.logger.log(`MCP update_organization: user=${user.email} org=${updated.id}`);
     return updated;
   }
 
@@ -698,9 +718,7 @@ export class ProjectOpsTools {
     const validTypes = ['AGENCY', 'BUSINESS', 'INDIVIDUAL', 'PARTNER'];
     const type = (args.type || '').toUpperCase();
     if (!validTypes.includes(type)) {
-      throw new Error(
-        `Invalid type '${args.type}'. Must be one of: ${validTypes.join(', ')}.`,
-      );
+      throw new Error(`Invalid type '${args.type}'. Must be one of: ${validTypes.join(', ')}.`);
     }
 
     const organization = await this.runScoped(user, async (tx, workspaceId) => {
@@ -760,6 +778,12 @@ export class ProjectOpsTools {
       priority?: string;
       dueDate?: string;
       assignedToId?: string;
+      // Wave 2 pass-throughs — handled as ProjectsService does. customFields are
+      // validated against the workspace PROJECT definitions and folded into
+      // metadata.customFields; recurrenceRule (RRULE) is a plain column.
+      // (Projects have no estimatedHours.)
+      customFields?: Record<string, any>;
+      recurrenceRule?: string;
     },
   ) {
     this.assertCanWrite(user);
@@ -777,6 +801,7 @@ export class ProjectOpsTools {
           ? parseInt(last!.projectNumber!.match(/^P-(\d+)$/)![1], 10) + 1
           : 1;
       const projectNumber = `P-${String(next).padStart(5, '0')}`;
+      const metadata = await this.resolveProjectMetadata(tx, workspaceId, {}, args.customFields);
       return tx.project.create({
         data: {
           workspaceId,
@@ -787,6 +812,8 @@ export class ProjectOpsTools {
           organizationId: args.organizationId,
           priority: (args.priority as any) ?? 'MEDIUM',
           dueDate: args.dueDate ? new Date(args.dueDate) : null,
+          ...(args.recurrenceRule !== undefined ? { recurrenceRule: args.recurrenceRule } : {}),
+          ...(metadata !== undefined ? { metadata } : {}),
           createdById: user.id,
           assignedToId: args.assignedToId ?? user.id,
         },
@@ -797,6 +824,8 @@ export class ProjectOpsTools {
           status: true,
           priority: true,
           dueDate: true,
+          recurrenceRule: true,
+          metadata: true,
         },
       });
     });
@@ -832,7 +861,9 @@ export class ProjectOpsTools {
         select: { id: true, projectNumber: true, status: true, completedAt: true },
       });
     });
-    this.logger.log(`MCP update_project_status: user=${user.email} project=${updated.projectNumber} → ${updated.status}`);
+    this.logger.log(
+      `MCP update_project_status: user=${user.email} project=${updated.projectNumber} → ${updated.status}`,
+    );
     return updated;
   }
 
@@ -848,6 +879,9 @@ export class ProjectOpsTools {
       priority?: string;
       dueDate?: string | null;
       assignedToId?: string;
+      // Wave 2 pass-throughs (see createProject).
+      customFields?: Record<string, any>;
+      recurrenceRule?: string | null;
     },
   ) {
     this.assertCanWrite(user);
@@ -871,14 +905,15 @@ export class ProjectOpsTools {
     if (args.assignedToId !== undefined) {
       data.assignedTo = { connect: { id: args.assignedToId } };
     }
+    if (args.recurrenceRule !== undefined) data.recurrenceRule = args.recurrenceRule;
 
-    const updated = await this.runScoped(user, async (tx) => {
+    const updated = await this.runScoped(user, async (tx, workspaceId) => {
       const found = await tx.project.findFirst({
         where: {
           ...buildVisibilityFilter(user),
           ...(args.id ? { id: args.id } : { projectNumber: args.projectNumber! }),
         },
-        select: { id: true, projectNumber: true },
+        select: { id: true, projectNumber: true, metadata: true },
       });
       if (!found) {
         throw new Error('Project not found or no access');
@@ -894,6 +929,16 @@ export class ProjectOpsTools {
         }
       }
 
+      if (args.customFields !== undefined) {
+        const merged = await this.resolveProjectMetadata(
+          tx,
+          workspaceId,
+          found.metadata,
+          args.customFields,
+        );
+        if (merged !== undefined) data.metadata = merged;
+      }
+
       return tx.project.update({
         where: { id: found.id },
         data,
@@ -904,14 +949,14 @@ export class ProjectOpsTools {
           clientName: true,
           priority: true,
           dueDate: true,
+          recurrenceRule: true,
+          metadata: true,
           organization: { select: { id: true, name: true } },
           assignedTo: { select: { id: true, firstName: true, lastName: true } },
         },
       });
     });
-    this.logger.log(
-      `MCP update_project: user=${user.email} project=${updated.projectNumber}`,
-    );
+    this.logger.log(`MCP update_project: user=${user.email} project=${updated.projectNumber}`);
     return updated;
   }
 
@@ -927,6 +972,10 @@ export class ProjectOpsTools {
       assignedToId?: string;
       projectId?: string;
       projectNumber?: string;
+      // Wave 2 pass-throughs (see createTask).
+      customFields?: Record<string, any>;
+      recurrenceRule?: string | null;
+      estimatedHours?: number | null;
     },
   ) {
     this.assertCanWrite(user);
@@ -942,14 +991,16 @@ export class ProjectOpsTools {
     if (args.assignedToId !== undefined) {
       data.assignedTo = { connect: { id: args.assignedToId } };
     }
+    if (args.recurrenceRule !== undefined) data.recurrenceRule = args.recurrenceRule;
+    if (args.estimatedHours !== undefined) data.estimatedHours = args.estimatedHours;
 
-    const updated = await this.runScoped(user, async (tx) => {
+    const updated = await this.runScoped(user, async (tx, workspaceId) => {
       const found = await tx.task.findFirst({
         where: {
           id: args.taskId,
           project: buildVisibilityFilter(user),
         },
-        select: { id: true, projectId: true },
+        select: { id: true, projectId: true, metadata: true },
       });
       if (!found) {
         throw new Error('Task not found or no access');
@@ -959,9 +1010,7 @@ export class ProjectOpsTools {
         const target = await tx.project.findFirst({
           where: {
             ...buildVisibilityFilter(user),
-            ...(args.projectId
-              ? { id: args.projectId }
-              : { projectNumber: args.projectNumber! }),
+            ...(args.projectId ? { id: args.projectId } : { projectNumber: args.projectNumber! }),
           },
           select: { id: true },
         });
@@ -969,6 +1018,18 @@ export class ProjectOpsTools {
           throw new Error('Target project not found or no access');
         }
         data.project = { connect: { id: target.id } };
+      }
+
+      // Custom-field VALUES: validate on this tx and merge into the EXISTING
+      // metadata (read-modify-write) so other metadata keys are preserved.
+      if (args.customFields !== undefined) {
+        const merged = await this.resolveTaskMetadata(
+          tx,
+          workspaceId,
+          found.metadata,
+          args.customFields,
+        );
+        if (merged !== undefined) data.metadata = merged;
       }
 
       return tx.task.update({
@@ -980,6 +1041,9 @@ export class ProjectOpsTools {
           status: true,
           priority: true,
           dueDate: true,
+          recurrenceRule: true,
+          estimatedHours: true,
+          metadata: true,
           project: { select: { id: true, projectNumber: true, title: true } },
           assignedTo: { select: { id: true, firstName: true, lastName: true } },
         },
@@ -1002,51 +1066,64 @@ export class ProjectOpsTools {
       priority?: string;
       dueDate?: string;
       assignedToId?: string;
+      // Wave 2 pass-throughs — handled exactly as TasksService does:
+      // customFields are validated against the workspace TASK definitions and
+      // folded into metadata.customFields; recurrenceRule (RRULE) + estimatedHours
+      // are plain columns.
+      customFields?: Record<string, any>;
+      recurrenceRule?: string;
+      estimatedHours?: number;
     },
   ) {
     this.assertCanWrite(user);
     if (!args.projectId && !args.projectNumber) {
       throw new Error('Either projectId or projectNumber must be provided');
     }
-    const { task, projectNumber } = await this.runScoped(
-      user,
-      async (tx, workspaceId) => {
-        const project = await tx.project.findFirst({
-          where: {
-            ...buildVisibilityFilter(user),
-            ...(args.projectId
-              ? { id: args.projectId }
-              : { projectNumber: args.projectNumber! }),
-          },
-          select: { id: true, projectNumber: true },
-        });
-        if (!project) {
-          throw new Error('Project not found or no access');
-        }
-        const created = await tx.task.create({
-          data: {
-            workspaceId,
-            projectId: project.id,
-            title: args.title,
-            description: args.description,
-            type: (args.type as any) ?? 'OTHER',
-            priority: (args.priority as any) ?? 'MEDIUM',
-            dueDate: args.dueDate ? new Date(args.dueDate) : null,
-            createdById: user.id,
-            assignedToId: args.assignedToId ?? user.id,
-          },
-          select: {
-            id: true,
-            title: true,
-            status: true,
-            priority: true,
-            dueDate: true,
-            project: { select: { projectNumber: true, title: true } },
-          },
-        });
-        return { task: created, projectNumber: project.projectNumber };
-      },
-    );
+    const { task, projectNumber } = await this.runScoped(user, async (tx, workspaceId) => {
+      const project = await tx.project.findFirst({
+        where: {
+          ...buildVisibilityFilter(user),
+          ...(args.projectId ? { id: args.projectId } : { projectNumber: args.projectNumber! }),
+        },
+        select: { id: true, projectNumber: true },
+      });
+      if (!project) {
+        throw new Error('Project not found or no access');
+      }
+      // Validate + fold custom-field VALUES on the SAME workspace tx (the
+      // CustomFieldsValidator contract requires the caller's tx so the
+      // definitions read stays under one RLS scope). New task → no existing
+      // metadata, so the base is empty.
+      const metadata = await this.resolveTaskMetadata(tx, workspaceId, {}, args.customFields);
+      const created = await tx.task.create({
+        data: {
+          workspaceId,
+          projectId: project.id,
+          title: args.title,
+          description: args.description,
+          type: (args.type as any) ?? 'OTHER',
+          priority: (args.priority as any) ?? 'MEDIUM',
+          dueDate: args.dueDate ? new Date(args.dueDate) : null,
+          ...(args.recurrenceRule !== undefined ? { recurrenceRule: args.recurrenceRule } : {}),
+          ...(args.estimatedHours !== undefined ? { estimatedHours: args.estimatedHours } : {}),
+          ...(metadata !== undefined ? { metadata } : {}),
+          createdById: user.id,
+          assignedToId: args.assignedToId ?? user.id,
+        },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          priority: true,
+          dueDate: true,
+          recurrenceRule: true,
+          estimatedHours: true,
+          metadata: true,
+          project: { select: { projectNumber: true, title: true } },
+        },
+      });
+      return { task: created, projectNumber: project.projectNumber };
+    });
     this.logger.log(`MCP create_task: user=${user.email} project=${projectNumber} task=${task.id}`);
     return task;
   }
@@ -1085,10 +1162,7 @@ export class ProjectOpsTools {
     return this.triage.ingestCandidates(workspaceId, user, items);
   }
 
-  async updateTaskStatus(
-    user: User,
-    args: { taskId: string; status: string },
-  ) {
+  async updateTaskStatus(user: User, args: { taskId: string; status: string }) {
     this.assertCanWrite(user);
     const updated = await this.runScoped(user, async (tx) => {
       const found = await tx.task.findFirst({
@@ -1110,7 +1184,9 @@ export class ProjectOpsTools {
         select: { id: true, title: true, status: true, completedAt: true },
       });
     });
-    this.logger.log(`MCP update_task_status: user=${user.email} task=${updated.id} → ${updated.status}`);
+    this.logger.log(
+      `MCP update_task_status: user=${user.email} task=${updated.id} → ${updated.status}`,
+    );
     return updated;
   }
 
@@ -1167,9 +1243,7 @@ export class ProjectOpsTools {
     const TEXT_CAP = 50 * 1024;
 
     if (!args.documentId && !(args.fileName && args.projectNumber)) {
-      throw new Error(
-        "Provide 'documentId', or both 'fileName' and 'projectNumber'.",
-      );
+      throw new Error("Provide 'documentId', or both 'fileName' and 'projectNumber'.");
     }
 
     // Metadata lookup runs inside the workspace tx; the MinIO byte I/O below
@@ -1206,10 +1280,7 @@ export class ProjectOpsTools {
       throw new Error("Document not found or you don't have access");
     }
 
-    const downloadUrl = await this.minio.getPresignedDownloadUrl(
-      document.s3Key,
-      3600,
-    );
+    const downloadUrl = await this.minio.getPresignedDownloadUrl(document.s3Key, 3600);
 
     const mime = (document.mimeType || '').toLowerCase();
 
@@ -1340,9 +1411,7 @@ export class ProjectOpsTools {
       tx.project.findFirst({
         where: {
           ...buildVisibilityFilter(user),
-          ...(args.projectId
-            ? { id: args.projectId }
-            : { projectNumber: args.projectNumber! }),
+          ...(args.projectId ? { id: args.projectId } : { projectNumber: args.projectNumber! }),
         },
         select: { id: true, projectNumber: true },
       }),
@@ -1356,9 +1425,7 @@ export class ProjectOpsTools {
 
     let buffer: Buffer;
     try {
-      buffer = isText
-        ? Buffer.from(args.content, 'utf8')
-        : Buffer.from(args.content, 'base64');
+      buffer = isText ? Buffer.from(args.content, 'utf8') : Buffer.from(args.content, 'base64');
     } catch (err) {
       throw new Error(`Failed to decode content: ${(err as Error).message}`);
     }
@@ -1368,13 +1435,12 @@ export class ProjectOpsTools {
       throw new Error('Decoded content is empty.');
     }
     if (buffer.length > MAX_BYTES) {
-      throw new Error(
-        `Content exceeds 25MB cap (got ${buffer.length} bytes).`,
-      );
+      throw new Error(`Content exceeds 25MB cap (got ${buffer.length} bytes).`);
     }
 
-    const fileExtension =
-      args.fileName.includes('.') ? args.fileName.split('.').pop() || 'bin' : 'bin';
+    const fileExtension = args.fileName.includes('.')
+      ? args.fileName.split('.').pop() || 'bin'
+      : 'bin';
     const s3Key = `projects/${project.id}/${uuidv4()}.${fileExtension}`;
 
     // MinIO byte upload runs OUTSIDE the workspace tx (B4 — no DB transaction
@@ -1448,9 +1514,14 @@ export class ProjectOpsTools {
     if (args.billingAmount !== undefined) data.billingAmount = args.billingAmount as any;
     if (args.amountPaid !== undefined) data.amountPaid = args.amountPaid as any;
     if (args.paymentStatus !== undefined) data.paymentStatus = args.paymentStatus as any;
-    if (args.billingDate !== undefined) data.billingDate = args.billingDate ? new Date(args.billingDate) : null;
-    if (args.paymentDueDate !== undefined) data.paymentDueDate = args.paymentDueDate ? new Date(args.paymentDueDate) : null;
-    if (args.paymentReceivedDate !== undefined) data.paymentReceivedDate = args.paymentReceivedDate ? new Date(args.paymentReceivedDate) : null;
+    if (args.billingDate !== undefined)
+      data.billingDate = args.billingDate ? new Date(args.billingDate) : null;
+    if (args.paymentDueDate !== undefined)
+      data.paymentDueDate = args.paymentDueDate ? new Date(args.paymentDueDate) : null;
+    if (args.paymentReceivedDate !== undefined)
+      data.paymentReceivedDate = args.paymentReceivedDate
+        ? new Date(args.paymentReceivedDate)
+        : null;
     if (args.billingNotes !== undefined) data.billingNotes = args.billingNotes;
 
     const updated = await this.runScoped(user, async (tx) => {
@@ -1481,7 +1552,318 @@ export class ProjectOpsTools {
         },
       });
     });
-    this.logger.log(`MCP update_billing_fields: user=${user.email} project=${updated.projectNumber}`);
+    this.logger.log(
+      `MCP update_billing_fields: user=${user.email} project=${updated.projectNumber}`,
+    );
     return updated;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Wave 2 tools — reporting / capacity / automations / custom-fields /
+  // approvals. Each delegates to the SAME service the REST controller uses,
+  // so RBAC + workspace RLS + validation are shared (one code path). Like the
+  // time-tracking tools, the active workspace is resolved through the SAME
+  // membership-aware chokepoint (claim → default membership) and handed to the
+  // service, whose `runForUser` re-authorizes membership against it. Role gates
+  // mirror the controllers' @Roles exactly.
+  // ─────────────────────────────────────────────────────────────────────
+
+  /** Wave 2 services are always wired by McpService; fail loudly if not. */
+  private requireWave2(): Wave2Deps {
+    if (!this.wave2) {
+      throw new Error('Wave 2 services are not enabled on this server');
+    }
+    return this.wave2;
+  }
+
+  /**
+   * Resolve the caller's active workspace via the membership-aware chokepoint
+   * (token claim → default membership — never the global default), the same id
+   * the REST `@CurrentWorkspace` resolves. The delegated service then runs its
+   * own `runForUser(user, …, workspaceId)`, which re-authorizes membership and
+   * pins the RLS GUC — identical to the time-tracking tools.
+   */
+  private resolveWorkspace(user: User): Promise<string> {
+    return this.requireWorkspace().resolveAuthorized(user);
+  }
+
+  /** MANAGER/ADMIN gate — mirrors the controllers' @Roles(ADMIN, MANAGER). */
+  private assertManagerOrAdmin(user: User, surface: string) {
+    if (user.role !== UserRole.ADMIN && user.role !== UserRole.MANAGER) {
+      throw new Error(`Only ADMIN or MANAGER roles can ${surface}.`);
+    }
+  }
+
+  /**
+   * Validate + fold custom-field VALUES into TASK metadata exactly as
+   * TasksService.resolveMetadataWithCustomFields does: no values supplied →
+   * metadata untouched; otherwise validate against the workspace TASK
+   * definitions ON THE CALLER'S tx (the validator contract requires it) and
+   * merge under `metadata.customFields`, preserving other metadata keys.
+   */
+  private async resolveTaskMetadata(
+    tx: WorkspaceTxClient,
+    workspaceId: string,
+    incomingMetadata: Prisma.JsonValue | null | undefined,
+    customFields: Record<string, any> | undefined,
+  ): Promise<Prisma.InputJsonValue | undefined> {
+    if (customFields === undefined) return undefined;
+    const normalized = await this.requireWave2().customFields.validateValues(
+      tx,
+      workspaceId,
+      CustomFieldEntity.TASK,
+      customFields,
+    );
+    const base =
+      incomingMetadata && typeof incomingMetadata === 'object' && !Array.isArray(incomingMetadata)
+        ? (incomingMetadata as Record<string, any>)
+        : {};
+    return { ...base, customFields: normalized } as Prisma.InputJsonValue;
+  }
+
+  /** PROJECT counterpart of resolveTaskMetadata (entity = PROJECT). */
+  private async resolveProjectMetadata(
+    tx: WorkspaceTxClient,
+    workspaceId: string,
+    incomingMetadata: Prisma.JsonValue | null | undefined,
+    customFields: Record<string, any> | undefined,
+  ): Promise<Prisma.InputJsonValue | undefined> {
+    if (customFields === undefined) return undefined;
+    const normalized = await this.requireWave2().customFields.validateValues(
+      tx,
+      workspaceId,
+      CustomFieldEntity.PROJECT,
+      customFields,
+    );
+    const base =
+      incomingMetadata && typeof incomingMetadata === 'object' && !Array.isArray(incomingMetadata)
+        ? (incomingMetadata as Record<string, any>)
+        : {};
+    return { ...base, customFields: normalized } as Prisma.InputJsonValue;
+  }
+
+  // ── Reporting ────────────────────────────────────────────────────────
+
+  /** Portfolio health roll-up + workspace totals. Read-only (any member). */
+  async getPortfolioReport(user: User, _args: Record<string, never>) {
+    const w2 = this.requireWave2();
+    const res = await w2.reporting.getPortfolio(await this.resolveWorkspace(user), user);
+    this.logger.log(`MCP get_portfolio_report: user=${user.email}`);
+    return res;
+  }
+
+  /**
+   * Profitability (billable / cost / margin / realization). MANAGER/ADMIN only,
+   * mirroring the controller's @Roles — cost + margin are internal. Optional
+   * from/to ISO window.
+   */
+  async getProfitabilityReport(user: User, args: { from?: string; to?: string }) {
+    this.assertManagerOrAdmin(user, 'view the profitability report');
+    const w2 = this.requireWave2();
+    const res = await w2.reporting.getProfitability(await this.resolveWorkspace(user), user, {
+      from: args?.from,
+      to: args?.to,
+    });
+    this.logger.log(`MCP get_profitability_report: user=${user.email}`);
+    return res;
+  }
+
+  /** Throughput (tasks/projects completed by week + status). Read-only. */
+  async getThroughputReport(user: User, args: { from?: string; to?: string }) {
+    const w2 = this.requireWave2();
+    const res = await w2.reporting.getThroughput(await this.resolveWorkspace(user), user, {
+      from: args?.from,
+      to: args?.to,
+    });
+    this.logger.log(`MCP get_throughput_report: user=${user.email}`);
+    return res;
+  }
+
+  // ── Capacity ─────────────────────────────────────────────────────────
+
+  /** Team capacity vs committed load. MANAGER/ADMIN only (planning surface). */
+  async getTeamCapacity(user: User, args: { from?: string; to?: string }) {
+    this.assertManagerOrAdmin(user, 'view team capacity');
+    const w2 = this.requireWave2();
+    const res = await w2.capacity.getTeamCapacity(
+      await this.resolveWorkspace(user),
+      user,
+      args?.from,
+      args?.to,
+    );
+    this.logger.log(`MCP get_team_capacity: user=${user.email}`);
+    return res;
+  }
+
+  /** The caller's OWN capacity (any active member). 403s a non-member. */
+  async getMyCapacity(user: User, args: { from?: string; to?: string }) {
+    const w2 = this.requireWave2();
+    const res = await w2.capacity.getMyCapacity(
+      await this.resolveWorkspace(user),
+      user,
+      args?.from,
+      args?.to,
+    );
+    this.logger.log(`MCP get_my_capacity: user=${user.email}`);
+    return res;
+  }
+
+  // ── Automations ──────────────────────────────────────────────────────
+  // The REST controller gates EVERY route ADMIN/MANAGER, so list is gated too.
+
+  /** List automation rules. ADMIN/MANAGER. Optional trigger/enabled filter. */
+  async listAutomations(user: User, args: { trigger?: string; enabled?: boolean }) {
+    this.assertManagerOrAdmin(user, 'view automations');
+    const w2 = this.requireWave2();
+    const trigger = this.parseAutomationTrigger(args?.trigger);
+    const res = await w2.automations.findAll(await this.resolveWorkspace(user), user, {
+      trigger,
+      enabled: typeof args?.enabled === 'boolean' ? args.enabled : undefined,
+    });
+    this.logger.log(`MCP list_automations: user=${user.email} count=${res.length}`);
+    return { automations: res, count: res.length };
+  }
+
+  /** Create an automation rule. ADMIN/MANAGER. */
+  async createAutomation(
+    user: User,
+    args: {
+      name: string;
+      trigger: string;
+      conditions?: unknown[];
+      actions: unknown[];
+      enabled?: boolean;
+    },
+  ) {
+    this.assertManagerOrAdmin(user, 'create automations');
+    const trigger = this.parseAutomationTrigger(args?.trigger);
+    if (!trigger) {
+      throw new Error(
+        `Invalid trigger. Must be one of: ${Object.values(AutomationTrigger).join(', ')}.`,
+      );
+    }
+    if (!Array.isArray(args?.actions) || args.actions.length === 0) {
+      throw new Error('actions is required and must be a non-empty array of { type, params }.');
+    }
+    const w2 = this.requireWave2();
+    // The service persists conditions/actions as JSON; the REST DTO validates
+    // their shape, so we pass the same {name, trigger, enabled, conditions,
+    // actions} shape through.
+    const res = await w2.automations.create(await this.resolveWorkspace(user), user, {
+      name: args.name,
+      trigger,
+      enabled: args.enabled,
+      conditions: args.conditions ?? [],
+      actions: args.actions,
+    } as any);
+    this.logger.log(`MCP create_automation: user=${user.email} rule=${res.id}`);
+    return res;
+  }
+
+  /** Enable/disable an automation rule. ADMIN/MANAGER. */
+  async setAutomationEnabled(user: User, args: { id: string; enabled: boolean }) {
+    this.assertManagerOrAdmin(user, 'update automations');
+    if (!args?.id) throw new Error("'id' is required.");
+    if (typeof args?.enabled !== 'boolean') throw new Error("'enabled' (boolean) is required.");
+    const w2 = this.requireWave2();
+    const res = await w2.automations.update(await this.resolveWorkspace(user), user, args.id, {
+      enabled: args.enabled,
+    } as any);
+    this.logger.log(
+      `MCP set_automation_enabled: user=${user.email} rule=${args.id} → ${args.enabled}`,
+    );
+    return res;
+  }
+
+  /** Delete an automation rule. ADMIN/MANAGER. */
+  async deleteAutomation(user: User, args: { id: string }) {
+    this.assertManagerOrAdmin(user, 'delete automations');
+    if (!args?.id) throw new Error("'id' is required.");
+    const w2 = this.requireWave2();
+    const res = await w2.automations.remove(await this.resolveWorkspace(user), user, args.id);
+    this.logger.log(`MCP delete_automation: user=${user.email} rule=${args.id}`);
+    return res;
+  }
+
+  /** Coerce a trigger string to the AutomationTrigger enum (or undefined). */
+  private parseAutomationTrigger(raw: string | undefined): AutomationTrigger | undefined {
+    if (!raw) return undefined;
+    return (AutomationTrigger as Record<string, AutomationTrigger>)[raw] ?? undefined;
+  }
+
+  // ── Custom fields ────────────────────────────────────────────────────
+
+  /** List custom-field DEFINITIONS for an entity (TASK|PROJECT). Any member. */
+  async listCustomFields(user: User, args: { entity: string }) {
+    const entity = (CustomFieldEntity as Record<string, CustomFieldEntity>)[args?.entity ?? ''];
+    if (!entity) {
+      throw new Error(
+        `Invalid entity. Must be one of: ${Object.values(CustomFieldEntity).join(', ')}.`,
+      );
+    }
+    const w2 = this.requireWave2();
+    const res = await w2.customFields.findAllForEntity(
+      await this.resolveWorkspace(user),
+      user,
+      entity,
+    );
+    this.logger.log(
+      `MCP list_custom_fields: user=${user.email} entity=${entity} count=${res.length}`,
+    );
+    return { entity, customFields: res, count: res.length };
+  }
+
+  // ── Approvals (staff side of the client-portal loop) ─────────────────
+  // Both are STAFF surfaces (@Roles ADMIN/MANAGER/STAFF) — i.e. not clients;
+  // assertCanWrite is exactly that gate (CLIENT-only rejection).
+
+  /** List ALL approvals on a project (the requester/staff view). Staff only. */
+  async listProjectApprovals(user: User, args: { projectId: string }) {
+    this.assertCanWrite(user);
+    if (!args?.projectId) throw new Error("'projectId' is required.");
+    const w2 = this.requireWave2();
+    const res = await w2.approvals.listForProject(
+      await this.resolveWorkspace(user),
+      user,
+      args.projectId,
+    );
+    this.logger.log(`MCP list_project_approvals: user=${user.email} project=${args.projectId}`);
+    return res;
+  }
+
+  /**
+   * Request a client approval on a document / deliverable / project. Staff only
+   * (CLIENT cannot). Mirrors the staff-guarded POST /client-portal/approvals.
+   */
+  async requestApproval(
+    user: User,
+    args: {
+      entityType: string;
+      entityId: string;
+      projectId?: string;
+      approverContactId?: string;
+      note?: string;
+    },
+  ) {
+    this.assertCanWrite(user);
+    const entityType = (ApprovalEntityType as Record<string, ApprovalEntityType>)[
+      args?.entityType ?? ''
+    ];
+    if (!entityType) {
+      throw new Error(
+        `Invalid entityType. Must be one of: ${Object.values(ApprovalEntityType).join(', ')}.`,
+      );
+    }
+    if (!args?.entityId) throw new Error("'entityId' is required.");
+    const w2 = this.requireWave2();
+    const res = await w2.approvals.request(await this.resolveWorkspace(user), user, {
+      entityType,
+      entityId: args.entityId,
+      projectId: args.projectId,
+      approverContactId: args.approverContactId,
+      note: args.note,
+    } as any);
+    this.logger.log(`MCP request_approval: user=${user.email} approval=${res.id}`);
+    return res;
   }
 }

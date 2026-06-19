@@ -5,6 +5,12 @@ import { WorkspaceContextService } from '../common/workspace/workspace-context.s
 import { MembershipService } from '../common/workspace/membership.service';
 import { clampLimit, clampOffset } from '../common/pagination/clamp';
 import { parseMentions } from './mention.util';
+import {
+  NotificationPreferences,
+  applyPreferencePatch,
+  mergePreferences,
+} from './notification-preferences';
+import { UpdatePreferencesDto } from './dto/update-preferences.dto';
 
 /**
  * Input for {@link NotificationsService.create}. `userId` is the RECIPIENT's
@@ -206,6 +212,75 @@ export class NotificationsService {
     return { updated: count };
   }
 
+  // ── Email preferences ──────────────────────────────────────────────────────
+  //
+  // These govern EMAIL delivery ONLY (see notification-preferences.ts). In-app
+  // notifications above are unaffected. `User.notificationPreferences` is a
+  // global, per-user column (the User table is NOT workspace-RLS-fenced —
+  // matching capacity/users services that read+write it via `this.prisma.user`),
+  // so we scope strictly by the authenticated `user.id`, not the workspace.
+
+  /**
+   * The caller's email-notification preferences, merged OVER the defaults
+   * (so the result is always complete; a null column => full defaults).
+   */
+  async getPreferences(user: User): Promise<NotificationPreferences> {
+    const row = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: { notificationPreferences: true },
+    });
+    return mergePreferences(row?.notificationPreferences ?? null);
+  }
+
+  /**
+   * Apply a PARTIAL update to the caller's email-notification preferences and
+   * persist the full normalized object to `User.notificationPreferences`.
+   * Returns the new merged preferences. The patch is shallow-merged over the
+   * CURRENT prefs (email replaced if sent; events merged key-by-key), then
+   * re-normalized so stray keys are dropped.
+   */
+  async updatePreferences(
+    user: User,
+    patch: UpdatePreferencesDto,
+  ): Promise<NotificationPreferences> {
+    const current = await this.getPreferences(user);
+    const next = applyPreferencePatch(current, patch);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      // Prisma typings expect InputJsonValue for a Json column; the object is
+      // plain + JSON-safe by construction.
+      data: { notificationPreferences: next as unknown as Prisma.InputJsonValue },
+    });
+    this.logger.log(`Updated email notification preferences for user ${user.id}`);
+    return next;
+  }
+
+  /**
+   * Resolve a recipient (by LOCAL User.id) into the data the email listener
+   * needs: their address, display name, and merged email preferences. Returns
+   * null when the user is missing/inactive/has no email — the caller then skips
+   * the email silently. Reads the global User row directly (not workspace-scoped).
+   */
+  async resolveEmailRecipient(userId: string): Promise<{
+    email: string;
+    name: string;
+    preferences: NotificationPreferences;
+  } | null> {
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        email: true,
+        firstName: true,
+        lastName: true,
+        isActive: true,
+        notificationPreferences: true,
+      },
+    });
+    if (!u || !u.isActive || !u.email) return null;
+    const name = `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.email;
+    return { email: u.email, name, preferences: mergePreferences(u.notificationPreferences) };
+  }
+
   // ── Reads ────────────────────────────────────────────────────────────────
 
   /**
@@ -318,6 +393,24 @@ export class NotificationsService {
       recipients.add(u.id);
     }
     return [...recipients];
+  }
+
+  /**
+   * Resolve the @mention recipients of `content` (LOCAL User.ids, author
+   * excluded) inside `workspaceId`'s RLS transaction — the SAME audience the
+   * in-app MENTION fan-out targets. Exposed for the email listener so the email
+   * audience exactly matches the in-app one without reaching into private state.
+   * Returns [] (no tx opened) when there are no @mentions.
+   */
+  async resolveMentionRecipients(params: {
+    workspaceId: string;
+    content: string;
+    authorId: string;
+  }): Promise<string[]> {
+    if (!parseMentions(params.content).all.length) return [];
+    return this.workspaceContext.runInWorkspace(params.workspaceId, params.authorId, (tx) =>
+      this.resolveMentionedUserIds(tx, params.workspaceId, params.content, params.authorId),
+    );
   }
 
   /** The set of ACTIVE membership keys (userKey) for a workspace. */
