@@ -548,6 +548,7 @@ model Project {
   triageProposals TriageProposal[] @relation("TriageProposalProject")
   timeEntries     TimeEntry[]
   approvals       Approval[]
+  agentEvents     AgentEvent[]
   recurrenceParent    Project?  @relation("ProjectRecurrence", fields: [recurrenceParentId], references: [id], onDelete: SetNull)
   recurrenceInstances Project[] @relation("ProjectRecurrence")
 
@@ -974,6 +975,62 @@ model Approval {
   @@index([workspaceId, status])
   @@index([projectId])
   @@map("approvals")
+}
+
+// ============================================================
+// AGENT ACTIVITY & USAGE LEDGER (v1.11)
+// ============================================================
+// The agent analog of time entries: one row per agent action taken through the
+// automation surfaces (MCP tool call, in-app assistant turn, PAT-authenticated
+// API write) — NOT direct human GUI clicks. Captured at the source so token/cost
+// can ride along (the assistant knows its own spend; MCP tool-calls are
+// zero-cost actions; federated LLM cost is filled from the suite gateway/Lago in
+// a later phase). Workspace-tenanted (RLS workspace_isolation + grants). Powers
+// the "Agents" views (roster / activity / usage & cost) and, optionally, agent
+// billing (costUsd → a billable line via the Accounting-Ops rollup).
+
+enum AgentVia {
+  MCP
+  API
+  ASSISTANT
+  GUI
+  SYSTEM
+}
+
+enum AgentActorKind {
+  PAT
+  ASSISTANT
+  FEDERATED
+  USER
+  SYSTEM
+}
+
+model AgentEvent {
+  id          String         @id @default(uuid())
+  workspaceId String
+  projectId   String?
+  taskId      String?
+  actorKind   AgentActorKind
+  actorKey    String // stable per-agent key: PAT id / "assistant" / federated sub / user id
+  actorLabel  String // human-readable ("Claude Code · Field bot", "Project Assistant", "Meeting-Ops")
+  via         AgentVia
+  action      String // tool name or verb ("create_task", "assistant.turn", "update_project")
+  resource    String?
+  resourceId  String?
+  tokensIn    Int?
+  tokensOut   Int?
+  costUsd     Decimal?       @db.Decimal(12, 6)
+  durationMs  Int?
+  billable    Boolean        @default(false)
+  details     Json?
+  occurredAt  DateTime       @default(now())
+  project     Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([workspaceId, occurredAt])
+  @@index([workspaceId, actorKey])
+  @@index([workspaceId, projectId])
+  @@map("agent_events")
 }
 
 // ============================================================
