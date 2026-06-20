@@ -122,9 +122,11 @@ work to a specialist sub-agent (e.g.,
   `<AssistantPanel>` sidebar component.
 - **Backend proxy** — `POST /api/v1/assistant/chat` forwards the
   conversation to Brigade with your stable user ID for memory scoping.
-- **Brigade agent** — `project-ops-assistant` running on local Gemma 4
-  26B-a4b on midboy1 (free local inference, ~3-5s per turn). Supports
-  native tool calling, falls back to OpenRouter / Bedrock if needed.
+- **Brigade agent** — `project-ops-assistant` running on a local
+  **Qwen 3.6 35B** (on-prem inference via a metered LLM gateway —
+  privacy-preserving, ~3-5s per turn). Supports native tool calling,
+  with a managed failover chain behind the gateway if the local model
+  is unavailable.
 - **MCP server** — mounted at
   `https://api.projectops.magicunicorn.dev/api/v1/mcp`,
   Streamable HTTP transport, JSON-RPC 2.0 with SSE-framed responses.
@@ -149,8 +151,8 @@ work to a specialist sub-agent (e.g.,
 
 - The assistant currently can't generate or attach images. PDF output
   is text + tables only.
-- The Gemma 4 26B-a4b backend is fast and free but occasionally
-  gets a tool-call argument shape slightly wrong. If a write fails,
+- The local Qwen 3.6 35B backend is fast and privacy-preserving but
+  occasionally gets a tool-call argument shape slightly wrong. If a write fails,
   re-ask with explicit field names.
 - Document upload through the assistant requires the file already
   living somewhere the backend can fetch — for raw paste-uploads,

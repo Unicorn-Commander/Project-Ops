@@ -19,6 +19,36 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `BILLABLE_ROLLUP_LIVE` (default off) until the AO AR integration is signed off
   in production.
 
+## [1.12.0] — 2026-06-20
+
+A documentation, help, and presentation release — and the record of going to
+production.
+
+### Added
+
+- **World-class README** — branded hero, a grouped feature map, the AI/MCP story,
+  an architecture table, the prod + dogfood deployments, and a wired screenshot
+  gallery (`docs/screenshots/`, ready for the product shots to drop in).
+- In-app **Help** coverage for the **Agents** ledger (events + token usage/cost)
+  and a refreshed **AI assistant** article reflecting the on-prem metered model.
+
+### Changed
+
+- Frontend and backend versions resynced to a single **1.12.0**.
+- Docs now reflect the on-prem, metered LLM gateway (local Qwen 3.6 35B) — the
+  assistant model reference in `docs/AI_ASSISTANT.md` corrected from Gemma.
+
+### Operations
+
+- **Production launch** — Project Ops is live at `projectops.unicorncommander.ai`
+  (alongside the `projectops.magicunicorn.dev` dogfood).
+- The in-app assistant now routes through a **metered, on-prem LLM gateway**
+  (local Qwen 3.6 35B on a P40) — same model, now billable + hard-capped — and
+  every turn lands in the Agents usage ledger.
+- Per-instance **Garage** (S3-compatible) object storage stood up for production.
+- New **`GET /api/v1/health/integrations`** operator diagnostic surfaces DB /
+  Keycloak / Brigade / registry / storage health at a glance.
+
 ## [1.11.2] — 2026-06-19
 
 ### Added

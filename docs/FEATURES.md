@@ -9,6 +9,10 @@ JWT minting, API wiring) live in
 in [`AI_ASSISTANT.md`](AI_ASSISTANT.md). For the per-release record of what
 shipped, see [`../CHANGELOG.md`](../CHANGELOG.md).
 
+Project Ops is **live in production** at
+<https://projectops.unicorncommander.ai>; the dogfood instance at
+<https://projectops.magicunicorn.dev> runs alongside it.
+
 ---
 
 ## Contents
@@ -423,9 +427,11 @@ breakdown, and recent activity.
 `GET /agents/usage`, `GET /agents/:actorKey`, `PATCH /agents/activity/:id/billable`
 — all ADMIN/MANAGER-gated and workspace-RLS-scoped.
 
-**Note.** Per-event cost attribution from the Brigade LLM proxy is a follow-up;
-today assistant events record tokens where the proxy surfaces them and cost is
-left null until the metering hook lands.
+**Note.** The in-app assistant runs through a **metered LLM gateway** (a local,
+on-prem Qwen 3.6 35B — see [AI assistant](#ai-assistant-mcp--api)), so assistant
+turns record their token usage and carry a cost in the ledger. MCP tool calls
+remain zero-cost actions (events only). Finer-grained per-event cost attribution
+across every channel continues to be refined.
 
 ---
 
@@ -599,6 +605,12 @@ Every dashboard page has an **Ask** pill that opens a sidebar agent — the
 data (it can list, drill in, create, update status, comment, and draft
 reports). It can run as a full-height drawer or a popped corner widget, and
 remembers preferences per user.
+
+The assistant is powered by a **private, on-prem model** — a local **Qwen 3.6
+35B** served through a **metered LLM gateway** — so prompts and data stay on
+your own infrastructure rather than going to a third-party model. Its turns are
+metered (tokens + cost) and surface in the [Agents
+ledger](#agent-activity--usage).
 
 The same surface is an **MCP server** any MCP-capable client (Claude Code,
 Cursor, Continue, Zed, your own agent) can plug into, and direct API access is

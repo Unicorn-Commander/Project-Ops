@@ -8,7 +8,7 @@
  * across every article's title, summary, keywords, and section text.
  *
  * GROUNDING: the copy here describes Project Ops as it actually ships at
- * v1.9.0 (see CHANGELOG.md). When a feature changes, update the matching
+ * v1.12.0 (see CHANGELOG.md). When a feature changes, update the matching
  * article body — keep this honest about what exists. Articles point at real
  * routes (e.g. `/dashboard/settings/custom-fields`) so the Help center can
  * deep-link the reader straight to the feature.
@@ -831,6 +831,68 @@ const ok = timingSafeEqual(
           },
         ],
       },
+      {
+        id: "agents",
+        title: "Agents (activity & usage)",
+        summary:
+          "The agent analog of timesheets: a ledger of what your AI agents did, tracked by events plus token usage and cost — not hours.",
+        keywords: [
+          "agent",
+          "agents",
+          "agent activity",
+          "agent usage",
+          "ledger",
+          "tokens",
+          "token usage",
+          "cost",
+          "usage",
+          "billable",
+          "events",
+          "mcp",
+          "assistant",
+          "ai usage",
+          "metering",
+        ],
+        route: "/dashboard/agents",
+        routeLabel: "Open Agents",
+        body: [
+          {
+            type: "p",
+            text: "Where time tracking answers 'what did the team do, and what's it billable at', Agents answers 'what did your AI agents do — and what did it cost'. Every action an agent takes against the workspace is recorded as a first-class, workspace-scoped event you can audit, chart, and mark billable. Agents are measured by events plus tokens and cost, not by hours.",
+          },
+          {
+            type: "h",
+            text: "What the ledger shows",
+          },
+          {
+            type: "p",
+            text: "Each entry records who acted (the agent — a Personal Access Token, the in-app assistant, a federated agent, a user, or the system), how the action arrived (MCP, API, the assistant, the GUI, or the system), the action itself, the entity it touched, any token counts in/out, a cost in USD, how long it took, a billable flag, and when it happened.",
+          },
+          {
+            type: "list",
+            items: [
+              "KPI tiles — active agents, event count, tokens, and total + billable cost for the window.",
+              "Roster — every agent that's been active, with its totals.",
+              "Usage & cost charts — events and cost over time, plus a per-agent breakdown.",
+              "Activity feed — a filterable, paginated stream (by agent, project, or channel) with an inline billable toggle on cost-bearing rows.",
+            ],
+          },
+          {
+            type: "note",
+            variant: "info",
+            text: "MCP tool calls are zero-cost actions: they count as events but carry no tokens or cost (shown as —). Only LLM turns — like an in-app assistant reply — carry tokens and a cost. So a busy agent that only reads and writes data via tools racks up events without spending anything.",
+          },
+          {
+            type: "p",
+            text: "Open an individual agent for a detail view — its totals, a per-project breakdown, and its recent activity — to see exactly where one agent is spending its events and tokens.",
+          },
+          {
+            type: "note",
+            variant: "info",
+            text: "Agents is a manager surface, under Time & Billing → Agents: ADMIN and MANAGER roles see it. Like everything else, the ledger is workspace-scoped — you only ever see your own workspace's agent activity.",
+          },
+        ],
+      },
     ],
   },
 
@@ -985,6 +1047,57 @@ const ok = timingSafeEqual(
     blurb: "Drive Project Ops from AI agents and your own integrations.",
     icon: "KeyRound",
     articles: [
+      {
+        id: "ai-assistant",
+        title: "The AI assistant (Ask)",
+        summary:
+          "An in-app agent on every page that reads and acts on your work — listing, drilling in, creating, updating status, commenting, and drafting reports.",
+        keywords: [
+          "assistant",
+          "ai",
+          "ask",
+          "ask pill",
+          "chat",
+          "agent",
+          "copilot",
+          "qwen",
+          "llm",
+          "on-prem",
+          "local model",
+          "private",
+          "metered",
+          "draft",
+          "summarize",
+        ],
+        body: [
+          {
+            type: "p",
+            text: "Every dashboard page has an Ask pill in the top bar. Open it and a sidebar agent — the Project Ops Assistant — slides in with live access to your projects, tasks, organizations, contacts, documents, billing, and activity. You can ask it to find and summarize work, drill into a project, create projects and tasks, change a status, post a comment, and draft status updates or stand-up notes — all in plain language.",
+          },
+          {
+            type: "p",
+            text: "Ask it things like 'what's still open on the Brigade integration?', 'break this project into tasks and assign them to me', 'mark TASK-0042 completed', or 'draft a status update for P-00002 covering the last week'. It runs as a full-height drawer or a popped corner widget and remembers your preference.",
+          },
+          {
+            type: "h",
+            text: "It only sees what you can",
+          },
+          {
+            type: "p",
+            text: "The assistant acts as you, under your role and inside your workspace — exactly the same RBAC and tenant isolation as the dashboard. A CLIENT asking 'what projects do I have?' sees only their own, and write actions refuse for roles that can't perform them. Every write the assistant makes lands in the same audit log as a manual change, so the activity feed shows it the same way.",
+          },
+          {
+            type: "note",
+            variant: "info",
+            text: "The assistant runs on a private, on-prem model — a local Qwen 3.6 35B served through a metered LLM gateway — so your prompts and data stay on your own infrastructure rather than going to a third-party model. Assistant turns are metered (tokens and cost) and show up in the Agents ledger.",
+          },
+          {
+            type: "note",
+            variant: "tip",
+            text: "Tell it your preferences once and it remembers them across sessions, scoped to your user: 'I want status updates as a PDF memo, not an email'. It can't generate images, and write tools occasionally need explicit field names — if a write doesn't take, re-ask naming the fields.",
+          },
+        ],
+      },
       {
         id: "mcp-api-tokens",
         title: "MCP / API & Personal Access Tokens",
