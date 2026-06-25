@@ -203,7 +203,15 @@ export async function resolveEntitlement(
   // (first message) and `entitlements` (the concrete JSON example), and an
   // envelope may nest it under `data`. Accept any of those so a field-name
   // wording difference can't masquerade as a (definitive) deny.
-  const entitlements = extractEntitlementList(body);
+  const { field: matchedField, list: entitlements } = extractEntitlementList(body);
+  // Observability (info, so it surfaces): which field actually carried the
+  // list + the raw top-level keys, so the live response shape is verifiable
+  // without a token and we can confirm which branch fired.
+  logger.log(
+    `decision: status=${res.status} matchedField=${matchedField ?? 'NONE'} ` +
+      `topKeys=[${Object.keys(body ?? {}).join(',')}] count=${entitlements.length} ` +
+      `has('${featureKey}')=${entitlements.includes(featureKey)}`,
+  );
   const role = body?.role ?? body?.data?.role;
   const orgId =
     typeof body?.org_id === 'string'
@@ -243,16 +251,16 @@ export async function resolveEntitlement(
  * being named `entitlements` or `feature_keys`, optionally nested under `data`.
  * Returns [] when none of those are present (-> caller denies).
  */
-function extractEntitlementList(body: any): string[] {
-  const candidates = [
-    body?.entitlements,
-    body?.feature_keys,
-    body?.featureKeys,
-    body?.data?.entitlements,
-    body?.data?.feature_keys,
+function extractEntitlementList(body: any): { field: string | null; list: string[] } {
+  const candidates: Array<[string, unknown]> = [
+    ['entitlements', body?.entitlements],
+    ['feature_keys', body?.feature_keys],
+    ['featureKeys', body?.featureKeys],
+    ['data.entitlements', body?.data?.entitlements],
+    ['data.feature_keys', body?.data?.feature_keys],
   ];
-  for (const c of candidates) {
-    if (Array.isArray(c)) return c.map((e: unknown) => String(e));
+  for (const [field, c] of candidates) {
+    if (Array.isArray(c)) return { field, list: c.map((e: unknown) => String(e)) };
   }
-  return [];
+  return { field: null, list: [] };
 }
