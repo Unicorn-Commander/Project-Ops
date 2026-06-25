@@ -124,6 +124,25 @@ describe('resolveEntitlement', () => {
     expect(r.role).toBe(UserRole.STAFF);
   });
 
+  it('ALLOWS when the list is named feature_keys instead of entitlements', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(resp(200, { org_id: 'o', tier: 'managed', role: 'owner', feature_keys: ['project_ops_access'] }));
+    const r = await resolveEntitlement('t', { getEnv: armed, logger: silent, fetchImpl });
+    expect(r.outcome).toBe('allowed');
+    expect(r.role).toBe(UserRole.ADMIN);
+  });
+
+  it('ALLOWS when the payload is nested under data', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(resp(200, { data: { org_id: 'o', tier: 'team', role: 'member', entitlements: ['project_ops_access'] } }));
+    const r = await resolveEntitlement('t', { getEnv: armed, logger: silent, fetchImpl });
+    expect(r.outcome).toBe('allowed');
+    expect(r.role).toBe(UserRole.STAFF);
+    expect(r.orgId).toBe('o');
+  });
+
   it('honors a custom PROJECT_OPS_FEATURE_KEY', async () => {
     const fetchImpl = jest
       .fn()

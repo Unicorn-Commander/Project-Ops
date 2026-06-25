@@ -199,27 +199,60 @@ export async function resolveEntitlement(
     return { outcome: 'indeterminate', role: null, orgId: null, tier: null, reason };
   }
 
-  const entitlements: string[] = Array.isArray(body?.entitlements)
-    ? body.entitlements.map((e: unknown) => String(e))
-    : [];
-  const orgId = typeof body?.org_id === 'string' ? body.org_id : null;
-  const tier = typeof body?.tier === 'string' ? body.tier : null;
+  // Tolerant extraction — the spec described the list as both `feature_keys`
+  // (first message) and `entitlements` (the concrete JSON example), and an
+  // envelope may nest it under `data`. Accept any of those so a field-name
+  // wording difference can't masquerade as a (definitive) deny.
+  const entitlements = extractEntitlementList(body);
+  const role = body?.role ?? body?.data?.role;
+  const orgId =
+    typeof body?.org_id === 'string'
+      ? body.org_id
+      : typeof body?.data?.org_id === 'string'
+        ? body.data.org_id
+        : null;
+  const tier =
+    typeof body?.tier === 'string'
+      ? body.tier
+      : typeof body?.data?.tier === 'string'
+        ? body.data.tier
+        : null;
 
   if (!entitlements.includes(featureKey)) {
-    return {
-      outcome: 'denied',
-      role: null,
-      orgId,
-      tier,
-      reason: `org lacks '${featureKey}' entitlement`,
-    };
+    // Diagnostic: surface the status + which top-level keys the endpoint
+    // returned, so a missing-entitlement vs unexpected-shape is distinguishable
+    // in the logs without a code change.
+    const reason = `org lacks '${featureKey}' entitlement (status ${res.status}; keys=[${Object.keys(
+      body ?? {},
+    ).join(',')}]; found=[${entitlements.join(',') || 'none'}])`;
+    logger.warn(reason);
+    return { outcome: 'denied', role: null, orgId, tier, reason };
   }
 
   return {
     outcome: 'allowed',
-    role: mapEntitlementRole(body?.role),
+    role: mapEntitlementRole(role),
     orgId,
     tier,
-    reason: `entitled via '${featureKey}' (org role=${body?.role ?? 'n/a'}, tier=${tier ?? 'n/a'})`,
+    reason: `entitled via '${featureKey}' (org role=${role ?? 'n/a'}, tier=${tier ?? 'n/a'})`,
   };
+}
+
+/**
+ * Pull the entitlement-string list out of the response, tolerating the field
+ * being named `entitlements` or `feature_keys`, optionally nested under `data`.
+ * Returns [] when none of those are present (-> caller denies).
+ */
+function extractEntitlementList(body: any): string[] {
+  const candidates = [
+    body?.entitlements,
+    body?.feature_keys,
+    body?.featureKeys,
+    body?.data?.entitlements,
+    body?.data?.feature_keys,
+  ];
+  for (const c of candidates) {
+    if (Array.isArray(c)) return c.map((e: unknown) => String(e));
+  }
+  return [];
 }
