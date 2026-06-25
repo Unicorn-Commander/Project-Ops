@@ -160,6 +160,9 @@ services:
       UC_ENTITLEMENTS_URL: ${UC_ENTITLEMENTS_URL:-}
       PROJECT_OPS_FEATURE_KEY: ${PROJECT_OPS_FEATURE_KEY:-project_ops_access}
       PROJECT_OPS_ENTITLEMENTS_FAIL_OPEN: ${PROJECT_OPS_ENTITLEMENTS_FAIL_OPEN:-false}
+      # Soft-enforce: on a DEFINITIVE deny, grandfather allowlisted users in (the
+      # seed-then-enforce migration aid). Gate still hard-denies non-allowlisted.
+      PROJECT_OPS_ENTITLEMENTS_ALLOWLIST_FALLBACK: ${PROJECT_OPS_ENTITLEMENTS_ALLOWLIST_FALLBACK:-false}
       UC_ENTITLEMENTS_TIMEOUT_MS: ${UC_ENTITLEMENTS_TIMEOUT_MS:-5000}
       # Trusted sibling-app federation actors for the propose-only triage
       # ingest (v1.8.0). Empty = zero federation trust.

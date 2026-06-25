@@ -13,6 +13,7 @@ import {
   resolveEntitlement,
   entitlementsEnabled,
   entitlementsFailOpen,
+  entitlementsAllowlistFallback,
 } from './entitlements.client';
 import {
   MembershipService,
@@ -254,6 +255,26 @@ export class AuthService {
       return { allowed: true, role: ent.role ?? UserRole.STAFF, reason: ent.reason };
     }
     if (ent.outcome === 'denied') {
+      // "Soft enforce" migration aid: while Ops-Center orgs are still being
+      // seeded with entitlements, an allowlisted (known-good) user must not be
+      // locked out by an unseeded org. When the fallback is on, a DEFINITIVE
+      // deny degrades to the allowlist — the gate still hard-denies anyone NOT
+      // on the allowlist. Set the flag false to land on pure enforcement once
+      // every intended org is seeded.
+      if (entitlementsAllowlistFallback(getEnv)) {
+        const a = resolveUserAccess(email);
+        if (a.allowed) {
+          this.logger.warn(
+            `Entitlements denied (${ent.reason}) but ${email || '(no email)'} is allowlisted — ` +
+              `granting via soft-enforce allowlist fallback`,
+          );
+          return {
+            allowed: true,
+            role: a.role,
+            reason: `entitlement-denied→allowlist-fallback: ${a.reason}`,
+          };
+        }
+      }
       return { allowed: false, role: UserRole.STAFF, reason: ent.reason };
     }
 

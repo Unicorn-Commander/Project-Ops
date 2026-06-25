@@ -6,6 +6,7 @@ import {
   projectOpsFeatureKey,
   entitlementsEnabled,
   entitlementsFailOpen,
+  entitlementsAllowlistFallback,
   DEFAULT_PROJECT_OPS_FEATURE_KEY,
 } from './entitlements.client';
 
@@ -73,6 +74,12 @@ describe('config helpers', () => {
   it('entitlementsFailOpen defaults to false (fail closed)', () => {
     expect(entitlementsFailOpen(env({}))).toBe(false);
     expect(entitlementsFailOpen(env({ PROJECT_OPS_ENTITLEMENTS_FAIL_OPEN: 'true' }))).toBe(true);
+  });
+
+  it('entitlementsAllowlistFallback defaults to false (pure enforce)', () => {
+    expect(entitlementsAllowlistFallback(env({}))).toBe(false);
+    expect(entitlementsAllowlistFallback(env({ PROJECT_OPS_ENTITLEMENTS_ALLOWLIST_FALLBACK: 'true' }))).toBe(true);
+    expect(entitlementsAllowlistFallback(env({ PROJECT_OPS_ENTITLEMENTS_ALLOWLIST_FALLBACK: 'on' }))).toBe(true);
   });
 });
 

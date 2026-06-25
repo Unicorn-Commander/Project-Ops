@@ -115,6 +115,22 @@ export function entitlementsFailOpen(getEnv: EnvGetter = defaultGetter): boolean
   return truthy(getEnv('PROJECT_OPS_ENTITLEMENTS_FAIL_OPEN'));
 }
 
+/**
+ * "Soft enforce" — on a DEFINITIVE deny (a 200 whose entitlements omit the key,
+ * or a 401/403 token reject), whether to fall back to the legacy allowlist and
+ * grandfather allowlisted users in (true), or hard-deny (false, the default —
+ * pure enforce).
+ *
+ * This is the seed-then-enforce MIGRATION tool: while Ops-Center orgs are still
+ * being seeded with entitlements, turning this on means a known-good allowlist
+ * user is never locked out by an unseeded org, while the gate still enforces
+ * entitlements for everyone NOT on the allowlist. Remove (set false) once every
+ * intended org is seeded, to land on pure entitlement enforcement.
+ */
+export function entitlementsAllowlistFallback(getEnv: EnvGetter = defaultGetter): boolean {
+  return truthy(getEnv('PROJECT_OPS_ENTITLEMENTS_ALLOWLIST_FALLBACK'));
+}
+
 function timeoutMs(getEnv: EnvGetter): number {
   const raw = getEnv('UC_ENTITLEMENTS_TIMEOUT_MS');
   const n = raw ? Number(raw) : NaN;
@@ -204,12 +220,13 @@ export async function resolveEntitlement(
   // envelope may nest it under `data`. Accept any of those so a field-name
   // wording difference can't masquerade as a (definitive) deny.
   const { field: matchedField, list: entitlements } = extractEntitlementList(body);
-  // Observability for the auth gate: which field actually carried the list +
-  // the raw top-level keys. Emitted via console.log (stdout) because this app's
-  // winston request-time logs do not surface in container logs — only boot-time
-  // logs and raw stdout do — and an auth-gate decision must be observable.
-  console.log(
-    `[entitlements] decision: status=${res.status} matchedField=${matchedField ?? 'NONE'} ` +
+  // Observability for the auth gate: which field carried the list + the raw
+  // top-level keys + the verdict. NOTE: this app's request-time logs do not
+  // currently surface in container logs (Sentry's Express-layer instrumentation
+  // + a failing winston file-sink — tracked separately); this is the correct
+  // channel for when that's fixed.
+  logger.log(
+    `decision: status=${res.status} matchedField=${matchedField ?? 'NONE'} ` +
       `topKeys=[${Object.keys(body ?? {}).join(',')}] count=${entitlements.length} ` +
       `has('${featureKey}')=${entitlements.includes(featureKey)}`,
   );
