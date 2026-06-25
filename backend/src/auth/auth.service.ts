@@ -10,6 +10,11 @@ import { User, UserRole, WorkspaceRole, MembershipStatus } from '@prisma/client'
 import * as bcrypt from 'bcrypt';
 import { resolveUserAccess, describeAccessList } from './access-list';
 import {
+  resolveEntitlement,
+  entitlementsEnabled,
+  entitlementsFailOpen,
+} from './entitlements.client';
+import {
   MembershipService,
   ActiveWorkspaceMembership,
 } from '../common/workspace/membership.service';
@@ -130,8 +135,32 @@ export class AuthService {
     };
   }
 
-  async validateKeycloakUser(keycloakId: string, profile: any): Promise<User> {
+  async validateKeycloakUser(
+    keycloakId: string,
+    profile: any,
+    accessToken?: string,
+  ): Promise<User> {
     const email = profile.email;
+    const getEnv = (k: string) => this.configService.get<string>(k);
+
+    // When the Ops-Center entitlements gate is ARMED (flag + URL + a forwarded
+    // uchub Bearer), it governs and is RE-CHECKED on EVERY interactive SSO
+    // login, so a revoked entitlement (plan change / cancellation) locks a
+    // previously-provisioned user out. We therefore evaluate it BEFORE the
+    // find/link so it covers existing users too. The legacy allowlist path
+    // keeps today's exact semantics (gate only on first JIT, below), so the
+    // flag-OFF default is byte-for-byte unchanged.
+    const armed = entitlementsEnabled(getEnv) && !!accessToken;
+    let resolvedAccess: { allowed: boolean; role: UserRole; reason: string } | null = null;
+    if (armed) {
+      resolvedAccess = await this.resolveSsoAccess(email, accessToken);
+      if (!resolvedAccess.allowed) {
+        this.logger.warn(`Rejected SSO for ${email || '(no email)'} — ${resolvedAccess.reason}`);
+        throw new UnauthorizedException(
+          'You are not authorized for Project-Ops. Contact your administrator.',
+        );
+      }
+    }
 
     // First try to find by keycloakId, then fall back to email match
     let user = await this.usersService.findByKeycloakId(keycloakId);
@@ -147,12 +176,13 @@ export class AuthService {
     }
 
     if (!user) {
-      // Gate: Project-Ops is single-tenant internal. Just because an
-      // email exists in the shared `uchub` Keycloak realm does NOT
-      // mean they get a Project-Ops account — the access list defines
-      // who can JIT-provision and at what role. See
-      // `auth/access-list.ts` and the `PROJECT_OPS_ACCESS_LIST` env.
-      const access = resolveUserAccess(email);
+      // Gate (first JIT): Project-Ops is single-tenant internal. Just because an
+      // email exists in the shared `uchub` Keycloak realm does NOT mean they get
+      // a Project-Ops account. When armed, the entitlements verdict above already
+      // governs; otherwise the static `PROJECT_OPS_ACCESS_LIST` defines who may
+      // JIT-provision and at what role. See `auth/access-list.ts` +
+      // `auth/entitlements.client.ts`.
+      const access = resolvedAccess ?? (await this.resolveSsoAccess(email, accessToken));
       if (!access.allowed) {
         this.logger.warn(
           `Rejected SSO JIT for ${email || '(no email)'} — ${access.reason}`,
@@ -162,7 +192,10 @@ export class AuthService {
         );
       }
 
-      // Auto-create user from Keycloak profile with the resolved role.
+      // Auto-create from the Keycloak profile with the resolved role. The role
+      // is seeded ONCE here; later logins re-check ACCESS but never clobber an
+      // in-app role change (the entitlements role is coarse — owner->ADMIN, else
+      // ->STAFF; MANAGER/CLIENT are refined in-app).
       user = await this.usersService.create({
         email,
         username: profile.preferred_username || profile.username || email,
@@ -182,6 +215,69 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  /**
+   * Resolve "may this Keycloak identity sign into Project-Ops, and at what JIT
+   * role" — the single gate behind the SSO login. Two sources, picked at runtime:
+   *
+   *  - ARMED entitlements gate (PROJECT_OPS_ENTITLEMENTS_ENABLED + UC_ENTITLEMENTS_URL
+   *    + a forwarded uchub Bearer): Ops-Center is the source of truth. Allowed iff
+   *    the org carries PROJECT_OPS_FEATURE_KEY; role mapped from the org role.
+   *    INDETERMINATE (endpoint outage/timeout) fails CLOSED (deny) unless
+   *    PROJECT_OPS_ENTITLEMENTS_FAIL_OPEN degrades it to the allowlist.
+   *  - Otherwise the static PROJECT_OPS_ACCESS_LIST (today's behavior, and the
+   *    no-token fallback for the realm-token-direct-to-API / Brigade-federated
+   *    callers, which adopt entitlements as a documented fast-follow).
+   */
+  private async resolveSsoAccess(
+    email: string | undefined,
+    accessToken?: string,
+  ): Promise<{ allowed: boolean; role: UserRole; reason: string }> {
+    const getEnv = (k: string) => this.configService.get<string>(k);
+
+    if (!entitlementsEnabled(getEnv) || !accessToken) {
+      const a = resolveUserAccess(email);
+      return { allowed: a.allowed, role: a.role, reason: a.reason };
+    }
+
+    const ent = await resolveEntitlement(accessToken, {
+      getEnv,
+      logger: {
+        log: (m) => this.logger.log(m),
+        warn: (m) => this.logger.warn(m),
+        error: (m) => this.logger.error(m),
+      },
+    });
+
+    if (ent.outcome === 'allowed') {
+      return { allowed: true, role: ent.role ?? UserRole.STAFF, reason: ent.reason };
+    }
+    if (ent.outcome === 'denied') {
+      return { allowed: false, role: UserRole.STAFF, reason: ent.reason };
+    }
+
+    // indeterminate: an Ops-Center outage/timeout. Fail CLOSED by default (this
+    // is a security gate); only degrade to the allowlist when explicitly opted in.
+    if (entitlementsFailOpen(getEnv)) {
+      this.logger.warn(
+        `Entitlements indeterminate (${ent.reason}); failing OPEN to the allowlist for ${email || '(no email)'}`,
+      );
+      const a = resolveUserAccess(email);
+      return {
+        allowed: a.allowed,
+        role: a.role,
+        reason: `entitlements-indeterminate→allowlist: ${a.reason}`,
+      };
+    }
+    this.logger.error(
+      `Entitlements indeterminate (${ent.reason}); failing CLOSED (deny) for ${email || '(no email)'}`,
+    );
+    return {
+      allowed: false,
+      role: UserRole.STAFF,
+      reason: `entitlements-indeterminate→deny: ${ent.reason}`,
+    };
   }
 
   async generateTokenForUser(user: User) {

@@ -7,6 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added — dark, flag-gated
+
+- **Ops-Center entitlement gate (first cut, OFF by default).** SSO sign-in can
+  now be governed by the Ops-Center entitlements endpoint instead of the static
+  `PROJECT_OPS_ACCESS_LIST`. When armed (`PROJECT_OPS_ENTITLEMENTS_ENABLED` +
+  `UC_ENTITLEMENTS_URL`), the interactive SSO login forwards the user's uchub
+  Bearer, allows iff the org carries `PROJECT_OPS_FEATURE_KEY` (default
+  `project_ops_access`), seeds the JIT role from the org role (owner→ADMIN,
+  else→STAFF), and **re-checks on every login** so a revoked entitlement locks a
+  user out. Indeterminate results (endpoint outage/timeout) fail **closed**
+  unless `PROJECT_OPS_ENTITLEMENTS_FAIL_OPEN` degrades to the allowlist. Inert
+  until the UC dev's live URL lands — the flag-off path is byte-for-byte
+  unchanged. New `backend/src/auth/entitlements.client.ts` (+ unit spec); wired
+  through `KeycloakStrategy` → `AuthService.validateKeycloakUser`.
+
 ### Remaining for the tenancy GA
 
 - **Phase E — uc-registry as the workspace source of record.** PO still mints
