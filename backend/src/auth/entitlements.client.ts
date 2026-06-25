@@ -204,11 +204,12 @@ export async function resolveEntitlement(
   // envelope may nest it under `data`. Accept any of those so a field-name
   // wording difference can't masquerade as a (definitive) deny.
   const { field: matchedField, list: entitlements } = extractEntitlementList(body);
-  // Observability (info, so it surfaces): which field actually carried the
-  // list + the raw top-level keys, so the live response shape is verifiable
-  // without a token and we can confirm which branch fired.
-  logger.log(
-    `decision: status=${res.status} matchedField=${matchedField ?? 'NONE'} ` +
+  // Observability for the auth gate: which field actually carried the list +
+  // the raw top-level keys. Emitted via console.log (stdout) because this app's
+  // winston request-time logs do not surface in container logs — only boot-time
+  // logs and raw stdout do — and an auth-gate decision must be observable.
+  console.log(
+    `[entitlements] decision: status=${res.status} matchedField=${matchedField ?? 'NONE'} ` +
       `topKeys=[${Object.keys(body ?? {}).join(',')}] count=${entitlements.length} ` +
       `has('${featureKey}')=${entitlements.includes(featureKey)}`,
   );
