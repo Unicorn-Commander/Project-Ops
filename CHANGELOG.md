@@ -34,6 +34,51 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `BILLABLE_ROLLUP_LIVE` (default off) until the AO AR integration is signed off
   in production.
 
+## [1.13.0] — 2026-06-27
+
+An agent-surface release. An agent-readiness eval against the real 43-tool MCP
+surface showed the model drives existing tools reliably but had **no tool for
+several real capabilities** and would occasionally grab the nearest tool (e.g.
+fabricate an "issue + send" on `create_billable_draft`) when none fit. This
+release closes those gaps and hardens two existing tools the live loop tripped
+on. Every new tool delegates to the same service the REST layer uses — one RBAC
++ workspace-RLS chokepoint — so an agent can never reach past its user's
+permissions.
+
+### Added
+
+- **`create_custom_field`** — define a workspace custom field for TASK or PROJECT
+  entities (delegates to `CustomFieldsService.create`; non-CLIENT, mirroring the
+  membership-gated REST `POST`).
+- **`issue_invoice`** — issue **and** send a billable invoice in one step via
+  Accounting-Ops (`createBillableDraft({ autoSend: true })`), with an honest
+  fallback to a draft preview when AO isn't connected/entitled. MANAGER/ADMIN.
+- **`archive_project`** — the safe, reversible alternative to deletion
+  (`status = ARCHIVED`). Hard delete is intentionally **not** exposed to agents.
+- **Workspace member management** — `list_members`, `invite_member`,
+  `update_member_role`, `remove_member` (delegates to `WorkspacesService`;
+  OWNER/ADMIN gates + last-owner protection enforced by the service).
+
+Each new tool is registered with a Zod input schema and PAT-scope-gated via
+`MCP_TOOL_SCOPE_MAP` (reusing existing scopes — no manifest drift).
+
+### Fixed
+
+- **Request logs now surface in `docker logs`.** `@opentelemetry/instrumentation-winston`
+  (on by default in the auto-instrumentations meta-package) hooked the logger and
+  routed per-request records into the OTel logs pipeline; this SDK configures a
+  trace exporter only, so those records were silently dropped — only boot-time
+  logs reached stdout. The winston + bunyan log instrumentations are now disabled
+  (we configure no log exporter, so this loses nothing); tracing and Sentry are
+  untouched. The Console transport is pinned to `info`.
+- **`list_my_projects` tolerates a free-text `status`.** Agents pass values like
+  `"active"` or lowercase `"new"`; these reached Prisma raw and surfaced an opaque
+  `Invalid value for argument status` 500. The filter is now case-normalized and,
+  if still unknown, rejected early with the valid set so the caller self-corrects.
+- **`get_project` accepts a project number in either field.** A human project
+  number (`P-00110`) passed in the `id` field (or vice-versa) now resolves —
+  the key matches either column, AND-nested so visibility scoping is preserved.
+
 ## [1.12.0] — 2026-06-20
 
 A documentation, help, and presentation release — and the record of going to

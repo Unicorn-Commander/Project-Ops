@@ -32,6 +32,7 @@ import { CapacityService } from '../capacity/capacity.service';
 import { AutomationsService } from '../automations/automations.service';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import { ApprovalsService } from '../client-portal/approvals/approvals.service';
+import { WorkspacesService } from '../workspaces/workspaces.service';
 // Agent activity capture (v1.11) — OPTIONAL: when AgentsModule is imported into
 // McpModule the recorder is injected and every successful tool call is logged
 // as an AgentEvent; if not wired, capture is silently skipped (app still boots).
@@ -65,6 +66,9 @@ export class McpService {
     private readonly automations: AutomationsService,
     private readonly customFields: CustomFieldsService,
     private readonly approvals: ApprovalsService,
+    // Workspace member-management spine (invite/role/remove/list). Imported via
+    // WorkspacesModule; handed to ProjectOpsTools for the member tools.
+    private readonly workspaceAdmin: WorkspacesService,
     // OPTIONAL: present only when AgentsModule is imported into McpModule.
     @Optional() private readonly agentEvents?: AgentEventsService,
   ) {}
@@ -237,6 +241,7 @@ export class McpService {
       this.workspace,
       this.events,
       wave2Deps,
+      this.workspaceAdmin,
     );
 
     server.registerTool(
@@ -896,6 +901,109 @@ export class McpService {
       async (args: any) => wrap(await tools.requestApproval(user, args)),
     );
 
+    // ── Custom-field definition create ──
+    server.registerTool(
+      'create_custom_field',
+      {
+        title: 'Create a custom-field definition',
+        description:
+          'Define a new custom field for an entity. entity is TASK or PROJECT; type is one of ' +
+          'TEXT/NUMBER/DATE/SELECT/MULTISELECT/BOOLEAN. label is required; key is auto-slugified ' +
+          'from label when omitted; options (string[]) is required for SELECT/MULTISELECT. ' +
+          'Optional required (default false) and position. After creating, set values via ' +
+          'create_task / update_task / create_project / update_project. Non-CLIENT members only.',
+        inputSchema: {
+          entity: z.string().min(1),
+          label: z.string().min(1),
+          type: z.string().min(1),
+          key: z.string().optional(),
+          options: z.array(z.string()).optional(),
+          required: z.boolean().optional(),
+          position: z.number().int().min(0).optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.createCustomField(user, args)),
+    );
+
+    // ── Project archive (the agent-safe alternative to deletion) ──
+    server.registerTool(
+      'archive_project',
+      {
+        title: 'Archive (retire) a project',
+        description:
+          'Archive a project — sets status to ARCHIVED, the safe + reversible alternative to ' +
+          'deletion. Project-Ops does NOT expose permanent project deletion to agents; archived ' +
+          'projects are hidden from active views but preserved. Identify by id or projectNumber. ' +
+          'Un-archive with update_project_status. CLIENT users cannot.',
+        inputSchema: {
+          id: z.string().optional(),
+          projectNumber: z.string().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.archiveProject(user, args)),
+    );
+
+    // ── Workspace member management (delegates to WorkspacesService) ──
+    server.registerTool(
+      'list_members',
+      {
+        title: 'List workspace members',
+        description:
+          'List the members of your active workspace, including pending invites. Returns each ' +
+          "member's userKey + workspace role (VIEWER/MEMBER/MANAGER/ADMIN/OWNER). Pass a returned " +
+          'userKey to update_member_role / remove_member. Any active member.',
+        inputSchema: {},
+      },
+      async (args: any) => wrap(await tools.listMembers(user, args)),
+    );
+
+    server.registerTool(
+      'invite_member',
+      {
+        title: 'Invite a member to the workspace',
+        description:
+          'Add or invite someone to your active workspace by email. If they already have an ' +
+          'account they are added immediately; otherwise an invite LINK is returned (no email is ' +
+          'sent — share the link). role is VIEWER/MEMBER/MANAGER/ADMIN (default MEMBER; OWNER ' +
+          'cannot be granted here). OWNER/ADMIN only.',
+        inputSchema: {
+          email: z.string().min(1),
+          role: z.string().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.inviteMember(user, args)),
+    );
+
+    server.registerTool(
+      'update_member_role',
+      {
+        title: "Change a member's workspace role",
+        description:
+          "Change a member's workspace role. userKey identifies the member (get it from " +
+          'list_members); role is VIEWER/MEMBER/MANAGER/ADMIN/OWNER. OWNER only; the last OWNER ' +
+          'cannot be demoted.',
+        inputSchema: {
+          userKey: z.string().min(1),
+          role: z.string().min(1),
+        },
+      },
+      async (args: any) => wrap(await tools.updateMemberRole(user, args)),
+    );
+
+    server.registerTool(
+      'remove_member',
+      {
+        title: 'Remove a member from the workspace',
+        description:
+          'Remove a member from your active workspace. userKey identifies the member (from ' +
+          'list_members). OWNER only; the last OWNER cannot be removed.',
+        inputSchema: {
+          userKey: z.string().min(1),
+        },
+      },
+      async (args: any) => wrap(await tools.removeMember(user, args)),
+    );
+
     // ── Time tracking tools (gated by TIME_TRACKING_ENABLED) ──
     if (timeTrackingEnabled()) {
       server.registerTool(
@@ -1053,6 +1161,28 @@ export class McpService {
           },
         },
         async (args: any) => wrap(await tools.createBillableDraft(user, args)),
+      );
+
+      server.registerTool(
+        'issue_invoice',
+        {
+          title: 'Issue + send an invoice (→ Accounting-Ops)',
+          description:
+            'Roll up APPROVED, billable, unbilled time for a projectId or clientId and ISSUE the ' +
+            'invoice (status=sent) via Accounting-Ops in one step — create_billable_draft with ' +
+            'autoSend. Optional periodStart/periodEnd + groupBy (TASK/ROLE/DAY/NONE). When ' +
+            "Accounting-Ops isn't connected/entitled this CANNOT send — it returns a draft + PDF " +
+            'preview and the response `status` says so. There is no separate "send an existing ' +
+            'draft" path; issuing happens at creation. MANAGER/ADMIN only.',
+          inputSchema: {
+            projectId: z.string().optional(),
+            clientId: z.string().optional(),
+            periodStart: z.string().optional(),
+            periodEnd: z.string().optional(),
+            groupBy: z.string().optional(),
+          },
+        },
+        async (args: any) => wrap(await tools.issueInvoice(user, args)),
       );
 
       server.registerTool(

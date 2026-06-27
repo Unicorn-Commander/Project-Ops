@@ -8,7 +8,7 @@
  * across every article's title, summary, keywords, and section text.
  *
  * GROUNDING: the copy here describes Project Ops as it actually ships at
- * v1.12.0 (see CHANGELOG.md). When a feature changes, update the matching
+ * v1.13.0 (see CHANGELOG.md). When a feature changes, update the matching
  * article body — keep this honest about what exists. Articles point at real
  * routes (e.g. `/dashboard/settings/custom-fields`) so the Help center can
  * deep-link the reader straight to the feature.

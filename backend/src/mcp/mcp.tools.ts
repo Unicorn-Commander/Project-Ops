@@ -12,9 +12,12 @@ import {
   ApprovalEntityType,
   AutomationTrigger,
   CustomFieldEntity,
+  CustomFieldType,
   Prisma,
+  ProjectStatus,
   User,
   UserRole,
+  WorkspaceRole,
 } from '@prisma/client';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MinioService } from '../documents/minio.service';
@@ -38,6 +41,9 @@ import type { CapacityService } from '../capacity/capacity.service';
 import type { AutomationsService } from '../automations/automations.service';
 import type { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import type { ApprovalsService } from '../client-portal/approvals/approvals.service';
+// Member-management spine (invite/role/remove/list). Type-only — erased at
+// compile time, so no runtime cycle. Control-plane (non-RLS) service.
+import type { WorkspacesService } from '../workspaces/workspaces.service';
 import { resolveWorkspaceId, defaultWorkspaceId } from '../common/workspace/workspace.util';
 
 type Logger = { log: (msg: string) => void; warn: (msg: string) => void };
@@ -123,6 +129,29 @@ export function buildVisibilityFilter(user: User): Prisma.ProjectWhereInput {
   };
 }
 
+/**
+ * Coerce a free-text `status` filter into a real {@link ProjectStatus} or throw
+ * a clear, self-correcting error. Agents (esp. smaller local models) routinely
+ * pass natural-language values like "active" or lowercase "new"; without this
+ * the raw string reached Prisma and surfaced an opaque
+ * `Invalid value for argument status` 500. Case-normalize first so "new" /
+ * "in_progress" just work; reject anything still unknown WITH the valid set so
+ * the caller can retry. Empty/undefined means "no filter".
+ */
+export function normalizeProjectStatus(value?: string): ProjectStatus | undefined {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return undefined;
+  }
+  const normalized = String(value).trim().toUpperCase();
+  const valid = Object.values(ProjectStatus) as string[];
+  if (valid.includes(normalized)) {
+    return normalized as ProjectStatus;
+  }
+  throw new Error(
+    `Invalid status "${value}". Valid values: ${valid.join(', ')}.`,
+  );
+}
+
 export class ProjectOpsTools {
   constructor(
     private readonly prisma: PrismaService,
@@ -139,6 +168,11 @@ export class ProjectOpsTools {
     // Wave 2 services (reporting / capacity / automations / custom-fields /
     // approvals). Optional for the same reason as the others.
     private readonly wave2?: Wave2Deps,
+    // Workspace member-management service (invite / role / remove / list).
+    // Optional for the same reason as the others — the pure-function RBAC unit
+    // tests construct ProjectOpsTools without it; the member tools surface a
+    // clear error if it wasn't wired.
+    private readonly workspaceAdmin?: WorkspacesService,
   ) {}
 
   // ── Workspace (suite tenancy, Phase 2 G2) ────────────────
@@ -310,9 +344,10 @@ export class ProjectOpsTools {
   }
 
   async listMyProjects(user: User, args: { status?: string; limit?: number }) {
+    const status = normalizeProjectStatus(args.status);
     const where: Prisma.ProjectWhereInput = {
       ...buildVisibilityFilter(user),
-      ...(args.status ? { status: args.status as any } : {}),
+      ...(status ? { status } : {}),
     };
     const projects = await this.runScoped(user, (tx) =>
       tx.project.findMany({
@@ -339,11 +374,19 @@ export class ProjectOpsTools {
     if (!args.id && !args.projectNumber) {
       throw new Error('Either id or projectNumber must be provided');
     }
+    // Agents routinely put a human project number ("P-00110") in the `id` field
+    // (or vice-versa); matching the given key against EITHER column makes the
+    // tool forgiving without changing what it can reach. UUIDs and project
+    // numbers never collide, so there's no ambiguity. AND-nest so this composes
+    // with the visibility filter, which is itself an OR for STAFF/CLIENT.
+    const key = (args.id ?? args.projectNumber)!;
     const project = await this.runScoped(user, (tx) =>
       tx.project.findFirst({
         where: {
-          ...buildVisibilityFilter(user),
-          ...(args.id ? { id: args.id } : { projectNumber: args.projectNumber! }),
+          AND: [
+            buildVisibilityFilter(user),
+            { OR: [{ id: key }, { projectNumber: key }] },
+          ],
         },
         include: {
           organization: { select: { id: true, name: true, type: true } },
@@ -1864,6 +1907,182 @@ export class ProjectOpsTools {
       note: args.note,
     } as any);
     this.logger.log(`MCP request_approval: user=${user.email} approval=${res.id}`);
+    return res;
+  }
+
+  // ── Custom-field definitions: create ─────────────────────────────────
+
+  /**
+   * Create a custom-field DEFINITION for an entity (TASK|PROJECT). Mirrors the
+   * REST POST, which is workspace-membership-gated with NO @Roles — so any
+   * non-CLIENT member. CustomFieldsService.create owns validation (key
+   * slugify, SELECT/MULTISELECT options requirement), the (workspaceId, entity,
+   * key) uniqueness conflict, RLS, and audit.
+   */
+  async createCustomField(
+    user: User,
+    args: {
+      entity: string;
+      label: string;
+      type: string;
+      key?: string;
+      options?: string[];
+      required?: boolean;
+      position?: number;
+    },
+  ) {
+    this.assertCanWrite(user);
+    const entity = (CustomFieldEntity as Record<string, CustomFieldEntity>)[args?.entity ?? ''];
+    if (!entity) {
+      throw new Error(
+        `Invalid entity. Must be one of: ${Object.values(CustomFieldEntity).join(', ')}.`,
+      );
+    }
+    const type = (CustomFieldType as Record<string, CustomFieldType>)[args?.type ?? ''];
+    if (!type) {
+      throw new Error(`Invalid type. Must be one of: ${Object.values(CustomFieldType).join(', ')}.`);
+    }
+    if (!args?.label || !args.label.trim()) {
+      throw new Error("'label' is required.");
+    }
+    const w2 = this.requireWave2();
+    const res = await w2.customFields.create(await this.resolveWorkspace(user), user, {
+      entity,
+      label: args.label,
+      type,
+      key: args.key,
+      options: args.options,
+      required: args.required,
+      position: args.position,
+    } as any);
+    this.logger.log(`MCP create_custom_field: user=${user.email} entity=${entity} type=${type}`);
+    return res;
+  }
+
+  // ── Billing: issue invoice ───────────────────────────────────────────
+
+  /**
+   * Issue + send an invoice in one step: roll up APPROVED, billable, unbilled
+   * time and ask Accounting-Ops to ISSUE it (status=sent). Thin wrapper over
+   * createBillableDraft with autoSend=true, so it inherits that path's
+   * MANAGER/ADMIN gate. When Accounting-Ops isn't connected/entitled (or no
+   * user bearer is present) it CANNOT actually send — the rollup returns a
+   * draft + PDF preview and the response `status` says which happened. There is
+   * deliberately no "send an existing draft" path (PO has no backing for it).
+   */
+  async issueInvoice(
+    user: User,
+    args: {
+      projectId?: string;
+      clientId?: string;
+      periodStart?: string;
+      periodEnd?: string;
+      groupBy?: string;
+    },
+  ) {
+    return this.createBillableDraft(user, { ...args, autoSend: true });
+  }
+
+  // ── Project lifecycle: archive (the safe alternative to deletion) ────
+
+  /**
+   * Archive (retire) a project by setting status=ARCHIVED — the safe,
+   * reversible alternative to deletion. Project-Ops intentionally does NOT
+   * expose permanent project deletion through the agent surface (a hard delete
+   * is irreversible and cascades); archived projects drop out of active views
+   * but are preserved. Reuses updateProjectStatus, so it shares the exact
+   * visibility check + assertCanWrite gate. Un-archive via update_project_status.
+   */
+  async archiveProject(user: User, args: { id?: string; projectNumber?: string }) {
+    return this.updateProjectStatus(user, { ...args, status: 'ARCHIVED' });
+  }
+
+  // ── Workspace member management ──────────────────────────────────────
+  // Delegate to WorkspacesService, which owns the control-plane `memberships`
+  // table (deliberately NON-RLS) and re-resolves the CALLER'S WorkspaceRole in
+  // the target workspace for every op (OWNER/ADMIN gates + last-owner
+  // protection live there, not here). The target is always the caller's ACTIVE
+  // workspace — resolved through the same membership-aware chokepoint as every
+  // other tool. NOTE: roles here are WORKSPACE roles
+  // (VIEWER/MEMBER/MANAGER/ADMIN/OWNER), distinct from the app-level User.role.
+
+  /** WorkspacesService is wired by McpService; fail loudly if a caller forgot it. */
+  private requireWorkspaceAdmin(): WorkspacesService {
+    if (!this.workspaceAdmin) {
+      throw new Error('Workspace administration is not enabled on this server');
+    }
+    return this.workspaceAdmin;
+  }
+
+  /**
+   * List the members of the caller's active workspace, including pending
+   * invites. Any active member (WorkspacesService.listMembers requires
+   * membership). Each row carries the `userKey` to pass to update_member_role /
+   * remove_member.
+   */
+  async listMembers(user: User, _args: Record<string, never>) {
+    const wa = this.requireWorkspaceAdmin();
+    const res = await wa.listMembers(user, await this.resolveWorkspace(user));
+    this.logger.log(`MCP list_members: user=${user.email}`);
+    return res;
+  }
+
+  /**
+   * Invite / add a member to the caller's active workspace by email. Existing
+   * users are added ACTIVE immediately; unknown emails get an invite LINK
+   * returned (no email is sent — the caller delivers it). OWNER/ADMIN only and
+   * OWNER cannot be granted here (both enforced by WorkspacesService.addMember).
+   * role defaults to MEMBER.
+   */
+  async inviteMember(user: User, args: { email: string; role?: string }) {
+    if (!args?.email || !args.email.trim()) {
+      throw new Error("'email' is required.");
+    }
+    const role = args?.role ? (WorkspaceRole as Record<string, WorkspaceRole>)[args.role] : undefined;
+    if (args?.role && !role) {
+      throw new Error(`Invalid role. Must be one of: ${Object.values(WorkspaceRole).join(', ')}.`);
+    }
+    const wa = this.requireWorkspaceAdmin();
+    const res = await wa.addMember(user, await this.resolveWorkspace(user), {
+      email: args.email,
+      role,
+    } as any);
+    this.logger.log(`MCP invite_member: user=${user.email} invitee=${args.email}`);
+    return res;
+  }
+
+  /**
+   * Change a member's WORKSPACE role. OWNER only; refuses to demote the last
+   * active OWNER (both enforced by WorkspacesService.updateMemberRole).
+   * `userKey` identifies the target (from list_members).
+   */
+  async updateMemberRole(user: User, args: { userKey: string; role: string }) {
+    if (!args?.userKey) throw new Error("'userKey' is required (get it from list_members).");
+    const role = (WorkspaceRole as Record<string, WorkspaceRole>)[args?.role ?? ''];
+    if (!role) {
+      throw new Error(`Invalid role. Must be one of: ${Object.values(WorkspaceRole).join(', ')}.`);
+    }
+    const wa = this.requireWorkspaceAdmin();
+    const res = await wa.updateMemberRole(
+      user,
+      await this.resolveWorkspace(user),
+      args.userKey,
+      role,
+    );
+    this.logger.log(`MCP update_member_role: user=${user.email} target=${args.userKey} → ${role}`);
+    return res;
+  }
+
+  /**
+   * Remove a member from the caller's active workspace. OWNER only; refuses to
+   * remove the last active OWNER (both enforced by WorkspacesService.removeMember).
+   * `userKey` identifies the target (from list_members).
+   */
+  async removeMember(user: User, args: { userKey: string }) {
+    if (!args?.userKey) throw new Error("'userKey' is required (get it from list_members).");
+    const wa = this.requireWorkspaceAdmin();
+    const res = await wa.removeMember(user, await this.resolveWorkspace(user), args.userKey);
+    this.logger.log(`MCP remove_member: user=${user.email} target=${args.userKey}`);
     return res;
   }
 }

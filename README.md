@@ -8,7 +8,7 @@
 
 **For teams who'd rather ship than chase status updates.**
 
-[![Version](https://img.shields.io/badge/version-1.12.0-7c3aed?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.13.0-7c3aed?style=flat-square)](CHANGELOG.md)
 [![Stack](https://img.shields.io/badge/NestJS_·_Next.js_15_·_Postgres_17-0ea5e9?style=flat-square)](#-architecture)
 [![Tenancy](https://img.shields.io/badge/multi--tenant-Postgres_RLS-f59e0b?style=flat-square)](#-why-project-ops)
 [![AI](https://img.shields.io/badge/AI-on--prem_·_MCP--native-22c55e?style=flat-square)](#-ai-assistant--mcp)

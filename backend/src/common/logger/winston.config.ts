@@ -10,6 +10,10 @@ export const createLogger = () => {
   return {
     transports: [
       new winston.transports.Console({
+        // Pin the stdout level so per-request info/warn (e.g. auth-gate
+        // decisions) always surface in `docker logs`, independent of any
+        // env-driven default.
+        level: 'info',
         format: combine(
           colorize(),
           timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),

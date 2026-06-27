@@ -64,6 +64,7 @@ function makeService(resolvedWorkspace: string): McpService {
     noop, // automations (Wave 2)
     noop, // customFields (Wave 2)
     noop, // approvals (Wave 2)
+    noop, // workspaceAdmin (member mgmt) — gate denies before the tool body
   );
   // Silence the service logger.
   (svc as any).logger = new Logger('test');
