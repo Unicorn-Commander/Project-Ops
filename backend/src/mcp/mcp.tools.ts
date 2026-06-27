@@ -14,6 +14,7 @@ import {
   CustomFieldEntity,
   CustomFieldType,
   Prisma,
+  ProjectStatus,
   User,
   UserRole,
   WorkspaceRole,
@@ -126,6 +127,29 @@ export function buildVisibilityFilter(user: User): Prisma.ProjectWhereInput {
   return {
     OR: [{ contactId: user.id }, { contact: { userId: user.id } }],
   };
+}
+
+/**
+ * Coerce a free-text `status` filter into a real {@link ProjectStatus} or throw
+ * a clear, self-correcting error. Agents (esp. smaller local models) routinely
+ * pass natural-language values like "active" or lowercase "new"; without this
+ * the raw string reached Prisma and surfaced an opaque
+ * `Invalid value for argument status` 500. Case-normalize first so "new" /
+ * "in_progress" just work; reject anything still unknown WITH the valid set so
+ * the caller can retry. Empty/undefined means "no filter".
+ */
+export function normalizeProjectStatus(value?: string): ProjectStatus | undefined {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return undefined;
+  }
+  const normalized = String(value).trim().toUpperCase();
+  const valid = Object.values(ProjectStatus) as string[];
+  if (valid.includes(normalized)) {
+    return normalized as ProjectStatus;
+  }
+  throw new Error(
+    `Invalid status "${value}". Valid values: ${valid.join(', ')}.`,
+  );
 }
 
 export class ProjectOpsTools {
@@ -320,9 +344,10 @@ export class ProjectOpsTools {
   }
 
   async listMyProjects(user: User, args: { status?: string; limit?: number }) {
+    const status = normalizeProjectStatus(args.status);
     const where: Prisma.ProjectWhereInput = {
       ...buildVisibilityFilter(user),
-      ...(args.status ? { status: args.status as any } : {}),
+      ...(status ? { status } : {}),
     };
     const projects = await this.runScoped(user, (tx) =>
       tx.project.findMany({
@@ -349,11 +374,19 @@ export class ProjectOpsTools {
     if (!args.id && !args.projectNumber) {
       throw new Error('Either id or projectNumber must be provided');
     }
+    // Agents routinely put a human project number ("P-00110") in the `id` field
+    // (or vice-versa); matching the given key against EITHER column makes the
+    // tool forgiving without changing what it can reach. UUIDs and project
+    // numbers never collide, so there's no ambiguity. AND-nest so this composes
+    // with the visibility filter, which is itself an OR for STAFF/CLIENT.
+    const key = (args.id ?? args.projectNumber)!;
     const project = await this.runScoped(user, (tx) =>
       tx.project.findFirst({
         where: {
-          ...buildVisibilityFilter(user),
-          ...(args.id ? { id: args.id } : { projectNumber: args.projectNumber! }),
+          AND: [
+            buildVisibilityFilter(user),
+            { OR: [{ id: key }, { projectNumber: key }] },
+          ],
         },
         include: {
           organization: { select: { id: true, name: true, type: true } },

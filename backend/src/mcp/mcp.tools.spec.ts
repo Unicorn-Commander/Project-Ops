@@ -13,7 +13,11 @@
  */
 
 import { User, UserRole } from '@prisma/client';
-import { ProjectOpsTools, buildVisibilityFilter } from './mcp.tools';
+import {
+  ProjectOpsTools,
+  buildVisibilityFilter,
+  normalizeProjectStatus,
+} from './mcp.tools';
 
 const baseUser = (overrides: Partial<User>): User =>
   ({
@@ -65,6 +69,76 @@ describe('buildVisibilityFilter', () => {
     const staffFilter = buildVisibilityFilter(baseUser({ id: 'u1', role: UserRole.STAFF }));
     const clientFilter = buildVisibilityFilter(baseUser({ id: 'u1', role: UserRole.CLIENT }));
     expect(staffFilter).not.toEqual(clientFilter);
+  });
+});
+
+describe('normalizeProjectStatus — forgiving status filter', () => {
+  it('returns undefined for empty / missing input (no filter)', () => {
+    expect(normalizeProjectStatus(undefined)).toBeUndefined();
+    expect(normalizeProjectStatus('')).toBeUndefined();
+    expect(normalizeProjectStatus('   ')).toBeUndefined();
+  });
+
+  it('case-normalizes valid values so lowercase / mixed-case just work', () => {
+    expect(normalizeProjectStatus('new')).toBe('NEW');
+    expect(normalizeProjectStatus('in_progress')).toBe('IN_PROGRESS');
+    expect(normalizeProjectStatus('  Completed ')).toBe('COMPLETED');
+  });
+
+  it('throws a self-correcting error listing valid values for unknown input', () => {
+    // This is the exact failure the live agent loop hit: it passed "active",
+    // which is not a ProjectStatus, and Prisma surfaced an opaque 500. Now the
+    // tool rejects early with the valid set so the agent can retry.
+    expect(() => normalizeProjectStatus('active')).toThrow(
+      /Invalid status "active"\. Valid values: NEW, IN_PROGRESS, UNDER_REVIEW, COMPLETED, ARCHIVED\./,
+    );
+  });
+});
+
+describe('ProjectOpsTools.getProject — project-number-in-id forgiveness', () => {
+  const WS_ID = 'ws-1';
+
+  function makeTools(findFirst: jest.Mock) {
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) =>
+        fn({ project: { findFirst } }, WS_ID),
+    } as any;
+    return new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+    );
+  }
+
+  it('matches the given key against EITHER id or projectNumber, ANDed with visibility', async () => {
+    const findFirst = jest.fn(async () => ({ id: 'p1', projectNumber: 'P-00110' }));
+    const tools = makeTools(findFirst);
+
+    // Agent put the human project number in the `id` field — should still resolve.
+    await tools.getProject(baseUser({ role: UserRole.STAFF, id: 'staff-1' }), {
+      id: 'P-00110',
+    });
+
+    const where = (findFirst.mock.calls[0] as any[])[0].where;
+    // visibility OR is preserved (not clobbered) and the key matches either column.
+    expect(where.AND).toEqual([
+      { OR: [{ assignedToId: 'staff-1' }, { createdById: 'staff-1' }] },
+      { OR: [{ id: 'P-00110' }, { projectNumber: 'P-00110' }] },
+    ]);
+  });
+
+  it('still requires id or projectNumber', async () => {
+    const findFirst = jest.fn();
+    const tools = makeTools(findFirst);
+    await expect(
+      tools.getProject(baseUser({ role: UserRole.STAFF }), {}),
+    ).rejects.toThrow(/Either id or projectNumber/);
+    expect(findFirst).not.toHaveBeenCalled();
   });
 });
 
