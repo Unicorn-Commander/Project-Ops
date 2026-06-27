@@ -1,6 +1,6 @@
 {
   "name": "project-ops-backend",
-  "version": "1.12.0",
+  "version": "1.13.0",
   "description": "Project Ops Backend API",
   "author": "Magic Unicorn",
   "private": true,
