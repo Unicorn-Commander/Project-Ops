@@ -42,6 +42,20 @@ export function initializeOpenTelemetry() {
         '@opentelemetry/instrumentation-fs': {
           enabled: false,
         },
+        // Winston/Bunyan LOG auto-instrumentation hooks the logger and routes
+        // emitted records into the OTel logs pipeline. This SDK configures a
+        // traceExporter only (no log exporter), so hooked per-request winston +
+        // console output is diverted and silently dropped — it never reaches
+        // stdout / `docker logs`. (Boot logs, emitted before the hook goes live,
+        // still appear — the tell-tale asymmetry that hid auth-gate decisions.)
+        // Keep tracing; drop the log hooks so winston's Console transport logs
+        // normally. No log exporter is configured, so this loses nothing.
+        '@opentelemetry/instrumentation-winston': {
+          enabled: false,
+        },
+        '@opentelemetry/instrumentation-bunyan': {
+          enabled: false,
+        },
       }),
     ],
   });
