@@ -17,6 +17,9 @@ import { ClientPortalModule } from '../client-portal/client-portal.module';
 // AgentsModule exports AgentEventsService — McpService injects it @Optional()
 // to record each successful tool call as an agent activity event (via=MCP).
 import { AgentsModule } from '../agents/agents.module';
+// WorkspacesModule exports WorkspacesService — the member-management spine the
+// member tools (invite / role / remove / list) delegate to.
+import { WorkspacesModule } from '../workspaces/workspaces.module';
 
 @Module({
   imports: [
@@ -32,6 +35,7 @@ import { AgentsModule } from '../agents/agents.module';
     // `listForProject` spine the approval tools wrap).
     ClientPortalModule,
     AgentsModule,
+    WorkspacesModule,
   ],
   controllers: [McpController],
   providers: [McpService],

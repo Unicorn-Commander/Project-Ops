@@ -117,4 +117,17 @@ export const MCP_TOOL_SCOPE_MAP: Record<string, PatScope> = {
   // Wave 2 — approvals (read:approvals / write:approvals)
   list_project_approvals: 'read:approvals',
   request_approval: 'write:approvals',
+  // Workspace member management — reuse the organizations scopes (managing
+  // members is workspace/account administration; no dedicated scope is minted).
+  list_members: 'read:organizations',
+  invite_member: 'write:organizations',
+  update_member_role: 'write:organizations',
+  remove_member: 'write:organizations',
+  // custom-field DEFINITION create — rides write:projects (defines the shape of
+  // projects/tasks, mirroring list_custom_fields' read:projects).
+  create_custom_field: 'write:projects',
+  // archive a project — same surface as update_project_status.
+  archive_project: 'write:projects',
+  // issue invoice (= create_billable_draft with autoSend) — write:billing.
+  issue_invoice: 'write:billing',
 };

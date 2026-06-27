@@ -427,3 +427,152 @@ describe('ProjectOpsTools.addTaskComment — domain event', () => {
     expect(emit).not.toHaveBeenCalled();
   });
 });
+
+describe('ProjectOpsTools — agent-surface gap tools', () => {
+  // Tools added to close the gaps the agent-readiness eval exposed:
+  // create_custom_field, issue_invoice, archive_project, and the member tools.
+  // We assert each tool's OWN gate + validation + delegation; the deeper RBAC
+  // (CustomFieldsService conflict handling, the billable rollup, the
+  // WorkspacesService OWNER/last-owner rules) is the delegated service's
+  // contract and is covered by those services' own tests.
+  const WS = 'ws-gap';
+
+  function makeGapTools() {
+    const workspace = { resolveAuthorized: jest.fn(async () => WS) } as any;
+    const customFields = { create: jest.fn(async () => ({ id: 'cf-new', key: 'risk_level' })) };
+    const rollup = { createBillableDraft: jest.fn(async () => ({ status: 'SENT', invoiceId: 'inv-1' })) };
+    const tt = { timer: {}, timeEntry: {}, timesheet: {}, reports: {}, rollup, workspace } as any;
+    const workspaceAdmin = {
+      listMembers: jest.fn(async () => ({ members: [{ userKey: 'u-1' }] })),
+      addMember: jest.fn(async () => ({ status: 'invited', inviteUrl: 'https://x/invite' })),
+      updateMemberRole: jest.fn(async () => ({ userKey: 'u-1', role: 'MANAGER' })),
+      removeMember: jest.fn(async () => ({ removed: true })),
+    };
+    const wave2 = { reporting: {}, capacity: {}, automations: {}, customFields, approvals: {} };
+    const tools = new ProjectOpsTools(
+      {} as any, // prisma
+      {} as any, // minio
+      { log: () => {}, warn: () => {} },
+      undefined, // triage
+      tt, // tt (issue_invoice → createBillableDraft)
+      null, // bearerToken
+      workspace,
+      undefined, // events
+      wave2 as any,
+      workspaceAdmin as any,
+    );
+    return { tools, customFields, rollup, workspaceAdmin };
+  }
+
+  const admin = baseUser({ role: UserRole.ADMIN });
+  const staff = baseUser({ role: UserRole.STAFF });
+  const client = baseUser({ role: UserRole.CLIENT });
+
+  it('create_custom_field rejects CLIENT and validates entity + type', async () => {
+    const { tools, customFields } = makeGapTools();
+    await expect(
+      tools.createCustomField(client, { entity: 'TASK', label: 'L', type: 'TEXT' }),
+    ).rejects.toThrow(/Read-only role/);
+    await expect(
+      tools.createCustomField(staff, { entity: 'NOPE', label: 'L', type: 'TEXT' }),
+    ).rejects.toThrow(/Invalid entity/);
+    await expect(
+      tools.createCustomField(staff, { entity: 'PROJECT', label: 'L', type: 'NOPE' }),
+    ).rejects.toThrow(/Invalid type/);
+    expect(customFields.create).not.toHaveBeenCalled();
+  });
+
+  it('create_custom_field forwards a valid definition to CustomFieldsService.create', async () => {
+    const { tools, customFields } = makeGapTools();
+    await tools.createCustomField(staff, {
+      entity: 'PROJECT',
+      label: 'Risk Level',
+      type: 'SELECT',
+      options: ['low', 'high'],
+    });
+    expect(customFields.create).toHaveBeenCalledWith(
+      WS,
+      staff,
+      expect.objectContaining({ entity: 'PROJECT', label: 'Risk Level', type: 'SELECT', options: ['low', 'high'] }),
+    );
+  });
+
+  it('issue_invoice delegates to createBillableDraft with autoSend=true', async () => {
+    const { tools, rollup } = makeGapTools();
+    await tools.issueInvoice(admin, { projectId: 'p-1', groupBy: 'TASK' });
+    expect(rollup.createBillableDraft).toHaveBeenCalledTimes(1);
+    // (workspaceId, user, args, ctx) — args must carry autoSend:true.
+    const billArgs = rollup.createBillableDraft.mock.calls[0] as any[];
+    expect(billArgs[2]).toEqual(
+      expect.objectContaining({ projectId: 'p-1', groupBy: 'TASK', autoSend: true }),
+    );
+  });
+
+  it('archive_project rejects CLIENT and requires an identifier (gate fires pre-DB)', async () => {
+    const { tools } = makeGapTools();
+    await expect(tools.archiveProject(client, { projectNumber: 'P-1' })).rejects.toThrow(
+      /Read-only role/,
+    );
+    await expect(tools.archiveProject(staff, {})).rejects.toThrow(/Either id or projectNumber/);
+  });
+
+  it('list_members delegates to WorkspacesService with the active workspace', async () => {
+    const { tools, workspaceAdmin } = makeGapTools();
+    await tools.listMembers(admin, {} as any);
+    expect(workspaceAdmin.listMembers).toHaveBeenCalledWith(admin, WS);
+  });
+
+  it('invite_member requires email, validates role, then forwards to addMember', async () => {
+    const { tools, workspaceAdmin } = makeGapTools();
+    await expect(tools.inviteMember(admin, { email: '' })).rejects.toThrow(/email/);
+    await expect(tools.inviteMember(admin, { email: 'a@b.com', role: 'WIZARD' })).rejects.toThrow(
+      /Invalid role/,
+    );
+    expect(workspaceAdmin.addMember).not.toHaveBeenCalled();
+    await tools.inviteMember(admin, { email: 'a@b.com', role: 'MANAGER' });
+    expect(workspaceAdmin.addMember).toHaveBeenCalledWith(
+      admin,
+      WS,
+      expect.objectContaining({ email: 'a@b.com', role: 'MANAGER' }),
+    );
+  });
+
+  it('update_member_role requires userKey + valid role, then forwards', async () => {
+    const { tools, workspaceAdmin } = makeGapTools();
+    await expect(tools.updateMemberRole(admin, { userKey: '', role: 'MANAGER' })).rejects.toThrow(
+      /userKey/,
+    );
+    await expect(tools.updateMemberRole(admin, { userKey: 'u-1', role: 'WIZARD' })).rejects.toThrow(
+      /Invalid role/,
+    );
+    expect(workspaceAdmin.updateMemberRole).not.toHaveBeenCalled();
+    await tools.updateMemberRole(admin, { userKey: 'u-1', role: 'OWNER' });
+    expect(workspaceAdmin.updateMemberRole).toHaveBeenCalledWith(admin, WS, 'u-1', 'OWNER');
+  });
+
+  it('remove_member requires userKey, then forwards', async () => {
+    const { tools, workspaceAdmin } = makeGapTools();
+    await expect(tools.removeMember(admin, { userKey: '' })).rejects.toThrow(/userKey/);
+    await tools.removeMember(admin, { userKey: 'u-1' });
+    expect(workspaceAdmin.removeMember).toHaveBeenCalledWith(admin, WS, 'u-1');
+  });
+
+  it('member tools fail loudly when WorkspacesService is not wired', async () => {
+    const workspace = { resolveAuthorized: jest.fn(async () => WS) } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+      undefined,
+      undefined,
+      // workspaceAdmin omitted
+    );
+    await expect(tools.listMembers(admin, {} as any)).rejects.toThrow(
+      /Workspace administration is not enabled/,
+    );
+  });
+});
