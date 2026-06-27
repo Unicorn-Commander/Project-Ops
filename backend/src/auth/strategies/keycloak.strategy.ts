@@ -58,7 +58,15 @@ export class KeycloakStrategy extends PassportStrategy(Strategy, 'keycloak') {
     }
 
     const keycloakId = userProfile.sub || userProfile.id;
-    const user = await this.authService.validateKeycloakUser(keycloakId, userProfile);
+    // Forward this login's uchub access token so the (optional) Ops-Center
+    // entitlements gate can verify the org's Project-Ops entitlement. This is
+    // the interactive SSO login, so the token is a real uchub Bearer; the gate
+    // is re-checked here on every login. Harmless when the gate is unarmed.
+    const user = await this.authService.validateKeycloakUser(
+      keycloakId,
+      userProfile,
+      accessToken,
+    );
 
     return user;
   }

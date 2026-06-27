@@ -152,6 +152,18 @@ services:
       # role. Without this var the backend falls back to admitting only
       # Aaron + Shafen as ADMIN and rejects everyone else.
       PROJECT_OPS_ACCESS_LIST: ${PROJECT_OPS_ACCESS_LIST:-}
+      # Ops-Center entitlement gate — the launch-gate replacement for the
+      # allowlist above. OFF unless ENABLED is truthy AND UC_ENTITLEMENTS_URL is
+      # set (else inert -> allowlist). On an indeterminate result (endpoint
+      # outage) FAIL_OPEN=true degrades to the allowlist; false denies (closed).
+      PROJECT_OPS_ENTITLEMENTS_ENABLED: ${PROJECT_OPS_ENTITLEMENTS_ENABLED:-false}
+      UC_ENTITLEMENTS_URL: ${UC_ENTITLEMENTS_URL:-}
+      PROJECT_OPS_FEATURE_KEY: ${PROJECT_OPS_FEATURE_KEY:-project_ops_access}
+      PROJECT_OPS_ENTITLEMENTS_FAIL_OPEN: ${PROJECT_OPS_ENTITLEMENTS_FAIL_OPEN:-false}
+      # Soft-enforce: on a DEFINITIVE deny, grandfather allowlisted users in (the
+      # seed-then-enforce migration aid). Gate still hard-denies non-allowlisted.
+      PROJECT_OPS_ENTITLEMENTS_ALLOWLIST_FALLBACK: ${PROJECT_OPS_ENTITLEMENTS_ALLOWLIST_FALLBACK:-false}
+      UC_ENTITLEMENTS_TIMEOUT_MS: ${UC_ENTITLEMENTS_TIMEOUT_MS:-5000}
       # Trusted sibling-app federation actors for the propose-only triage
       # ingest (v1.8.0). Empty = zero federation trust.
       PROJECT_OPS_FEDERATION_ACTORS: ${PROJECT_OPS_FEDERATION_ACTORS:-}
