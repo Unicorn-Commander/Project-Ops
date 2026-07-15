@@ -22,9 +22,23 @@
 
 ---
 
-Project Ops is the operational backbone for a working team: **projects, tasks, a CRM, time & billing, recurring work, an automation engine, webhooks, portfolio reporting, capacity planning, a two-way client portal — and an embedded AI agent that can read and write all of it.** One app, self-hosted, your data on your hardware.
+Project Ops runs the whole operation of a working team in one app — projects, a CRM, time & billing, automation, and an AI agent that can actually do the work — **self-hosted, on your own hardware, with your data staying inside your walls.**
 
-## ✨ Why Project Ops
+## The problems it solves
+
+**"Where do things stand?" shouldn't cost a meeting.** Status lives in people's heads, a spreadsheet, and three Slack threads — so every week starts with a round of "what's the latest on…". Project Ops puts every project, its status, and what's due on one dashboard and one master schedule. You already know before you ask.
+
+**Your operation is scattered across five tools that don't talk to each other.** A PM tool *plus* a time tracker *plus* a CRM *plus* a billing add-on *plus* a pile of Zapier glue — five logins, five bills, five versions of the truth, and integrations that break silently. Project Ops is one app with **one permission model**, so a single automation can move a task, log the time, invoice it, and notify the client without ever crossing an API boundary.
+
+**AI that can't touch your real data is a demo, not a tool.** Most "AI features" are a chat box that can't see your projects — or a SaaS assistant that reads your data by shipping it to someone else's cloud. Project Ops embeds an agent with **live, permission-scoped read *and write*** across your projects, tasks, CRM, and billing, and runs inference on **your own GPU**. A client asking "what's on my projects?" sees only theirs; your data never leaves the building. The same surface is exposed as an **MCP server**, so Claude Code, Cursor, or Zed operate the app exactly like a teammate would.
+
+**Renting your own operations data back, per seat, forever.** SaaS charges you monthly, per person, to keep *your* company's data on *their* servers. Project Ops is self-hosted on hardware you control, with your own login (Keycloak) and S3-compatible storage you own — no seat tax, no lock-in, nothing to exfiltrate.
+
+**"Multi-tenant" is usually one forgotten `WHERE` clause away from a leak.** Here isolation is enforced by the database itself — Postgres Row-Level Security with a `NOBYPASSRLS` runtime role — not by hoping every query remembered to filter. Roles, SSO, and a full audit trail come with it.
+
+**Client updates turn into another email thread.** A built-in, scoped **client portal** lets a client approve work, comment, and see read-only invoices with a pay link — without an account on your internal tools and without seeing anyone else's data.
+
+## ✨ How it does it
 
 - **🤖 AI-native, not AI-bolted-on.** An in-dashboard agent with live, **RBAC-scoped** read **and write** across your projects, tasks, CRM, billing, and activity — plus a full **MCP server** so Claude Code, Cursor, Zed, or your own agent plugs into the exact same surface. Inference runs **on-prem** (a local Qwen 3.6 35B), so your project data never leaves your walls.
 - **🔐 Multi-tenancy the database enforces.** Workspaces fenced in Postgres with **Row-Level Security** — the runtime connects as a `NOBYPASSRLS` role, so isolation is guaranteed by the engine, not hopeful `WHERE` clauses. Roles: ADMIN / MANAGER / STAFF / CLIENT, SSO, and a full audit trail.
@@ -33,19 +47,26 @@ Project Ops is the operational backbone for a working team: **projects, tasks, a
 
 ## 📸 See it in action
 
-> **[▶ Try the live instance →](https://projectops.unicorncommander.ai)**  ·  full gallery in [`docs/screenshots/`](docs/screenshots/)
+> **[▶ Try the live instance →](https://projectops.unicorncommander.ai)**  ·  screenshots live in [`docs/screenshots/`](docs/screenshots/)
 
-**Dashboard** — everything across your projects at a glance: live stat cards, a project-status donut, priority distribution, your tasks, and top clients.
+<!--
+  Screenshot files to add to docs/screenshots/ (then swap each block below for the
+  image embed, e.g. [![Dashboard](docs/screenshots/dashboard.png)](…live-url…)):
+    dashboard.png       — /dashboard  (stat cards + status donut + priority bars + My Tasks)
+    master-schedule.png — /dashboard/schedule  (swimlanes + progress bars + milestones)
+    kanban.png          — /dashboard/kanban
+    time-billing.png    — /dashboard/timesheets  (timesheet + approvals)
+    assistant.png       — the "Ask" panel answering a live query
+-->
 
-[![Dashboard](docs/screenshots/dashboard.png)](https://projectops.unicorncommander.ai/dashboard)
+**📊 Dashboard** — everything across your projects at a glance: live stat cards, a project-status donut, priority distribution, your tasks, and top clients.
+&nbsp; · &nbsp; [**▶ view live**](https://projectops.unicorncommander.ai/dashboard)
 
-**Master Schedule** — every project on one timeline, grouped into customer / owner / status swimlanes, with live progress bars, due-date diamonds, and drag-to-reschedule.
+**🗓️ Master Schedule** — every project on one timeline, grouped into customer / owner / status swimlanes, with live progress bars, due-date diamonds, and drag-to-reschedule.
+&nbsp; · &nbsp; [**▶ view live**](https://projectops.unicorncommander.ai/dashboard/schedule)
 
-[![Master Schedule](docs/screenshots/master-schedule.png)](https://projectops.unicorncommander.ai/dashboard/schedule)
-
-**The "Ask" assistant** — ask in plain language; it answers (and acts) against your live data, scoped to exactly what you're allowed to see.
-
-[![AI Assistant](docs/screenshots/assistant.png)](docs/AI_ASSISTANT.md)
+**🤖 The "Ask" assistant** — ask in plain language; it answers (and acts) against your live data, scoped to exactly what you're allowed to see.
+&nbsp; · &nbsp; [**read more**](docs/AI_ASSISTANT.md)
 
 ## 🚀 Features
 
