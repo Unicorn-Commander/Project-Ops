@@ -40,8 +40,8 @@ const TYPE_OPTIONS: FilterOption[] = [
 ];
 
 const SORT_OPTIONS = [
-  { value: "createdAt-desc", label: "Newest first" },
-  { value: "createdAt-asc", label: "Oldest first" },
+  { value: "uploadedAt-desc", label: "Newest first" },
+  { value: "uploadedAt-asc", label: "Oldest first" },
   { value: "fileName-asc", label: "Name A–Z" },
   { value: "fileName-desc", label: "Name Z–A" },
   { value: "fileSize-desc", label: "Largest first" },
@@ -62,7 +62,7 @@ interface Document {
   mimeType: string;
   projectId: string;
   uploadedById: string;
-  createdAt: string;
+  uploadedAt: string;
 }
 
 export default function DocumentsPage() {
@@ -73,7 +73,7 @@ export default function DocumentsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("ALL");
   const [filterProject, setFilterProject] = useState("ALL");
-  const [sortBy, setSortBy] = useState("createdAt-desc");
+  const [sortBy, setSortBy] = useState("uploadedAt-desc");
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewingDocument, setViewingDocument] = useState<Document | null>(null);
@@ -257,7 +257,9 @@ export default function DocumentsPage() {
       return matchesSearch && matchesType && matchesProject;
     })
     .sort((a, b) => {
-      const [field, dir] = sortBy.split("-") as [string, "asc" | "desc"];
+      const [rawField, dir] = sortBy.split("-") as [string, "asc" | "desc"];
+      // Saved views may carry the old "createdAt" sort key — the API field is uploadedAt.
+      const field = rawField === "createdAt" ? "uploadedAt" : rawField;
       return compareValues((a as any)[field], (b as any)[field], dir);
     });
 
@@ -323,7 +325,7 @@ export default function DocumentsPage() {
           <ExportCsvButton
             data={filteredDocuments}
             filenameStem="documents"
-            dateField={{ label: "Uploaded", get: (d) => d.createdAt ?? null }}
+            dateField={{ label: "Uploaded", get: (d) => d.uploadedAt ?? null }}
             statusField={{
               label: "File type",
               options: TYPE_OPTIONS.filter((t) => t.value !== "ALL").map((t) => ({
@@ -338,7 +340,7 @@ export default function DocumentsPage() {
               d.mimeType,
               d.fileSize,
               d.projectId ?? "",
-              d.createdAt ? new Date(d.createdAt).toISOString().slice(0, 10) : "",
+              d.uploadedAt ? new Date(d.uploadedAt).toISOString().slice(0, 10) : "",
             ]}
           />
           <Button className="bg-primary hover:bg-primary/90" onClick={handleUploadClick}>
@@ -547,7 +549,7 @@ export default function DocumentsPage() {
                       {formatFileSize(doc.fileSize)}
                     </td>
                     <td className="hidden px-6 py-4 whitespace-nowrap text-sm text-muted-foreground lg:table-cell">
-                      {new Date(doc.createdAt).toLocaleDateString()}
+                      {new Date(doc.uploadedAt).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-right text-sm sm:px-6">
                       <div className="flex items-center justify-end gap-2">

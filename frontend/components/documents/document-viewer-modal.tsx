@@ -12,6 +12,7 @@ import { Download, X, FileText } from 'lucide-react';
 import { PDFViewer } from './pdf-viewer';
 import { ImageViewer } from './image-viewer';
 import { OfficeViewer } from './office-viewer';
+import { MarkdownViewer } from './markdown-viewer';
 
 interface Document {
   id: string;
@@ -54,7 +55,12 @@ export function DocumentViewerModal({
     'application/vnd.openxmlformats-officedocument.presentationml.presentation'
   ].includes(document.mimeType);
 
-  const isText = document.mimeType.startsWith('text/');
+  // Markdown is detected by extension too — browsers often upload .md files
+  // with an empty or generic mime type.
+  const isMarkdown =
+    document.mimeType === 'text/markdown' ||
+    /\.(md|markdown)$/i.test(document.fileName);
+  const isText = !isMarkdown && document.mimeType.startsWith('text/');
   const isOffice = isWord || isExcel || isPowerPoint;
 
   const handleDownload = () => {
@@ -90,8 +96,9 @@ export function DocumentViewerModal({
           {isPDF && <PDFViewer fileUrl={fileUrl} />}
           {isImage && <ImageViewer fileUrl={fileUrl} fileName={document.fileName} />}
           {isOffice && <OfficeViewer fileUrl={fileUrl} mimeType={document.mimeType} fileName={document.fileName} />}
+          {isMarkdown && <MarkdownViewer fileUrl={fileUrl} fileName={document.fileName} />}
           {isText && (
-            <div className="flex-1 overflow-auto p-6">
+            <div className="h-full p-6">
               <iframe
                 src={fileUrl}
                 className="w-full h-full border-0"
@@ -99,7 +106,7 @@ export function DocumentViewerModal({
               />
             </div>
           )}
-          {!isPDF && !isImage && !isOffice && !isText && (
+          {!isPDF && !isImage && !isOffice && !isText && !isMarkdown && (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
                 <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground/70" />

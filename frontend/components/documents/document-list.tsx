@@ -38,7 +38,7 @@ interface Document {
   mimeType: string;
   storagePath: string;
   uploadedById: string;
-  createdAt: string;
+  uploadedAt: string;
 }
 
 interface DocumentListProps {
@@ -199,7 +199,7 @@ export function DocumentList({ projectId }: DocumentListProps) {
                     {document.fileName}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {formatFileSize(document.fileSize)} • {formatDate(document.createdAt)}
+                    {formatFileSize(document.fileSize)} • {formatDate(document.uploadedAt)}
                   </p>
                 </div>
               </div>
