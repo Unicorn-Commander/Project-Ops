@@ -47,26 +47,98 @@ Project Ops runs the whole operation of a working team in one app — projects, 
 
 ## 📸 See it in action
 
-> **[▶ Try the live instance →](https://projectops.unicorncommander.ai)**  ·  screenshots live in [`docs/screenshots/`](docs/screenshots/)
+> **[▶ Try the live instance →](https://projectops.unicorncommander.ai)**
 
-<!--
-  Screenshot files to add to docs/screenshots/ (then swap each block below for the
-  image embed, e.g. [![Dashboard](docs/screenshots/dashboard.png)](…live-url…)):
-    dashboard.png       — /dashboard  (stat cards + status donut + priority bars + My Tasks)
-    master-schedule.png — /dashboard/schedule  (swimlanes + progress bars + milestones)
-    kanban.png          — /dashboard/kanban
-    time-billing.png    — /dashboard/timesheets  (timesheet + approvals)
-    assistant.png       — the "Ask" panel answering a live query
--->
+[![Project Ops dashboard](docs/screenshots/dashboard.png)](https://projectops.unicorncommander.ai/dashboard)
 
 **📊 Dashboard** — everything across your projects at a glance: live stat cards, a project-status donut, priority distribution, your tasks, and top clients.
 &nbsp; · &nbsp; [**▶ view live**](https://projectops.unicorncommander.ai/dashboard)
 
-**🗓️ Master Schedule** — every project on one timeline, grouped into customer / owner / status swimlanes, with live progress bars, due-date diamonds, and drag-to-reschedule.
-&nbsp; · &nbsp; [**▶ view live**](https://projectops.unicorncommander.ai/dashboard/schedule)
+---
 
-**🤖 The "Ask" assistant** — ask in plain language; it answers (and acts) against your live data, scoped to exactly what you're allowed to see.
-&nbsp; · &nbsp; [**read more**](docs/AI_ASSISTANT.md)
+[![Master Schedule](docs/screenshots/master-schedule.png)](https://projectops.unicorncommander.ai/dashboard/schedule)
+
+**🗓️ Master Schedule** — every project on one timeline, grouped into customer / owner / status swimlanes, with live progress bars, due-date diamonds, and drag-to-reschedule. No more "where does everything stand?" standup.
+
+---
+
+[![The Ask assistant](docs/screenshots/assistant.png)](docs/AI_ASSISTANT.md)
+
+**🤖 The "Ask" assistant** — ask in plain language; it answers **and acts** against your live data, scoped by RBAC to exactly what you're allowed to see. Inference runs on-prem, so nothing leaves your walls. &nbsp; · &nbsp; [**read more**](docs/AI_ASSISTANT.md)
+
+---
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+[![Kanban board](docs/screenshots/kanban.png)](https://projectops.unicorncommander.ai/dashboard/kanban)
+
+**🗂️ Kanban** — drag tasks across statuses; filter by org, project, assignee, priority.
+
+</td>
+<td width="50%" valign="top">
+
+[![My Tasks](docs/screenshots/my-tasks.png)](https://projectops.unicorncommander.ai/dashboard/my-tasks)
+
+**✅ My Tasks** — everything on your plate, sorted by due date, with overdue front-and-center.
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![Reports](docs/screenshots/reports.png)](https://projectops.unicorncommander.ai/dashboard/reports)
+
+**📈 Reports** — Portfolio health, Profitability, and Throughput across every project.
+
+</td>
+<td width="50%" valign="top">
+
+[![Capacity planning](docs/screenshots/capacity.png)](https://projectops.unicorncommander.ai/dashboard/capacity)
+
+**⚖️ Capacity** — who's over-committed and who has headroom, committed hours vs capacity.
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![Triage](docs/screenshots/triage.png)](https://projectops.unicorncommander.ai/dashboard/triage)
+
+**🧭 Triage** — AI-proposed action items wait here; nothing becomes a task until you approve it.
+
+</td>
+<td width="50%" valign="top">
+
+[![Agent activity ledger](docs/screenshots/agents.png)](https://projectops.unicorncommander.ai/dashboard/agents)
+
+**🤖 Agents** — a ledger of what every AI agent did, and what it cost.
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+[![Documents with live markdown viewer](docs/screenshots/documents-viewer.png)](https://projectops.unicorncommander.ai/dashboard/documents)
+
+**📄 Documents** — S3-backed store with an in-app markdown viewer; attach to projects/tasks.
+
+</td>
+<td width="50%" valign="top">
+
+[![Billing](docs/screenshots/billing.png)](https://projectops.unicorncommander.ai/dashboard/billing)
+
+**💵 Billing** — roll approved billable time into draft invoices and track their status.
+
+</td>
+</tr>
+</table>
+
+> 🌗 **Light or dark, your call** — every screen ships both themes.
+> <br><img src="docs/screenshots/dashboard-light.png" alt="Dashboard in light theme" width="49%" /> <img src="docs/screenshots/dashboard.png" alt="Dashboard in dark theme" width="49%" />
+
+<sub>More screens — Projects, Time entries, Timesheets, Utilization, Automations, Users, Settings — live in [`docs/screenshots/`](docs/screenshots/).</sub>
 
 ## 🚀 Features
 
