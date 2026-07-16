@@ -12,7 +12,7 @@
 [![Stack](https://img.shields.io/badge/NestJS_·_Next.js_15_·_Postgres_17-0ea5e9?style=flat-square)](#-architecture)
 [![Tenancy](https://img.shields.io/badge/multi--tenant-Postgres_RLS-f59e0b?style=flat-square)](#-why-project-ops)
 [![AI](https://img.shields.io/badge/AI-on--prem_·_MCP--native-22c55e?style=flat-square)](#-ai-assistant--mcp)
-[![License](https://img.shields.io/badge/license-proprietary-64748b?style=flat-square)](#-license)
+[![License](https://img.shields.io/badge/license-Apache_2.0-22c55e?style=flat-square)](LICENSE)
 
 [**▶ Live**](https://projectops.unicorncommander.ai) · [**Features**](docs/FEATURES.md) · [**AI Assistant**](docs/AI_ASSISTANT.md) · [**MCP for agents**](docs/MCP_FOR_CODING_AGENTS.md) · [**Changelog**](CHANGELOG.md)
 
@@ -306,4 +306,8 @@ Versions follow [Semantic Versioning](https://semver.org/) and the [Keep a Chang
 
 ## ⚖️ License
 
-Proprietary. © Magic Unicorn LLC. All rights reserved.
+**[Apache License 2.0](LICENSE)** — permissive, with an explicit patent grant. Use it, self-host it, fork it, build on it (commercially or not); just keep the notices. Provided as-is, no warranty.
+
+© 2026 Magic Unicorn Unconventional Technology & Stuff Inc.
+
+> The **code** is open (Apache-2.0). The **hosted** instance at [projectops.unicorncommander.ai](https://projectops.unicorncommander.ai) is a paid, managed service — the hosting, support, and integration with the broader Unicorn Commander suite are the product.
