@@ -22,20 +22,20 @@ const jetBrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Project Ops · Magic Unicorn",
-    template: "%s · Project Ops",
+    default: "Project-Ops · Magic Unicorn",
+    template: "%s · Project-Ops",
   },
   description:
-    "CRM, project management, kanban, billing, and a built-in AI agent — for teams who'd rather ship than chase status updates. Part of the Unicorn Commander suite.",
+    "Turn conversations into completed work. Project-Ops connects meetings, projects, people, AI agents, clients, documents, and billing in one operational system.",
   icons: {
     icon: [{ url: "/projectops-mascot.png", type: "image/png" }],
     apple: [{ url: "/projectops-mascot.png" }],
   },
   openGraph: {
-    title: "Project Ops · Magic Unicorn",
+    title: "Project-Ops · Magic Unicorn",
     description:
-      "CRM, project management, kanban, billing, and a built-in AI agent. Part of the Unicorn Commander suite.",
-    siteName: "Project Ops",
+      "Turn conversations into completed work across meetings, projects, people, AI agents, clients, documents, and billing.",
+    siteName: "Project-Ops",
     type: "website",
   },
 };

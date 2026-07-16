@@ -1,549 +1,207 @@
-import Link from "next/link";
 import Image from "next/image";
-import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { iconWellClass } from "@/lib/badge-styles";
-import { KanbanShowcase } from "@/components/landing/kanban-showcase";
+import Link from "next/link";
 import {
-  KanbanSquare,
+  ArrowRight,
+  Bot,
   Building2,
-  Receipt,
-  UsersRound,
+  CheckCircle2,
+  CircleDollarSign,
   FileText,
-  Radio,
-  MessageSquare,
+  Fingerprint,
+  Gauge,
+  MessageSquareText,
+  Network,
   ShieldCheck,
   Sparkles,
-  ArrowRight,
-  CheckCircle2,
+  UsersRound,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { KanbanShowcase } from "@/components/landing/kanban-showcase";
 
-const features: Array<{
-  icon: typeof KanbanSquare;
-  title: string;
-  body: string;
-  tone: "blue" | "amber" | "emerald" | "rose" | "violet" | "orange" | "primary";
-}> = [
+const outcomes = [
   {
-    icon: KanbanSquare,
-    title: "Projects & tasks",
-    body: "Status, priority, deadlines, owners — plus a kanban board so the work in flight is the work you can see.",
-    tone: "blue",
+    icon: MessageSquareText,
+    title: "No more retyping action items",
+    body: "Meeting decisions and commitments become project work with the original source context attached.",
   },
   {
-    icon: UsersRound,
-    title: "Organizations & contacts",
-    body: "A real CRM under the hood. Parent/child organization hierarchy, multiple contacts per org, and per-organization project rollups.",
-    tone: "emerald",
+    icon: Fingerprint,
+    title: "Every task remembers why it exists",
+    body: "Trace work back to the meeting, client request, document, or requirement that created it.",
   },
   {
-    icon: Receipt,
-    title: "Billing & invoices",
-    body: "Track billing amount, invoice number, payment status, billing date, and amount paid right on the project — no second tool.",
-    tone: "amber",
+    icon: Bot,
+    title: "Delegate to people or agents",
+    body: "Give work to a person, an AI agent, an external collaborator, or a coordinated team.",
   },
   {
     icon: Building2,
-    title: "Client portal",
-    body: "Invite a client to a private view of their projects. Share documents. Stay out of email.",
-    tone: "violet",
-  },
-  {
-    icon: FileText,
-    title: "Document workspace",
-    body: "Upload files, attach to projects or tasks, share with the right people. S3-compatible storage.",
-    tone: "orange",
-  },
-  {
-    icon: Radio,
-    title: "Real-time collaboration",
-    body: "WebSocket-driven updates across the team. When someone moves a card or marks a task done, every other tab catches up live.",
-    tone: "rose",
-  },
-  {
-    icon: MessageSquare,
-    title: "Activity & comments",
-    body: "Threaded comments on projects and tasks plus a unified activity feed — anyone can catch up in a glance.",
-    tone: "blue",
-  },
-  {
-    icon: ShieldCheck,
-    title: "SSO + audit trail",
-    body: "Sign in with Unicorn Commander SSO. Every change is logged with who, when, and what — exportable.",
-    tone: "primary",
+    title: "Clients see progress, not internal chaos",
+    body: "Share the right deliverables, decisions, documents, approvals, and billing in a scoped portal.",
   },
 ];
+
+const loop = [
+  ["01", "Capture the work", "Create it directly or pull it from meetings, conversations, clients, and documents."],
+  ["02", "Add the context", "Connect decisions, people, organizations, files, dependencies, and source conversations."],
+  ["03", "Assign the executor", "Give it to a person, an AI agent, an external collaborator, or a human-agent team."],
+  ["04", "Observe and approve", "Follow activity, artifacts, cost, blockers, and approval gates without chasing updates."],
+  ["05", "Deliver and remember", "Share the result, update the client, track billing, and preserve what happened."],
+];
+
+const faq = [
+  ["Can I self-host Project-Ops?", "Yes. Project-Ops runs as a Docker Compose stack with Postgres, Redis, S3-compatible storage, a NestJS backend, and a Next.js frontend. Your data and deployment remain yours."],
+  ["Does the AI agent need to be enabled?", "No. The project workspace works without it. Unicorn Brigade integration is optional and can point to your own installation."],
+  ["How are permissions handled?", "Keycloak provides OpenID Connect SSO. ADMIN, MANAGER, and CLIENT roles are enforced through visibility filters that also scope MCP tool calls."],
+  ["Can clients use it?", "Yes. Clients receive a private view of their organization’s projects, tasks, shared documents, comments, approvals, and billing information."],
+  ["What can agents actually do?", "Through the secured MCP surface, agents can read permitted workspace context and create or update project work. Their activity, project footprint, token usage, and cost are recorded."],
+];
+
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return <div className="text-xs font-medium uppercase tracking-[0.18em] text-foreground/60">{children}</div>;
+}
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Nav */}
       <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5 sm:px-6">
           <Link href="/" className="flex items-center gap-3">
-            <span className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-white dark:bg-zinc-100 ring-1 ring-border">
-              <Image src="/projectops-mascot.png" alt="Project Ops" width={36} height={36} priority />
+            <span className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-white ring-1 ring-border dark:bg-zinc-100">
+              <Image src="/projectops-mascot.png" alt="Project-Ops" width={36} height={36} priority />
             </span>
             <div className="leading-tight">
-              <div className="text-base font-semibold tracking-tight">Project Ops</div>
-              <div className="text-[11px] uppercase tracking-wider text-foreground/55">
-                by Magic Unicorn
-              </div>
+              <div className="text-base font-semibold tracking-tight">Project-Ops</div>
+              <div className="text-[11px] uppercase tracking-wider text-foreground/60">by Magic Unicorn</div>
             </div>
           </Link>
           <div className="flex items-center gap-1.5">
-            <a href="#features" className="hidden px-3 py-1.5 text-sm text-foreground/70 transition-colors hover:text-foreground sm:inline-block">
-              Features
-            </a>
-            <a href="#how-it-works" className="hidden px-3 py-1.5 text-sm text-foreground/70 transition-colors hover:text-foreground sm:inline-block">
-              How it works
-            </a>
-            <a href="#faq" className="hidden px-3 py-1.5 text-sm text-foreground/70 transition-colors hover:text-foreground sm:inline-block">
-              FAQ
-            </a>
+            <a href="#workflow" className="hidden px-3 py-1.5 text-sm text-foreground/70 hover:text-foreground md:inline-block">Workflow</a>
+            <a href="#capabilities" className="hidden px-3 py-1.5 text-sm text-foreground/70 hover:text-foreground md:inline-block">Capabilities</a>
+            <a href="#faq" className="hidden px-3 py-1.5 text-sm text-foreground/70 hover:text-foreground sm:inline-block">FAQ</a>
             <ThemeToggle />
-            <Link href="/auth/login">
-              <Button size="sm" className="bg-foreground text-background hover:bg-foreground/90">
-                Sign in
-                <ArrowRight className="ml-1.5 h-4 w-4" />
-              </Button>
-            </Link>
+            <Link href="/auth/login"><Button size="sm" className="bg-foreground text-background hover:bg-foreground/90">Open Project-Ops <ArrowRight className="ml-1.5 h-4 w-4" /></Button></Link>
           </div>
         </div>
       </header>
 
-      {/* Hero — centered, big, ambient multi-hue glow behind. The crew
-          artwork moves to the trust band lower on the page; here we put
-          the actual product (kanban) front-and-center underneath. */}
-      <section className="relative overflow-hidden">
-        {/* Multi-hue ambient glows — violet + amber + cyan. Each blurred
-            heavily and used at very low opacity so they whisper rather
-            than shout. The page reads as "deliberately neutral with a
-            little energy" rather than "purple". */}
-        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[700px] overflow-hidden">
-          <div className="absolute -top-32 left-1/4 h-[480px] w-[480px] -translate-x-1/2 rounded-full bg-violet-500/15 blur-[140px] dark:bg-violet-500/25" />
-          <div className="absolute -top-20 right-1/4 h-[420px] w-[420px] translate-x-1/2 rounded-full bg-amber-400/10 blur-[140px] dark:bg-amber-400/15" />
-          <div className="absolute top-40 left-1/2 h-[360px] w-[360px] -translate-x-1/2 rounded-full bg-cyan-400/10 blur-[120px] dark:bg-cyan-400/15" />
-        </div>
-
-        <div className="relative mx-auto max-w-5xl px-6 pt-24 pb-12 text-center md:pt-32">
-          {/* Trust mark */}
-          <Link
-            href="https://unicorncommander.ai"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-3.5 py-1.5 text-xs font-medium text-foreground/75 backdrop-blur transition-colors hover:border-foreground/30 hover:text-foreground"
-          >
-            <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            From the makers of Unicorn Commander
-            <ArrowRight className="h-3 w-3 opacity-60" />
-          </Link>
-
-          {/* Headline */}
-          <h1 className="mt-8 text-balance text-5xl font-semibold leading-[1.04] tracking-tight text-foreground sm:text-6xl md:text-[76px]">
-            Project work,
-            <br />
-            <span className="bg-gradient-to-br from-violet-500 via-rose-500 to-amber-500 bg-clip-text text-transparent">
-              delivered without the drama.
-            </span>
-          </h1>
-
-          <p className="mx-auto mt-7 max-w-2xl text-balance text-lg leading-relaxed text-foreground/70 md:text-xl">
-            CRM, project management, kanban, billing, and a built-in AI agent — for teams who'd
-            rather ship than chase status updates.
-          </p>
-
-          <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Link href="/auth/login">
-              <Button
-                size="lg"
-                className="bg-foreground text-background hover:bg-foreground/90 px-6 shadow-lg shadow-foreground/10"
-              >
-                <Image
-                  src="/the-colonel.png"
-                  alt=""
-                  width={22}
-                  height={22}
-                  className="mr-2 h-[22px] w-[22px] shrink-0"
-                />
-                Sign in with Unicorn Commander
-                <ArrowRight className="ml-1.5 h-4 w-4" />
-              </Button>
+      <main>
+        <section className="relative overflow-hidden">
+          <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[650px] overflow-hidden">
+            <div className="absolute -top-32 left-1/4 h-[480px] w-[480px] -translate-x-1/2 rounded-full bg-violet-500/20 blur-[140px]" />
+            <div className="absolute -top-20 right-1/4 h-[420px] w-[420px] translate-x-1/2 rounded-full bg-amber-400/15 blur-[140px]" />
+            <div className="absolute top-36 left-1/2 h-[360px] w-[360px] -translate-x-1/2 rounded-full bg-cyan-400/10 blur-[120px]" />
+          </div>
+          <div className="mx-auto max-w-5xl px-6 pb-10 pt-20 text-center md:pt-28">
+            <Link href="https://unicorncommander.ai" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-3.5 py-1.5 text-xs font-medium text-foreground/75 backdrop-blur hover:text-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Built for human and AI teams <ArrowRight className="h-3 w-3 opacity-60" />
             </Link>
-            <a href="#preview">
-              <Button size="lg" variant="outline" className="px-7">
-                See the board
-              </Button>
-            </a>
-          </div>
-
-          {/* Soft proof line */}
-          <div className="mt-7 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-foreground/55">
-            <span className="inline-flex items-center gap-1.5">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-              SSO on day one
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-              Self-hosted, your data
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-              Billing built in
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-              Live AI assistant
-            </span>
-          </div>
-        </div>
-
-        {/* Inline product showcase — real components, not a screenshot */}
-        <div id="preview" className="relative mx-auto max-w-6xl px-6 pb-24 md:pb-32">
-          <KanbanShowcase />
-        </div>
-      </section>
-
-      {/* Features */}
-      <section id="features" className="border-y border-border bg-foreground/[0.015]">
-        <div className="mx-auto max-w-6xl px-6 py-24">
-          <div className="mb-16 max-w-2xl">
-            <div className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">
-              What's inside
-            </div>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl md:text-5xl">
-              Everything a working team needs.
-              <br />
-              <span className="text-foreground/45">Nothing it doesn't.</span>
-            </h2>
-          </div>
-
-          {/* Spotlight: AI assistant — wide card with richer treatment */}
-          <div className="relative mb-12 overflow-hidden rounded-2xl border border-border bg-card p-8 shadow-sm md:p-10">
-            <div
-              aria-hidden
-              className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-violet-500/10 blur-3xl dark:bg-violet-500/20"
-            />
-            <div className="relative grid gap-8 md:grid-cols-12 md:items-center">
-              <div className="md:col-span-7">
-                <div className={`inline-flex h-10 w-10 items-center justify-center rounded-md ${iconWellClass("violet")}`}>
-                  <Sparkles className="h-5 w-5" strokeWidth={1.75} />
-                </div>
-                <h3 className="mt-5 text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
-                  An AI agent that actually knows your work.
-                </h3>
-                <p className="mt-3 max-w-xl text-foreground/70">
-                  Ask the embedded Magic Unicorn assistant about projects, tasks, and recent
-                  activity. It reads your live data through a secure MCP connection — drafts
-                  status updates, breaks scopes into tasks, and surfaces what changed today.
-                </p>
-                <ul className="mt-5 grid gap-2 text-sm text-foreground/75 sm:grid-cols-2">
-                  <li className="flex gap-2">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                    Per-user RBAC propagates into every tool call
-                  </li>
-                  <li className="flex gap-2">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                    Drafts comments, summaries, and task lists
-                  </li>
-                  <li className="flex gap-2">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                    Lives in a sidebar — never out of reach
-                  </li>
-                  <li className="flex gap-2">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                    Powered by Unicorn Brigade
-                  </li>
-                </ul>
-              </div>
-              {/* Faux chat panel — visualises what the assistant looks like */}
-              <div className="md:col-span-5">
-                <div className="relative rounded-xl border border-border bg-background p-4 shadow-md">
-                  <div className="flex items-center gap-2 border-b border-border pb-3">
-                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white dark:bg-zinc-100 ring-1 ring-border">
-                      <Image src="/projectops-mascot.png" alt="" width={24} height={24} />
-                    </span>
-                    <div className="leading-tight">
-                      <div className="text-xs font-semibold">Project Ops Assistant</div>
-                      <div className="text-[10px] text-foreground/50">Powered by Unicorn Brigade</div>
-                    </div>
-                  </div>
-                  <div className="mt-3 space-y-2.5 text-[13px]">
-                    <div className="ml-auto max-w-[80%] rounded-lg bg-foreground px-3 py-1.5 text-background">
-                      what projects do I have right now?
-                    </div>
-                    <div className="mr-auto max-w-[90%] rounded-lg border border-border bg-card px-3 py-2 text-foreground/85">
-                      You've got <span className="font-mono">2</span> active projects:
-                      <div className="mt-1.5 space-y-0.5 text-[12px] text-foreground/70">
-                        <div>· P-00001 — Brigade ↔ Project-Ops MCP integration</div>
-                        <div>· P-00002 — Build In Public — Tuesday show prep</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Other features grid */}
-          <div className="grid gap-x-10 gap-y-12 sm:grid-cols-2 lg:grid-cols-4">
-            {features.map(({ icon: Icon, title, body, tone }) => (
-              <div key={title} className="group">
-                <div className={`inline-flex h-10 w-10 items-center justify-center rounded-md transition-transform group-hover:scale-105 ${iconWellClass(tone)}`}>
-                  <Icon className="h-5 w-5" strokeWidth={1.75} />
-                </div>
-                <h3 className="mt-5 text-base font-semibold text-foreground">{title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-foreground/65">{body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section id="how-it-works" className="border-b border-border">
-        <div className="mx-auto max-w-6xl px-6 py-24">
-          <div className="mb-16 max-w-2xl">
-            <div className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">
-              How it works
-            </div>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl md:text-5xl">
-              Set up in an afternoon.
-              <br />
-              <span className="text-foreground/45">Live for the next decade.</span>
-            </h2>
-          </div>
-
-          <ol className="grid gap-10 sm:grid-cols-3">
-            {[
-              {
-                n: "01",
-                t: "Create a project",
-                b: "Title, status, priority, owner. Optionally tie it to a client organization.",
-              },
-              {
-                n: "02",
-                t: "Break it into tasks",
-                b: "Add tasks, assign, set deadlines. Watch the kanban board fill in.",
-              },
-              {
-                n: "03",
-                t: "Invite the right people",
-                b: "Internal teammates via SSO. External clients via portal invite. Everyone sees only what they should.",
-              },
-            ].map((s) => (
-              <li key={s.n} className="border-t border-border pt-6">
-                <div className="text-xs font-mono text-foreground/50">{s.n}</div>
-                <div className="mt-2 text-base font-semibold text-foreground">{s.t}</div>
-                <p className="mt-2 text-sm leading-relaxed text-foreground/65">{s.b}</p>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </section>
-
-      {/* FAQ — `<details>` so it's zero-JS, accessible, keyboard-friendly,
-          and prints cleanly. Soft chevron rotates on open via group syntax. */}
-      <section id="faq" className="border-b border-border bg-foreground/[0.015]">
-        <div className="mx-auto max-w-4xl px-6 py-24">
-          <div className="mb-12 max-w-2xl">
-            <div className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">
-              FAQ
-            </div>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl md:text-5xl">
-              The honest answers.
-            </h2>
-          </div>
-
-          <div className="divide-y divide-border rounded-xl border border-border bg-card">
-            {[
-              {
-                q: "Can I self-host it?",
-                a: "Yes. Project Ops runs as a small Docker Compose stack — Postgres, Redis, S3-compatible storage, NestJS backend, Next.js frontend. The entire repo is on Forgejo. There is no SaaS lock-in.",
-              },
-              {
-                q: "Does the AI agent need to be on?",
-                a: "No. The dashboard works fully without it. The Brigade agent integration is optional — point the BRIGADE_API_URL env at your own Brigade install or leave it disabled.",
-              },
-              {
-                q: "How does single sign-on work?",
-                a: "We use Keycloak (OpenID Connect). Sign in with Unicorn Commander federates to Google + Microsoft out of the box, and the same identities work across all the Magic Unicorn apps in the suite.",
-              },
-              {
-                q: "What about role-based access?",
-                a: "Three built-in roles — ADMIN, MANAGER, CLIENT — plus a Prisma-level visibility filter that scopes every list query and every MCP tool call. Clients only see their own organization’s projects; managers see what they own or are assigned to; admins see everything.",
-              },
-              {
-                q: "How do you handle billing & invoices?",
-                a: "Built into the project itself: invoice number, billing amount, amount paid, payment status, due date, paid date, billing notes. No second tool, no double entry. Export to CSV when your accountant needs the rollup.",
-              },
-              {
-                q: "Can I use it for client-facing work?",
-                a: "Yes — invite clients with the CLIENT role and they get a scoped view of just their projects, tasks, and shared documents. Comments thread per project so the conversation lives next to the work.",
-              },
-              {
-                q: "What stack is it built on?",
-                a: "NestJS 10 + Prisma 5 + Postgres 17 on the backend, Next.js 15 + Tailwind 4 + Radix on the frontend, S3-compatible storage (we use Garage), Keycloak for auth, and Unicorn Brigade for the agent layer. Everything observable, replaceable, boring in the right places.",
-              },
-              {
-                q: "Where can I see what changed in the latest release?",
-                a: "The CHANGELOG ships with the repo and follows Keep a Changelog. Each version names what shipped, what changed, what got fixed, and the infrastructure notes that the operator cares about.",
-              },
-            ].map(({ q, a }) => (
-              <details
-                key={q}
-                className="group px-5 py-4 [&[open]>summary>svg]:rotate-180"
-              >
-                <summary className="flex cursor-pointer list-none items-start justify-between gap-4 text-left">
-                  <span className="text-sm font-semibold text-foreground sm:text-base">
-                    {q}
-                  </span>
-                  <ArrowRight
-                    className="mt-1 h-4 w-4 shrink-0 rotate-90 text-foreground/55 transition-transform"
-                    aria-hidden
-                  />
-                </summary>
-                <p className="mt-3 max-w-3xl text-sm leading-relaxed text-foreground/70">
-                  {a}
-                </p>
-              </details>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Built by — the crew artwork lives here, where it earns its place
-          as identity rather than competing with the product showcase. */}
-      <section className="relative overflow-hidden border-b border-border bg-foreground/[0.015]">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-24 md:grid-cols-12 md:gap-16">
-          <div className="md:col-span-7">
-            <div className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">
-              Built by Magic Unicorn
-            </div>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              Part of the Unicorn Commander suite.
-            </h2>
-            <p className="mt-5 max-w-xl text-foreground/70">
-              Project Ops is one of the apps Magic Unicorn ships internally — alongside the
-              Unicorn Brigade agent platform, the Ops-Center control plane, and our music,
-              media, and player apps. One SSO, one audit trail, one shared identity model
-              across everything.
+            <h1 className="mt-7 text-balance text-5xl font-semibold leading-[1.03] tracking-tight sm:text-6xl md:text-[76px]">
+              Turn conversations into <span className="bg-gradient-to-br from-violet-500 via-rose-500 to-amber-500 bg-clip-text text-transparent">completed work.</span>
+            </h1>
+            <p className="mx-auto mt-6 max-w-3xl text-balance text-lg leading-relaxed text-foreground/75 md:text-xl">
+              Project-Ops connects meetings, projects, people, AI agents, clients, documents, and billing in one operational system. Work keeps its context from discussion to delivery.
             </p>
-            <div className="mt-7 flex flex-wrap gap-3">
-              <Link href="https://unicorncommander.ai" target="_blank" rel="noreferrer">
-                <Button variant="outline" size="sm">
-                  Unicorn Commander
-                  <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                </Button>
-              </Link>
-              <Link href="https://magicunicorn.dev" target="_blank" rel="noreferrer">
-                <Button variant="outline" size="sm">
-                  Magic Unicorn
-                  <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                </Button>
-              </Link>
+            <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <Link href="/auth/login"><Button size="lg" className="bg-foreground px-6 text-background shadow-lg shadow-foreground/10 hover:bg-foreground/90">Open Project-Ops <ArrowRight className="ml-1.5 h-4 w-4" /></Button></Link>
+              <a href="#workflow"><Button size="lg" variant="outline" className="px-7">See how work flows</Button></a>
+            </div>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm text-foreground/65">
+              <span>Self-hostable</span><span aria-hidden>·</span><span>SSO and RBAC</span><span aria-hidden>·</span><span>Human and AI teams</span><span aria-hidden>·</span><span>Your infrastructure or ours</span>
+            </div>
+            <p className="mt-5 text-sm font-medium text-foreground/60">Project work, delivered without the drama.</p>
+          </div>
+          <div id="preview" className="mx-auto max-w-6xl px-6 pb-20"><KanbanShowcase /></div>
+        </section>
+
+        <section id="workflow" className="border-y border-border bg-foreground/[0.015]">
+          <div className="mx-auto max-w-6xl px-6 py-20">
+            <div className="mx-auto max-w-3xl text-center">
+              <Eyebrow>Meeting-Ops → Project-Ops</Eyebrow>
+              <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">From conversation to coordinated execution.</h2>
+              <p className="mt-4 text-lg leading-relaxed text-foreground/70">The handoff is the product: decisions become traceable work without losing the conversation that made them matter.</p>
+            </div>
+            <div className="mt-12 grid items-stretch gap-4 lg:grid-cols-[1fr_auto_1fr]">
+              <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+                <div className="flex items-center justify-between border-b border-border pb-4"><div><div className="text-sm font-semibold">Meeting-Ops</div><div className="text-xs text-foreground/55">Weekly product review · 42 min</div></div><span className="rounded-full bg-violet-500/15 px-2.5 py-1 text-xs text-violet-600 dark:text-violet-300">Understood</span></div>
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-xl border border-border bg-background p-4"><div className="flex gap-3"><CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" /><div><div className="text-sm font-medium">Publish the revised launch page</div><div className="mt-1 text-xs leading-relaxed text-foreground/60">“Aaron will update the positioning before Friday.”</div></div></div></div>
+                  <div className="rounded-xl border border-border bg-background p-4"><div className="flex gap-3"><CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" /><div><div className="text-sm font-medium">Verify customer migration plan</div><div className="mt-1 text-xs leading-relaxed text-foreground/60">Decision and transcript context attached</div></div></div></div>
+                </div>
+              </div>
+              <div className="flex items-center justify-center py-1 lg:px-2"><div className="flex h-12 w-12 rotate-90 items-center justify-center rounded-full border border-border bg-card shadow-sm lg:rotate-0"><ArrowRight className="h-5 w-5 text-violet-500" /></div></div>
+              <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+                <div className="flex items-center justify-between border-b border-border pb-4"><div><div className="text-sm font-semibold">Project-Ops</div><div className="text-xs text-foreground/55">Launch · In progress</div></div><span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs text-amber-700 dark:text-amber-300">2 tasks created</span></div>
+                <div className="mt-4 rounded-xl border border-violet-500/30 bg-background p-4 shadow-sm">
+                  <div className="flex items-center justify-between text-[11px] uppercase tracking-wider text-foreground/55"><span>P-00142</span><span className="text-amber-600">High</span></div>
+                  <div className="mt-2 font-semibold">Publish the revised launch page</div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs"><span className="rounded-md bg-violet-500/10 px-2 py-1 text-violet-600 dark:text-violet-300">Source: Weekly product review</span><span className="rounded-md bg-blue-500/10 px-2 py-1 text-blue-600 dark:text-blue-300">Executor: Aaron</span></div>
+                  <div className="mt-4 flex items-center gap-2 border-t border-border pt-3 text-xs text-foreground/60"><Network className="h-3.5 w-3.5" /> Transcript, decision, client, and project stay connected</div>
+                </div>
+              </div>
             </div>
           </div>
+        </section>
 
-          <div className="md:col-span-5">
-            <div className="relative mx-auto aspect-square w-full max-w-md">
-              <Image
-                src="/projectops-crew-light.png"
-                alt="Project Ops crew: a construction-helmet unicorn with blueprints, an exec unicorn with a tablet of charts, and an ops unicorn at a console — in front of a project Gantt board."
-                fill
-                sizes="(max-width: 768px) 80vw, 40vw"
-                className="object-contain block dark:hidden"
-              />
-              <Image
-                src="/projectops-crew-dark.png"
-                alt=""
-                fill
-                sizes="(max-width: 768px) 80vw, 40vw"
-                className="object-contain hidden dark:block"
-              />
+        <section className="border-b border-border">
+          <div className="mx-auto max-w-6xl px-6 py-20">
+            <div className="grid gap-10 lg:grid-cols-12 lg:items-center">
+              <div className="lg:col-span-5">
+                <Eyebrow>Human + agent execution</Eyebrow>
+                <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Every task has an executor, not just an assignee.</h2>
+                <p className="mt-4 text-lg leading-relaxed text-foreground/70">Plan the work, preserve its context, assign it to a person or agent, and see exactly what happened.</p>
+                <p className="mt-5 border-l-2 border-violet-500 pl-4 font-medium">Not merely an assistant that talks about your projects. An agent that can work inside them.</p>
+              </div>
+              <div className="lg:col-span-7">
+                <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                  <div className="flex items-center justify-between border-b border-border px-5 py-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-500/15"><Bot className="h-5 w-5 text-violet-500" /></span><div><div className="text-sm font-semibold">Gunny · Unicorn Brigade</div><div className="text-xs text-foreground/55">Agent executor · working</div></div></div><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /></div>
+                  <div className="grid gap-px bg-border sm:grid-cols-3">
+                    {[["Context supplied", "Meeting notes, project brief, 3 linked documents"], ["Tools permitted", "Projects, tasks, comments, documents"], ["Approval gate", "Required before publishing"]].map(([a,b]) => <div key={a} className="bg-card p-4"><div className="text-xs text-foreground/55">{a}</div><div className="mt-1 text-sm font-medium">{b}</div></div>)}
+                  </div>
+                  <div className="p-5">
+                    <div className="space-y-3 text-sm">
+                      <div className="flex gap-3"><CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" /><span>Read the source meeting and linked requirements</span></div>
+                      <div className="flex gap-3"><CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" /><span>Created implementation tasks and drafted the project update</span></div>
+                      <div className="flex gap-3"><Gauge className="mt-0.5 h-4 w-4 text-amber-500" /><span>Waiting for human approval to publish</span></div>
+                    </div>
+                    <div className="mt-5 flex flex-wrap gap-2 border-t border-border pt-4 text-xs text-foreground/60"><span className="rounded-md bg-foreground/5 px-2 py-1">Full audit record</span><span className="rounded-md bg-foreground/5 px-2 py-1">Artifacts attached</span><span className="rounded-md bg-foreground/5 px-2 py-1">Usage + cost tracked</span></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Closing — bigger, bolder, with ambient kicker */}
-      <section className="relative overflow-hidden border-b border-border">
-        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-          <div className="absolute left-1/2 top-1/2 h-[420px] w-[720px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-500/10 blur-[140px] dark:bg-violet-500/20" />
-        </div>
-        <div className="mx-auto max-w-3xl px-6 py-28 text-center">
-          <h2 className="text-balance text-4xl font-semibold tracking-tight text-foreground sm:text-5xl md:text-6xl">
-            Ready when you are.
-          </h2>
-          <p className="mx-auto mt-5 max-w-md text-foreground/70">
-            Sign in with your Magic Unicorn account to pick up where the team left off.
-          </p>
-          <div className="mt-9">
-            <Link href="/auth/login">
-              <Button
-                size="lg"
-                className="bg-foreground text-background hover:bg-foreground/90 px-6 shadow-lg shadow-foreground/10"
-              >
-                <Image
-                  src="/the-colonel.png"
-                  alt=""
-                  width={22}
-                  height={22}
-                  className="mr-2 h-[22px] w-[22px] shrink-0"
-                />
-                Sign in with Unicorn Commander
-                <ArrowRight className="ml-1.5 h-4 w-4" />
-              </Button>
-            </Link>
+        <section id="capabilities" className="border-b border-border bg-foreground/[0.015]">
+          <div className="mx-auto max-w-6xl px-6 py-20">
+            <div className="max-w-3xl"><Eyebrow>Connected project memory</Eyebrow><h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">Everything required to move work from discussion to delivery.</h2></div>
+            <div className="mt-12 grid gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
+              {outcomes.map(({icon: Icon,title,body}) => <div key={title} className="bg-card p-6"><Icon className="h-6 w-6 text-violet-500" strokeWidth={1.7} /><h3 className="mt-5 font-semibold">{title}</h3><p className="mt-2 text-base leading-relaxed text-foreground/70">{body}</p></div>)}
+            </div>
+            <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[[UsersRound,"CRM + organizations"],[FileText,"Documents + activity"],[CircleDollarSign,"Billing + client portal"],[ShieldCheck,"SSO, RBAC + audit"]].map(([Icon,label]) => { const C = Icon as typeof UsersRound; return <div key={label as string} className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm font-medium"><C className="h-4 w-4 text-foreground/55" />{label as string}</div>; })}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Footer */}
-      <footer>
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-10 text-sm text-foreground/60 sm:flex-row">
-          <div className="flex items-center gap-2.5">
-            <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded bg-white dark:bg-zinc-100 ring-1 ring-border">
-              <Image src="/projectops-mascot.png" alt="" width={20} height={20} />
-            </span>
-            <span>&copy; {new Date().getFullYear()} Magic Unicorn</span>
+        <section id="how-it-works" className="border-b border-border">
+          <div className="mx-auto max-w-6xl px-6 py-20"><div className="max-w-2xl"><Eyebrow>The operational loop</Eyebrow><h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Context moves with the work.</h2></div><ol className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-5">{loop.map(([n,t,b]) => <li key={n} className="border-t border-border pt-5"><div className="font-mono text-xs text-foreground/50">{n}</div><h3 className="mt-2 font-semibold">{t}</h3><p className="mt-2 text-sm leading-relaxed text-foreground/70">{b}</p></li>)}</ol></div>
+        </section>
+
+        <section className="relative overflow-hidden border-b border-border bg-foreground/[0.015]">
+          <div className="mx-auto grid max-w-6xl items-center gap-10 px-6 py-20 md:grid-cols-12">
+            <div className="md:col-span-7"><Eyebrow>One operational loop</Eyebrow><h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Across the Unicorn Commander suite.</h2><div className="mt-6 grid gap-3 text-base sm:grid-cols-2"><p><strong>Meeting-Ops</strong> understands what was discussed.</p><p><strong>Project-Ops</strong> turns it into coordinated execution.</p><p><strong>Contact-Ops + Customer-Ops</strong> add relationship context.</p><p><strong>Unicorn Brigade</strong> supplies specialized agents.</p><p><strong>Ops-Center</strong> governs identity, models, permissions, and infrastructure.</p></div><p className="mt-6 text-lg text-foreground/70">One account, one audit trail, and shared organizational memory across everything.</p><div className="mt-7 flex gap-3"><Link href="https://unicorncommander.ai" target="_blank"><Button variant="outline">Explore Unicorn Commander <ArrowRight className="ml-1.5 h-4 w-4" /></Button></Link></div></div>
+            <div className="md:col-span-5"><div className="relative mx-auto aspect-square max-w-sm overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-card to-violet-500/5 p-4 shadow-sm"><Image src="/projectops-crew-light.png" alt="The Project-Ops team connecting plans, operations, and delivery" fill sizes="(max-width: 768px) 80vw, 35vw" className="object-contain p-3 dark:hidden" /><Image src="/projectops-crew-dark.png" alt="" fill sizes="(max-width: 768px) 80vw, 35vw" className="hidden object-contain p-3 dark:block" /></div></div>
           </div>
-          <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-            <a
-              href="https://git.unicorncommander.ai/MagicUnicorn/Project-Ops/src/branch/main/CHANGELOG.md"
-              className="transition-colors hover:text-foreground"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Changelog
-            </a>
-            <a
-              href="https://git.unicorncommander.ai/MagicUnicorn/Project-Ops"
-              className="transition-colors hover:text-foreground"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Source
-            </a>
-            <a
-              href="https://unicorncommander.ai"
-              className="transition-colors hover:text-foreground"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Unicorn Commander
-            </a>
-            <a
-              href="https://magicunicorn.dev"
-              className="transition-colors hover:text-foreground"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Magic Unicorn
-            </a>
-          </nav>
-        </div>
-      </footer>
+        </section>
+
+        <section id="faq" className="border-b border-border"><div className="mx-auto max-w-4xl px-6 py-20"><Eyebrow>FAQ</Eyebrow><h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">The honest answers.</h2><div className="mt-10 divide-y divide-border rounded-xl border border-border bg-card">{faq.map(([q,a]) => <details key={q} className="group px-5 py-4 [&[open]>summary>svg]:rotate-180"><summary className="flex cursor-pointer list-none items-start justify-between gap-4"><span className="font-semibold">{q}</span><ArrowRight className="mt-1 h-4 w-4 shrink-0 rotate-90 text-foreground/55 transition-transform" /></summary><p className="mt-3 max-w-3xl text-base leading-relaxed text-foreground/70">{a}</p></details>)}</div></div></section>
+
+        <section className="relative overflow-hidden border-b border-border"><div aria-hidden className="absolute inset-0 -z-10"><div className="absolute left-1/2 top-1/2 h-[380px] w-[680px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-500/15 blur-[140px]" /></div><div className="mx-auto max-w-3xl px-6 py-24 text-center"><Sparkles className="mx-auto h-6 w-6 text-violet-500" /><h2 className="mt-5 text-balance text-4xl font-semibold tracking-tight sm:text-5xl">Move work from conversation to completion.</h2><p className="mx-auto mt-5 max-w-xl text-lg text-foreground/70">Set up in an afternoon. Built to remain yours for the long haul.</p><div className="mt-8"><Link href="/auth/login"><Button size="lg" className="bg-foreground px-6 text-background hover:bg-foreground/90">Open Project-Ops <ArrowRight className="ml-1.5 h-4 w-4" /></Button></Link></div></div></section>
+      </main>
+
+      <footer><div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 text-sm text-foreground/60 sm:flex-row"><div className="flex items-center gap-2.5"><Image src="/projectops-mascot.png" alt="" width={22} height={22} className="rounded bg-white" /><span>Project-Ops · © {new Date().getFullYear()} Magic Unicorn</span></div><nav className="flex gap-5"><a href="https://git.unicorncommander.ai/MagicUnicorn/Project-Ops" target="_blank" rel="noreferrer" className="hover:text-foreground">Source</a><a href="https://magicunicorn.dev" target="_blank" rel="noreferrer" className="hover:text-foreground">Magic Unicorn</a></nav></div></footer>
     </div>
   );
 }
