@@ -146,6 +146,83 @@ export default function Home() {
 
         <section className="border-b border-border">
           <div className="mx-auto max-w-6xl px-6 py-20">
+            <div className="grid gap-6 lg:grid-cols-12 lg:items-end">
+              <div className="lg:col-span-7">
+                <Eyebrow>Real product, real work</Eyebrow>
+                <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">See the operational loop in practice.</h2>
+              </div>
+              <p className="text-base leading-relaxed text-foreground/70 lg:col-span-5">
+                These are live Project-Ops interfaces—not concept art. Review meeting-derived action items, observe agent work, and follow delivery through billing.
+              </p>
+            </div>
+
+            <figure className="mt-12">
+              <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-2xl shadow-foreground/5">
+                <Image
+                  src="/product-shots/meeting-triage.webp"
+                  alt="Project-Ops triage screen showing Meeting-Ops action items awaiting human review and project routing"
+                  width={1920}
+                  height={1080}
+                  sizes="(max-width: 1200px) 100vw, 1152px"
+                  className="h-auto w-full"
+                />
+              </div>
+              <figcaption className="mt-4 flex flex-col justify-between gap-2 sm:flex-row">
+                <span className="font-semibold">Meeting intelligence, with a human approval gate.</span>
+                <span className="text-sm text-foreground/60">Approve, route, group, or reject before anything becomes project work.</span>
+              </figcaption>
+            </figure>
+
+            <div className="mt-10 grid gap-8 md:grid-cols-2">
+              {[
+                {
+                  src: "/product-shots/agent-activity.webp",
+                  alt: "Project-Ops agent activity dashboard with event volume, cost, and a detailed audit ledger",
+                  title: "Know what every agent did—and what it cost.",
+                  body: "Activity, tools, entities, duration, tokens, and billable cost stay visible.",
+                },
+                {
+                  src: "/product-shots/billing.webp",
+                  alt: "Project-Ops billing dashboard showing financial status and project billing records",
+                  title: "Carry delivery through billing.",
+                  body: "Project progress and financial status live in the same operating context.",
+                },
+              ].map((shot) => (
+                <figure key={shot.src}>
+                  <div className="overflow-hidden rounded-xl border border-border bg-card shadow-lg shadow-foreground/5">
+                    <Image src={shot.src} alt={shot.alt} width={1920} height={1080} sizes="(max-width: 768px) 100vw, 576px" className="h-auto w-full" />
+                  </div>
+                  <figcaption className="mt-4">
+                    <div className="font-semibold">{shot.title}</div>
+                    <p className="mt-1 text-sm leading-relaxed text-foreground/65">{shot.body}</p>
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+
+            <div className="mt-14 border-t border-border pt-10">
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+                <div><Eyebrow>Your workspace, your way</Eyebrow><h3 className="mt-2 text-2xl font-semibold tracking-tight">Light, dark, or vibrant.</h3></div>
+                <p className="max-w-md text-sm leading-relaxed text-foreground/65">Three complete themes, with the same information hierarchy and controls in each.</p>
+              </div>
+              <div className="mt-7 grid gap-4 sm:grid-cols-3">
+                {[
+                  ["/product-shots/dashboard-light.webp", "Light theme"],
+                  ["/product-shots/dashboard-dark.webp", "Dark theme"],
+                  ["/product-shots/dashboard-vibrant.webp", "Vibrant theme"],
+                ].map(([src, label]) => (
+                  <figure key={src} className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+                    <Image src={src} alt={`Project-Ops dashboard in ${label.toLowerCase()}`} width={1200} height={675} sizes="(max-width: 640px) 100vw, 384px" className="h-auto w-full" />
+                    <figcaption className="border-t border-border px-4 py-3 text-sm font-medium">{label}</figcaption>
+                  </figure>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="border-b border-border">
+          <div className="mx-auto max-w-6xl px-6 py-20">
             <div className="grid gap-10 lg:grid-cols-12 lg:items-center">
               <div className="lg:col-span-5">
                 <Eyebrow>Human + agent execution</Eyebrow>
