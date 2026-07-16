@@ -22,7 +22,7 @@
 
 ---
 
-Project Ops runs the whole operation of a working team in one app — projects, a CRM, time & billing, automation, and an AI agent that can actually do the work — **self-hosted, on your own hardware, with your data staying inside your walls.**
+Project Ops runs the whole operation of a working team in one app — projects, a CRM, time & billing, and automation — where **people and AI agents are both first-class citizens.** They share the same tasks, the same permission model, and the same audit trail, and hand work back and forth: you assign a task to an agent, an agent assigns one back to you or to another agent, and it all lands on the same board. **Self-hosted, on your own hardware, with your data staying inside your walls.**
 
 ## The problems it solves
 
@@ -40,7 +40,7 @@ Project Ops runs the whole operation of a working team in one app — projects, 
 
 ## ✨ How it does it
 
-- **🤖 AI-native, not AI-bolted-on.** An in-dashboard agent with live, **RBAC-scoped** read **and write** across your projects, tasks, CRM, billing, and activity — plus a full **MCP server** so Claude Code, Cursor, Zed, or your own agent plugs into the exact same surface. Inference runs **on-prem** (a local Qwen 3.6 35B), so your project data never leaves your walls.
+- **👥🤖 Humans and agents, both first-class.** People and AI agents share one system — the same RBAC, the same task board, the same audit trail. A human assigns a task to an agent; an agent assigns one back, or to another agent; every hand-off lands on the same schedule. The in-dashboard agent has live, **RBAC-scoped** read **and write** across projects, tasks, CRM, billing, and activity, and that exact surface is a full **MCP server** (Claude Code, Cursor, Zed, or your own agent). Inference runs **on-prem** (a local Qwen 3.6 35B), so your project data never leaves your walls.
 - **🔐 Multi-tenancy the database enforces.** Workspaces fenced in Postgres with **Row-Level Security** — the runtime connects as a `NOBYPASSRLS` role, so isolation is guaranteed by the engine, not hopeful `WHERE` clauses. Roles: ADMIN / MANAGER / STAFF / CLIENT, SSO, and a full audit trail.
 - **🏠 Sovereign by default.** Self-hosted, S3-compatible object storage ([Garage](https://garagehq.deuxfleurs.fr/)), your own Keycloak realm. No per-seat SaaS tax, no data exfiltration.
 - **🧰 The whole operation, one permission model.** Stop stitching a PM tool + a time tracker + a CRM + a billing add-on. It's one coherent app — so an automation can move a task, log time, and notify a client without crossing a single API boundary.
