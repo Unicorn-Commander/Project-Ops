@@ -138,7 +138,20 @@ export default function Home() {
             <div className="absolute -top-20 right-1/4 h-[420px] w-[420px] translate-x-1/2 rounded-full bg-amber-400/15 blur-[140px]" />
             <div className="absolute top-36 left-1/2 h-[360px] w-[360px] -translate-x-1/2 rounded-full bg-cyan-400/10 blur-[120px]" />
           </div>
-          <div className="mx-auto max-w-5xl px-6 pb-10 pt-20 text-center md:pt-28">
+          <div className="mx-auto max-w-5xl px-6 pb-10 pt-16 text-center md:pt-20">
+            <div className="mb-6 flex justify-center">
+              <div className="relative">
+                <div aria-hidden className="absolute inset-0 -z-10 scale-110 rounded-full bg-violet-500/25 blur-2xl" />
+                <Image
+                  src="/projectops-mascot.png"
+                  alt="Project-Ops"
+                  width={144}
+                  height={144}
+                  priority
+                  className="h-28 w-28 drop-shadow-[0_8px_24px_rgba(139,92,246,0.35)] sm:h-32 sm:w-32 md:h-36 md:w-36"
+                />
+              </div>
+            </div>
             <Link href="https://unicorncommander.ai" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-3.5 py-1.5 text-xs font-medium text-foreground/75 backdrop-blur hover:text-foreground">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Built for human and AI teams <ArrowRight className="h-3 w-3 opacity-60" />
             </Link>
