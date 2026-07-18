@@ -18,6 +18,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { KanbanShowcase } from "@/components/landing/kanban-showcase";
+import { RotatingHeadline } from "@/components/landing/rotating-headline";
+import { ZoomableShot } from "@/components/landing/zoomable-shot";
 
 const outcomes = [
   {
@@ -42,12 +44,53 @@ const outcomes = [
   },
 ];
 
-const loop = [
-  ["01", "Capture the work", "Create it directly or pull it from meetings, conversations, clients, and documents."],
-  ["02", "Add the context", "Connect decisions, people, organizations, files, dependencies, and source conversations."],
-  ["03", "Assign the executor", "Give it to a person, an AI agent, an external collaborator, or a human-agent team."],
-  ["04", "Observe and approve", "Follow activity, artifacts, cost, blockers, and approval gates without chasing updates."],
-  ["05", "Deliver and remember", "Share the result, update the client, track billing, and preserve what happened."],
+// Paired product shots for the "See it actually working" gallery. Each is a
+// real interface, clickable to a full-screen view via <ZoomableShot>.
+const gallery = [
+  {
+    src: "/product-shots/schedule-light.webp",
+    title: "Every project on one timeline.",
+    body: "Group the master schedule by customer, product, owner, or status. Bars carry live progress.",
+  },
+  {
+    src: "/product-shots/reports-dark.webp",
+    title: "Portfolio health, live.",
+    body: "Active work, budget, billing, and completion across every project — not a spreadsheet in sight.",
+  },
+  {
+    src: "/product-shots/projects-dark.webp",
+    title: "Every project keeps its context.",
+    body: "Status, priority, owner, client, and the source that created it — attached, not lost in a thread.",
+  },
+  {
+    src: "/product-shots/agent-activity.webp",
+    title: "Know what every agent did — and what it cost.",
+    body: "Activity, tools, entities, duration, tokens, and billable cost stay visible and auditable.",
+  },
+  {
+    src: "/product-shots/meeting-triage.webp",
+    title: "A human approval gate on AI action items.",
+    body: "Approve, route, group, or reject meeting-derived items before anything becomes project work.",
+  },
+  {
+    src: "/product-shots/billing.webp",
+    title: "Delivery straight through to billing.",
+    body: "Project progress and financial status live in the same operating context — one tool, one truth.",
+  },
+];
+
+const themes: Array<[string, string]> = [
+  ["/product-shots/dashboard-light.webp", "Light"],
+  ["/product-shots/dashboard-dark.webp", "Dark"],
+  ["/product-shots/dashboard-vibrant.webp", "Vibrant"],
+];
+
+const suite = [
+  ["Meeting-Ops", "Understands what was discussed."],
+  ["Project-Ops", "Turns it into coordinated execution."],
+  ["Contact-Ops + Customer-Ops", "Add the relationship context."],
+  ["Unicorn Brigade", "Supplies the specialized agents."],
+  ["Ops-Center", "Governs identity, models, and permissions."],
 ];
 
 const faq = [
@@ -56,6 +99,7 @@ const faq = [
   ["How are permissions handled?", "Keycloak provides OpenID Connect SSO. ADMIN, MANAGER, and CLIENT roles are enforced through visibility filters that also scope MCP tool calls."],
   ["Can clients use it?", "Yes. Clients receive a private view of their organization’s projects, tasks, shared documents, comments, approvals, and billing information."],
   ["What can agents actually do?", "Through the secured MCP surface, agents can read permitted workspace context and create or update project work. Their activity, project footprint, token usage, and cost are recorded."],
+  ["Will it still be mine in a decade?", "That’s the point. Self-host it, connect your own models, keep your data, and never rebuild your operating system because a vendor changed direction."],
 ];
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
@@ -78,6 +122,7 @@ export default function Home() {
           </Link>
           <div className="flex items-center gap-1.5">
             <a href="#workflow" className="hidden px-3 py-1.5 text-sm text-foreground/70 hover:text-foreground md:inline-block">Workflow</a>
+            <a href="#product" className="hidden px-3 py-1.5 text-sm text-foreground/70 hover:text-foreground md:inline-block">Product</a>
             <a href="#capabilities" className="hidden px-3 py-1.5 text-sm text-foreground/70 hover:text-foreground md:inline-block">Capabilities</a>
             <a href="#faq" className="hidden px-3 py-1.5 text-sm text-foreground/70 hover:text-foreground sm:inline-block">FAQ</a>
             <ThemeToggle />
@@ -97,9 +142,7 @@ export default function Home() {
             <Link href="https://unicorncommander.ai" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-3.5 py-1.5 text-xs font-medium text-foreground/75 backdrop-blur hover:text-foreground">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Built for human and AI teams <ArrowRight className="h-3 w-3 opacity-60" />
             </Link>
-            <h1 className="mt-7 text-balance text-5xl font-semibold leading-[1.03] tracking-tight sm:text-6xl md:text-[76px]">
-              Turn conversations into <span className="bg-gradient-to-br from-violet-500 via-rose-500 to-amber-500 bg-clip-text text-transparent">completed work.</span>
-            </h1>
+            <RotatingHeadline />
             <p className="mx-auto mt-6 max-w-3xl text-balance text-lg leading-relaxed text-foreground/75 md:text-xl">
               Project-Ops connects meetings, projects, people, AI agents, clients, documents, and billing in one operational system. Work keeps its context from discussion to delivery.
             </p>
@@ -144,76 +187,76 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        {/* Real product — big, clickable screenshots. */}
+        <section id="product" className="border-b border-border">
           <div className="mx-auto max-w-6xl px-6 py-20">
             <div className="grid gap-6 lg:grid-cols-12 lg:items-end">
               <div className="lg:col-span-7">
                 <Eyebrow>Real product, real work</Eyebrow>
-                <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">See the operational loop in practice.</h2>
+                <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">See it actually working.</h2>
               </div>
               <p className="text-base leading-relaxed text-foreground/70 lg:col-span-5">
-                These are live Project-Ops interfaces—not concept art. Review meeting-derived action items, observe agent work, and follow delivery through billing.
+                Live Project-Ops interfaces — not concept art. Click any screen to open it full-size.
               </p>
             </div>
 
+            {/* Flagship board */}
             <figure className="mt-12">
-              <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-2xl shadow-foreground/5">
-                <Image
-                  src="/product-shots/meeting-triage.webp"
-                  alt="Project-Ops triage screen showing Meeting-Ops action items awaiting human review and project routing"
-                  width={1920}
-                  height={1080}
-                  sizes="(max-width: 1200px) 100vw, 1152px"
-                  className="h-auto w-full"
-                />
-              </div>
+              <ZoomableShot
+                src="/product-shots/kanban-dark.webp"
+                alt="Project-Ops kanban board with Pending, In Progress, Waiting for Client, and Completed columns full of status-coloured task cards"
+                caption="The board — every task, every status, drag-and-drop."
+                width={1920}
+                height={1080}
+                sizes="(max-width: 1200px) 100vw, 1152px"
+                priority
+                className="rounded-2xl border border-border bg-card shadow-2xl shadow-foreground/5"
+              />
               <figcaption className="mt-4 flex flex-col justify-between gap-2 sm:flex-row">
-                <span className="font-semibold">Meeting intelligence, with a human approval gate.</span>
-                <span className="text-sm text-foreground/60">Approve, route, group, or reject before anything becomes project work.</span>
+                <span className="font-semibold">The work in flight is the work you can see.</span>
+                <span className="text-sm text-foreground/60">Filter by org, project, assignee, or priority — then drag to update status.</span>
               </figcaption>
             </figure>
 
-            <div className="mt-10 grid gap-8 md:grid-cols-2">
-              {[
-                {
-                  src: "/product-shots/agent-activity.webp",
-                  alt: "Project-Ops agent activity dashboard with event volume, cost, and a detailed audit ledger",
-                  title: "Know what every agent did—and what it cost.",
-                  body: "Activity, tools, entities, duration, tokens, and billable cost stay visible.",
-                },
-                {
-                  src: "/product-shots/billing.webp",
-                  alt: "Project-Ops billing dashboard showing financial status and project billing records",
-                  title: "Carry delivery through billing.",
-                  body: "Project progress and financial status live in the same operating context.",
-                },
-              ].map((shot) => (
+            <div className="mt-10 grid gap-x-8 gap-y-12 md:grid-cols-2">
+              {gallery.map((shot) => (
                 <figure key={shot.src}>
-                  <div className="overflow-hidden rounded-xl border border-border bg-card shadow-lg shadow-foreground/5">
-                    <Image src={shot.src} alt={shot.alt} width={1920} height={1080} sizes="(max-width: 768px) 100vw, 576px" className="h-auto w-full" />
-                  </div>
+                  <ZoomableShot
+                    src={shot.src}
+                    alt={shot.title}
+                    caption={shot.title}
+                    width={1920}
+                    height={1080}
+                    sizes="(max-width: 768px) 100vw, 560px"
+                    className="rounded-xl border border-border bg-card shadow-lg shadow-foreground/5"
+                  />
                   <figcaption className="mt-4">
                     <div className="font-semibold">{shot.title}</div>
-                    <p className="mt-1 text-sm leading-relaxed text-foreground/65">{shot.body}</p>
+                    <p className="mt-1 text-base leading-relaxed text-foreground/65">{shot.body}</p>
                   </figcaption>
                 </figure>
               ))}
             </div>
 
-            <div className="mt-14 border-t border-border pt-10">
+            {/* Theme showcase */}
+            <div className="mt-16 border-t border-border pt-12">
               <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
                 <div><Eyebrow>Your workspace, your way</Eyebrow><h3 className="mt-2 text-2xl font-semibold tracking-tight">Light, dark, or vibrant.</h3></div>
-                <p className="max-w-md text-sm leading-relaxed text-foreground/65">Three complete themes, with the same information hierarchy and controls in each.</p>
+                <p className="max-w-md text-sm leading-relaxed text-foreground/65">Three complete themes, the same information hierarchy and controls in each. Click to compare full-size.</p>
               </div>
-              <div className="mt-7 grid gap-4 sm:grid-cols-3">
-                {[
-                  ["/product-shots/dashboard-light.webp", "Light theme"],
-                  ["/product-shots/dashboard-dark.webp", "Dark theme"],
-                  ["/product-shots/dashboard-vibrant.webp", "Vibrant theme"],
-                ].map(([src, label]) => (
-                  <figure key={src} className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-                    <Image src={src} alt={`Project-Ops dashboard in ${label.toLowerCase()}`} width={1200} height={675} sizes="(max-width: 640px) 100vw, 384px" className="h-auto w-full" />
-                    <figcaption className="border-t border-border px-4 py-3 text-sm font-medium">{label}</figcaption>
+              <div className="mt-7 grid gap-5 sm:grid-cols-3">
+                {themes.map(([src, label]) => (
+                  <figure key={src}>
+                    <ZoomableShot
+                      src={src}
+                      alt={`Project-Ops dashboard in the ${label.toLowerCase()} theme`}
+                      caption={`Dashboard — ${label} theme`}
+                      width={1200}
+                      height={675}
+                      sizes="(max-width: 640px) 100vw, 370px"
+                      className="rounded-xl border border-border bg-card shadow-md"
+                    />
+                    <figcaption className="mt-3 text-sm font-medium">{label} theme</figcaption>
                   </figure>
                 ))}
               </div>
@@ -221,7 +264,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-border bg-foreground/[0.015]">
           <div className="mx-auto max-w-6xl px-6 py-20">
             <div className="grid gap-10 lg:grid-cols-12 lg:items-center">
               <div className="lg:col-span-5">
@@ -247,10 +290,27 @@ export default function Home() {
                 </div>
               </div>
             </div>
+
+            {/* Real proof: capacity planning treats people and agents as one team. */}
+            <figure className="mt-12">
+              <ZoomableShot
+                src="/product-shots/capacity-dark.webp"
+                alt="Project-Ops capacity planning showing committed hours versus capacity across people and AI agents on the same team"
+                caption="Capacity planning — people and agents on one team."
+                width={1920}
+                height={1080}
+                sizes="(max-width: 1200px) 100vw, 1152px"
+                className="rounded-2xl border border-border bg-card shadow-xl shadow-foreground/5"
+              />
+              <figcaption className="mt-4 flex flex-col justify-between gap-2 sm:flex-row">
+                <span className="font-semibold">Plan the whole team — human and agent alike.</span>
+                <span className="text-sm text-foreground/60">Committed hours against real capacity, so nothing gets silently over-allocated.</span>
+              </figcaption>
+            </figure>
           </div>
         </section>
 
-        <section id="capabilities" className="border-b border-border bg-foreground/[0.015]">
+        <section id="capabilities" className="border-b border-border">
           <div className="mx-auto max-w-6xl px-6 py-20">
             <div className="max-w-3xl"><Eyebrow>Connected project memory</Eyebrow><h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">Everything required to move work from discussion to delivery.</h2></div>
             <div className="mt-12 grid gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
@@ -259,21 +319,63 @@ export default function Home() {
             <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {[[UsersRound,"CRM + organizations"],[FileText,"Documents + activity"],[CircleDollarSign,"Billing + client portal"],[ShieldCheck,"SSO, RBAC + audit"]].map(([Icon,label]) => { const C = Icon as typeof UsersRound; return <div key={label as string} className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm font-medium"><C className="h-4 w-4 text-foreground/55" />{label as string}</div>; })}
             </div>
+
+            {/* SSO + RBAC proof */}
+            <div className="mt-14 grid gap-8 lg:grid-cols-12 lg:items-center">
+              <div className="lg:col-span-5">
+                <Eyebrow>Federated identity, real roles</Eyebrow>
+                <h3 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">Sign in once. See exactly what you should.</h3>
+                <p className="mt-4 text-base leading-relaxed text-foreground/70">Team members appear automatically the first time they sign in through Unicorn Commander SSO. Admin, staff, and client roles are enforced everywhere — including every agent tool call.</p>
+              </div>
+              <div className="lg:col-span-7">
+                <ZoomableShot
+                  src="/product-shots/users-light.webp"
+                  alt="Project-Ops user management with SSO federation, roles, and status across the team"
+                  caption="User management — federated SSO with Admin, Staff, and Client roles."
+                  width={1920}
+                  height={1080}
+                  sizes="(max-width: 1024px) 100vw, 660px"
+                  className="rounded-2xl border border-border bg-card shadow-lg shadow-foreground/5"
+                />
+              </div>
+            </div>
           </div>
         </section>
 
-        <section id="how-it-works" className="border-b border-border">
-          <div className="mx-auto max-w-6xl px-6 py-20"><div className="max-w-2xl"><Eyebrow>The operational loop</Eyebrow><h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Context moves with the work.</h2></div><ol className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-5">{loop.map(([n,t,b]) => <li key={n} className="border-t border-border pt-5"><div className="font-mono text-xs text-foreground/50">{n}</div><h3 className="mt-2 font-semibold">{t}</h3><p className="mt-2 text-sm leading-relaxed text-foreground/70">{b}</p></li>)}</ol></div>
+        <section id="how-it-works" className="border-b border-border bg-foreground/[0.015]">
+          <div className="mx-auto max-w-6xl px-6 py-20"><div className="max-w-2xl"><Eyebrow>The operational loop</Eyebrow><h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Context moves with the work.</h2></div><ol className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-5">{[["01","Capture the work","Create it directly or pull it from meetings, conversations, clients, and documents."],["02","Add the context","Connect decisions, people, organizations, files, dependencies, and source conversations."],["03","Assign the executor","Give it to a person, an AI agent, an external collaborator, or a human-agent team."],["04","Observe and approve","Follow activity, artifacts, cost, blockers, and approval gates without chasing updates."],["05","Deliver and remember","Share the result, update the client, track billing, and preserve what happened."]].map(([n,t,b]) => <li key={n} className="border-t border-border pt-5"><div className="font-mono text-xs text-foreground/50">{n}</div><h3 className="mt-2 font-semibold">{t}</h3><p className="mt-2 text-sm leading-relaxed text-foreground/70">{b}</p></li>)}</ol></div>
         </section>
 
-        <section className="relative overflow-hidden border-b border-border bg-foreground/[0.015]">
-          <div className="mx-auto grid max-w-6xl items-center gap-10 px-6 py-20 md:grid-cols-12">
-            <div className="md:col-span-7"><Eyebrow>One operational loop</Eyebrow><h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Across the Unicorn Commander suite.</h2><div className="mt-6 grid gap-3 text-base sm:grid-cols-2"><p><strong>Meeting-Ops</strong> understands what was discussed.</p><p><strong>Project-Ops</strong> turns it into coordinated execution.</p><p><strong>Contact-Ops + Customer-Ops</strong> add relationship context.</p><p><strong>Unicorn Brigade</strong> supplies specialized agents.</p><p><strong>Ops-Center</strong> governs identity, models, permissions, and infrastructure.</p></div><p className="mt-6 text-lg text-foreground/70">One account, one audit trail, and shared organizational memory across everything.</p><div className="mt-7 flex gap-3"><Link href="https://unicorncommander.ai" target="_blank"><Button variant="outline">Explore Unicorn Commander <ArrowRight className="ml-1.5 h-4 w-4" /></Button></Link></div></div>
-            <div className="md:col-span-5"><div className="relative mx-auto aspect-square max-w-sm overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-card to-violet-500/5 p-4 shadow-sm"><Image src="/projectops-crew-light.png" alt="The Project-Ops team connecting plans, operations, and delivery" fill sizes="(max-width: 768px) 80vw, 35vw" className="object-contain p-3 dark:hidden" /><Image src="/projectops-crew-dark.png" alt="" fill sizes="(max-width: 768px) 80vw, 35vw" className="hidden object-contain p-3 dark:block" /></div></div>
+        {/* Ecosystem — crew illustration removed in favour of an architecture map. */}
+        <section className="border-b border-border">
+          <div className="mx-auto max-w-6xl px-6 py-20">
+            <div className="mx-auto max-w-3xl text-center">
+              <Eyebrow>One operational loop</Eyebrow>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Across the Unicorn Commander suite.</h2>
+              <p className="mt-4 text-lg leading-relaxed text-foreground/70">One account, one audit trail, and shared organizational memory across everything.</p>
+            </div>
+            <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              {suite.map(([name, role]) => {
+                const you = name === "Project-Ops";
+                return (
+                  <div key={name} className={`rounded-2xl border p-5 ${you ? "border-violet-500/50 bg-violet-500/[0.06] shadow-sm" : "border-border bg-card"}`}>
+                    <div className="flex items-center gap-2">
+                      <span className={`h-2 w-2 rounded-full ${you ? "bg-violet-500" : "bg-foreground/30"}`} />
+                      <div className="text-sm font-semibold">{name}</div>
+                    </div>
+                    <p className="mt-2 text-sm leading-relaxed text-foreground/65">{role}</p>
+                    {you && <div className="mt-3 text-[11px] font-medium uppercase tracking-wider text-violet-600 dark:text-violet-300">You are here</div>}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-10 flex justify-center">
+              <Link href="https://unicorncommander.ai" target="_blank" rel="noreferrer"><Button variant="outline">Explore Unicorn Commander <ArrowRight className="ml-1.5 h-4 w-4" /></Button></Link>
+            </div>
           </div>
         </section>
 
-        <section id="faq" className="border-b border-border"><div className="mx-auto max-w-4xl px-6 py-20"><Eyebrow>FAQ</Eyebrow><h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">The honest answers.</h2><div className="mt-10 divide-y divide-border rounded-xl border border-border bg-card">{faq.map(([q,a]) => <details key={q} className="group px-5 py-4 [&[open]>summary>svg]:rotate-180"><summary className="flex cursor-pointer list-none items-start justify-between gap-4"><span className="font-semibold">{q}</span><ArrowRight className="mt-1 h-4 w-4 shrink-0 rotate-90 text-foreground/55 transition-transform" /></summary><p className="mt-3 max-w-3xl text-base leading-relaxed text-foreground/70">{a}</p></details>)}</div></div></section>
+        <section id="faq" className="border-b border-border bg-foreground/[0.015]"><div className="mx-auto max-w-4xl px-6 py-20"><Eyebrow>FAQ</Eyebrow><h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">The honest answers.</h2><div className="mt-10 divide-y divide-border rounded-xl border border-border bg-card">{faq.map(([q,a]) => <details key={q} className="group px-5 py-4 [&[open]>summary>svg]:rotate-180"><summary className="flex cursor-pointer list-none items-start justify-between gap-4"><span className="font-semibold">{q}</span><ArrowRight className="mt-1 h-4 w-4 shrink-0 rotate-90 text-foreground/55 transition-transform" /></summary><p className="mt-3 max-w-3xl text-base leading-relaxed text-foreground/70">{a}</p></details>)}</div></div></section>
 
         <section className="relative overflow-hidden border-b border-border"><div aria-hidden className="absolute inset-0 -z-10"><div className="absolute left-1/2 top-1/2 h-[380px] w-[680px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-500/15 blur-[140px]" /></div><div className="mx-auto max-w-3xl px-6 py-24 text-center"><Sparkles className="mx-auto h-6 w-6 text-violet-500" /><h2 className="mt-5 text-balance text-4xl font-semibold tracking-tight sm:text-5xl">Move work from conversation to completion.</h2><p className="mx-auto mt-5 max-w-xl text-lg text-foreground/70">Set up in an afternoon. Built to remain yours for the long haul.</p><div className="mt-8"><Link href="/auth/login"><Button size="lg" className="bg-foreground px-6 text-background hover:bg-foreground/90">Open Project-Ops <ArrowRight className="ml-1.5 h-4 w-4" /></Button></Link></div></div></section>
       </main>
