@@ -110,6 +110,24 @@
       "expected_latency_ms": 200
     },
     {
+      "name": "get_task",
+      "description": "Fetch full detail for a single task the caller can see (via its parent project): description, status, priority, type, due/completed dates, estimatedHours, metadata, assignee, creator, parent task, comment/subtask counts, and dependency edges (dependsOn + blocks). Requires taskId.",
+      "input_schema": { "type": "object", "properties": { "taskId": { "type": "string" } }, "required": ["taskId"] },
+      "scopes_required": ["read:tasks"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 200
+    },
+    {
+      "name": "list_project_tasks",
+      "description": "List tasks on one project the caller can see. Identify the project by projectId or projectNumber (either may hold a UUID or a human project number). Paginated: limit defaults to 25 (max 100), offset defaults to 0; ordered by priority desc, dueDate asc, createdAt desc. Optional status (PENDING / IN_PROGRESS / WAITING_FOR_CLIENT / COMPLETED / CANCELLED) and priority (LOW / MEDIUM / HIGH / URGENT) filters. Returns { project, tasks, count, total, offset, limit }.",
+      "input_schema": { "type": "object", "properties": { "projectId": { "type": "string" }, "projectNumber": { "type": "string" }, "status": { "type": "string" }, "priority": { "type": "string" }, "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 }, "offset": { "type": "integer", "minimum": 0, "default": 0 } } },
+      "scopes_required": ["read:tasks"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 200
+    },
+    {
       "name": "create_task",
       "description": "Create a task under a project. Requires projectId (UUID) or projectNumber. Optional type, status, priority, dueDate, assignee, parentTaskId (subtask under an existing same-project task). Optional customFields (object keyed by the workspace TASK custom-field key — validated + stored under metadata.customFields), recurrenceRule (RRULE subset, e.g. \"FREQ=WEEKLY;INTERVAL=1\", makes this a recurrence template), and estimatedHours (effort estimate used by capacity planning).",
       "input_schema": { "type": "object", "properties": { "projectId": { "type": "string" }, "projectNumber": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "type": { "type": "string" }, "status": { "type": "string" }, "priority": { "type": "string" }, "dueDate": { "type": "string" }, "assignedToId": { "type": "string" }, "parentTaskId": { "type": "string", "description": "Optional parent task id; must exist in the same project (workspace-visible)." }, "customFields": { "type": "object", "description": "Map of TASK custom-field key -> value; validated against the workspace definitions." }, "recurrenceRule": { "type": "string", "description": "RRULE subset, e.g. \"FREQ=WEEKLY;INTERVAL=1\"." }, "estimatedHours": { "type": "number", "minimum": 0, "description": "Effort estimate (hours) used by capacity planning." } }, "required": ["title"] },
