@@ -32,6 +32,7 @@ jest.mock(
 import { Logger } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { McpService } from './mcp.service';
+import { getMcpMetricsSnapshot, resetMcpMetricsForTests } from './mcp.metrics';
 
 /** Minimal user; the gate only reads identity for workspace resolution. */
 const adminUser = () =>
@@ -77,7 +78,21 @@ function payload(result: any): any {
 }
 
 describe('McpService tool gating (RBAC + workspace)', () => {
-  beforeEach(() => registered.clear());
+  beforeEach(() => {
+    registered.clear();
+    resetMcpMetricsForTests();
+  });
+
+  it('records denied metrics when PAT scope gate refuses a tool', async () => {
+    const svc = makeService('ws-1');
+    await svc.createServerForUser(adminUser(), ['read:projects'], 'tok', null);
+    const create = registered.get('create_project')!;
+    await create({ title: 't', clientName: 'c' });
+    const snap = getMcpMetricsSnapshot();
+    const row = snap.tools.find((t) => t.tool === 'create_project');
+    expect(row?.denied).toBe(1);
+    expect(snap.totals.denied).toBeGreaterThanOrEqual(1);
+  });
 
   it('JWT-auth (no granted scopes, no PAT workspace) — tools pass the gate', async () => {
     const svc = makeService('ws-1');

@@ -38,6 +38,7 @@ import { WorkspacesService } from '../workspaces/workspaces.service';
 // as an AgentEvent; if not wired, capture is silently skipped (app still boots).
 import { AgentEventsService } from '../agents/agent-events.service';
 import { deriveToolTarget, McpActorIdentity, resolveMcpActor } from '../agents/agent-capture.util';
+import { recordMcpToolCall } from './mcp.metrics';
 
 @Injectable()
 export class McpService {
@@ -168,6 +169,7 @@ export class McpService {
             this.logger.warn(
               `MCP tool "${name}" workspace mismatch: PAT bound to ${boundWorkspaceId} but acting workspace resolved to ${effective}; refusing`,
             );
+            recordMcpToolCall(name, 'denied', 0);
             return workspaceDenied(name, boundWorkspaceId, effective);
           }
         }
@@ -177,41 +179,61 @@ export class McpService {
             this.logger.warn(
               `MCP tool "${name}" has no scope mapping; refusing PAT-auth invocation`,
             );
+            recordMcpToolCall(name, 'denied', 0);
             return scopeDenied(name, undefined, [...grantedSet]);
           }
           if (!grantedSet.has(required)) {
+            recordMcpToolCall(name, 'denied', 0);
             return scopeDenied(name, required, [...grantedSet]);
           }
         }
         const startedAt = Date.now();
-        const result = await handler(args);
-        // Best-effort agent-activity capture AFTER a successful call. Skipped on
-        // an error envelope; never awaited into the response path; never throws
-        // (the recorder swallows its own errors, and we guard the derive too).
-        if (recorder && actor && !(result && (result as any).isError)) {
-          try {
-            const raw = unwrapToolResult(result);
-            const target = deriveToolTarget(name, args, raw);
-            void recorder.record({
-              workspaceId: captureWorkspaceId(),
-              user,
-              actorKind: actor.actorKind,
-              actorKey: actor.actorKey,
-              actorLabel: actor.actorLabel,
-              via: AgentVia.MCP,
-              action: name,
-              resource: target.resource,
-              resourceId: target.resourceId,
-              projectId: target.projectId,
-              taskId: target.taskId,
-              // MCP tool calls are zero-LLM-cost actions: no tokens / cost.
-              durationMs: Date.now() - startedAt,
-            });
-          } catch (err) {
-            this.logger.debug(`agent capture skipped for "${name}": ${(err as Error).message}`);
+        try {
+          const result = await handler(args);
+          const durationMs = Date.now() - startedAt;
+          // isError envelopes (scope/workspace denied above, or tool-returned
+          // error payloads) count as error for ops metrics when the body set
+          // the flag; successful content is ok.
+          const isError = !!(result && (result as any).isError);
+          recordMcpToolCall(name, isError ? 'error' : 'ok', durationMs);
+          this.logger.log(
+            `MCP tool=${name} status=${isError ? 'error' : 'ok'} durationMs=${durationMs}`,
+          );
+          // Best-effort agent-activity capture AFTER a successful call. Skipped on
+          // an error envelope; never awaited into the response path; never throws
+          // (the recorder swallows its own errors, and we guard the derive too).
+          if (recorder && actor && !isError) {
+            try {
+              const raw = unwrapToolResult(result);
+              const target = deriveToolTarget(name, args, raw);
+              void recorder.record({
+                workspaceId: captureWorkspaceId(),
+                user,
+                actorKind: actor.actorKind,
+                actorKey: actor.actorKey,
+                actorLabel: actor.actorLabel,
+                via: AgentVia.MCP,
+                action: name,
+                resource: target.resource,
+                resourceId: target.resourceId,
+                projectId: target.projectId,
+                taskId: target.taskId,
+                // MCP tool calls are zero-LLM-cost actions: no tokens / cost.
+                durationMs,
+              });
+            } catch (err) {
+              this.logger.debug(`agent capture skipped for "${name}": ${(err as Error).message}`);
+            }
           }
+          return result;
+        } catch (err) {
+          const durationMs = Date.now() - startedAt;
+          recordMcpToolCall(name, 'error', durationMs);
+          this.logger.warn(
+            `MCP tool=${name} status=error durationMs=${durationMs} err=${(err as Error).message}`,
+          );
+          throw err;
         }
-        return result;
       };
       return rawRegister(name, schema, gated);
     };
