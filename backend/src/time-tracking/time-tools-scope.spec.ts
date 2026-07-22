@@ -8,6 +8,7 @@ const TIME_TOOLS = [
   'stop_timer',
   'log_time',
   'update_time_entry',
+  'delete_time_entry',
   'list_time_entries',
   'submit_timesheet',
   'approve_time',
@@ -32,6 +33,8 @@ describe('time-tracking MCP scope wiring', () => {
     expect(MCP_TOOL_SCOPE_MAP['list_time_entries']).toBe('read:time');
     expect(MCP_TOOL_SCOPE_MAP['get_utilization']).toBe('read:time');
     expect(MCP_TOOL_SCOPE_MAP['start_timer']).toBe('write:time');
+    expect(MCP_TOOL_SCOPE_MAP['update_time_entry']).toBe('write:time');
+    expect(MCP_TOOL_SCOPE_MAP['delete_time_entry']).toBe('write:time');
     expect(MCP_TOOL_SCOPE_MAP['approve_time']).toBe('write:time');
     expect(MCP_TOOL_SCOPE_MAP['create_billable_draft']).toBe('write:billing');
   });

@@ -185,4 +185,14 @@ describe('McpService tool gating (RBAC + workspace)', () => {
     expect(body.error).toBe('scope_denied');
     expect(body.required_scope).toBe('write:automations');
   });
+
+  it('delete_time_entry is scope-gated — denied without write:time', async () => {
+    const svc = makeService('ws-1');
+    await svc.createServerForUser(adminUser(), ['read:time'], 'tok', null);
+    const del = registered.get('delete_time_entry')!;
+    expect(del).toBeDefined();
+    const body = payload(await del({ id: 'e1' }));
+    expect(body.error).toBe('scope_denied');
+    expect(body.required_scope).toBe('write:time');
+  });
 });

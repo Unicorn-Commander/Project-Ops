@@ -92,6 +92,7 @@ export const MCP_TOOL_SCOPE_MAP: Record<string, PatScope> = {
   stop_timer: 'write:time',
   log_time: 'write:time',
   update_time_entry: 'write:time',
+  delete_time_entry: 'write:time',
   submit_timesheet: 'write:time',
   approve_time: 'write:time',
   // billable rollup — write:billing

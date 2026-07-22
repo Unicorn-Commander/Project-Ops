@@ -227,6 +227,15 @@
       "expected_latency_ms": 450
     },
     {
+      "name": "delete_time_entry",
+      "description": "Delete a DRAFT, unlocked, unbilled time entry (id required). Locked, billed, or non-DRAFT entries cannot be deleted. Owner or ADMIN/MANAGER.",
+      "input_schema": { "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"] },
+      "scopes_required": ["write:time"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 400
+    },
+    {
       "name": "list_time_entries",
       "description": "List visible time entries, newest first, paginated. Filters: userId, projectId, taskId, from, to, billable, billed, approvalStatus. CLIENT never sees cost rates.",
       "input_schema": { "type": "object", "properties": { "userId": { "type": "string" }, "projectId": { "type": "string" }, "taskId": { "type": "string" }, "from": { "type": "string" }, "to": { "type": "string" }, "billable": { "type": "boolean" }, "billed": { "type": "boolean" }, "approvalStatus": { "type": "string" }, "page": { "type": "integer", "minimum": 1 }, "limit": { "type": "integer", "minimum": 1, "maximum": 200 } } },

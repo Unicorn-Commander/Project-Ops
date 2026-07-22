@@ -286,6 +286,15 @@ export class ProjectOpsTools {
     return tt.timeEntry.update(await this.workspaceFor(user), user, id, rest as any);
   }
 
+  /** Delete a DRAFT, unlocked, unbilled time entry. Mirrors REST DELETE /time-entries/:id. */
+  async deleteTimeEntry(user: User, args: { id: string }) {
+    if (!args?.id) throw new Error('id is required');
+    const tt = this.requireTt();
+    const res = await tt.timeEntry.remove(await this.workspaceFor(user), user, args.id);
+    this.logger.log(`MCP delete_time_entry: user=${user.email} entry=${args.id}`);
+    return res;
+  }
+
   async listTimeEntries(user: User, args: Record<string, any>) {
     const tt = this.requireTt();
     return tt.timeEntry.list(await this.workspaceFor(user), user, (args ?? {}) as any);

@@ -12,6 +12,7 @@
  * to prevent.
  */
 
+import { ForbiddenException } from '@nestjs/common';
 import { User, UserRole } from '@prisma/client';
 import {
   ProjectOpsTools,
@@ -647,6 +648,75 @@ describe('ProjectOpsTools — agent-surface gap tools', () => {
     );
     await expect(tools.listMembers(admin, {} as any)).rejects.toThrow(
       /Workspace administration is not enabled/,
+    );
+  });
+});
+
+describe('ProjectOpsTools.deleteTimeEntry — REST parity thin wrapper', () => {
+  // delete_time_entry is a pure delegate to TimeEntryService.remove (same path
+  // as REST DELETE /time-entries/:id). Immutability (DRAFT/unlocked/unbilled)
+  // and ownership live in the service; here we pin wiring + id validation.
+  const WS = 'ws-time';
+  const staff = baseUser({ role: UserRole.STAFF });
+
+  function makeDeleteTools(removeImpl?: (ws: string, user: any, id: string) => Promise<any>) {
+    const remove = jest.fn(
+      removeImpl ?? (async () => ({ message: 'Time entry deleted' })),
+    );
+    const workspace = { resolveAuthorized: jest.fn(async () => WS) } as any;
+    const tt = {
+      timer: {},
+      timeEntry: { remove },
+      timesheet: {},
+      reports: {},
+      rollup: {},
+      workspace,
+    } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      tt,
+      null,
+      workspace,
+    );
+    return { tools, remove, workspace };
+  }
+
+  it('requires id', async () => {
+    const { tools, remove } = makeDeleteTools();
+    await expect(tools.deleteTimeEntry(staff, { id: '' })).rejects.toThrow(/id is required/);
+    await expect(tools.deleteTimeEntry(staff, {} as any)).rejects.toThrow(/id is required/);
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it('delegates to TimeEntryService.remove with resolved workspace + id', async () => {
+    const { tools, remove, workspace } = makeDeleteTools();
+    const out = await tools.deleteTimeEntry(staff, { id: 'e-42' });
+    expect(out).toEqual({ message: 'Time entry deleted' });
+    expect(workspace.resolveAuthorized).toHaveBeenCalledWith(staff);
+    expect(remove).toHaveBeenCalledWith(WS, staff, 'e-42');
+  });
+
+  it('surfaces service ForbiddenException (locked/billed/non-DRAFT) unchanged', async () => {
+    const { tools } = makeDeleteTools(async () => {
+      throw new ForbiddenException('This time entry is billed and cannot be changed');
+    });
+    await expect(tools.deleteTimeEntry(staff, { id: 'e-billed' })).rejects.toThrow(
+      /billed and cannot be changed/,
+    );
+  });
+
+  it('fails loudly when time tracking is not wired', async () => {
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      // tt omitted
+    );
+    await expect(tools.deleteTimeEntry(staff, { id: 'e1' })).rejects.toThrow(
+      /Time tracking is not enabled/,
     );
   });
 });
