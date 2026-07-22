@@ -158,6 +158,91 @@ describe('ProjectOpsTools.assertCanWrite', () => {
   });
 });
 
+describe('ProjectOpsTools.deleteTask', () => {
+  // Mirrors REST DELETE /tasks/:id (@Roles ADMIN only). Gate fires before DB;
+  // happy path + not-found exercise the runScoped mock service surface.
+  const WS_ID = 'ws-delete';
+
+  function makeDeleteTools(opts?: {
+    findFirst?: jest.Mock;
+    deleteFn?: jest.Mock;
+  }) {
+    const findFirst = opts?.findFirst ?? jest.fn(async () => ({ id: 'task-1' }));
+    const deleteFn = opts?.deleteFn ?? jest.fn(async () => ({}));
+    const workspace = {
+      resolveAuthorized: jest.fn(async () => WS_ID),
+      runForUser: jest.fn(async (_u: User, fn: (t: any, ws: string) => Promise<any>) =>
+        fn({ task: { findFirst, delete: deleteFn } }, WS_ID),
+      ),
+    } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+    );
+    return { tools, findFirst, deleteFn, workspace };
+  }
+
+  const admin = baseUser({ role: UserRole.ADMIN });
+  const client = baseUser({ role: UserRole.CLIENT });
+
+  it('rejects CLIENT (ADMIN-only RBAC, same as REST)', async () => {
+    const { tools, findFirst, deleteFn } = makeDeleteTools();
+    await expect(tools.deleteTask(client, { taskId: 'task-1' })).rejects.toThrow(/Only ADMIN/);
+    expect(findFirst).not.toHaveBeenCalled();
+    expect(deleteFn).not.toHaveBeenCalled();
+  });
+
+  it.each([UserRole.STAFF, UserRole.MANAGER])(
+    'rejects %s (REST is ADMIN only, not assertCanWrite)',
+    async (role) => {
+      const { tools, findFirst, deleteFn } = makeDeleteTools();
+      await expect(tools.deleteTask(baseUser({ role }), { taskId: 'task-1' })).rejects.toThrow(
+        /Only ADMIN/,
+      );
+      expect(findFirst).not.toHaveBeenCalled();
+      expect(deleteFn).not.toHaveBeenCalled();
+    },
+  );
+
+  it('requires taskId before touching the DB', async () => {
+    const { tools, findFirst } = makeDeleteTools();
+    await expect(tools.deleteTask(admin, { taskId: '' })).rejects.toThrow(/taskId/);
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  it('not-found when the task is missing or not visible', async () => {
+    const { tools, deleteFn } = makeDeleteTools({
+      findFirst: jest.fn(async () => null),
+    });
+    await expect(tools.deleteTask(admin, { taskId: 'missing' })).rejects.toThrow(
+      /Task not found or no access/,
+    );
+    expect(deleteFn).not.toHaveBeenCalled();
+  });
+
+  it('happy path: ADMIN deletes via findFirst + delete (mock service)', async () => {
+    const { tools, findFirst, deleteFn, workspace } = makeDeleteTools();
+    const res = await tools.deleteTask(admin, { taskId: 'task-1' });
+    expect(res).toEqual({ message: 'Task deleted successfully', id: 'task-1' });
+    expect(workspace.resolveAuthorized).toHaveBeenCalledWith(admin);
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'task-1' }),
+        select: { id: true },
+      }),
+    );
+    // ADMIN visibility filter is open ({}); project key is still present.
+    const where = (findFirst.mock.calls[0] as any[])[0].where;
+    expect(where.project).toEqual({});
+    expect(deleteFn).toHaveBeenCalledWith({ where: { id: 'task-1' } });
+  });
+});
+
 describe('ProjectOpsTools — Wave 2 role gates', () => {
   // Each Wave 2 service is a jest stub; we assert the role GATE fires (or
   // doesn't) and, when it passes, that the tool delegates to the right service

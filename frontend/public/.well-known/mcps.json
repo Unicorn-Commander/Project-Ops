@@ -137,6 +137,15 @@
       "expected_latency_ms": 400
     },
     {
+      "name": "delete_task",
+      "description": "Permanently delete a task by taskId. ADMIN only — same RBAC as REST DELETE /tasks/:id. Hard delete (unlike archive_project for projects).",
+      "input_schema": { "type": "object", "properties": { "taskId": { "type": "string" } }, "required": ["taskId"] },
+      "scopes_required": ["write:tasks"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 400
+    },
+    {
       "name": "add_task_comment",
       "description": "Add a comment to a task on the caller's behalf.",
       "input_schema": { "type": "object", "properties": { "taskId": { "type": "string" }, "content": { "type": "string" } }, "required": ["taskId", "content"] },
