@@ -68,11 +68,14 @@ export const MCP_TOOL_SCOPE_MAP: Record<string, PatScope> = {
   get_task: 'read:tasks',
   list_project_tasks: 'read:tasks',
   list_task_subtasks: 'read:tasks',
+  list_task_comments: 'read:tasks',
   // write:tasks
   create_task: 'write:tasks',
   update_task: 'write:tasks',
   update_task_status: 'write:tasks',
   add_task_comment: 'write:tasks',
+  update_task_comment: 'write:tasks',
+  delete_task_comment: 'write:tasks',
   submit_candidate_action_items: 'write:tasks',
   // read:documents
   list_project_documents: 'read:documents',

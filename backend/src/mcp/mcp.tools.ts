@@ -46,6 +46,7 @@ import type { ApprovalsService } from '../client-portal/approvals/approvals.serv
 // Member-management spine (invite/role/remove/list). Type-only — erased at
 // compile time, so no runtime cycle. Control-plane (non-RLS) service.
 import type { WorkspacesService } from '../workspaces/workspaces.service';
+import { clampLimit, clampOffset } from '../common/pagination/clamp';
 
 type Logger = { log: (msg: string) => void; warn: (msg: string) => void };
 
@@ -852,6 +853,173 @@ export class ProjectOpsTools {
     });
 
     return comment;
+  }
+
+  /**
+   * List comments on a task the caller can see (project visibility filter),
+   * oldest first. Paginated: `limit` defaults to 50 (max 100), `offset` to 0.
+   * Mirrors REST TasksService.getTaskComments + the MCP visibility chokepoint
+   * used by add_task_comment.
+   */
+  async listTaskComments(
+    user: User,
+    args: { taskId: string; limit?: number; offset?: number },
+  ) {
+    if (!args.taskId || !String(args.taskId).trim()) {
+      throw new Error('taskId is required');
+    }
+    const taskId = String(args.taskId).trim();
+    const take = clampLimit(args.limit, 50);
+    const skip = clampOffset(args.offset);
+
+    return this.runScoped(user, async (tx) => {
+      const task = await tx.task.findFirst({
+        where: {
+          id: taskId,
+          project: buildVisibilityFilter(user),
+        },
+        select: { id: true },
+      });
+      if (!task) {
+        throw new Error("Task not found or you don't have access");
+      }
+
+      const where = { taskId: task.id };
+      const [comments, total] = await Promise.all([
+        tx.taskComment.findMany({
+          where,
+          orderBy: { createdAt: 'asc' },
+          skip,
+          take,
+          select: {
+            id: true,
+            taskId: true,
+            content: true,
+            createdAt: true,
+            updatedAt: true,
+            authorId: true,
+            author: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+          },
+        }),
+        tx.taskComment.count({ where }),
+      ]);
+
+      return {
+        taskId: task.id,
+        comments,
+        total,
+        limit: take,
+        offset: skip,
+        count: comments.length,
+      };
+    });
+  }
+
+  /**
+   * Update a task comment. Same ownership as REST TasksService.updateComment /
+   * project-comment UI: author or ADMIN. Parent-task visibility is enforced
+   * via buildVisibilityFilter (stricter for STAFF than workspace-RLS alone).
+   * No @mention re-emit — REST update also does not re-fan-out mentions.
+   */
+  async updateTaskComment(
+    user: User,
+    args: { commentId: string; content: string },
+  ) {
+    if (!args.commentId || !String(args.commentId).trim()) {
+      throw new Error('commentId is required');
+    }
+    const content = (args.content ?? '').trim();
+    if (!content) {
+      throw new Error('content is required');
+    }
+    if (content.length > 5000) {
+      throw new Error('content must be at most 5000 characters');
+    }
+
+    const updated = await this.runScoped(user, async (tx) => {
+      const comment = await tx.taskComment.findFirst({
+        where: {
+          id: String(args.commentId).trim(),
+          task: { project: buildVisibilityFilter(user) },
+        },
+        select: { id: true, authorId: true, taskId: true },
+      });
+      if (!comment) {
+        throw new Error("Comment not found or you don't have access");
+      }
+
+      const canEdit =
+        comment.authorId === user.id || user.role === UserRole.ADMIN;
+      if (!canEdit) {
+        throw new Error('Only the author or an ADMIN can update this comment');
+      }
+
+      const row = await tx.taskComment.update({
+        where: { id: comment.id },
+        data: { content },
+        select: {
+          id: true,
+          taskId: true,
+          content: true,
+          createdAt: true,
+          updatedAt: true,
+          authorId: true,
+          author: { select: { firstName: true, lastName: true } },
+        },
+      });
+      this.logger.log(
+        `MCP update_task_comment: user=${user.email} comment=${comment.id}`,
+      );
+      return row;
+    });
+
+    return updated;
+  }
+
+  /**
+   * Delete a task comment. Same ownership as REST TasksService.removeComment /
+   * project-comment UI: author, ADMIN, or MANAGER. Visibility via parent task.
+   */
+  async deleteTaskComment(user: User, args: { commentId: string }) {
+    if (!args.commentId || !String(args.commentId).trim()) {
+      throw new Error('commentId is required');
+    }
+
+    return this.runScoped(user, async (tx) => {
+      const comment = await tx.taskComment.findFirst({
+        where: {
+          id: String(args.commentId).trim(),
+          task: { project: buildVisibilityFilter(user) },
+        },
+        select: { id: true, authorId: true, taskId: true },
+      });
+      if (!comment) {
+        throw new Error("Comment not found or you don't have access");
+      }
+
+      const canDelete =
+        comment.authorId === user.id ||
+        user.role === UserRole.ADMIN ||
+        user.role === UserRole.MANAGER;
+      if (!canDelete) {
+        throw new Error(
+          'Only the author, ADMIN, or MANAGER can delete this comment',
+        );
+      }
+
+      await tx.taskComment.delete({ where: { id: comment.id } });
+      this.logger.log(
+        `MCP delete_task_comment: user=${user.email} comment=${comment.id}`,
+      );
+      return { deleted: true, commentId: comment.id, taskId: comment.taskId };
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────

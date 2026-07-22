@@ -96,6 +96,9 @@ const TASK_TOOLS = new Set([
   'update_task',
   'update_task_status',
   'add_task_comment',
+  'list_task_comments',
+  'update_task_comment',
+  'delete_task_comment',
 ]);
 
 /** Pull the first present string value among `keys` from a plain object. */
@@ -144,8 +147,18 @@ export function deriveToolTarget(action: string, args: any, result: any): ToolTa
   let resource: string | null = null;
   let resourceId: string | null = null;
   if (TASK_TOOLS.has(action)) {
-    resource = action === 'add_task_comment' ? 'comment' : 'task';
-    resourceId = action === 'add_task_comment' ? pick(comment, ['id']) : taskId;
+    const isCommentTool =
+      action === 'add_task_comment' ||
+      action === 'update_task_comment' ||
+      action === 'delete_task_comment' ||
+      action === 'list_task_comments';
+    resource = isCommentTool ? 'comment' : 'task';
+    // Prefer result.comment.id / result.commentId / args.commentId for comment tools.
+    resourceId = isCommentTool
+      ? pick(comment, ['id']) ??
+        pick(result, ['commentId', 'id']) ??
+        pick(args, ['commentId', 'comment_id'])
+      : taskId;
   } else if (PROJECT_TOOLS.has(action)) {
     resource = 'project';
     resourceId = projectId;

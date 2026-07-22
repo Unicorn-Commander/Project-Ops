@@ -155,6 +155,33 @@
       "expected_latency_ms": 400
     },
     {
+      "name": "list_task_comments",
+      "description": "List comments on a task the caller can see (paginated: limit default 50 max 100, offset default 0).",
+      "input_schema": { "type": "object", "properties": { "taskId": { "type": "string" }, "limit": { "type": "integer", "minimum": 1, "maximum": 100 }, "offset": { "type": "integer", "minimum": 0 } }, "required": ["taskId"] },
+      "scopes_required": ["read:tasks"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 300
+    },
+    {
+      "name": "update_task_comment",
+      "description": "Update a task comment by id. Author or ADMIN only (same ownership as REST).",
+      "input_schema": { "type": "object", "properties": { "commentId": { "type": "string" }, "content": { "type": "string", "maxLength": 5000 } }, "required": ["commentId", "content"] },
+      "scopes_required": ["write:tasks"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 400
+    },
+    {
+      "name": "delete_task_comment",
+      "description": "Delete a task comment by id. Author, ADMIN, or MANAGER only (same ownership as REST).",
+      "input_schema": { "type": "object", "properties": { "commentId": { "type": "string" } }, "required": ["commentId"] },
+      "scopes_required": ["write:tasks"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 400
+    },
+    {
       "name": "submit_candidate_action_items",
       "description": "Submit a batch of candidate action items (e.g. extracted from a meeting transcript) for triage into tasks. Each item carries the action text plus optional owner and source linkage.",
       "input_schema": { "type": "object", "properties": { "items": { "type": "array", "items": { "type": "object", "properties": { "text": { "type": "string" }, "owner": { "type": "string" }, "sourceActionItemId": { "type": "string" } }, "required": ["text"] } }, "sourceType": { "type": "string" } }, "required": ["items"] },

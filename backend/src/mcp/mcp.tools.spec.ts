@@ -1019,6 +1019,182 @@ describe('ProjectOpsTools.addTaskComment — domain event', () => {
   });
 });
 
+describe('ProjectOpsTools — task comment list/update/delete parity (G-05)', () => {
+  const WS_ID = 'ws-1';
+
+  function makeCommentTools(txOverrides?: {
+    taskFindFirst?: () => Promise<any>;
+    commentFindFirst?: () => Promise<any>;
+    commentFindMany?: (args: any) => Promise<any[]>;
+    commentCount?: () => Promise<number>;
+    commentUpdate?: (args: any) => Promise<any>;
+    commentDelete?: (args: any) => Promise<any>;
+  }) {
+    const tx = {
+      task: {
+        findFirst: jest.fn(
+          txOverrides?.taskFindFirst ?? (async () => ({ id: 'task1', projectId: 'p1' })),
+        ),
+      },
+      taskComment: {
+        findFirst: jest.fn(
+          txOverrides?.commentFindFirst ??
+            (async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' })),
+        ),
+        findMany: jest.fn(
+          txOverrides?.commentFindMany ??
+            (async () => [
+              {
+                id: 'c1',
+                taskId: 'task1',
+                content: 'hello',
+                authorId: 'u1',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                author: { id: 'u1', firstName: 'A', lastName: 'B', email: 'a@x.co' },
+              },
+            ]),
+        ),
+        count: jest.fn(txOverrides?.commentCount ?? (async () => 1)),
+        update: jest.fn(
+          txOverrides?.commentUpdate ??
+            (async (a: any) => ({
+              id: 'c1',
+              taskId: 'task1',
+              content: a.data.content,
+              authorId: 'u1',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              author: { firstName: 'A', lastName: 'B' },
+            })),
+        ),
+        delete: jest.fn(txOverrides?.commentDelete ?? (async () => ({}))),
+      },
+    };
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_user: User, fn: (t: any) => Promise<any>) => fn(tx),
+    } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+    );
+    return { tools, tx };
+  }
+
+  const author = baseUser({ id: 'u1', role: UserRole.STAFF });
+  const otherStaff = baseUser({ id: 'u2', role: UserRole.STAFF });
+  const admin = baseUser({ id: 'admin', role: UserRole.ADMIN });
+  const manager = baseUser({ id: 'mgr', role: UserRole.MANAGER });
+
+  it('list_task_comments returns paginated thread for a visible task', async () => {
+    const { tools, tx } = makeCommentTools();
+    const out = await tools.listTaskComments(author, { taskId: 'task1', limit: 10, offset: 0 });
+    expect(out.taskId).toBe('task1');
+    expect(out.total).toBe(1);
+    expect(out.comments).toHaveLength(1);
+    expect(out.limit).toBe(10);
+    expect(out.offset).toBe(0);
+    expect(tx.task.findFirst).toHaveBeenCalled();
+    // Visibility filter is ANDed via project: buildVisibilityFilter
+    const where = (tx.task.findFirst as jest.Mock).mock.calls[0][0].where;
+    expect(where.id).toBe('task1');
+    expect(where.project).toEqual({
+      OR: [{ assignedToId: 'u1' }, { createdById: 'u1' }],
+    });
+  });
+
+  it('list_task_comments rejects missing/inaccessible task', async () => {
+    const { tools } = makeCommentTools({ taskFindFirst: async () => null });
+    await expect(
+      tools.listTaskComments(author, { taskId: 'missing' }),
+    ).rejects.toThrow(/Task not found/);
+  });
+
+  it('update_task_comment allows author', async () => {
+    const { tools } = makeCommentTools();
+    const out = await tools.updateTaskComment(author, {
+      commentId: 'c1',
+      content: 'fixed typo',
+    });
+    expect(out.content).toBe('fixed typo');
+    expect(out.id).toBe('c1');
+  });
+
+  it('update_task_comment allows ADMIN on others\' comments', async () => {
+    const { tools } = makeCommentTools({
+      commentFindFirst: async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' }),
+    });
+    const out = await tools.updateTaskComment(admin, {
+      commentId: 'c1',
+      content: 'admin fix',
+    });
+    expect(out.content).toBe('admin fix');
+  });
+
+  it('update_task_comment denies non-author STAFF', async () => {
+    const { tools } = makeCommentTools({
+      commentFindFirst: async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' }),
+    });
+    await expect(
+      tools.updateTaskComment(otherStaff, { commentId: 'c1', content: 'nope' }),
+    ).rejects.toThrow(/Only the author or an ADMIN/);
+  });
+
+  it('update_task_comment denies MANAGER on others\' comments', async () => {
+    const { tools } = makeCommentTools({
+      commentFindFirst: async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' }),
+    });
+    await expect(
+      tools.updateTaskComment(manager, { commentId: 'c1', content: 'nope' }),
+    ).rejects.toThrow(/Only the author or an ADMIN/);
+  });
+
+  it('delete_task_comment allows author, ADMIN, MANAGER; denies other STAFF', async () => {
+    const { tools: t1 } = makeCommentTools({
+      commentFindFirst: async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' }),
+    });
+    await expect(t1.deleteTaskComment(author, { commentId: 'c1' })).resolves.toEqual({
+      deleted: true,
+      commentId: 'c1',
+      taskId: 'task1',
+    });
+
+    const { tools: t2 } = makeCommentTools({
+      commentFindFirst: async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' }),
+    });
+    await expect(t2.deleteTaskComment(admin, { commentId: 'c1' })).resolves.toMatchObject({
+      deleted: true,
+    });
+
+    const { tools: t3 } = makeCommentTools({
+      commentFindFirst: async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' }),
+    });
+    await expect(t3.deleteTaskComment(manager, { commentId: 'c1' })).resolves.toMatchObject({
+      deleted: true,
+    });
+
+    const { tools: t4 } = makeCommentTools({
+      commentFindFirst: async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' }),
+    });
+    await expect(t4.deleteTaskComment(otherStaff, { commentId: 'c1' })).rejects.toThrow(
+      /Only the author, ADMIN, or MANAGER/,
+    );
+  });
+
+  it('delete_task_comment not-found when invisible/missing', async () => {
+    const { tools } = makeCommentTools({ commentFindFirst: async () => null });
+    await expect(tools.deleteTaskComment(author, { commentId: 'gone' })).rejects.toThrow(
+      /Comment not found/,
+    );
+  });
+});
+
 describe('ProjectOpsTools — agent-surface gap tools', () => {
   // Tools added to close the gaps the agent-readiness eval exposed:
   // create_custom_field, issue_invoice, archive_project, and the member tools.
