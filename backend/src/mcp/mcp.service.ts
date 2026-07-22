@@ -836,6 +836,49 @@ export class McpService {
     );
 
     server.registerTool(
+      'update_document',
+      {
+        title: 'Update document metadata',
+        description:
+          'Patch metadata on a document the caller can see. Required: documentId. ' +
+          'Optional fields (only passed fields are updated): description (null or ' +
+          'empty clears it), tags (string array, replaces the whole set), fileName ' +
+          '(display name rename — does not move storage). Does not allow rewriting ' +
+          'storage fields (s3Key / fileSize / mimeType / projectId / status). ' +
+          'CLIENT-role users cannot call this. Mirrors REST PATCH /documents/:id ' +
+          'for the safe metadata surface.',
+        inputSchema: {
+          documentId: z.string().min(1),
+          description: z.string().nullable().optional(),
+          tags: z.array(z.string()).optional(),
+          fileName: z.string().min(1).max(500).optional(),
+        },
+      },
+      async (args: {
+        documentId: string;
+        description?: string | null;
+        tags?: string[];
+        fileName?: string;
+      }) => wrap(await tools.updateDocument(user, args)),
+    );
+
+    server.registerTool(
+      'delete_document',
+      {
+        title: 'Delete a document',
+        description:
+          'Permanently delete a document the caller can see (DB row + MinIO object ' +
+          'when uploaded). Required: documentId. CLIENT-role users cannot call this. ' +
+          'Mirrors REST DELETE /documents/:id. Irreversible — prefer careful use.',
+        inputSchema: {
+          documentId: z.string().min(1),
+        },
+      },
+      async (args: { documentId: string }) =>
+        wrap(await tools.deleteDocument(user, args)),
+    );
+
+    server.registerTool(
       'update_billing_fields',
       {
         title: 'Update billing/invoicing fields on a project',

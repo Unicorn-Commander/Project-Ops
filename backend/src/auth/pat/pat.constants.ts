@@ -83,6 +83,8 @@ export const MCP_TOOL_SCOPE_MAP: Record<string, PatScope> = {
   get_document_content: 'read:documents',
   // write:documents
   upload_document: 'write:documents',
+  update_document: 'write:documents',
+  delete_document: 'write:documents',
   // read:activity
   get_recent_activity: 'read:activity',
   // read:organizations
