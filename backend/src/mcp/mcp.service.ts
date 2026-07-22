@@ -305,7 +305,8 @@ export class McpService {
         title: 'List tasks assigned to me',
         description:
           'Return tasks assigned to the calling user, sorted by due date. ' +
-          "Optional 'status' filters by TaskStatus.",
+          "Optional 'status' filters by TaskStatus " +
+          '(PENDING / IN_PROGRESS / WAITING_FOR_CLIENT / COMPLETED / CANCELLED).',
         inputSchema: {
           status: z.string().optional(),
           limit: z.number().int().min(1).max(100).optional(),
@@ -313,6 +314,58 @@ export class McpService {
       },
       async (args: { status?: string; limit?: number }) =>
         wrap(await tools.listMyTasks(user, args)),
+    );
+
+    server.registerTool(
+      'get_task',
+      {
+        title: 'Get a task by id',
+        description:
+          'Return full detail for a single task the caller can see (via its ' +
+          'parent project): description, status, priority, type, due/completed ' +
+          'dates, estimatedHours, metadata, assignee, creator, parent task, ' +
+          'comment/subtask counts, and dependency edges (dependsOn + blocks). ' +
+          'isBlocked is NOT computed here (deferred until dep-enforcement ' +
+          'merges); infer open blockers from dependencies.dependsOn predecessor ' +
+          'status. Requires taskId.',
+        inputSchema: {
+          taskId: z.string().min(1),
+        },
+      },
+      async (args: { taskId: string }) => wrap(await tools.getTask(user, args)),
+    );
+
+    server.registerTool(
+      'list_project_tasks',
+      {
+        title: 'List tasks for a project',
+        description:
+          'Return tasks on one project the caller can see. Identify the project ' +
+          'by projectId or projectNumber (either field may hold a UUID or a ' +
+          'human project number). Window (explicit): offset/limit pagination — ' +
+          'limit defaults to 25 (max 100), offset defaults to 0; ordered by ' +
+          'priority desc, dueDate asc, createdAt desc. Optional filters: status ' +
+          '(TaskStatus: PENDING / IN_PROGRESS / WAITING_FOR_CLIENT / COMPLETED / ' +
+          'CANCELLED) and priority (LOW / MEDIUM / HIGH / URGENT). Response: ' +
+          '{ project, tasks, count, total, offset, limit } where count is the ' +
+          'page size and total is the full match count for paging.',
+        inputSchema: {
+          projectId: z.string().optional(),
+          projectNumber: z.string().optional(),
+          status: z.string().optional(),
+          priority: z.string().optional(),
+          limit: z.number().int().min(1).max(100).optional(),
+          offset: z.number().int().min(0).optional(),
+        },
+      },
+      async (args: {
+        projectId?: string;
+        projectNumber?: string;
+        status?: string;
+        priority?: string;
+        limit?: number;
+        offset?: number;
+      }) => wrap(await tools.listProjectTasks(user, args)),
     );
 
     server.registerTool(
@@ -563,11 +616,13 @@ export class McpService {
           'Create a task on a project the caller can see. Identify the project ' +
           'by projectId or projectNumber. Defaults: type OTHER, priority MEDIUM, ' +
           'assignee = caller. CLIENT-role users cannot call this. Optional ' +
-          'customFields (object keyed by the workspace TASK custom-field key — ' +
-          'validated + stored under metadata.customFields), recurrenceRule (an ' +
-          'RRULE subset, e.g. "FREQ=WEEKLY;INTERVAL=1", makes this a recurrence ' +
-          'template), and estimatedHours (effort estimate used by capacity ' +
-          'planning).',
+          'parentTaskId creates a subtask under an existing task in the same ' +
+          'project (parent must be visible in the workspace; cross-project ' +
+          'parents are rejected). Optional customFields (object keyed by the ' +
+          'workspace TASK custom-field key — validated + stored under ' +
+          'metadata.customFields), recurrenceRule (an RRULE subset, e.g. ' +
+          '"FREQ=WEEKLY;INTERVAL=1", makes this a recurrence template), and ' +
+          'estimatedHours (effort estimate used by capacity planning).',
         inputSchema: {
           projectId: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -577,12 +632,29 @@ export class McpService {
           priority: z.string().optional(),
           dueDate: z.string().optional(),
           assignedToId: z.string().optional(),
+          parentTaskId: z.string().min(1).optional(),
           customFields: z.record(z.string(), z.any()).optional(),
           recurrenceRule: z.string().optional(),
           estimatedHours: z.number().min(0).optional(),
         },
       },
       async (args: any) => wrap(await tools.createTask(user, args)),
+    );
+
+    server.registerTool(
+      'list_task_subtasks',
+      {
+        title: 'List direct subtasks of a task',
+        description:
+          'Return the direct children of a parent task the caller can see (via ' +
+          'its project). Ordered by priority desc, dueDate asc, createdAt desc ' +
+          '(matches REST getSubtasks). Response: { parent, subtasks, count } ' +
+          'with assignee/creator and nested comment/subtask counts on each child.',
+        inputSchema: {
+          taskId: z.string().min(1),
+        },
+      },
+      async (args: { taskId: string }) => wrap(await tools.listTaskSubtasks(user, args)),
     );
 
     server.registerTool(
