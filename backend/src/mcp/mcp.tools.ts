@@ -1531,6 +1531,169 @@ export class ProjectOpsTools {
     };
   }
 
+  /**
+   * Patch document metadata (description, tags, display fileName). Mirrors
+   * REST PATCH /documents/:id for the safe metadata surface — not storage
+   * fields (s3Key / fileSize / mimeType / projectId / status), which agents
+   * must not rewrite. Visibility is the same chokepoint as get_document_content
+   * (project buildVisibilityFilter; orphan docs admin/manager only). CLIENT
+   * users are read-only (assertCanWrite).
+   */
+  async updateDocument(
+    user: User,
+    args: {
+      documentId: string;
+      description?: string | null;
+      tags?: string[];
+      fileName?: string;
+    },
+  ) {
+    this.assertCanWrite(user);
+
+    if (!args.documentId || !String(args.documentId).trim()) {
+      throw new Error("'documentId' is required.");
+    }
+    const documentId = String(args.documentId).trim();
+
+    const data: Prisma.DocumentUpdateInput = {};
+    if (args.description !== undefined) {
+      // null / empty string both clear the description (matches Partial REST patch).
+      const d = args.description;
+      data.description =
+        d === null || (typeof d === 'string' && d.trim() === '') ? null : String(d);
+    }
+    if (args.tags !== undefined) {
+      if (!Array.isArray(args.tags) || args.tags.some((t) => typeof t !== 'string')) {
+        throw new Error("'tags' must be an array of strings.");
+      }
+      data.tags = args.tags.map((t) => String(t));
+    }
+    if (args.fileName !== undefined) {
+      const name = String(args.fileName ?? '').trim();
+      if (!name) {
+        throw new Error("'fileName' must be a non-empty string when provided.");
+      }
+      if (name.length > 500) {
+        throw new Error("'fileName' must be at most 500 characters.");
+      }
+      data.fileName = name;
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw new Error(
+        "Provide at least one of 'description', 'tags', or 'fileName' to update.",
+      );
+    }
+
+    const updated = await this.runScoped(user, async (tx) => {
+      const existing = await tx.document.findFirst({
+        where: {
+          id: documentId,
+          OR: [
+            { project: buildVisibilityFilter(user) },
+            ...(user.role === UserRole.ADMIN || user.role === UserRole.MANAGER
+              ? [{ projectId: null }]
+              : []),
+          ],
+        },
+        select: { id: true },
+      });
+      if (!existing) {
+        throw new Error("Document not found or you don't have access");
+      }
+
+      return tx.document.update({
+        where: { id: existing.id },
+        data,
+        select: {
+          id: true,
+          projectId: true,
+          fileName: true,
+          fileSize: true,
+          mimeType: true,
+          status: true,
+          description: true,
+          tags: true,
+          uploadedAt: true,
+          updatedAt: true,
+        },
+      });
+    });
+
+    this.logger.log(
+      `MCP update_document: user=${user.email} doc=${updated.id} fields=${Object.keys(data).join(',')}`,
+    );
+    return { document: updated };
+  }
+
+  /**
+   * Delete a document the caller can see. Mirrors REST DELETE /documents/:id:
+   * MinIO object removal runs OUTSIDE the workspace tx (B4 — no DB transaction
+   * held open across object-storage I/O); the row delete runs inside a second
+   * scoped tx. Visibility matches get_document_content. CLIENT users cannot.
+   * MinIO failures are logged and do not block the DB delete (same as REST).
+   */
+  async deleteDocument(user: User, args: { documentId: string }) {
+    this.assertCanWrite(user);
+
+    if (!args.documentId || !String(args.documentId).trim()) {
+      throw new Error("'documentId' is required.");
+    }
+    const documentId = String(args.documentId).trim();
+
+    // Fetch metadata inside the workspace tx (RLS + project visibility).
+    const document = await this.runScoped(user, (tx) =>
+      tx.document.findFirst({
+        where: {
+          id: documentId,
+          OR: [
+            { project: buildVisibilityFilter(user) },
+            ...(user.role === UserRole.ADMIN || user.role === UserRole.MANAGER
+              ? [{ projectId: null }]
+              : []),
+          ],
+        },
+        select: {
+          id: true,
+          fileName: true,
+          s3Key: true,
+          status: true,
+          fileSize: true,
+          projectId: true,
+        },
+      }),
+    );
+
+    if (!document) {
+      throw new Error("Document not found or you don't have access");
+    }
+
+    // MinIO delete OUTSIDE the tx — only when the object was actually uploaded.
+    if (document.status === 'UPLOADED' && document.fileSize > 0 && document.s3Key) {
+      try {
+        await this.minio.deleteObject(document.s3Key);
+      } catch (err) {
+        this.logger.warn(
+          `MCP delete_document: MinIO delete failed for ${document.id} (${document.s3Key}): ${(err as Error).message}`,
+        );
+      }
+    }
+
+    await this.runScoped(user, (tx) =>
+      tx.document.delete({ where: { id: document.id } }),
+    );
+
+    this.logger.log(
+      `MCP delete_document: user=${user.email} doc=${document.id} file=${document.fileName}`,
+    );
+    return {
+      deleted: true,
+      documentId: document.id,
+      fileName: document.fileName,
+      projectId: document.projectId,
+    };
+  }
+
   async updateBillingFields(
     user: User,
     args: {

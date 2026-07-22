@@ -182,6 +182,33 @@
       "expected_latency_ms": 1200
     },
     {
+      "name": "update_document",
+      "description": "Patch document metadata (description, tags, fileName). Does not rewrite storage fields. CLIENT users cannot.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "documentId": { "type": "string" },
+          "description": { "type": ["string", "null"] },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "fileName": { "type": "string" }
+        },
+        "required": ["documentId"]
+      },
+      "scopes_required": ["write:documents"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 350
+    },
+    {
+      "name": "delete_document",
+      "description": "Permanently delete a document (DB row + MinIO object when uploaded). CLIENT users cannot.",
+      "input_schema": { "type": "object", "properties": { "documentId": { "type": "string" } }, "required": ["documentId"] },
+      "scopes_required": ["write:documents"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 500
+    },
+    {
       "name": "get_recent_activity",
       "description": "Return the caller's recent activity across projects and tasks (audit feed).",
       "input_schema": { "type": "object", "properties": { "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } } },

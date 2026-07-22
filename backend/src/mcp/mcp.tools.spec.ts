@@ -650,3 +650,228 @@ describe('ProjectOpsTools — agent-surface gap tools', () => {
     );
   });
 });
+
+describe('ProjectOpsTools — document update/delete MCP parity', () => {
+  // REST already has PATCH/DELETE /documents/:id. These tools mirror that
+  // surface for agents: safe metadata update + hard delete, with the same
+  // assertCanWrite CLIENT gate and project visibility filter used by
+  // get_document_content / upload_document.
+  const WS_ID = 'ws-docs';
+
+  function makeDocTools(txOverrides?: {
+    findFirst?: (args: any) => Promise<any>;
+    update?: (args: any) => Promise<any>;
+    delete?: (args: any) => Promise<any>;
+    deleteObject?: (key: string) => Promise<void>;
+  }) {
+    const tx = {
+      document: {
+        findFirst: jest.fn(
+          txOverrides?.findFirst ??
+            (async () => ({
+              id: 'doc-1',
+              fileName: 'brief.pdf',
+              s3Key: 'projects/p1/brief.pdf',
+              status: 'UPLOADED',
+              fileSize: 1024,
+              projectId: 'p1',
+            })),
+        ),
+        update: jest.fn(
+          txOverrides?.update ??
+            (async (a: any) => ({
+              id: 'doc-1',
+              projectId: 'p1',
+              fileName: a.data.fileName ?? 'brief.pdf',
+              fileSize: 1024,
+              mimeType: 'application/pdf',
+              status: 'UPLOADED',
+              description: a.data.description === undefined ? 'old' : a.data.description,
+              tags: a.data.tags ?? [],
+              uploadedAt: new Date(),
+              updatedAt: new Date(),
+            })),
+        ),
+        delete: jest.fn(txOverrides?.delete ?? (async () => ({ id: 'doc-1' }))),
+      },
+    };
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_user: User, fn: (t: any) => Promise<any>) => fn(tx),
+    } as any;
+    const minio = {
+      deleteObject: jest.fn(
+        txOverrides?.deleteObject ?? (async () => undefined),
+      ),
+    };
+    const tools = new ProjectOpsTools(
+      {} as any,
+      minio as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+    );
+    return { tools, tx, minio };
+  }
+
+  const staff = baseUser({ id: 'staff-1', role: UserRole.STAFF });
+  const client = baseUser({ id: 'client-1', role: UserRole.CLIENT });
+  const admin = baseUser({ id: 'admin-1', role: UserRole.ADMIN });
+
+  it('update_document rejects CLIENT before touching the DB', async () => {
+    const { tools, tx } = makeDocTools();
+    await expect(
+      tools.updateDocument(client, { documentId: 'doc-1', description: 'x' }),
+    ).rejects.toThrow(/Read-only role/);
+    expect(tx.document.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('update_document requires documentId and at least one field', async () => {
+    const { tools } = makeDocTools();
+    await expect(tools.updateDocument(staff, { documentId: '' } as any)).rejects.toThrow(
+      /documentId/,
+    );
+    await expect(tools.updateDocument(staff, { documentId: 'doc-1' })).rejects.toThrow(
+      /at least one of/,
+    );
+  });
+
+  it('update_document patches description and applies project visibility for STAFF', async () => {
+    const { tools, tx } = makeDocTools();
+    const out = await tools.updateDocument(staff, {
+      documentId: 'doc-1',
+      description: 'Signed SOW',
+    });
+    expect(out.document.description).toBe('Signed SOW');
+    expect(tx.document.findFirst).toHaveBeenCalled();
+    const where = (tx.document.findFirst as jest.Mock).mock.calls[0][0].where;
+    expect(where.id).toBe('doc-1');
+    // STAFF visibility is OR of assignedToId / createdById on parent project
+    expect(where.OR).toEqual(
+      expect.arrayContaining([
+        {
+          project: {
+            OR: [{ assignedToId: 'staff-1' }, { createdById: 'staff-1' }],
+          },
+        },
+      ]),
+    );
+    expect(tx.document.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'doc-1' },
+        data: { description: 'Signed SOW' },
+      }),
+    );
+  });
+
+  it('update_document clears description on null, replaces tags, renames fileName', async () => {
+    const { tools, tx } = makeDocTools();
+    await tools.updateDocument(admin, {
+      documentId: 'doc-1',
+      description: null,
+      tags: ['sow', 'v2'],
+      fileName: 'sow-final.pdf',
+    });
+    expect(tx.document.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          description: null,
+          tags: ['sow', 'v2'],
+          fileName: 'sow-final.pdf',
+        },
+      }),
+    );
+  });
+
+  it('update_document rejects empty fileName and bad tags', async () => {
+    const { tools } = makeDocTools();
+    await expect(
+      tools.updateDocument(staff, { documentId: 'doc-1', fileName: '   ' }),
+    ).rejects.toThrow(/fileName/);
+    await expect(
+      tools.updateDocument(staff, { documentId: 'doc-1', tags: [1 as any] }),
+    ).rejects.toThrow(/tags/);
+  });
+
+  it('update_document not-found when invisible/missing', async () => {
+    const { tools } = makeDocTools({ findFirst: async () => null });
+    await expect(
+      tools.updateDocument(staff, { documentId: 'gone', description: 'x' }),
+    ).rejects.toThrow(/Document not found/);
+  });
+
+  it('delete_document rejects CLIENT before touching the DB', async () => {
+    const { tools, tx, minio } = makeDocTools();
+    await expect(tools.deleteDocument(client, { documentId: 'doc-1' })).rejects.toThrow(
+      /Read-only role/,
+    );
+    expect(tx.document.findFirst).not.toHaveBeenCalled();
+    expect(minio.deleteObject).not.toHaveBeenCalled();
+  });
+
+  it('delete_document removes MinIO object then DB row for uploaded files', async () => {
+    const { tools, tx, minio } = makeDocTools();
+    const out = await tools.deleteDocument(staff, { documentId: 'doc-1' });
+    expect(out).toEqual({
+      deleted: true,
+      documentId: 'doc-1',
+      fileName: 'brief.pdf',
+      projectId: 'p1',
+    });
+    expect(minio.deleteObject).toHaveBeenCalledWith('projects/p1/brief.pdf');
+    expect(tx.document.delete).toHaveBeenCalledWith({ where: { id: 'doc-1' } });
+  });
+
+  it('delete_document skips MinIO when not uploaded / zero size', async () => {
+    const { tools, minio, tx } = makeDocTools({
+      findFirst: async () => ({
+        id: 'doc-pending',
+        fileName: 'pending.pdf',
+        s3Key: 'projects/p1/pending.pdf',
+        status: 'PENDING',
+        fileSize: 0,
+        projectId: 'p1',
+      }),
+    });
+    await tools.deleteDocument(admin, { documentId: 'doc-pending' });
+    expect(minio.deleteObject).not.toHaveBeenCalled();
+    expect(tx.document.delete).toHaveBeenCalledWith({ where: { id: 'doc-pending' } });
+  });
+
+  it('delete_document continues DB delete when MinIO fails', async () => {
+    const { tools, tx, minio } = makeDocTools({
+      deleteObject: async () => {
+        throw new Error('minio down');
+      },
+    });
+    const out = await tools.deleteDocument(staff, { documentId: 'doc-1' });
+    expect(out.deleted).toBe(true);
+    expect(minio.deleteObject).toHaveBeenCalled();
+    expect(tx.document.delete).toHaveBeenCalled();
+  });
+
+  it('delete_document not-found when invisible/missing', async () => {
+    const { tools, minio } = makeDocTools({ findFirst: async () => null });
+    await expect(tools.deleteDocument(staff, { documentId: 'gone' })).rejects.toThrow(
+      /Document not found/,
+    );
+    expect(minio.deleteObject).not.toHaveBeenCalled();
+  });
+});
+
+describe('document mutate MCP PAT scopes', () => {
+  // Fail-closed: unmapped tools refuse PAT calls. Keep write:documents parity
+  // with upload_document.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { MCP_TOOL_SCOPE_MAP } = require('../auth/pat/pat.constants');
+
+  it('maps update_document and delete_document to write:documents', () => {
+    expect(MCP_TOOL_SCOPE_MAP['update_document']).toBe('write:documents');
+    expect(MCP_TOOL_SCOPE_MAP['delete_document']).toBe('write:documents');
+    expect(MCP_TOOL_SCOPE_MAP['upload_document']).toBe('write:documents');
+    expect(MCP_TOOL_SCOPE_MAP['list_project_documents']).toBe('read:documents');
+    expect(MCP_TOOL_SCOPE_MAP['get_document_content']).toBe('read:documents');
+  });
+});
