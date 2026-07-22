@@ -1283,6 +1283,21 @@ export class McpService {
       );
 
       server.registerTool(
+        'delete_time_entry',
+        {
+          title: 'Delete a time entry',
+          description:
+            'Delete a DRAFT, unlocked, unbilled time entry (id required). Locked, billed, or ' +
+            'non-DRAFT (SUBMITTED/APPROVED/REJECTED) entries cannot be deleted. Owner or ' +
+            'ADMIN/MANAGER; CLIENT users cannot. Mirrors REST DELETE /time-entries/:id.',
+          inputSchema: {
+            id: z.string().min(1),
+          },
+        },
+        async (args: any) => wrap(await tools.deleteTimeEntry(user, args)),
+      );
+
+      server.registerTool(
         'list_time_entries',
         {
           title: 'List time entries',
