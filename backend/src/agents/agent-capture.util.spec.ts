@@ -80,6 +80,19 @@ describe('deriveToolTarget', () => {
     expect(out).toEqual({ taskId: 't5', projectId: null, resource: 'comment', resourceId: 'c9' });
   });
 
+  it('update_task_comment / delete_task_comment: resource=comment from commentId', () => {
+    expect(
+      deriveToolTarget('update_task_comment', { commentId: 'c2' }, { id: 'c2', taskId: 't9' }),
+    ).toEqual({ taskId: 't9', projectId: null, resource: 'comment', resourceId: 'c2' });
+    expect(
+      deriveToolTarget(
+        'delete_task_comment',
+        { commentId: 'c3' },
+        { deleted: true, commentId: 'c3', taskId: 't1' },
+      ),
+    ).toEqual({ taskId: 't1', projectId: null, resource: 'comment', resourceId: 'c3' });
+  });
+
   it('falls back to args projectId and never throws on a null/odd result', () => {
     expect(deriveToolTarget('get_project', { id: 'p3' }, null)).toMatchObject({
       resource: 'project',

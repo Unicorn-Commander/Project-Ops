@@ -1,6 +1,6 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { TasksService } from './tasks.service';
-import { TaskDependencyType } from '@prisma/client';
+import { TaskDependencyType, UserRole } from '@prisma/client';
 import { DependencyDirection } from './dto/create-task-dependency.dto';
 import { TaskSortBy, TaskSortDir } from './dto/query-tasks.dto';
 
@@ -29,6 +29,10 @@ function makeService(opts: {
   taskUpdate?: (args: any) => Promise<any>;
   userFindUnique?: (args: any) => Promise<any>;
   taskCommentCreate?: (args: any) => Promise<any>;
+  taskCommentFindUnique?: (args: any) => Promise<any>;
+  taskCommentFindMany?: (args: any) => Promise<any[]>;
+  taskCommentUpdate?: (args: any) => Promise<any>;
+  taskCommentDelete?: (args: any) => Promise<any>;
   projectFindUnique?: (args: any) => Promise<any>;
   depFindMany?: (args: any) => Promise<any[]>;
   depFindUnique?: (args: any) => Promise<any>;
@@ -55,6 +59,16 @@ function makeService(opts: {
         opts.taskCommentCreate ??
           (async () => ({ id: 'c1', content: 'hello', author: {} })),
       ),
+      findUnique: jest.fn(
+        opts.taskCommentFindUnique ??
+          (async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' })),
+      ),
+      findMany: jest.fn(opts.taskCommentFindMany ?? (async () => [])),
+      update: jest.fn(
+        opts.taskCommentUpdate ??
+          (async (a: any) => ({ id: a.where.id, ...a.data, author: {} })),
+      ),
+      delete: jest.fn(opts.taskCommentDelete ?? (async () => ({}))),
     },
     taskDependency: {
       findMany: jest.fn(opts.depFindMany ?? (async () => [])),
@@ -302,6 +316,80 @@ describe('TasksService.addComment — domain event', () => {
       svc.addComment('ws1', user, 'missing', { content: 'x' } as any),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(emit).not.toHaveBeenCalled();
+  });
+});
+
+describe('TasksService.updateComment / removeComment — ownership', () => {
+  it('author can update their own comment', async () => {
+    const { svc, tx } = makeService({
+      taskCommentFindUnique: async () => ({ id: 'c1', authorId: 'u1', taskId: 't1' }),
+      taskCommentUpdate: async (a: any) => ({
+        id: 'c1',
+        content: a.data.content,
+        author: { id: 'u1' },
+      }),
+    });
+    const author = { id: 'u1', role: UserRole.STAFF } as any;
+    const out = await svc.updateComment('ws1', author, 'c1', 'edited');
+    expect(out.content).toBe('edited');
+    expect(tx.taskComment.update).toHaveBeenCalled();
+  });
+
+  it('non-author STAFF cannot update', async () => {
+    const { svc } = makeService({
+      taskCommentFindUnique: async () => ({ id: 'c1', authorId: 'other', taskId: 't1' }),
+    });
+    await expect(
+      svc.updateComment('ws1', { id: 'u1', role: UserRole.STAFF } as any, 'c1', 'x'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('ADMIN can update any comment', async () => {
+    const { svc } = makeService({
+      taskCommentFindUnique: async () => ({ id: 'c1', authorId: 'other', taskId: 't1' }),
+      taskCommentUpdate: async () => ({ id: 'c1', content: 'admin-edit', author: {} }),
+    });
+    const out = await svc.updateComment(
+      'ws1',
+      { id: 'admin', role: UserRole.ADMIN } as any,
+      'c1',
+      'admin-edit',
+    );
+    expect(out.content).toBe('admin-edit');
+  });
+
+  it('MANAGER can delete but not update others\' comments', async () => {
+    const { svc, tx } = makeService({
+      taskCommentFindUnique: async () => ({ id: 'c1', authorId: 'other', taskId: 't1' }),
+    });
+    const manager = { id: 'm1', role: UserRole.MANAGER } as any;
+    await expect(svc.updateComment('ws1', manager, 'c1', 'nope')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    const del = await svc.removeComment('ws1', manager, 'c1');
+    expect(del).toEqual({ deleted: true, commentId: 'c1', taskId: 't1' });
+    expect(tx.taskComment.delete).toHaveBeenCalledWith({ where: { id: 'c1' } });
+  });
+
+  it('non-author STAFF cannot delete', async () => {
+    const { svc } = makeService({
+      taskCommentFindUnique: async () => ({ id: 'c1', authorId: 'other', taskId: 't1' }),
+    });
+    await expect(
+      svc.removeComment('ws1', { id: 'u1', role: UserRole.STAFF } as any, 'c1'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('404 when comment missing', async () => {
+    const { svc } = makeService({
+      taskCommentFindUnique: async () => null,
+    });
+    await expect(
+      svc.updateComment('ws1', user, 'missing', 'x'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.removeComment('ws1', user, 'missing')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });
 

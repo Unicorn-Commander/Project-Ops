@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- **`delete_task` MCP tool** — permanently delete a task by `taskId`. ADMIN only,
+  matching REST `DELETE /tasks/:id` (`@Roles(UserRole.ADMIN)`). PAT scope
+  `write:tasks`. Visibility is checked via `runScoped` + project filter before
+  delete. **Intentional asymmetry vs `archive_project`:** project hard-delete is
+  not exposed to agents (archive is the safe reversible alternative); task
+  hard-delete is exposed because REST already allows it for ADMIN and agents
+  need cleanup of mistaken creates.
+
 ### Added — dark, flag-gated
 
 - **Ops-Center entitlement gate (first cut, OFF by default).** SSO sign-in can

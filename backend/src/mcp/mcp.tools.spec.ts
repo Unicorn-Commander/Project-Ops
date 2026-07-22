@@ -12,11 +12,14 @@
  * to prevent.
  */
 
+import { ForbiddenException } from '@nestjs/common';
 import { User, UserRole } from '@prisma/client';
 import {
   ProjectOpsTools,
   buildVisibilityFilter,
   normalizeProjectStatus,
+  normalizeTaskPriority,
+  normalizeTaskStatus,
 } from './mcp.tools';
 
 const baseUser = (overrides: Partial<User>): User =>
@@ -631,6 +634,35 @@ describe('ProjectOpsTools — agent-surface gap tools', () => {
     expect(workspaceAdmin.removeMember).toHaveBeenCalledWith(admin, WS, 'u-1');
   });
 
+  it('submit_candidate_action_items resolves workspace via resolveAuthorized (not env default)', async () => {
+    // Partner-user parity: claimless callers must land on DEFAULT MEMBERSHIP,
+    // never DEFAULT_WORKSPACE_ID. Pins the membership-aware chokepoint.
+    const resolveAuthorized = jest.fn(async () => 'ws-partner-default');
+    const ingestCandidates = jest.fn(async () => ({ created: 1, skipped: 0, proposals: [] }));
+    const triage = { ingestCandidates } as any;
+    const workspace = { resolveAuthorized } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      triage,
+      undefined,
+      null,
+      workspace,
+    );
+    const staffUser = baseUser({ role: UserRole.STAFF });
+    await tools.submitCandidateActionItems(staffUser, {
+      items: [{ text: 'Ship MCP parity docs' }],
+      sourceType: 'MANUAL',
+    });
+    expect(resolveAuthorized).toHaveBeenCalledWith(staffUser);
+    expect(ingestCandidates).toHaveBeenCalledWith(
+      'ws-partner-default',
+      staffUser,
+      expect.arrayContaining([expect.objectContaining({ text: 'Ship MCP parity docs' })]),
+    );
+  });
+
   it('member tools fail loudly when WorkspacesService is not wired', async () => {
     const workspace = { resolveAuthorized: jest.fn(async () => WS) } as any;
     const tools = new ProjectOpsTools(
@@ -647,6 +679,1076 @@ describe('ProjectOpsTools — agent-surface gap tools', () => {
     );
     await expect(tools.listMembers(admin, {} as any)).rejects.toThrow(
       /Workspace administration is not enabled/,
+    );
+  });
+});
+
+describe('normalizeTaskStatus / normalizeTaskPriority — forgiving filters', () => {
+  it('returns undefined for empty / missing input (no filter)', () => {
+    expect(normalizeTaskStatus(undefined)).toBeUndefined();
+    expect(normalizeTaskStatus('')).toBeUndefined();
+    expect(normalizeTaskPriority(undefined)).toBeUndefined();
+    expect(normalizeTaskPriority('   ')).toBeUndefined();
+  });
+
+  it('case-normalizes valid TaskStatus values', () => {
+    expect(normalizeTaskStatus('pending')).toBe('PENDING');
+    expect(normalizeTaskStatus('in_progress')).toBe('IN_PROGRESS');
+    expect(normalizeTaskStatus('  Completed ')).toBe('COMPLETED');
+  });
+
+  it('case-normalizes valid TaskPriority values', () => {
+    expect(normalizeTaskPriority('high')).toBe('HIGH');
+    expect(normalizeTaskPriority('URGENT')).toBe('URGENT');
+  });
+
+  it('throws self-correcting errors for unknown status/priority', () => {
+    expect(() => normalizeTaskStatus('active')).toThrow(
+      /Invalid task status "active"\. Valid values: PENDING, IN_PROGRESS, WAITING_FOR_CLIENT, COMPLETED, CANCELLED\./,
+    );
+    expect(() => normalizeTaskPriority('critical')).toThrow(
+      /Invalid task priority "critical"\. Valid values: LOW, MEDIUM, HIGH, URGENT\./,
+    );
+  });
+});
+
+describe('ProjectOpsTools.getTask — full detail + visibility', () => {
+  const WS_ID = 'ws-1';
+
+  function makeTools(overrides?: {
+    taskFindFirst?: jest.Mock;
+    depFindMany?: jest.Mock;
+  }) {
+    const taskFindFirst =
+      overrides?.taskFindFirst ??
+      jest.fn(async () => ({
+        id: 't1',
+        title: 'Ship MCP',
+        description: 'full body',
+        type: 'TASK',
+        status: 'IN_PROGRESS',
+        priority: 'HIGH',
+        dueDate: null,
+        completedAt: null,
+        parentTaskId: null,
+        recurrenceRule: null,
+        estimatedHours: 4,
+        metadata: { customFields: { score: 1 } },
+        billable: null,
+        createdAt: new Date('2026-01-01'),
+        updatedAt: new Date('2026-01-02'),
+        project: {
+          id: 'p1',
+          projectNumber: 'P-00110',
+          title: 'Project Ops',
+          status: 'IN_PROGRESS',
+          priority: 'HIGH',
+        },
+        createdBy: {
+          id: 'u1',
+          email: 'a@x.com',
+          firstName: 'A',
+          lastName: 'B',
+          role: UserRole.STAFF,
+        },
+        assignedTo: {
+          id: 'u2',
+          email: 'b@x.com',
+          firstName: 'B',
+          lastName: 'C',
+          role: UserRole.STAFF,
+        },
+        parentTask: null,
+        _count: { comments: 3, subtasks: 1 },
+      }));
+    const depFindMany =
+      overrides?.depFindMany ??
+      jest
+        .fn()
+        // first call: dependsOn; second: blocks
+        .mockResolvedValueOnce([
+          {
+            id: 'd1',
+            type: 'FINISH_TO_START',
+            createdAt: new Date(),
+            predecessor: {
+              id: 'pred1',
+              title: 'Predecessor',
+              status: 'PENDING',
+              priority: 'MEDIUM',
+              projectId: 'p1',
+            },
+          },
+        ])
+        .mockResolvedValueOnce([]);
+    const tx = {
+      task: { findFirst: taskFindFirst },
+      taskDependency: { findMany: depFindMany },
+    };
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) =>
+        fn(tx, WS_ID),
+    } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+    );
+    return { tools, taskFindFirst, depFindMany };
+  }
+
+  it('requires taskId', async () => {
+    const { tools, taskFindFirst } = makeTools();
+    await expect(tools.getTask(baseUser({ role: UserRole.STAFF }), { taskId: '' })).rejects.toThrow(
+      /taskId is required/,
+    );
+    expect(taskFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('scopes the lookup by visibility filter on the parent project', async () => {
+    const { tools, taskFindFirst } = makeTools();
+    const user = baseUser({ id: 'staff-1', role: UserRole.STAFF });
+    const result = await tools.getTask(user, { taskId: 't1' });
+
+    const where = (taskFindFirst.mock.calls[0] as any[])[0].where;
+    expect(where.id).toBe('t1');
+    expect(where.project).toEqual({
+      OR: [{ assignedToId: 'staff-1' }, { createdById: 'staff-1' }],
+    });
+    // Flattened counters + dependency graph for agents.
+    expect(result.commentsCount).toBe(3);
+    expect(result.subtasksCount).toBe(1);
+    expect(result.dependencies.dependsOn).toHaveLength(1);
+    expect(result.dependencies.blocks).toEqual([]);
+    expect(result.description).toBe('full body');
+    expect(result.project.projectNumber).toBe('P-00110');
+    expect(result.assignedTo?.id).toBe('u2');
+    // Raw Prisma _count bag is not leaked.
+    expect((result as any)._count).toBeUndefined();
+  });
+
+  it('throws when the task is missing or not visible', async () => {
+    const { tools } = makeTools({
+      taskFindFirst: jest.fn(async () => null),
+      depFindMany: jest.fn(),
+    });
+    await expect(
+      tools.getTask(baseUser({ role: UserRole.STAFF }), { taskId: 'missing' }),
+    ).rejects.toThrow(/Task not found or you don't have access/);
+  });
+});
+
+describe('ProjectOpsTools.listProjectTasks — filters + pagination window', () => {
+  const WS_ID = 'ws-1';
+
+  function makeTools(overrides?: {
+    projectFindFirst?: jest.Mock;
+    taskFindMany?: jest.Mock;
+    taskCount?: jest.Mock;
+  }) {
+    const projectFindFirst =
+      overrides?.projectFindFirst ??
+      jest.fn(async () => ({
+        id: 'p1',
+        projectNumber: 'P-00110',
+        title: 'Project Ops',
+        status: 'IN_PROGRESS',
+      }));
+    const taskFindMany =
+      overrides?.taskFindMany ??
+      jest.fn(async () => [
+        {
+          id: 't1',
+          title: 'A',
+          description: null,
+          type: 'TASK',
+          status: 'PENDING',
+          priority: 'HIGH',
+          dueDate: null,
+          completedAt: null,
+          estimatedHours: null,
+          parentTaskId: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          assignedTo: null,
+          createdBy: { id: 'u1', firstName: 'A', lastName: 'B', email: 'a@x.com' },
+          _count: { comments: 0, subtasks: 0 },
+        },
+      ]);
+    const taskCount = overrides?.taskCount ?? jest.fn(async () => 42);
+    const tx = {
+      project: { findFirst: projectFindFirst },
+      task: { findMany: taskFindMany, count: taskCount },
+    };
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) =>
+        fn(tx, WS_ID),
+    } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+    );
+    return { tools, projectFindFirst, taskFindMany, taskCount };
+  }
+
+  it('requires projectId or projectNumber', async () => {
+    const { tools, projectFindFirst } = makeTools();
+    await expect(
+      tools.listProjectTasks(baseUser({ role: UserRole.STAFF }), {}),
+    ).rejects.toThrow(/Either projectId or projectNumber/);
+    expect(projectFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('matches project key against EITHER id or projectNumber (dual-key)', async () => {
+    const { tools, projectFindFirst, taskFindMany, taskCount } = makeTools();
+    const user = baseUser({ id: 'staff-1', role: UserRole.STAFF });
+
+    const result = await tools.listProjectTasks(user, {
+      projectNumber: 'P-00110',
+      status: 'pending',
+      priority: 'high',
+      limit: 10,
+      offset: 5,
+    });
+
+    const projWhere = (projectFindFirst.mock.calls[0] as any[])[0].where;
+    expect(projWhere.AND).toEqual([
+      { OR: [{ assignedToId: 'staff-1' }, { createdById: 'staff-1' }] },
+      { OR: [{ id: 'P-00110' }, { projectNumber: 'P-00110' }] },
+    ]);
+
+    const taskArgs = (taskFindMany.mock.calls[0] as any[])[0];
+    expect(taskArgs.where).toEqual({
+      projectId: 'p1',
+      status: 'PENDING',
+      priority: 'HIGH',
+    });
+    expect(taskArgs.skip).toBe(5);
+    expect(taskArgs.take).toBe(10);
+    expect(taskArgs.orderBy).toEqual([
+      { priority: 'desc' },
+      { dueDate: 'asc' },
+      { createdAt: 'desc' },
+    ]);
+    expect(taskCount).toHaveBeenCalledWith({ where: taskArgs.where });
+
+    // Explicit window echoed in the response for agents.
+    expect(result).toMatchObject({
+      project: { id: 'p1', projectNumber: 'P-00110' },
+      count: 1,
+      total: 42,
+      offset: 5,
+      limit: 10,
+    });
+    expect(result.tasks[0].commentsCount).toBe(0);
+    expect((result.tasks[0] as any)._count).toBeUndefined();
+  });
+
+  it('defaults limit=25 offset=0 and caps limit at 100', async () => {
+    const { tools, taskFindMany } = makeTools();
+    await tools.listProjectTasks(baseUser({ role: UserRole.ADMIN }), {
+      projectId: 'p1',
+      limit: 999,
+      offset: -3,
+    });
+    const taskArgs = (taskFindMany.mock.calls[0] as any[])[0];
+    expect(taskArgs.take).toBe(100);
+    expect(taskArgs.skip).toBe(0);
+  });
+
+  it('rejects unknown status before hitting the DB', async () => {
+    const { tools, projectFindFirst } = makeTools();
+    await expect(
+      tools.listProjectTasks(baseUser({ role: UserRole.STAFF }), {
+        projectId: 'p1',
+        status: 'active',
+      }),
+    ).rejects.toThrow(/Invalid task status "active"/);
+    expect(projectFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('throws when the project is missing or not visible', async () => {
+    const { tools } = makeTools({
+      projectFindFirst: jest.fn(async () => null),
+    });
+    await expect(
+      tools.listProjectTasks(baseUser({ role: UserRole.STAFF }), {
+        projectId: 'missing',
+      }),
+    ).rejects.toThrow(/Project not found or you don't have access/);
+  });
+});
+
+describe('ProjectOpsTools.createTask — parentTaskId subtask validation', () => {
+  // Mirrors TasksService.createInTx: parent must resolve under the workspace
+  // tx (cross-workspace → not found) and must share the same project.
+  const WS_ID = 'ws-1';
+
+  function makeTools(overrides?: {
+    parent?: { id: string; projectId: string } | null;
+    projectId?: string;
+  }) {
+    const taskCreate = jest.fn(async (arg: any) => ({
+      id: 'child-1',
+      parentTaskId: arg.data.parentTaskId ?? null,
+      ...arg.data,
+      project: { projectNumber: 'P-00001', title: 'Proj' },
+    }));
+    const taskFindUnique = jest.fn(async () =>
+      overrides && 'parent' in overrides ? overrides.parent : { id: 'parent-1', projectId: 'p1' },
+    );
+    const tx = {
+      project: {
+        findFirst: async () => ({
+          id: overrides?.projectId ?? 'p1',
+          projectNumber: 'P-00001',
+        }),
+      },
+      task: { create: taskCreate, findUnique: taskFindUnique },
+    };
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) => fn(tx, WS_ID),
+    } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+    );
+    return { tools, taskCreate, taskFindUnique };
+  }
+
+  it('rejects a missing parent task', async () => {
+    const { tools, taskCreate, taskFindUnique } = makeTools({ parent: null });
+    await expect(
+      tools.createTask(baseUser({ role: UserRole.STAFF }), {
+        projectId: 'p1',
+        title: 'Child',
+        parentTaskId: 'missing',
+      }),
+    ).rejects.toThrow(/Parent task with ID missing not found/);
+    expect(taskFindUnique).toHaveBeenCalledWith({
+      where: { id: 'missing' },
+      select: { id: true, projectId: true },
+    });
+    expect(taskCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a parent in a different project', async () => {
+    const { tools, taskCreate } = makeTools({
+      parent: { id: 'parent-1', projectId: 'OTHER' },
+    });
+    await expect(
+      tools.createTask(baseUser({ role: UserRole.STAFF }), {
+        projectId: 'p1',
+        title: 'Child',
+        parentTaskId: 'parent-1',
+      }),
+    ).rejects.toThrow(/Parent task must belong to the same project as the subtask/);
+    expect(taskCreate).not.toHaveBeenCalled();
+  });
+
+  it('accepts a same-project parent and persists parentTaskId', async () => {
+    const { tools, taskCreate } = makeTools({
+      parent: { id: 'parent-1', projectId: 'p1' },
+    });
+    const result = await tools.createTask(baseUser({ role: UserRole.STAFF }), {
+      projectId: 'p1',
+      title: 'Child',
+      parentTaskId: 'parent-1',
+    });
+    expect(taskCreate).toHaveBeenCalled();
+    const data = taskCreate.mock.calls[0][0].data;
+    expect(data.parentTaskId).toBe('parent-1');
+    expect(data.projectId).toBe('p1');
+    expect(result.parentTaskId).toBe('parent-1');
+  });
+
+  it('omits parentTaskId when not provided', async () => {
+    const { tools, taskCreate, taskFindUnique } = makeTools();
+    await tools.createTask(baseUser({ role: UserRole.STAFF }), {
+      projectId: 'p1',
+      title: 'Root',
+    });
+    expect(taskFindUnique).not.toHaveBeenCalled();
+    expect(taskCreate.mock.calls[0][0].data.parentTaskId).toBeUndefined();
+  });
+});
+
+describe('ProjectOpsTools.listTaskSubtasks', () => {
+  const WS_ID = 'ws-1';
+
+  function makeTools(overrides?: {
+    parentFindFirst?: jest.Mock;
+    taskFindMany?: jest.Mock;
+  }) {
+    const parentFindFirst =
+      overrides?.parentFindFirst ??
+      jest.fn(async () => ({
+        id: 'parent-1',
+        title: 'Parent',
+        status: 'IN_PROGRESS',
+        project: { id: 'p1', projectNumber: 'P-00001', title: 'Proj' },
+      }));
+    const taskFindMany =
+      overrides?.taskFindMany ??
+      jest.fn(async () => [
+        {
+          id: 'child-1',
+          title: 'Sub A',
+          description: null,
+          type: 'OTHER',
+          status: 'PENDING',
+          priority: 'HIGH',
+          dueDate: null,
+          completedAt: null,
+          estimatedHours: null,
+          parentTaskId: 'parent-1',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          assignedTo: { id: 'u2', email: 'b@x.com', firstName: 'B', lastName: 'C' },
+          createdBy: { id: 'u1', email: 'a@x.com', firstName: 'A', lastName: 'B' },
+          _count: { comments: 2, subtasks: 0 },
+        },
+      ]);
+    // listTaskSubtasks: first findFirst = parent, then findMany = children
+    let findFirstCalls = 0;
+    const tx = {
+      task: {
+        findFirst: async (args: any) => {
+          findFirstCalls += 1;
+          return parentFindFirst(args);
+        },
+        findMany: taskFindMany,
+      },
+    };
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) =>
+        fn(tx, WS_ID),
+    } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+    );
+    return { tools, parentFindFirst, taskFindMany, getFindFirstCalls: () => findFirstCalls };
+  }
+
+  it('requires taskId', async () => {
+    const { tools } = makeTools();
+    await expect(
+      tools.listTaskSubtasks(baseUser({ role: UserRole.STAFF }), { taskId: '' }),
+    ).rejects.toThrow(/taskId is required/);
+  });
+
+  it('returns parent summary + direct children with flattened counts', async () => {
+    const { tools, parentFindFirst, taskFindMany } = makeTools();
+    const user = baseUser({ id: 'staff-1', role: UserRole.STAFF });
+    const result = await tools.listTaskSubtasks(user, { taskId: 'parent-1' });
+
+    const parentWhere = (parentFindFirst.mock.calls[0] as any[])[0].where;
+    expect(parentWhere.id).toBe('parent-1');
+    expect(parentWhere.project).toEqual({
+      OR: [{ assignedToId: 'staff-1' }, { createdById: 'staff-1' }],
+    });
+
+    expect(taskFindMany.mock.calls[0][0].where).toEqual({ parentTaskId: 'parent-1' });
+    expect(taskFindMany.mock.calls[0][0].orderBy).toEqual([
+      { priority: 'desc' },
+      { dueDate: 'asc' },
+      { createdAt: 'desc' },
+    ]);
+
+    expect(result.parent.id).toBe('parent-1');
+    expect(result.parent.project.projectNumber).toBe('P-00001');
+    expect(result.count).toBe(1);
+    expect(result.subtasks[0].id).toBe('child-1');
+    expect(result.subtasks[0].commentsCount).toBe(2);
+    expect(result.subtasks[0].subtasksCount).toBe(0);
+    expect((result.subtasks[0] as any)._count).toBeUndefined();
+  });
+
+  it('throws when parent is missing or not visible', async () => {
+    const { tools } = makeTools({
+      parentFindFirst: jest.fn(async () => null),
+    });
+    await expect(
+      tools.listTaskSubtasks(baseUser({ role: UserRole.STAFF }), { taskId: 'missing' }),
+    ).rejects.toThrow(/Task not found or you don't have access/);
+  });
+});
+
+describe('ProjectOpsTools — task comment list/update/delete parity (G-05)', () => {
+  const WS_ID = 'ws-1';
+
+  function makeCommentTools(txOverrides?: {
+    taskFindFirst?: () => Promise<any>;
+    commentFindFirst?: () => Promise<any>;
+    commentFindMany?: (args: any) => Promise<any[]>;
+    commentCount?: () => Promise<number>;
+    commentUpdate?: (args: any) => Promise<any>;
+    commentDelete?: (args: any) => Promise<any>;
+  }) {
+    const tx = {
+      task: {
+        findFirst: jest.fn(
+          txOverrides?.taskFindFirst ?? (async () => ({ id: 'task1', projectId: 'p1' })),
+        ),
+      },
+      taskComment: {
+        findFirst: jest.fn(
+          txOverrides?.commentFindFirst ??
+            (async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' })),
+        ),
+        findMany: jest.fn(
+          txOverrides?.commentFindMany ??
+            (async () => [
+              {
+                id: 'c1',
+                taskId: 'task1',
+                content: 'hello',
+                authorId: 'u1',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                author: { id: 'u1', firstName: 'A', lastName: 'B', email: 'a@x.co' },
+              },
+            ]),
+        ),
+        count: jest.fn(txOverrides?.commentCount ?? (async () => 1)),
+        update: jest.fn(
+          txOverrides?.commentUpdate ??
+            (async (a: any) => ({
+              id: 'c1',
+              taskId: 'task1',
+              content: a.data.content,
+              authorId: 'u1',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              author: { firstName: 'A', lastName: 'B' },
+            })),
+        ),
+        delete: jest.fn(txOverrides?.commentDelete ?? (async () => ({}))),
+      },
+    };
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_user: User, fn: (t: any) => Promise<any>) => fn(tx),
+    } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+    );
+    return { tools, tx };
+  }
+
+  const author = baseUser({ id: 'u1', role: UserRole.STAFF });
+  const otherStaff = baseUser({ id: 'u2', role: UserRole.STAFF });
+  const admin = baseUser({ id: 'admin', role: UserRole.ADMIN });
+  const manager = baseUser({ id: 'mgr', role: UserRole.MANAGER });
+
+  it('list_task_comments returns paginated thread for a visible task', async () => {
+    const { tools, tx } = makeCommentTools();
+    const out = await tools.listTaskComments(author, { taskId: 'task1', limit: 10, offset: 0 });
+    expect(out.taskId).toBe('task1');
+    expect(out.total).toBe(1);
+    expect(out.comments).toHaveLength(1);
+    expect(out.limit).toBe(10);
+    expect(out.offset).toBe(0);
+    expect(tx.task.findFirst).toHaveBeenCalled();
+    // Visibility filter is ANDed via project: buildVisibilityFilter
+    const where = (tx.task.findFirst as jest.Mock).mock.calls[0][0].where;
+    expect(where.id).toBe('task1');
+    expect(where.project).toEqual({
+      OR: [{ assignedToId: 'u1' }, { createdById: 'u1' }],
+    });
+  });
+
+  it('list_task_comments rejects missing/inaccessible task', async () => {
+    const { tools } = makeCommentTools({ taskFindFirst: async () => null });
+    await expect(
+      tools.listTaskComments(author, { taskId: 'missing' }),
+    ).rejects.toThrow(/Task not found/);
+  });
+
+  it('update_task_comment allows author', async () => {
+    const { tools } = makeCommentTools();
+    const out = await tools.updateTaskComment(author, {
+      commentId: 'c1',
+      content: 'fixed typo',
+    });
+    expect(out.content).toBe('fixed typo');
+    expect(out.id).toBe('c1');
+  });
+
+  it('update_task_comment allows ADMIN on others\' comments', async () => {
+    const { tools } = makeCommentTools({
+      commentFindFirst: async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' }),
+    });
+    const out = await tools.updateTaskComment(admin, {
+      commentId: 'c1',
+      content: 'admin fix',
+    });
+    expect(out.content).toBe('admin fix');
+  });
+
+  it('update_task_comment denies non-author STAFF', async () => {
+    const { tools } = makeCommentTools({
+      commentFindFirst: async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' }),
+    });
+    await expect(
+      tools.updateTaskComment(otherStaff, { commentId: 'c1', content: 'nope' }),
+    ).rejects.toThrow(/Only the author or an ADMIN/);
+  });
+
+  it('update_task_comment denies MANAGER on others\' comments', async () => {
+    const { tools } = makeCommentTools({
+      commentFindFirst: async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' }),
+    });
+    await expect(
+      tools.updateTaskComment(manager, { commentId: 'c1', content: 'nope' }),
+    ).rejects.toThrow(/Only the author or an ADMIN/);
+  });
+
+  it('delete_task_comment allows author, ADMIN, MANAGER; denies other STAFF', async () => {
+    const { tools: t1 } = makeCommentTools({
+      commentFindFirst: async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' }),
+    });
+    await expect(t1.deleteTaskComment(author, { commentId: 'c1' })).resolves.toEqual({
+      deleted: true,
+      commentId: 'c1',
+      taskId: 'task1',
+    });
+
+    const { tools: t2 } = makeCommentTools({
+      commentFindFirst: async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' }),
+    });
+    await expect(t2.deleteTaskComment(admin, { commentId: 'c1' })).resolves.toMatchObject({
+      deleted: true,
+    });
+
+    const { tools: t3 } = makeCommentTools({
+      commentFindFirst: async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' }),
+    });
+    await expect(t3.deleteTaskComment(manager, { commentId: 'c1' })).resolves.toMatchObject({
+      deleted: true,
+    });
+
+    const { tools: t4 } = makeCommentTools({
+      commentFindFirst: async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' }),
+    });
+    await expect(t4.deleteTaskComment(otherStaff, { commentId: 'c1' })).rejects.toThrow(
+      /Only the author, ADMIN, or MANAGER/,
+    );
+  });
+
+  it('delete_task_comment not-found when invisible/missing', async () => {
+    const { tools } = makeCommentTools({ commentFindFirst: async () => null });
+    await expect(tools.deleteTaskComment(author, { commentId: 'gone' })).rejects.toThrow(
+      /Comment not found/,
+    );
+  });
+});
+
+describe('ProjectOpsTools.deleteTask', () => {
+  // Mirrors REST DELETE /tasks/:id (@Roles ADMIN only). Gate fires before DB;
+  // happy path + not-found exercise the runScoped mock service surface.
+  const WS_ID = 'ws-delete';
+
+  function makeDeleteTools(opts?: {
+    findFirst?: jest.Mock;
+    deleteFn?: jest.Mock;
+  }) {
+    const findFirst = opts?.findFirst ?? jest.fn(async () => ({ id: 'task-1' }));
+    const deleteFn = opts?.deleteFn ?? jest.fn(async () => ({}));
+    const workspace = {
+      resolveAuthorized: jest.fn(async () => WS_ID),
+      runForUser: jest.fn(async (_u: User, fn: (t: any, ws: string) => Promise<any>) =>
+        fn({ task: { findFirst, delete: deleteFn } }, WS_ID),
+      ),
+    } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+    );
+    return { tools, findFirst, deleteFn, workspace };
+  }
+
+  const admin = baseUser({ role: UserRole.ADMIN });
+  const client = baseUser({ role: UserRole.CLIENT });
+
+  it('rejects CLIENT (ADMIN-only RBAC, same as REST)', async () => {
+    const { tools, findFirst, deleteFn } = makeDeleteTools();
+    await expect(tools.deleteTask(client, { taskId: 'task-1' })).rejects.toThrow(/Only ADMIN/);
+    expect(findFirst).not.toHaveBeenCalled();
+    expect(deleteFn).not.toHaveBeenCalled();
+  });
+
+  it.each([UserRole.STAFF, UserRole.MANAGER])(
+    'rejects %s (REST is ADMIN only, not assertCanWrite)',
+    async (role) => {
+      const { tools, findFirst, deleteFn } = makeDeleteTools();
+      await expect(tools.deleteTask(baseUser({ role }), { taskId: 'task-1' })).rejects.toThrow(
+        /Only ADMIN/,
+      );
+      expect(findFirst).not.toHaveBeenCalled();
+      expect(deleteFn).not.toHaveBeenCalled();
+    },
+  );
+
+  it('requires taskId before touching the DB', async () => {
+    const { tools, findFirst } = makeDeleteTools();
+    await expect(tools.deleteTask(admin, { taskId: '' })).rejects.toThrow(/taskId/);
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  it('not-found when the task is missing or not visible', async () => {
+    const { tools, deleteFn } = makeDeleteTools({
+      findFirst: jest.fn(async () => null),
+    });
+    await expect(tools.deleteTask(admin, { taskId: 'missing' })).rejects.toThrow(
+      /Task not found or no access/,
+    );
+    expect(deleteFn).not.toHaveBeenCalled();
+  });
+
+  it('happy path: ADMIN deletes via findFirst + delete (mock service)', async () => {
+    const { tools, findFirst, deleteFn, workspace } = makeDeleteTools();
+    const res = await tools.deleteTask(admin, { taskId: 'task-1' });
+    expect(res).toEqual({ message: 'Task deleted successfully', id: 'task-1' });
+    expect(workspace.resolveAuthorized).toHaveBeenCalledWith(admin);
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'task-1' }),
+        select: { id: true },
+      }),
+    );
+    // ADMIN visibility filter is open ({}); project key is still present.
+    const where = (findFirst.mock.calls[0] as any[])[0].where;
+    expect(where.project).toEqual({});
+    expect(deleteFn).toHaveBeenCalledWith({ where: { id: 'task-1' } });
+  });
+});
+
+describe('ProjectOpsTools — document update/delete MCP parity', () => {
+  // REST already has PATCH/DELETE /documents/:id. These tools mirror that
+  // surface for agents: safe metadata update + hard delete, with the same
+  // assertCanWrite CLIENT gate and project visibility filter used by
+  // get_document_content / upload_document.
+  const WS_ID = 'ws-docs';
+
+  function makeDocTools(txOverrides?: {
+    findFirst?: (args: any) => Promise<any>;
+    update?: (args: any) => Promise<any>;
+    delete?: (args: any) => Promise<any>;
+    deleteObject?: (key: string) => Promise<void>;
+  }) {
+    const tx = {
+      document: {
+        findFirst: jest.fn(
+          txOverrides?.findFirst ??
+            (async () => ({
+              id: 'doc-1',
+              fileName: 'brief.pdf',
+              s3Key: 'projects/p1/brief.pdf',
+              status: 'UPLOADED',
+              fileSize: 1024,
+              projectId: 'p1',
+            })),
+        ),
+        update: jest.fn(
+          txOverrides?.update ??
+            (async (a: any) => ({
+              id: 'doc-1',
+              projectId: 'p1',
+              fileName: a.data.fileName ?? 'brief.pdf',
+              fileSize: 1024,
+              mimeType: 'application/pdf',
+              status: 'UPLOADED',
+              description: a.data.description === undefined ? 'old' : a.data.description,
+              tags: a.data.tags ?? [],
+              uploadedAt: new Date(),
+              updatedAt: new Date(),
+            })),
+        ),
+        delete: jest.fn(txOverrides?.delete ?? (async () => ({ id: 'doc-1' }))),
+      },
+    };
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_user: User, fn: (t: any) => Promise<any>) => fn(tx),
+    } as any;
+    const minio = {
+      deleteObject: jest.fn(
+        txOverrides?.deleteObject ?? (async () => undefined),
+      ),
+    };
+    const tools = new ProjectOpsTools(
+      {} as any,
+      minio as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+    );
+    return { tools, tx, minio };
+  }
+
+  const staff = baseUser({ id: 'staff-1', role: UserRole.STAFF });
+  const client = baseUser({ id: 'client-1', role: UserRole.CLIENT });
+  const admin = baseUser({ id: 'admin-1', role: UserRole.ADMIN });
+
+  it('update_document rejects CLIENT before touching the DB', async () => {
+    const { tools, tx } = makeDocTools();
+    await expect(
+      tools.updateDocument(client, { documentId: 'doc-1', description: 'x' }),
+    ).rejects.toThrow(/Read-only role/);
+    expect(tx.document.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('update_document requires documentId and at least one field', async () => {
+    const { tools } = makeDocTools();
+    await expect(tools.updateDocument(staff, { documentId: '' } as any)).rejects.toThrow(
+      /documentId/,
+    );
+    await expect(tools.updateDocument(staff, { documentId: 'doc-1' })).rejects.toThrow(
+      /at least one of/,
+    );
+  });
+
+  it('update_document patches description and applies project visibility for STAFF', async () => {
+    const { tools, tx } = makeDocTools();
+    const out = await tools.updateDocument(staff, {
+      documentId: 'doc-1',
+      description: 'Signed SOW',
+    });
+    expect(out.document.description).toBe('Signed SOW');
+    expect(tx.document.findFirst).toHaveBeenCalled();
+    const where = (tx.document.findFirst as jest.Mock).mock.calls[0][0].where;
+    expect(where.id).toBe('doc-1');
+    // STAFF visibility is OR of assignedToId / createdById on parent project
+    expect(where.OR).toEqual(
+      expect.arrayContaining([
+        {
+          project: {
+            OR: [{ assignedToId: 'staff-1' }, { createdById: 'staff-1' }],
+          },
+        },
+      ]),
+    );
+    expect(tx.document.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'doc-1' },
+        data: { description: 'Signed SOW' },
+      }),
+    );
+  });
+
+  it('update_document clears description on null, replaces tags, renames fileName', async () => {
+    const { tools, tx } = makeDocTools();
+    await tools.updateDocument(admin, {
+      documentId: 'doc-1',
+      description: null,
+      tags: ['sow', 'v2'],
+      fileName: 'sow-final.pdf',
+    });
+    expect(tx.document.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          description: null,
+          tags: ['sow', 'v2'],
+          fileName: 'sow-final.pdf',
+        },
+      }),
+    );
+  });
+
+  it('update_document rejects empty fileName and bad tags', async () => {
+    const { tools } = makeDocTools();
+    await expect(
+      tools.updateDocument(staff, { documentId: 'doc-1', fileName: '   ' }),
+    ).rejects.toThrow(/fileName/);
+    await expect(
+      tools.updateDocument(staff, { documentId: 'doc-1', tags: [1 as any] }),
+    ).rejects.toThrow(/tags/);
+  });
+
+  it('update_document not-found when invisible/missing', async () => {
+    const { tools } = makeDocTools({ findFirst: async () => null });
+    await expect(
+      tools.updateDocument(staff, { documentId: 'gone', description: 'x' }),
+    ).rejects.toThrow(/Document not found/);
+  });
+
+  it('delete_document rejects CLIENT before touching the DB', async () => {
+    const { tools, tx, minio } = makeDocTools();
+    await expect(tools.deleteDocument(client, { documentId: 'doc-1' })).rejects.toThrow(
+      /Read-only role/,
+    );
+    expect(tx.document.findFirst).not.toHaveBeenCalled();
+    expect(minio.deleteObject).not.toHaveBeenCalled();
+  });
+
+  it('delete_document removes MinIO object then DB row for uploaded files', async () => {
+    const { tools, tx, minio } = makeDocTools();
+    const out = await tools.deleteDocument(staff, { documentId: 'doc-1' });
+    expect(out).toEqual({
+      deleted: true,
+      documentId: 'doc-1',
+      fileName: 'brief.pdf',
+      projectId: 'p1',
+    });
+    expect(minio.deleteObject).toHaveBeenCalledWith('projects/p1/brief.pdf');
+    expect(tx.document.delete).toHaveBeenCalledWith({ where: { id: 'doc-1' } });
+  });
+
+  it('delete_document skips MinIO when not uploaded / zero size', async () => {
+    const { tools, minio, tx } = makeDocTools({
+      findFirst: async () => ({
+        id: 'doc-pending',
+        fileName: 'pending.pdf',
+        s3Key: 'projects/p1/pending.pdf',
+        status: 'PENDING',
+        fileSize: 0,
+        projectId: 'p1',
+      }),
+    });
+    await tools.deleteDocument(admin, { documentId: 'doc-pending' });
+    expect(minio.deleteObject).not.toHaveBeenCalled();
+    expect(tx.document.delete).toHaveBeenCalledWith({ where: { id: 'doc-pending' } });
+  });
+
+  it('delete_document continues DB delete when MinIO fails', async () => {
+    const { tools, tx, minio } = makeDocTools({
+      deleteObject: async () => {
+        throw new Error('minio down');
+      },
+    });
+    const out = await tools.deleteDocument(staff, { documentId: 'doc-1' });
+    expect(out.deleted).toBe(true);
+    expect(minio.deleteObject).toHaveBeenCalled();
+    expect(tx.document.delete).toHaveBeenCalled();
+  });
+
+  it('delete_document not-found when invisible/missing', async () => {
+    const { tools, minio } = makeDocTools({ findFirst: async () => null });
+    await expect(tools.deleteDocument(staff, { documentId: 'gone' })).rejects.toThrow(
+      /Document not found/,
+    );
+    expect(minio.deleteObject).not.toHaveBeenCalled();
+  });
+});
+
+describe('document mutate MCP PAT scopes', () => {
+  // Fail-closed: unmapped tools refuse PAT calls. Keep write:documents parity
+  // with upload_document.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { MCP_TOOL_SCOPE_MAP } = require('../auth/pat/pat.constants');
+
+  it('maps update_document and delete_document to write:documents', () => {
+    expect(MCP_TOOL_SCOPE_MAP['update_document']).toBe('write:documents');
+    expect(MCP_TOOL_SCOPE_MAP['delete_document']).toBe('write:documents');
+    expect(MCP_TOOL_SCOPE_MAP['upload_document']).toBe('write:documents');
+    expect(MCP_TOOL_SCOPE_MAP['list_project_documents']).toBe('read:documents');
+    expect(MCP_TOOL_SCOPE_MAP['get_document_content']).toBe('read:documents');
+  });
+});
+
+describe('ProjectOpsTools.deleteTimeEntry — REST parity thin wrapper', () => {
+  // delete_time_entry is a pure delegate to TimeEntryService.remove (same path
+  // as REST DELETE /time-entries/:id). Immutability (DRAFT/unlocked/unbilled)
+  // and ownership live in the service; here we pin wiring + id validation.
+  const WS = 'ws-time';
+  const staff = baseUser({ role: UserRole.STAFF });
+
+  function makeDeleteTools(removeImpl?: (ws: string, user: any, id: string) => Promise<any>) {
+    const remove = jest.fn(
+      removeImpl ?? (async () => ({ message: 'Time entry deleted' })),
+    );
+    const workspace = { resolveAuthorized: jest.fn(async () => WS) } as any;
+    const tt = {
+      timer: {},
+      timeEntry: { remove },
+      timesheet: {},
+      reports: {},
+      rollup: {},
+      workspace,
+    } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      tt,
+      null,
+      workspace,
+    );
+    return { tools, remove, workspace };
+  }
+
+  it('requires id', async () => {
+    const { tools, remove } = makeDeleteTools();
+    await expect(tools.deleteTimeEntry(staff, { id: '' })).rejects.toThrow(/id is required/);
+    await expect(tools.deleteTimeEntry(staff, {} as any)).rejects.toThrow(/id is required/);
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it('delegates to TimeEntryService.remove with resolved workspace + id', async () => {
+    const { tools, remove, workspace } = makeDeleteTools();
+    const out = await tools.deleteTimeEntry(staff, { id: 'e-42' });
+    expect(out).toEqual({ message: 'Time entry deleted' });
+    expect(workspace.resolveAuthorized).toHaveBeenCalledWith(staff);
+    expect(remove).toHaveBeenCalledWith(WS, staff, 'e-42');
+  });
+
+  it('surfaces service ForbiddenException (locked/billed/non-DRAFT) unchanged', async () => {
+    const { tools } = makeDeleteTools(async () => {
+      throw new ForbiddenException('This time entry is billed and cannot be changed');
+    });
+    await expect(tools.deleteTimeEntry(staff, { id: 'e-billed' })).rejects.toThrow(
+      /billed and cannot be changed/,
+    );
+  });
+
+  it('fails loudly when time tracking is not wired', async () => {
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      // tt omitted
+    );
+    await expect(tools.deleteTimeEntry(staff, { id: 'e1' })).rejects.toThrow(
+      /Time tracking is not enabled/,
     );
   });
 });

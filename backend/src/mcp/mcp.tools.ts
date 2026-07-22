@@ -15,6 +15,8 @@ import {
   CustomFieldType,
   Prisma,
   ProjectStatus,
+  TaskPriority,
+  TaskStatus,
   User,
   UserRole,
   WorkspaceRole,
@@ -44,7 +46,7 @@ import type { ApprovalsService } from '../client-portal/approvals/approvals.serv
 // Member-management spine (invite/role/remove/list). Type-only — erased at
 // compile time, so no runtime cycle. Control-plane (non-RLS) service.
 import type { WorkspacesService } from '../workspaces/workspaces.service';
-import { resolveWorkspaceId, defaultWorkspaceId } from '../common/workspace/workspace.util';
+import { clampLimit, clampOffset } from '../common/pagination/clamp';
 
 type Logger = { log: (msg: string) => void; warn: (msg: string) => void };
 
@@ -149,6 +151,44 @@ export function normalizeProjectStatus(value?: string): ProjectStatus | undefine
   }
   throw new Error(
     `Invalid status "${value}". Valid values: ${valid.join(', ')}.`,
+  );
+}
+
+/**
+ * Coerce a free-text task `status` filter into a real {@link TaskStatus} or
+ * throw a self-correcting error listing valid values. Same agent-forgiving
+ * case-normalize path as {@link normalizeProjectStatus}. Empty/undefined =
+ * no filter.
+ */
+export function normalizeTaskStatus(value?: string): TaskStatus | undefined {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return undefined;
+  }
+  const normalized = String(value).trim().toUpperCase();
+  const valid = Object.values(TaskStatus) as string[];
+  if (valid.includes(normalized)) {
+    return normalized as TaskStatus;
+  }
+  throw new Error(
+    `Invalid task status "${value}". Valid values: ${valid.join(', ')}.`,
+  );
+}
+
+/**
+ * Coerce a free-text task `priority` filter into a real {@link TaskPriority}
+ * or throw a self-correcting error. Empty/undefined = no filter.
+ */
+export function normalizeTaskPriority(value?: string): TaskPriority | undefined {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return undefined;
+  }
+  const normalized = String(value).trim().toUpperCase();
+  const valid = Object.values(TaskPriority) as string[];
+  if (valid.includes(normalized)) {
+    return normalized as TaskPriority;
+  }
+  throw new Error(
+    `Invalid task priority "${value}". Valid values: ${valid.join(', ')}.`,
   );
 }
 
@@ -284,6 +324,15 @@ export class ProjectOpsTools {
     if (!id) throw new Error('id is required');
     const tt = this.requireTt();
     return tt.timeEntry.update(await this.workspaceFor(user), user, id, rest as any);
+  }
+
+  /** Delete a DRAFT, unlocked, unbilled time entry. Mirrors REST DELETE /time-entries/:id. */
+  async deleteTimeEntry(user: User, args: { id: string }) {
+    if (!args?.id) throw new Error('id is required');
+    const tt = this.requireTt();
+    const res = await tt.timeEntry.remove(await this.workspaceFor(user), user, args.id);
+    this.logger.log(`MCP delete_time_entry: user=${user.email} entry=${args.id}`);
+    return res;
   }
 
   async listTimeEntries(user: User, args: Record<string, any>) {
@@ -425,11 +474,12 @@ export class ProjectOpsTools {
   }
 
   async listMyTasks(user: User, args: { status?: string; limit?: number }) {
+    const status = normalizeTaskStatus(args.status);
     const tasks = await this.runScoped(user, (tx) =>
       tx.task.findMany({
         where: {
           assignedToId: user.id,
-          ...(args.status ? { status: args.status as any } : {}),
+          ...(status ? { status } : {}),
         },
         take: Math.min(args.limit ?? 25, 100),
         orderBy: [{ dueDate: 'asc' }, { priority: 'desc' }],
@@ -447,6 +497,250 @@ export class ProjectOpsTools {
       }),
     );
     return { tasks, count: tasks.length };
+  }
+
+  /**
+   * Full task detail by id. Visibility is project-scoped (same filter as
+   * update_task / add_task_comment): the caller must be able to see the
+   * parent project. Returns description, status, priority, assignee,
+   * project summary, comment/subtask counts, and dependency edges
+   * (dependsOn + blocks) when present.
+   *
+   * Note: `isBlocked` / enforcement of incomplete predecessors is NOT
+   * computed here — that lands with feat/p00127-dep-enforcement-and-pats
+   * (TasksService.loadBlockedState). Until that merges, agents can infer
+   * open blockers from `dependencies.dependsOn` (predecessor status).
+   */
+  async getTask(user: User, args: { taskId: string }) {
+    if (!args.taskId || !String(args.taskId).trim()) {
+      throw new Error('taskId is required');
+    }
+    const taskId = String(args.taskId).trim();
+
+    const result = await this.runScoped(user, async (tx) => {
+      const task = await tx.task.findFirst({
+        where: {
+          id: taskId,
+          project: buildVisibilityFilter(user),
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          type: true,
+          status: true,
+          priority: true,
+          dueDate: true,
+          completedAt: true,
+          parentTaskId: true,
+          recurrenceRule: true,
+          estimatedHours: true,
+          metadata: true,
+          billable: true,
+          createdAt: true,
+          updatedAt: true,
+          project: {
+            select: {
+              id: true,
+              projectNumber: true,
+              title: true,
+              status: true,
+              priority: true,
+            },
+          },
+          createdBy: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              role: true,
+            },
+          },
+          assignedTo: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              role: true,
+            },
+          },
+          parentTask: {
+            select: { id: true, title: true, status: true },
+          },
+          _count: {
+            select: { comments: true, subtasks: true },
+          },
+        },
+      });
+
+      if (!task) {
+        return null;
+      }
+
+      // Dependency edges are cheap (indexed on predecessorId/successorId) and
+      // give agents the graph without a second tool round-trip.
+      const taskSummary = {
+        id: true,
+        title: true,
+        status: true,
+        priority: true,
+        projectId: true,
+      } as const;
+      const [dependsOn, blocks] = await Promise.all([
+        tx.taskDependency.findMany({
+          where: { successorId: task.id },
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            type: true,
+            createdAt: true,
+            predecessor: { select: taskSummary },
+          },
+        }),
+        tx.taskDependency.findMany({
+          where: { predecessorId: task.id },
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            type: true,
+            createdAt: true,
+            successor: { select: taskSummary },
+          },
+        }),
+      ]);
+
+      return {
+        ...task,
+        commentsCount: task._count.comments,
+        subtasksCount: task._count.subtasks,
+        dependencies: { dependsOn, blocks },
+      };
+    });
+
+    if (!result) {
+      throw new Error('Task not found or you don\'t have access');
+    }
+    // Drop the raw Prisma _count bag now that we flattened the counters.
+    const { _count: _ignored, ...task } = result as typeof result & { _count?: unknown };
+    return task;
+  }
+
+  /**
+   * List tasks on one project the caller can see. Identify the project by
+   * `projectId` or `projectNumber` (same dual-key forgiveness as get_project:
+   * either arg may hold a UUID or a human project number).
+   *
+   * Window (explicit): offset/limit pagination.
+   *   - `limit` defaults to 25, hard-capped at 100
+   *   - `offset` defaults to 0
+   *   - ordered by priority desc, dueDate asc, createdAt desc (matches REST
+   *     TasksService.findAll default)
+   * Optional filters: `status` (TaskStatus), `priority` (TaskPriority) —
+   * case-normalized; unknown values throw a self-correcting error.
+   *
+   * Returns `{ project, tasks, count, total, offset, limit }` where `count`
+   * is the page size returned and `total` is the full match count for the
+   * filters (so agents can page).
+   */
+  async listProjectTasks(
+    user: User,
+    args: {
+      projectId?: string;
+      projectNumber?: string;
+      status?: string;
+      priority?: string;
+      limit?: number;
+      offset?: number;
+    },
+  ) {
+    if (!args.projectId && !args.projectNumber) {
+      throw new Error('Either projectId or projectNumber must be provided');
+    }
+    const status = normalizeTaskStatus(args.status);
+    const priority = normalizeTaskPriority(args.priority);
+    const limit = Math.min(Math.max(1, Math.floor(args.limit ?? 25)), 100);
+    const offset = Math.max(0, Math.floor(args.offset ?? 0));
+
+    // Dual-key: whichever of projectId/projectNumber the agent filled, match
+    // against EITHER column (UUIDs and project numbers never collide).
+    const key = (args.projectId ?? args.projectNumber)!;
+
+    const result = await this.runScoped(user, async (tx) => {
+      const project = await tx.project.findFirst({
+        where: {
+          AND: [
+            buildVisibilityFilter(user),
+            { OR: [{ id: key }, { projectNumber: key }] },
+          ],
+        },
+        select: { id: true, projectNumber: true, title: true, status: true },
+      });
+      if (!project) {
+        return null;
+      }
+
+      const where: Prisma.TaskWhereInput = {
+        projectId: project.id,
+        ...(status ? { status } : {}),
+        ...(priority ? { priority } : {}),
+      };
+
+      const [tasks, total] = await Promise.all([
+        tx.task.findMany({
+          where,
+          skip: offset,
+          take: limit,
+          orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            type: true,
+            status: true,
+            priority: true,
+            dueDate: true,
+            completedAt: true,
+            estimatedHours: true,
+            parentTaskId: true,
+            createdAt: true,
+            updatedAt: true,
+            assignedTo: {
+              select: { id: true, firstName: true, lastName: true, email: true },
+            },
+            createdBy: {
+              select: { id: true, firstName: true, lastName: true, email: true },
+            },
+            _count: { select: { comments: true, subtasks: true } },
+          },
+        }),
+        tx.task.count({ where }),
+      ]);
+
+      return {
+        project,
+        tasks: tasks.map(({ _count, ...t }) => ({
+          ...t,
+          commentsCount: _count.comments,
+          subtasksCount: _count.subtasks,
+        })),
+        total,
+      };
+    });
+
+    if (!result) {
+      throw new Error('Project not found or you don\'t have access');
+    }
+
+    return {
+      project: result.project,
+      tasks: result.tasks,
+      count: result.tasks.length,
+      total: result.total,
+      offset,
+      limit,
+    };
   }
 
   async searchProjects(user: User, args: { query: string; limit?: number }) {
@@ -568,6 +862,173 @@ export class ProjectOpsTools {
     });
 
     return comment;
+  }
+
+  /**
+   * List comments on a task the caller can see (project visibility filter),
+   * oldest first. Paginated: `limit` defaults to 50 (max 100), `offset` to 0.
+   * Mirrors REST TasksService.getTaskComments + the MCP visibility chokepoint
+   * used by add_task_comment.
+   */
+  async listTaskComments(
+    user: User,
+    args: { taskId: string; limit?: number; offset?: number },
+  ) {
+    if (!args.taskId || !String(args.taskId).trim()) {
+      throw new Error('taskId is required');
+    }
+    const taskId = String(args.taskId).trim();
+    const take = clampLimit(args.limit, 50);
+    const skip = clampOffset(args.offset);
+
+    return this.runScoped(user, async (tx) => {
+      const task = await tx.task.findFirst({
+        where: {
+          id: taskId,
+          project: buildVisibilityFilter(user),
+        },
+        select: { id: true },
+      });
+      if (!task) {
+        throw new Error("Task not found or you don't have access");
+      }
+
+      const where = { taskId: task.id };
+      const [comments, total] = await Promise.all([
+        tx.taskComment.findMany({
+          where,
+          orderBy: { createdAt: 'asc' },
+          skip,
+          take,
+          select: {
+            id: true,
+            taskId: true,
+            content: true,
+            createdAt: true,
+            updatedAt: true,
+            authorId: true,
+            author: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+          },
+        }),
+        tx.taskComment.count({ where }),
+      ]);
+
+      return {
+        taskId: task.id,
+        comments,
+        total,
+        limit: take,
+        offset: skip,
+        count: comments.length,
+      };
+    });
+  }
+
+  /**
+   * Update a task comment. Same ownership as REST TasksService.updateComment /
+   * project-comment UI: author or ADMIN. Parent-task visibility is enforced
+   * via buildVisibilityFilter (stricter for STAFF than workspace-RLS alone).
+   * No @mention re-emit — REST update also does not re-fan-out mentions.
+   */
+  async updateTaskComment(
+    user: User,
+    args: { commentId: string; content: string },
+  ) {
+    if (!args.commentId || !String(args.commentId).trim()) {
+      throw new Error('commentId is required');
+    }
+    const content = (args.content ?? '').trim();
+    if (!content) {
+      throw new Error('content is required');
+    }
+    if (content.length > 5000) {
+      throw new Error('content must be at most 5000 characters');
+    }
+
+    const updated = await this.runScoped(user, async (tx) => {
+      const comment = await tx.taskComment.findFirst({
+        where: {
+          id: String(args.commentId).trim(),
+          task: { project: buildVisibilityFilter(user) },
+        },
+        select: { id: true, authorId: true, taskId: true },
+      });
+      if (!comment) {
+        throw new Error("Comment not found or you don't have access");
+      }
+
+      const canEdit =
+        comment.authorId === user.id || user.role === UserRole.ADMIN;
+      if (!canEdit) {
+        throw new Error('Only the author or an ADMIN can update this comment');
+      }
+
+      const row = await tx.taskComment.update({
+        where: { id: comment.id },
+        data: { content },
+        select: {
+          id: true,
+          taskId: true,
+          content: true,
+          createdAt: true,
+          updatedAt: true,
+          authorId: true,
+          author: { select: { firstName: true, lastName: true } },
+        },
+      });
+      this.logger.log(
+        `MCP update_task_comment: user=${user.email} comment=${comment.id}`,
+      );
+      return row;
+    });
+
+    return updated;
+  }
+
+  /**
+   * Delete a task comment. Same ownership as REST TasksService.removeComment /
+   * project-comment UI: author, ADMIN, or MANAGER. Visibility via parent task.
+   */
+  async deleteTaskComment(user: User, args: { commentId: string }) {
+    if (!args.commentId || !String(args.commentId).trim()) {
+      throw new Error('commentId is required');
+    }
+
+    return this.runScoped(user, async (tx) => {
+      const comment = await tx.taskComment.findFirst({
+        where: {
+          id: String(args.commentId).trim(),
+          task: { project: buildVisibilityFilter(user) },
+        },
+        select: { id: true, authorId: true, taskId: true },
+      });
+      if (!comment) {
+        throw new Error("Comment not found or you don't have access");
+      }
+
+      const canDelete =
+        comment.authorId === user.id ||
+        user.role === UserRole.ADMIN ||
+        user.role === UserRole.MANAGER;
+      if (!canDelete) {
+        throw new Error(
+          'Only the author, ADMIN, or MANAGER can delete this comment',
+        );
+      }
+
+      await tx.taskComment.delete({ where: { id: comment.id } });
+      this.logger.log(
+        `MCP delete_task_comment: user=${user.email} comment=${comment.id}`,
+      );
+      return { deleted: true, commentId: comment.id, taskId: comment.taskId };
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -1109,6 +1570,13 @@ export class ProjectOpsTools {
       priority?: string;
       dueDate?: string;
       assignedToId?: string;
+      /**
+       * Optional parent for subtasks. Validated the same way as
+       * TasksService.createInTx: parent must resolve under the workspace RLS
+       * tx (other workspaces are invisible → not-found) and must belong to
+       * the same project as the new task (subtasks don't cross projects).
+       */
+      parentTaskId?: string;
       // Wave 2 pass-throughs — handled exactly as TasksService does:
       // customFields are validated against the workspace TASK definitions and
       // folded into metadata.customFields; recurrenceRule (RRULE) + estimatedHours
@@ -1122,6 +1590,10 @@ export class ProjectOpsTools {
     if (!args.projectId && !args.projectNumber) {
       throw new Error('Either projectId or projectNumber must be provided');
     }
+    const parentTaskId =
+      args.parentTaskId !== undefined && args.parentTaskId !== null
+        ? String(args.parentTaskId).trim() || undefined
+        : undefined;
     const { task, projectNumber } = await this.runScoped(user, async (tx, workspaceId) => {
       const project = await tx.project.findFirst({
         where: {
@@ -1133,6 +1605,22 @@ export class ProjectOpsTools {
       if (!project) {
         throw new Error('Project not found or no access');
       }
+
+      // Mirror TasksService.createInTx parent validation: workspace RLS makes
+      // cross-workspace parents invisible (not-found); same-project is explicit.
+      if (parentTaskId) {
+        const parent = await tx.task.findUnique({
+          where: { id: parentTaskId },
+          select: { id: true, projectId: true },
+        });
+        if (!parent) {
+          throw new Error(`Parent task with ID ${parentTaskId} not found`);
+        }
+        if (parent.projectId !== project.id) {
+          throw new Error('Parent task must belong to the same project as the subtask');
+        }
+      }
+
       // Validate + fold custom-field VALUES on the SAME workspace tx (the
       // CustomFieldsValidator contract requires the caller's tx so the
       // definitions read stays under one RLS scope). New task → no existing
@@ -1147,6 +1635,7 @@ export class ProjectOpsTools {
           type: (args.type as any) ?? 'OTHER',
           priority: (args.priority as any) ?? 'MEDIUM',
           dueDate: args.dueDate ? new Date(args.dueDate) : null,
+          ...(parentTaskId ? { parentTaskId } : {}),
           ...(args.recurrenceRule !== undefined ? { recurrenceRule: args.recurrenceRule } : {}),
           ...(args.estimatedHours !== undefined ? { estimatedHours: args.estimatedHours } : {}),
           ...(metadata !== undefined ? { metadata } : {}),
@@ -1159,6 +1648,7 @@ export class ProjectOpsTools {
           status: true,
           priority: true,
           dueDate: true,
+          parentTaskId: true,
           recurrenceRule: true,
           estimatedHours: true,
           metadata: true,
@@ -1167,8 +1657,105 @@ export class ProjectOpsTools {
       });
       return { task: created, projectNumber: project.projectNumber };
     });
-    this.logger.log(`MCP create_task: user=${user.email} project=${projectNumber} task=${task.id}`);
+    this.logger.log(
+      `MCP create_task: user=${user.email} project=${projectNumber} task=${task.id}` +
+        (parentTaskId ? ` parent=${parentTaskId}` : ''),
+    );
     return task;
+  }
+
+  /**
+   * List direct subtasks of a parent task. Mirrors REST TasksService.getSubtasks:
+   * parent must be visible via its project (buildVisibilityFilter); returns
+   * ordered children with assignee/creator + nested comment/subtask counts.
+   */
+  async listTaskSubtasks(user: User, args: { taskId: string }) {
+    if (!args.taskId || !String(args.taskId).trim()) {
+      throw new Error('taskId is required');
+    }
+    const taskId = String(args.taskId).trim();
+
+    const result = await this.runScoped(user, async (tx) => {
+      const parent = await tx.task.findFirst({
+        where: {
+          id: taskId,
+          project: buildVisibilityFilter(user),
+        },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          project: {
+            select: { id: true, projectNumber: true, title: true },
+          },
+        },
+      });
+      if (!parent) {
+        return null;
+      }
+
+      const subtasks = await tx.task.findMany({
+        where: { parentTaskId: parent.id },
+        orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          type: true,
+          status: true,
+          priority: true,
+          dueDate: true,
+          completedAt: true,
+          estimatedHours: true,
+          parentTaskId: true,
+          createdAt: true,
+          updatedAt: true,
+          assignedTo: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+          createdBy: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+          _count: {
+            select: { comments: true, subtasks: true },
+          },
+        },
+      });
+
+      return {
+        parent: {
+          id: parent.id,
+          title: parent.title,
+          status: parent.status,
+          project: parent.project,
+        },
+        subtasks: subtasks.map(({ _count, ...t }) => ({
+          ...t,
+          commentsCount: _count.comments,
+          subtasksCount: _count.subtasks,
+        })),
+      };
+    });
+
+    if (!result) {
+      throw new Error('Task not found or you don\'t have access');
+    }
+
+    return {
+      parent: result.parent,
+      subtasks: result.subtasks,
+      count: result.subtasks.length,
+    };
   }
 
   /**
@@ -1198,10 +1785,13 @@ export class ProjectOpsTools {
     this.logger.log(
       `MCP submit_candidate_action_items: user=${user.email} items=${items.length} sourceType=${args.sourceType ?? 'MANUAL'}`,
     );
-    // Resolve the active workspace the same way @CurrentWorkspace does (claim →
-    // default); triage's runForUser re-authorizes membership for this user.
-    // Resolved here (not via workspaceFor) so triage works without time-tracking.
-    const workspaceId = resolveWorkspaceId(user, defaultWorkspaceId());
+    // Membership-aware chokepoint (claim → DEFAULT MEMBERSHIP), identical to
+    // runScoped / @CurrentWorkspace / every other MCP write. The previous
+    // resolveWorkspaceId(user, DEFAULT_WORKSPACE_ID) path forced partner users
+    // whose only membership is not the env default through the wrong workspace
+    // (then 403'd inside triage runForUser) — same class of bug the time-tracking
+    // tools already fixed. triage.ingestCandidates re-authorizes via runForUser.
+    const workspaceId = await this.requireWorkspace().resolveAuthorized(user);
     return this.triage.ingestCandidates(workspaceId, user, items);
   }
 
@@ -1231,6 +1821,41 @@ export class ProjectOpsTools {
       `MCP update_task_status: user=${user.email} task=${updated.id} → ${updated.status}`,
     );
     return updated;
+  }
+
+  /**
+   * Permanently delete a task. Mirrors REST `DELETE /tasks/:id`
+   * (`TasksController.remove` @Roles(UserRole.ADMIN) + `TasksService.remove`):
+   * ADMIN only — not STAFF/MANAGER/CLIENT. Visibility is checked first via
+   * runScoped + project filter (defense in depth; ADMIN filter is open).
+   *
+   * Intentional asymmetry vs `archive_project`: project hard-delete is NOT
+   * exposed to agents (archive is the safe reversible alternative). Task
+   * hard-delete IS exposed because REST already allows it for ADMIN and
+   * agents need cleanup of mistaken creates. Projects cascade more and are
+   * irreversible in ways tasks are not treated as.
+   */
+  async deleteTask(user: User, args: { taskId: string }) {
+    this.assertAdmin(user, 'delete tasks');
+    if (!args?.taskId) {
+      throw new Error("'taskId' is required.");
+    }
+    const result = await this.runScoped(user, async (tx) => {
+      const found = await tx.task.findFirst({
+        where: {
+          id: args.taskId,
+          project: buildVisibilityFilter(user),
+        },
+        select: { id: true },
+      });
+      if (!found) {
+        throw new Error('Task not found or no access');
+      }
+      await tx.task.delete({ where: { id: found.id } });
+      return { message: 'Task deleted successfully', id: found.id };
+    });
+    this.logger.log(`MCP delete_task: user=${user.email} task=${result.id}`);
+    return result;
   }
 
   async listProjectDocuments(user: User, args: { projectId?: string; projectNumber?: string }) {
@@ -1531,6 +2156,169 @@ export class ProjectOpsTools {
     };
   }
 
+  /**
+   * Patch document metadata (description, tags, display fileName). Mirrors
+   * REST PATCH /documents/:id for the safe metadata surface — not storage
+   * fields (s3Key / fileSize / mimeType / projectId / status), which agents
+   * must not rewrite. Visibility is the same chokepoint as get_document_content
+   * (project buildVisibilityFilter; orphan docs admin/manager only). CLIENT
+   * users are read-only (assertCanWrite).
+   */
+  async updateDocument(
+    user: User,
+    args: {
+      documentId: string;
+      description?: string | null;
+      tags?: string[];
+      fileName?: string;
+    },
+  ) {
+    this.assertCanWrite(user);
+
+    if (!args.documentId || !String(args.documentId).trim()) {
+      throw new Error("'documentId' is required.");
+    }
+    const documentId = String(args.documentId).trim();
+
+    const data: Prisma.DocumentUpdateInput = {};
+    if (args.description !== undefined) {
+      // null / empty string both clear the description (matches Partial REST patch).
+      const d = args.description;
+      data.description =
+        d === null || (typeof d === 'string' && d.trim() === '') ? null : String(d);
+    }
+    if (args.tags !== undefined) {
+      if (!Array.isArray(args.tags) || args.tags.some((t) => typeof t !== 'string')) {
+        throw new Error("'tags' must be an array of strings.");
+      }
+      data.tags = args.tags.map((t) => String(t));
+    }
+    if (args.fileName !== undefined) {
+      const name = String(args.fileName ?? '').trim();
+      if (!name) {
+        throw new Error("'fileName' must be a non-empty string when provided.");
+      }
+      if (name.length > 500) {
+        throw new Error("'fileName' must be at most 500 characters.");
+      }
+      data.fileName = name;
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw new Error(
+        "Provide at least one of 'description', 'tags', or 'fileName' to update.",
+      );
+    }
+
+    const updated = await this.runScoped(user, async (tx) => {
+      const existing = await tx.document.findFirst({
+        where: {
+          id: documentId,
+          OR: [
+            { project: buildVisibilityFilter(user) },
+            ...(user.role === UserRole.ADMIN || user.role === UserRole.MANAGER
+              ? [{ projectId: null }]
+              : []),
+          ],
+        },
+        select: { id: true },
+      });
+      if (!existing) {
+        throw new Error("Document not found or you don't have access");
+      }
+
+      return tx.document.update({
+        where: { id: existing.id },
+        data,
+        select: {
+          id: true,
+          projectId: true,
+          fileName: true,
+          fileSize: true,
+          mimeType: true,
+          status: true,
+          description: true,
+          tags: true,
+          uploadedAt: true,
+          updatedAt: true,
+        },
+      });
+    });
+
+    this.logger.log(
+      `MCP update_document: user=${user.email} doc=${updated.id} fields=${Object.keys(data).join(',')}`,
+    );
+    return { document: updated };
+  }
+
+  /**
+   * Delete a document the caller can see. Mirrors REST DELETE /documents/:id:
+   * MinIO object removal runs OUTSIDE the workspace tx (B4 — no DB transaction
+   * held open across object-storage I/O); the row delete runs inside a second
+   * scoped tx. Visibility matches get_document_content. CLIENT users cannot.
+   * MinIO failures are logged and do not block the DB delete (same as REST).
+   */
+  async deleteDocument(user: User, args: { documentId: string }) {
+    this.assertCanWrite(user);
+
+    if (!args.documentId || !String(args.documentId).trim()) {
+      throw new Error("'documentId' is required.");
+    }
+    const documentId = String(args.documentId).trim();
+
+    // Fetch metadata inside the workspace tx (RLS + project visibility).
+    const document = await this.runScoped(user, (tx) =>
+      tx.document.findFirst({
+        where: {
+          id: documentId,
+          OR: [
+            { project: buildVisibilityFilter(user) },
+            ...(user.role === UserRole.ADMIN || user.role === UserRole.MANAGER
+              ? [{ projectId: null }]
+              : []),
+          ],
+        },
+        select: {
+          id: true,
+          fileName: true,
+          s3Key: true,
+          status: true,
+          fileSize: true,
+          projectId: true,
+        },
+      }),
+    );
+
+    if (!document) {
+      throw new Error("Document not found or you don't have access");
+    }
+
+    // MinIO delete OUTSIDE the tx — only when the object was actually uploaded.
+    if (document.status === 'UPLOADED' && document.fileSize > 0 && document.s3Key) {
+      try {
+        await this.minio.deleteObject(document.s3Key);
+      } catch (err) {
+        this.logger.warn(
+          `MCP delete_document: MinIO delete failed for ${document.id} (${document.s3Key}): ${(err as Error).message}`,
+        );
+      }
+    }
+
+    await this.runScoped(user, (tx) =>
+      tx.document.delete({ where: { id: document.id } }),
+    );
+
+    this.logger.log(
+      `MCP delete_document: user=${user.email} doc=${document.id} file=${document.fileName}`,
+    );
+    return {
+      deleted: true,
+      documentId: document.id,
+      fileName: document.fileName,
+      projectId: document.projectId,
+    };
+  }
+
   async updateBillingFields(
     user: User,
     args: {
@@ -1634,6 +2422,13 @@ export class ProjectOpsTools {
   private assertManagerOrAdmin(user: User, surface: string) {
     if (user.role !== UserRole.ADMIN && user.role !== UserRole.MANAGER) {
       throw new Error(`Only ADMIN or MANAGER roles can ${surface}.`);
+    }
+  }
+
+  /** ADMIN-only gate — mirrors controllers' @Roles(ADMIN), e.g. DELETE /tasks/:id. */
+  private assertAdmin(user: User, surface: string) {
+    if (user.role !== UserRole.ADMIN) {
+      throw new Error(`Only ADMIN can ${surface}.`);
     }
   }
 

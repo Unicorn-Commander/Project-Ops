@@ -38,6 +38,7 @@ import { WorkspacesService } from '../workspaces/workspaces.service';
 // as an AgentEvent; if not wired, capture is silently skipped (app still boots).
 import { AgentEventsService } from '../agents/agent-events.service';
 import { deriveToolTarget, McpActorIdentity, resolveMcpActor } from '../agents/agent-capture.util';
+import { recordMcpToolCall } from './mcp.metrics';
 
 @Injectable()
 export class McpService {
@@ -168,6 +169,7 @@ export class McpService {
             this.logger.warn(
               `MCP tool "${name}" workspace mismatch: PAT bound to ${boundWorkspaceId} but acting workspace resolved to ${effective}; refusing`,
             );
+            recordMcpToolCall(name, 'denied', 0);
             return workspaceDenied(name, boundWorkspaceId, effective);
           }
         }
@@ -177,41 +179,61 @@ export class McpService {
             this.logger.warn(
               `MCP tool "${name}" has no scope mapping; refusing PAT-auth invocation`,
             );
+            recordMcpToolCall(name, 'denied', 0);
             return scopeDenied(name, undefined, [...grantedSet]);
           }
           if (!grantedSet.has(required)) {
+            recordMcpToolCall(name, 'denied', 0);
             return scopeDenied(name, required, [...grantedSet]);
           }
         }
         const startedAt = Date.now();
-        const result = await handler(args);
-        // Best-effort agent-activity capture AFTER a successful call. Skipped on
-        // an error envelope; never awaited into the response path; never throws
-        // (the recorder swallows its own errors, and we guard the derive too).
-        if (recorder && actor && !(result && (result as any).isError)) {
-          try {
-            const raw = unwrapToolResult(result);
-            const target = deriveToolTarget(name, args, raw);
-            void recorder.record({
-              workspaceId: captureWorkspaceId(),
-              user,
-              actorKind: actor.actorKind,
-              actorKey: actor.actorKey,
-              actorLabel: actor.actorLabel,
-              via: AgentVia.MCP,
-              action: name,
-              resource: target.resource,
-              resourceId: target.resourceId,
-              projectId: target.projectId,
-              taskId: target.taskId,
-              // MCP tool calls are zero-LLM-cost actions: no tokens / cost.
-              durationMs: Date.now() - startedAt,
-            });
-          } catch (err) {
-            this.logger.debug(`agent capture skipped for "${name}": ${(err as Error).message}`);
+        try {
+          const result = await handler(args);
+          const durationMs = Date.now() - startedAt;
+          // isError envelopes (scope/workspace denied above, or tool-returned
+          // error payloads) count as error for ops metrics when the body set
+          // the flag; successful content is ok.
+          const isError = !!(result && (result as any).isError);
+          recordMcpToolCall(name, isError ? 'error' : 'ok', durationMs);
+          this.logger.log(
+            `MCP tool=${name} status=${isError ? 'error' : 'ok'} durationMs=${durationMs}`,
+          );
+          // Best-effort agent-activity capture AFTER a successful call. Skipped on
+          // an error envelope; never awaited into the response path; never throws
+          // (the recorder swallows its own errors, and we guard the derive too).
+          if (recorder && actor && !isError) {
+            try {
+              const raw = unwrapToolResult(result);
+              const target = deriveToolTarget(name, args, raw);
+              void recorder.record({
+                workspaceId: captureWorkspaceId(),
+                user,
+                actorKind: actor.actorKind,
+                actorKey: actor.actorKey,
+                actorLabel: actor.actorLabel,
+                via: AgentVia.MCP,
+                action: name,
+                resource: target.resource,
+                resourceId: target.resourceId,
+                projectId: target.projectId,
+                taskId: target.taskId,
+                // MCP tool calls are zero-LLM-cost actions: no tokens / cost.
+                durationMs,
+              });
+            } catch (err) {
+              this.logger.debug(`agent capture skipped for "${name}": ${(err as Error).message}`);
+            }
           }
+          return result;
+        } catch (err) {
+          const durationMs = Date.now() - startedAt;
+          recordMcpToolCall(name, 'error', durationMs);
+          this.logger.warn(
+            `MCP tool=${name} status=error durationMs=${durationMs} err=${(err as Error).message}`,
+          );
+          throw err;
         }
-        return result;
       };
       return rawRegister(name, schema, gated);
     };
@@ -283,7 +305,8 @@ export class McpService {
         title: 'List tasks assigned to me',
         description:
           'Return tasks assigned to the calling user, sorted by due date. ' +
-          "Optional 'status' filters by TaskStatus.",
+          "Optional 'status' filters by TaskStatus " +
+          '(PENDING / IN_PROGRESS / WAITING_FOR_CLIENT / COMPLETED / CANCELLED).',
         inputSchema: {
           status: z.string().optional(),
           limit: z.number().int().min(1).max(100).optional(),
@@ -291,6 +314,58 @@ export class McpService {
       },
       async (args: { status?: string; limit?: number }) =>
         wrap(await tools.listMyTasks(user, args)),
+    );
+
+    server.registerTool(
+      'get_task',
+      {
+        title: 'Get a task by id',
+        description:
+          'Return full detail for a single task the caller can see (via its ' +
+          'parent project): description, status, priority, type, due/completed ' +
+          'dates, estimatedHours, metadata, assignee, creator, parent task, ' +
+          'comment/subtask counts, and dependency edges (dependsOn + blocks). ' +
+          'isBlocked is NOT computed here (deferred until dep-enforcement ' +
+          'merges); infer open blockers from dependencies.dependsOn predecessor ' +
+          'status. Requires taskId.',
+        inputSchema: {
+          taskId: z.string().min(1),
+        },
+      },
+      async (args: { taskId: string }) => wrap(await tools.getTask(user, args)),
+    );
+
+    server.registerTool(
+      'list_project_tasks',
+      {
+        title: 'List tasks for a project',
+        description:
+          'Return tasks on one project the caller can see. Identify the project ' +
+          'by projectId or projectNumber (either field may hold a UUID or a ' +
+          'human project number). Window (explicit): offset/limit pagination — ' +
+          'limit defaults to 25 (max 100), offset defaults to 0; ordered by ' +
+          'priority desc, dueDate asc, createdAt desc. Optional filters: status ' +
+          '(TaskStatus: PENDING / IN_PROGRESS / WAITING_FOR_CLIENT / COMPLETED / ' +
+          'CANCELLED) and priority (LOW / MEDIUM / HIGH / URGENT). Response: ' +
+          '{ project, tasks, count, total, offset, limit } where count is the ' +
+          'page size and total is the full match count for paging.',
+        inputSchema: {
+          projectId: z.string().optional(),
+          projectNumber: z.string().optional(),
+          status: z.string().optional(),
+          priority: z.string().optional(),
+          limit: z.number().int().min(1).max(100).optional(),
+          offset: z.number().int().min(0).optional(),
+        },
+      },
+      async (args: {
+        projectId?: string;
+        projectNumber?: string;
+        status?: string;
+        priority?: string;
+        limit?: number;
+        offset?: number;
+      }) => wrap(await tools.listProjectTasks(user, args)),
     );
 
     server.registerTool(
@@ -338,6 +413,56 @@ export class McpService {
       },
       async (args: { taskId: string; content: string }) =>
         wrap(await tools.addTaskComment(user, args)),
+    );
+
+    server.registerTool(
+      'list_task_comments',
+      {
+        title: 'List comments on a task',
+        description:
+          'Return the comment thread for a task the caller can see, oldest first. ' +
+          'Optional limit (default 50, max 100) and offset for pagination. ' +
+          'Requires read:tasks when called with a PAT.',
+        inputSchema: {
+          taskId: z.string().min(1),
+          limit: z.number().int().min(1).max(100).optional(),
+          offset: z.number().int().min(0).optional(),
+        },
+      },
+      async (args: { taskId: string; limit?: number; offset?: number }) =>
+        wrap(await tools.listTaskComments(user, args)),
+    );
+
+    server.registerTool(
+      'update_task_comment',
+      {
+        title: 'Update a task comment',
+        description:
+          'Edit a task comment by id. Only the author or an ADMIN may update. ' +
+          'Same ownership rule as the REST TasksService / project-comment UI. ' +
+          'Does not re-fan-out @mentions (matches REST update).',
+        inputSchema: {
+          commentId: z.string().min(1),
+          content: z.string().min(1).max(5000),
+        },
+      },
+      async (args: { commentId: string; content: string }) =>
+        wrap(await tools.updateTaskComment(user, args)),
+    );
+
+    server.registerTool(
+      'delete_task_comment',
+      {
+        title: 'Delete a task comment',
+        description:
+          'Delete a task comment by id. Only the author, ADMIN, or MANAGER may ' +
+          'delete — same ownership rule as the REST TasksService / project-comment UI.',
+        inputSchema: {
+          commentId: z.string().min(1),
+        },
+      },
+      async (args: { commentId: string }) =>
+        wrap(await tools.deleteTaskComment(user, args)),
     );
 
     // ─── Write tools ────────────────────────────────────────────────
@@ -541,11 +666,13 @@ export class McpService {
           'Create a task on a project the caller can see. Identify the project ' +
           'by projectId or projectNumber. Defaults: type OTHER, priority MEDIUM, ' +
           'assignee = caller. CLIENT-role users cannot call this. Optional ' +
-          'customFields (object keyed by the workspace TASK custom-field key — ' +
-          'validated + stored under metadata.customFields), recurrenceRule (an ' +
-          'RRULE subset, e.g. "FREQ=WEEKLY;INTERVAL=1", makes this a recurrence ' +
-          'template), and estimatedHours (effort estimate used by capacity ' +
-          'planning).',
+          'parentTaskId creates a subtask under an existing task in the same ' +
+          'project (parent must be visible in the workspace; cross-project ' +
+          'parents are rejected). Optional customFields (object keyed by the ' +
+          'workspace TASK custom-field key — validated + stored under ' +
+          'metadata.customFields), recurrenceRule (an RRULE subset, e.g. ' +
+          '"FREQ=WEEKLY;INTERVAL=1", makes this a recurrence template), and ' +
+          'estimatedHours (effort estimate used by capacity planning).',
         inputSchema: {
           projectId: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -555,12 +682,29 @@ export class McpService {
           priority: z.string().optional(),
           dueDate: z.string().optional(),
           assignedToId: z.string().optional(),
+          parentTaskId: z.string().min(1).optional(),
           customFields: z.record(z.string(), z.any()).optional(),
           recurrenceRule: z.string().optional(),
           estimatedHours: z.number().min(0).optional(),
         },
       },
       async (args: any) => wrap(await tools.createTask(user, args)),
+    );
+
+    server.registerTool(
+      'list_task_subtasks',
+      {
+        title: 'List direct subtasks of a task',
+        description:
+          'Return the direct children of a parent task the caller can see (via ' +
+          'its project). Ordered by priority desc, dueDate asc, createdAt desc ' +
+          '(matches REST getSubtasks). Response: { parent, subtasks, count } ' +
+          'with assignee/creator and nested comment/subtask counts on each child.',
+        inputSchema: {
+          taskId: z.string().min(1),
+        },
+      },
+      async (args: { taskId: string }) => wrap(await tools.listTaskSubtasks(user, args)),
     );
 
     server.registerTool(
@@ -601,6 +745,26 @@ export class McpService {
         },
       },
       async (args: any) => wrap(await tools.updateTaskStatus(user, args)),
+    );
+
+    // Hard-delete a task (ADMIN only) — mirrors REST DELETE /tasks/:id.
+    // Intentional asymmetry vs archive_project: projects cannot be hard-deleted
+    // via MCP (archive only); tasks can, matching the REST admin surface.
+    server.registerTool(
+      'delete_task',
+      {
+        title: 'Delete a task (ADMIN only)',
+        description:
+          'Permanently delete a task by taskId. ADMIN only — same RBAC as REST ' +
+          'DELETE /tasks/:id. Not available to MANAGER/STAFF/CLIENT. This is a ' +
+          'hard delete (unlike archive_project, which is the safe reversible ' +
+          'alternative for projects; project hard-delete is intentionally not ' +
+          'exposed to agents).',
+        inputSchema: {
+          taskId: z.string().min(1),
+        },
+      },
+      async (args: any) => wrap(await tools.deleteTask(user, args)),
     );
 
     server.registerTool(
@@ -669,6 +833,49 @@ export class McpService {
         mimeType: string;
         description?: string;
       }) => wrap(await tools.uploadDocument(user, args)),
+    );
+
+    server.registerTool(
+      'update_document',
+      {
+        title: 'Update document metadata',
+        description:
+          'Patch metadata on a document the caller can see. Required: documentId. ' +
+          'Optional fields (only passed fields are updated): description (null or ' +
+          'empty clears it), tags (string array, replaces the whole set), fileName ' +
+          '(display name rename — does not move storage). Does not allow rewriting ' +
+          'storage fields (s3Key / fileSize / mimeType / projectId / status). ' +
+          'CLIENT-role users cannot call this. Mirrors REST PATCH /documents/:id ' +
+          'for the safe metadata surface.',
+        inputSchema: {
+          documentId: z.string().min(1),
+          description: z.string().nullable().optional(),
+          tags: z.array(z.string()).optional(),
+          fileName: z.string().min(1).max(500).optional(),
+        },
+      },
+      async (args: {
+        documentId: string;
+        description?: string | null;
+        tags?: string[];
+        fileName?: string;
+      }) => wrap(await tools.updateDocument(user, args)),
+    );
+
+    server.registerTool(
+      'delete_document',
+      {
+        title: 'Delete a document',
+        description:
+          'Permanently delete a document the caller can see (DB row + MinIO object ' +
+          'when uploaded). Required: documentId. CLIENT-role users cannot call this. ' +
+          'Mirrors REST DELETE /documents/:id. Irreversible — prefer careful use.',
+        inputSchema: {
+          documentId: z.string().min(1),
+        },
+      },
+      async (args: { documentId: string }) =>
+        wrap(await tools.deleteDocument(user, args)),
     );
 
     server.registerTool(
@@ -1073,6 +1280,21 @@ export class McpService {
           },
         },
         async (args: any) => wrap(await tools.updateTimeEntry(user, args)),
+      );
+
+      server.registerTool(
+        'delete_time_entry',
+        {
+          title: 'Delete a time entry',
+          description:
+            'Delete a DRAFT, unlocked, unbilled time entry (id required). Locked, billed, or ' +
+            'non-DRAFT (SUBMITTED/APPROVED/REJECTED) entries cannot be deleted. Owner or ' +
+            'ADMIN/MANAGER; CLIENT users cannot. Mirrors REST DELETE /time-entries/:id.',
+          inputSchema: {
+            id: z.string().min(1),
+          },
+        },
+        async (args: any) => wrap(await tools.deleteTimeEntry(user, args)),
       );
 
       server.registerTool(
