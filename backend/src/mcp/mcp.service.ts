@@ -594,11 +594,13 @@ export class McpService {
           'Create a task on a project the caller can see. Identify the project ' +
           'by projectId or projectNumber. Defaults: type OTHER, priority MEDIUM, ' +
           'assignee = caller. CLIENT-role users cannot call this. Optional ' +
-          'customFields (object keyed by the workspace TASK custom-field key — ' +
-          'validated + stored under metadata.customFields), recurrenceRule (an ' +
-          'RRULE subset, e.g. "FREQ=WEEKLY;INTERVAL=1", makes this a recurrence ' +
-          'template), and estimatedHours (effort estimate used by capacity ' +
-          'planning).',
+          'parentTaskId creates a subtask under an existing task in the same ' +
+          'project (parent must be visible in the workspace; cross-project ' +
+          'parents are rejected). Optional customFields (object keyed by the ' +
+          'workspace TASK custom-field key — validated + stored under ' +
+          'metadata.customFields), recurrenceRule (an RRULE subset, e.g. ' +
+          '"FREQ=WEEKLY;INTERVAL=1", makes this a recurrence template), and ' +
+          'estimatedHours (effort estimate used by capacity planning).',
         inputSchema: {
           projectId: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -608,12 +610,29 @@ export class McpService {
           priority: z.string().optional(),
           dueDate: z.string().optional(),
           assignedToId: z.string().optional(),
+          parentTaskId: z.string().min(1).optional(),
           customFields: z.record(z.string(), z.any()).optional(),
           recurrenceRule: z.string().optional(),
           estimatedHours: z.number().min(0).optional(),
         },
       },
       async (args: any) => wrap(await tools.createTask(user, args)),
+    );
+
+    server.registerTool(
+      'list_task_subtasks',
+      {
+        title: 'List direct subtasks of a task',
+        description:
+          'Return the direct children of a parent task the caller can see (via ' +
+          'its project). Ordered by priority desc, dueDate asc, createdAt desc ' +
+          '(matches REST getSubtasks). Response: { parent, subtasks, count } ' +
+          'with assignee/creator and nested comment/subtask counts on each child.',
+        inputSchema: {
+          taskId: z.string().min(1),
+        },
+      },
+      async (args: { taskId: string }) => wrap(await tools.listTaskSubtasks(user, args)),
     );
 
     server.registerTool(

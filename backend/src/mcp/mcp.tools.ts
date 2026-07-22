@@ -1394,6 +1394,13 @@ export class ProjectOpsTools {
       priority?: string;
       dueDate?: string;
       assignedToId?: string;
+      /**
+       * Optional parent for subtasks. Validated the same way as
+       * TasksService.createInTx: parent must resolve under the workspace RLS
+       * tx (other workspaces are invisible → not-found) and must belong to
+       * the same project as the new task (subtasks don't cross projects).
+       */
+      parentTaskId?: string;
       // Wave 2 pass-throughs — handled exactly as TasksService does:
       // customFields are validated against the workspace TASK definitions and
       // folded into metadata.customFields; recurrenceRule (RRULE) + estimatedHours
@@ -1407,6 +1414,10 @@ export class ProjectOpsTools {
     if (!args.projectId && !args.projectNumber) {
       throw new Error('Either projectId or projectNumber must be provided');
     }
+    const parentTaskId =
+      args.parentTaskId !== undefined && args.parentTaskId !== null
+        ? String(args.parentTaskId).trim() || undefined
+        : undefined;
     const { task, projectNumber } = await this.runScoped(user, async (tx, workspaceId) => {
       const project = await tx.project.findFirst({
         where: {
@@ -1418,6 +1429,22 @@ export class ProjectOpsTools {
       if (!project) {
         throw new Error('Project not found or no access');
       }
+
+      // Mirror TasksService.createInTx parent validation: workspace RLS makes
+      // cross-workspace parents invisible (not-found); same-project is explicit.
+      if (parentTaskId) {
+        const parent = await tx.task.findUnique({
+          where: { id: parentTaskId },
+          select: { id: true, projectId: true },
+        });
+        if (!parent) {
+          throw new Error(`Parent task with ID ${parentTaskId} not found`);
+        }
+        if (parent.projectId !== project.id) {
+          throw new Error('Parent task must belong to the same project as the subtask');
+        }
+      }
+
       // Validate + fold custom-field VALUES on the SAME workspace tx (the
       // CustomFieldsValidator contract requires the caller's tx so the
       // definitions read stays under one RLS scope). New task → no existing
@@ -1432,6 +1459,7 @@ export class ProjectOpsTools {
           type: (args.type as any) ?? 'OTHER',
           priority: (args.priority as any) ?? 'MEDIUM',
           dueDate: args.dueDate ? new Date(args.dueDate) : null,
+          ...(parentTaskId ? { parentTaskId } : {}),
           ...(args.recurrenceRule !== undefined ? { recurrenceRule: args.recurrenceRule } : {}),
           ...(args.estimatedHours !== undefined ? { estimatedHours: args.estimatedHours } : {}),
           ...(metadata !== undefined ? { metadata } : {}),
@@ -1444,6 +1472,7 @@ export class ProjectOpsTools {
           status: true,
           priority: true,
           dueDate: true,
+          parentTaskId: true,
           recurrenceRule: true,
           estimatedHours: true,
           metadata: true,
@@ -1452,8 +1481,105 @@ export class ProjectOpsTools {
       });
       return { task: created, projectNumber: project.projectNumber };
     });
-    this.logger.log(`MCP create_task: user=${user.email} project=${projectNumber} task=${task.id}`);
+    this.logger.log(
+      `MCP create_task: user=${user.email} project=${projectNumber} task=${task.id}` +
+        (parentTaskId ? ` parent=${parentTaskId}` : ''),
+    );
     return task;
+  }
+
+  /**
+   * List direct subtasks of a parent task. Mirrors REST TasksService.getSubtasks:
+   * parent must be visible via its project (buildVisibilityFilter); returns
+   * ordered children with assignee/creator + nested comment/subtask counts.
+   */
+  async listTaskSubtasks(user: User, args: { taskId: string }) {
+    if (!args.taskId || !String(args.taskId).trim()) {
+      throw new Error('taskId is required');
+    }
+    const taskId = String(args.taskId).trim();
+
+    const result = await this.runScoped(user, async (tx) => {
+      const parent = await tx.task.findFirst({
+        where: {
+          id: taskId,
+          project: buildVisibilityFilter(user),
+        },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          project: {
+            select: { id: true, projectNumber: true, title: true },
+          },
+        },
+      });
+      if (!parent) {
+        return null;
+      }
+
+      const subtasks = await tx.task.findMany({
+        where: { parentTaskId: parent.id },
+        orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          type: true,
+          status: true,
+          priority: true,
+          dueDate: true,
+          completedAt: true,
+          estimatedHours: true,
+          parentTaskId: true,
+          createdAt: true,
+          updatedAt: true,
+          assignedTo: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+          createdBy: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+          _count: {
+            select: { comments: true, subtasks: true },
+          },
+        },
+      });
+
+      return {
+        parent: {
+          id: parent.id,
+          title: parent.title,
+          status: parent.status,
+          project: parent.project,
+        },
+        subtasks: subtasks.map(({ _count, ...t }) => ({
+          ...t,
+          commentsCount: _count.comments,
+          subtasksCount: _count.subtasks,
+        })),
+      };
+    });
+
+    if (!result) {
+      throw new Error('Task not found or you don\'t have access');
+    }
+
+    return {
+      parent: result.parent,
+      subtasks: result.subtasks,
+      count: result.subtasks.length,
+    };
   }
 
   /**

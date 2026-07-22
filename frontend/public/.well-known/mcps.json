@@ -111,12 +111,21 @@
     },
     {
       "name": "create_task",
-      "description": "Create a task under a project. Requires projectId (UUID). Optional type, status, priority, dueDate, assignee. Optional customFields (object keyed by the workspace TASK custom-field key — validated + stored under metadata.customFields), recurrenceRule (RRULE subset, e.g. \"FREQ=WEEKLY;INTERVAL=1\", makes this a recurrence template), and estimatedHours (effort estimate used by capacity planning).",
-      "input_schema": { "type": "object", "properties": { "projectId": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "type": { "type": "string" }, "status": { "type": "string" }, "priority": { "type": "string" }, "dueDate": { "type": "string" }, "assignedToId": { "type": "string" }, "customFields": { "type": "object", "description": "Map of TASK custom-field key -> value; validated against the workspace definitions." }, "recurrenceRule": { "type": "string", "description": "RRULE subset, e.g. \"FREQ=WEEKLY;INTERVAL=1\"." }, "estimatedHours": { "type": "number", "minimum": 0, "description": "Effort estimate (hours) used by capacity planning." } }, "required": ["projectId", "title"] },
+      "description": "Create a task under a project. Requires projectId (UUID) or projectNumber. Optional type, status, priority, dueDate, assignee, parentTaskId (subtask under an existing same-project task). Optional customFields (object keyed by the workspace TASK custom-field key — validated + stored under metadata.customFields), recurrenceRule (RRULE subset, e.g. \"FREQ=WEEKLY;INTERVAL=1\", makes this a recurrence template), and estimatedHours (effort estimate used by capacity planning).",
+      "input_schema": { "type": "object", "properties": { "projectId": { "type": "string" }, "projectNumber": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "type": { "type": "string" }, "status": { "type": "string" }, "priority": { "type": "string" }, "dueDate": { "type": "string" }, "assignedToId": { "type": "string" }, "parentTaskId": { "type": "string", "description": "Optional parent task id; must exist in the same project (workspace-visible)." }, "customFields": { "type": "object", "description": "Map of TASK custom-field key -> value; validated against the workspace definitions." }, "recurrenceRule": { "type": "string", "description": "RRULE subset, e.g. \"FREQ=WEEKLY;INTERVAL=1\"." }, "estimatedHours": { "type": "number", "minimum": 0, "description": "Effort estimate (hours) used by capacity planning." } }, "required": ["title"] },
       "scopes_required": ["write:tasks"],
       "tier_required": "free",
       "read_only": false,
       "expected_latency_ms": 500
+    },
+    {
+      "name": "list_task_subtasks",
+      "description": "List direct subtasks of a parent task the caller can see (via its project). Ordered by priority desc, dueDate asc, createdAt desc. Returns { parent, subtasks, count }.",
+      "input_schema": { "type": "object", "properties": { "taskId": { "type": "string" } }, "required": ["taskId"] },
+      "scopes_required": ["read:tasks"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 200
     },
     {
       "name": "update_task",
