@@ -631,6 +631,35 @@ describe('ProjectOpsTools — agent-surface gap tools', () => {
     expect(workspaceAdmin.removeMember).toHaveBeenCalledWith(admin, WS, 'u-1');
   });
 
+  it('submit_candidate_action_items resolves workspace via resolveAuthorized (not env default)', async () => {
+    // Partner-user parity: claimless callers must land on DEFAULT MEMBERSHIP,
+    // never DEFAULT_WORKSPACE_ID. Pins the membership-aware chokepoint.
+    const resolveAuthorized = jest.fn(async () => 'ws-partner-default');
+    const ingestCandidates = jest.fn(async () => ({ created: 1, skipped: 0, proposals: [] }));
+    const triage = { ingestCandidates } as any;
+    const workspace = { resolveAuthorized } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      triage,
+      undefined,
+      null,
+      workspace,
+    );
+    const staffUser = baseUser({ role: UserRole.STAFF });
+    await tools.submitCandidateActionItems(staffUser, {
+      items: [{ text: 'Ship MCP parity docs' }],
+      sourceType: 'MANUAL',
+    });
+    expect(resolveAuthorized).toHaveBeenCalledWith(staffUser);
+    expect(ingestCandidates).toHaveBeenCalledWith(
+      'ws-partner-default',
+      staffUser,
+      expect.arrayContaining([expect.objectContaining({ text: 'Ship MCP parity docs' })]),
+    );
+  });
+
   it('member tools fail loudly when WorkspacesService is not wired', async () => {
     const workspace = { resolveAuthorized: jest.fn(async () => WS) } as any;
     const tools = new ProjectOpsTools(

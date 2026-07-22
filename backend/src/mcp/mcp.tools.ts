@@ -44,7 +44,6 @@ import type { ApprovalsService } from '../client-portal/approvals/approvals.serv
 // Member-management spine (invite/role/remove/list). Type-only — erased at
 // compile time, so no runtime cycle. Control-plane (non-RLS) service.
 import type { WorkspacesService } from '../workspaces/workspaces.service';
-import { resolveWorkspaceId, defaultWorkspaceId } from '../common/workspace/workspace.util';
 
 type Logger = { log: (msg: string) => void; warn: (msg: string) => void };
 
@@ -1198,10 +1197,13 @@ export class ProjectOpsTools {
     this.logger.log(
       `MCP submit_candidate_action_items: user=${user.email} items=${items.length} sourceType=${args.sourceType ?? 'MANUAL'}`,
     );
-    // Resolve the active workspace the same way @CurrentWorkspace does (claim →
-    // default); triage's runForUser re-authorizes membership for this user.
-    // Resolved here (not via workspaceFor) so triage works without time-tracking.
-    const workspaceId = resolveWorkspaceId(user, defaultWorkspaceId());
+    // Membership-aware chokepoint (claim → DEFAULT MEMBERSHIP), identical to
+    // runScoped / @CurrentWorkspace / every other MCP write. The previous
+    // resolveWorkspaceId(user, DEFAULT_WORKSPACE_ID) path forced partner users
+    // whose only membership is not the env default through the wrong workspace
+    // (then 403'd inside triage runForUser) — same class of bug the time-tracking
+    // tools already fixed. triage.ingestCandidates re-authorizes via runForUser.
+    const workspaceId = await this.requireWorkspace().resolveAuthorized(user);
     return this.triage.ingestCandidates(workspaceId, user, items);
   }
 
