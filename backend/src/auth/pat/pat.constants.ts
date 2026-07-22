@@ -65,6 +65,8 @@ export const MCP_TOOL_SCOPE_MAP: Record<string, PatScope> = {
   update_billing_fields: 'write:billing',
   // read:tasks
   list_my_tasks: 'read:tasks',
+  get_task: 'read:tasks',
+  list_project_tasks: 'read:tasks',
   // write:tasks
   create_task: 'write:tasks',
   update_task: 'write:tasks',

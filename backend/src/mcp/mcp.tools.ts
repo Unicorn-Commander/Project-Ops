@@ -15,6 +15,8 @@ import {
   CustomFieldType,
   Prisma,
   ProjectStatus,
+  TaskPriority,
+  TaskStatus,
   User,
   UserRole,
   WorkspaceRole,
@@ -149,6 +151,44 @@ export function normalizeProjectStatus(value?: string): ProjectStatus | undefine
   }
   throw new Error(
     `Invalid status "${value}". Valid values: ${valid.join(', ')}.`,
+  );
+}
+
+/**
+ * Coerce a free-text task `status` filter into a real {@link TaskStatus} or
+ * throw a self-correcting error listing valid values. Same agent-forgiving
+ * case-normalize path as {@link normalizeProjectStatus}. Empty/undefined =
+ * no filter.
+ */
+export function normalizeTaskStatus(value?: string): TaskStatus | undefined {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return undefined;
+  }
+  const normalized = String(value).trim().toUpperCase();
+  const valid = Object.values(TaskStatus) as string[];
+  if (valid.includes(normalized)) {
+    return normalized as TaskStatus;
+  }
+  throw new Error(
+    `Invalid task status "${value}". Valid values: ${valid.join(', ')}.`,
+  );
+}
+
+/**
+ * Coerce a free-text task `priority` filter into a real {@link TaskPriority}
+ * or throw a self-correcting error. Empty/undefined = no filter.
+ */
+export function normalizeTaskPriority(value?: string): TaskPriority | undefined {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return undefined;
+  }
+  const normalized = String(value).trim().toUpperCase();
+  const valid = Object.values(TaskPriority) as string[];
+  if (valid.includes(normalized)) {
+    return normalized as TaskPriority;
+  }
+  throw new Error(
+    `Invalid task priority "${value}". Valid values: ${valid.join(', ')}.`,
   );
 }
 
@@ -425,11 +465,12 @@ export class ProjectOpsTools {
   }
 
   async listMyTasks(user: User, args: { status?: string; limit?: number }) {
+    const status = normalizeTaskStatus(args.status);
     const tasks = await this.runScoped(user, (tx) =>
       tx.task.findMany({
         where: {
           assignedToId: user.id,
-          ...(args.status ? { status: args.status as any } : {}),
+          ...(status ? { status } : {}),
         },
         take: Math.min(args.limit ?? 25, 100),
         orderBy: [{ dueDate: 'asc' }, { priority: 'desc' }],
@@ -447,6 +488,250 @@ export class ProjectOpsTools {
       }),
     );
     return { tasks, count: tasks.length };
+  }
+
+  /**
+   * Full task detail by id. Visibility is project-scoped (same filter as
+   * update_task / add_task_comment): the caller must be able to see the
+   * parent project. Returns description, status, priority, assignee,
+   * project summary, comment/subtask counts, and dependency edges
+   * (dependsOn + blocks) when present.
+   *
+   * Note: `isBlocked` / enforcement of incomplete predecessors is NOT
+   * computed here — that lands with feat/p00127-dep-enforcement-and-pats
+   * (TasksService.loadBlockedState). Until that merges, agents can infer
+   * open blockers from `dependencies.dependsOn` (predecessor status).
+   */
+  async getTask(user: User, args: { taskId: string }) {
+    if (!args.taskId || !String(args.taskId).trim()) {
+      throw new Error('taskId is required');
+    }
+    const taskId = String(args.taskId).trim();
+
+    const result = await this.runScoped(user, async (tx) => {
+      const task = await tx.task.findFirst({
+        where: {
+          id: taskId,
+          project: buildVisibilityFilter(user),
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          type: true,
+          status: true,
+          priority: true,
+          dueDate: true,
+          completedAt: true,
+          parentTaskId: true,
+          recurrenceRule: true,
+          estimatedHours: true,
+          metadata: true,
+          billable: true,
+          createdAt: true,
+          updatedAt: true,
+          project: {
+            select: {
+              id: true,
+              projectNumber: true,
+              title: true,
+              status: true,
+              priority: true,
+            },
+          },
+          createdBy: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              role: true,
+            },
+          },
+          assignedTo: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              role: true,
+            },
+          },
+          parentTask: {
+            select: { id: true, title: true, status: true },
+          },
+          _count: {
+            select: { comments: true, subtasks: true },
+          },
+        },
+      });
+
+      if (!task) {
+        return null;
+      }
+
+      // Dependency edges are cheap (indexed on predecessorId/successorId) and
+      // give agents the graph without a second tool round-trip.
+      const taskSummary = {
+        id: true,
+        title: true,
+        status: true,
+        priority: true,
+        projectId: true,
+      } as const;
+      const [dependsOn, blocks] = await Promise.all([
+        tx.taskDependency.findMany({
+          where: { successorId: task.id },
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            type: true,
+            createdAt: true,
+            predecessor: { select: taskSummary },
+          },
+        }),
+        tx.taskDependency.findMany({
+          where: { predecessorId: task.id },
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            type: true,
+            createdAt: true,
+            successor: { select: taskSummary },
+          },
+        }),
+      ]);
+
+      return {
+        ...task,
+        commentsCount: task._count.comments,
+        subtasksCount: task._count.subtasks,
+        dependencies: { dependsOn, blocks },
+      };
+    });
+
+    if (!result) {
+      throw new Error('Task not found or you don\'t have access');
+    }
+    // Drop the raw Prisma _count bag now that we flattened the counters.
+    const { _count: _ignored, ...task } = result as typeof result & { _count?: unknown };
+    return task;
+  }
+
+  /**
+   * List tasks on one project the caller can see. Identify the project by
+   * `projectId` or `projectNumber` (same dual-key forgiveness as get_project:
+   * either arg may hold a UUID or a human project number).
+   *
+   * Window (explicit): offset/limit pagination.
+   *   - `limit` defaults to 25, hard-capped at 100
+   *   - `offset` defaults to 0
+   *   - ordered by priority desc, dueDate asc, createdAt desc (matches REST
+   *     TasksService.findAll default)
+   * Optional filters: `status` (TaskStatus), `priority` (TaskPriority) —
+   * case-normalized; unknown values throw a self-correcting error.
+   *
+   * Returns `{ project, tasks, count, total, offset, limit }` where `count`
+   * is the page size returned and `total` is the full match count for the
+   * filters (so agents can page).
+   */
+  async listProjectTasks(
+    user: User,
+    args: {
+      projectId?: string;
+      projectNumber?: string;
+      status?: string;
+      priority?: string;
+      limit?: number;
+      offset?: number;
+    },
+  ) {
+    if (!args.projectId && !args.projectNumber) {
+      throw new Error('Either projectId or projectNumber must be provided');
+    }
+    const status = normalizeTaskStatus(args.status);
+    const priority = normalizeTaskPriority(args.priority);
+    const limit = Math.min(Math.max(1, Math.floor(args.limit ?? 25)), 100);
+    const offset = Math.max(0, Math.floor(args.offset ?? 0));
+
+    // Dual-key: whichever of projectId/projectNumber the agent filled, match
+    // against EITHER column (UUIDs and project numbers never collide).
+    const key = (args.projectId ?? args.projectNumber)!;
+
+    const result = await this.runScoped(user, async (tx) => {
+      const project = await tx.project.findFirst({
+        where: {
+          AND: [
+            buildVisibilityFilter(user),
+            { OR: [{ id: key }, { projectNumber: key }] },
+          ],
+        },
+        select: { id: true, projectNumber: true, title: true, status: true },
+      });
+      if (!project) {
+        return null;
+      }
+
+      const where: Prisma.TaskWhereInput = {
+        projectId: project.id,
+        ...(status ? { status } : {}),
+        ...(priority ? { priority } : {}),
+      };
+
+      const [tasks, total] = await Promise.all([
+        tx.task.findMany({
+          where,
+          skip: offset,
+          take: limit,
+          orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            type: true,
+            status: true,
+            priority: true,
+            dueDate: true,
+            completedAt: true,
+            estimatedHours: true,
+            parentTaskId: true,
+            createdAt: true,
+            updatedAt: true,
+            assignedTo: {
+              select: { id: true, firstName: true, lastName: true, email: true },
+            },
+            createdBy: {
+              select: { id: true, firstName: true, lastName: true, email: true },
+            },
+            _count: { select: { comments: true, subtasks: true } },
+          },
+        }),
+        tx.task.count({ where }),
+      ]);
+
+      return {
+        project,
+        tasks: tasks.map(({ _count, ...t }) => ({
+          ...t,
+          commentsCount: _count.comments,
+          subtasksCount: _count.subtasks,
+        })),
+        total,
+      };
+    });
+
+    if (!result) {
+      throw new Error('Project not found or you don\'t have access');
+    }
+
+    return {
+      project: result.project,
+      tasks: result.tasks,
+      count: result.tasks.length,
+      total: result.total,
+      offset,
+      limit,
+    };
   }
 
   async searchProjects(user: User, args: { query: string; limit?: number }) {
