@@ -340,6 +340,56 @@ export class McpService {
         wrap(await tools.addTaskComment(user, args)),
     );
 
+    server.registerTool(
+      'list_task_comments',
+      {
+        title: 'List comments on a task',
+        description:
+          'Return the comment thread for a task the caller can see, oldest first. ' +
+          'Optional limit (default 50, max 100) and offset for pagination. ' +
+          'Requires read:tasks when called with a PAT.',
+        inputSchema: {
+          taskId: z.string().min(1),
+          limit: z.number().int().min(1).max(100).optional(),
+          offset: z.number().int().min(0).optional(),
+        },
+      },
+      async (args: { taskId: string; limit?: number; offset?: number }) =>
+        wrap(await tools.listTaskComments(user, args)),
+    );
+
+    server.registerTool(
+      'update_task_comment',
+      {
+        title: 'Update a task comment',
+        description:
+          'Edit a task comment by id. Only the author or an ADMIN may update. ' +
+          'Same ownership rule as the REST TasksService / project-comment UI. ' +
+          'Does not re-fan-out @mentions (matches REST update).',
+        inputSchema: {
+          commentId: z.string().min(1),
+          content: z.string().min(1).max(5000),
+        },
+      },
+      async (args: { commentId: string; content: string }) =>
+        wrap(await tools.updateTaskComment(user, args)),
+    );
+
+    server.registerTool(
+      'delete_task_comment',
+      {
+        title: 'Delete a task comment',
+        description:
+          'Delete a task comment by id. Only the author, ADMIN, or MANAGER may ' +
+          'delete — same ownership rule as the REST TasksService / project-comment UI.',
+        inputSchema: {
+          commentId: z.string().min(1),
+        },
+      },
+      async (args: { commentId: string }) =>
+        wrap(await tools.deleteTaskComment(user, args)),
+    );
+
     // ─── Write tools ────────────────────────────────────────────────
 
     server.registerTool(

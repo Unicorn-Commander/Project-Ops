@@ -852,9 +852,21 @@ export class TasksService {
   }
 
   /**
-   * Get all comments for a task
+   * Get comments for a task (optionally paginated).
+   *
+   * When `take`/`skip` are omitted the historical unbounded list is preserved
+   * for REST callers that expect a plain array. MCP / new clients pass
+   * limit+offset and receive a bounded page (default 50, max 100).
    */
-  async getTaskComments(workspaceId: string, user: User, taskId: string) {
+  async getTaskComments(
+    workspaceId: string,
+    user: User,
+    taskId: string,
+    params?: { skip?: number; take?: number },
+  ) {
+    const skip = params?.skip !== undefined ? clampOffset(params.skip) : undefined;
+    const take = params?.take !== undefined ? clampLimit(params.take, 50) : undefined;
+
     return this.workspaceContext.runForUser(
       user,
       async (tx) => {
@@ -869,6 +881,8 @@ export class TasksService {
         return tx.taskComment.findMany({
           where: { taskId },
           orderBy: { createdAt: 'asc' },
+          ...(skip !== undefined ? { skip } : {}),
+          ...(take !== undefined ? { take } : {}),
           include: {
             author: {
               select: {
@@ -881,6 +895,105 @@ export class TasksService {
             },
           },
         });
+      },
+      workspaceId,
+    );
+  }
+
+  /**
+   * Update a task comment. Ownership matches the project-comment UI contract:
+   * author or ADMIN may edit. Content-only (no re-mention fan-out — REST
+   * project-comment update also does not re-emit mentions).
+   */
+  async updateComment(
+    workspaceId: string,
+    user: User,
+    commentId: string,
+    content: string,
+  ) {
+    const trimmed = (content ?? '').trim();
+    if (!trimmed) {
+      throw new BadRequestException('content is required');
+    }
+
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const comment = await tx.taskComment.findUnique({
+          where: { id: commentId },
+          select: { id: true, authorId: true, taskId: true },
+        });
+
+        if (!comment) {
+          throw new NotFoundException(`Comment with ID ${commentId} not found`);
+        }
+
+        const canEdit =
+          comment.authorId === user.id || user.role === UserRole.ADMIN;
+        if (!canEdit) {
+          throw new ForbiddenException(
+            'Only the author or an ADMIN can update this comment',
+          );
+        }
+
+        const updated = await tx.taskComment.update({
+          where: { id: comment.id },
+          data: { content: trimmed },
+          include: {
+            author: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+                role: true,
+              },
+            },
+          },
+        });
+
+        this.logger.log(
+          `Comment ${commentId} updated by user ${user.id} ws=${workspaceId}`,
+        );
+        return updated;
+      },
+      workspaceId,
+    );
+  }
+
+  /**
+   * Delete a task comment. Ownership matches the project-comment UI contract:
+   * author, ADMIN, or MANAGER may delete.
+   */
+  async removeComment(workspaceId: string, user: User, commentId: string) {
+    return this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const comment = await tx.taskComment.findUnique({
+          where: { id: commentId },
+          select: { id: true, authorId: true, taskId: true },
+        });
+
+        if (!comment) {
+          throw new NotFoundException(`Comment with ID ${commentId} not found`);
+        }
+
+        const canDelete =
+          comment.authorId === user.id ||
+          user.role === UserRole.ADMIN ||
+          user.role === UserRole.MANAGER;
+        if (!canDelete) {
+          throw new ForbiddenException(
+            'Only the author, ADMIN, or MANAGER can delete this comment',
+          );
+        }
+
+        await tx.taskComment.delete({ where: { id: comment.id } });
+
+        this.logger.log(
+          `Comment ${commentId} deleted by user ${user.id} ws=${workspaceId}`,
+        );
+        return { deleted: true, commentId: comment.id, taskId: comment.taskId };
       },
       workspaceId,
     );
