@@ -747,6 +747,26 @@ export class McpService {
       async (args: any) => wrap(await tools.updateTaskStatus(user, args)),
     );
 
+    // Hard-delete a task (ADMIN only) — mirrors REST DELETE /tasks/:id.
+    // Intentional asymmetry vs archive_project: projects cannot be hard-deleted
+    // via MCP (archive only); tasks can, matching the REST admin surface.
+    server.registerTool(
+      'delete_task',
+      {
+        title: 'Delete a task (ADMIN only)',
+        description:
+          'Permanently delete a task by taskId. ADMIN only — same RBAC as REST ' +
+          'DELETE /tasks/:id. Not available to MANAGER/STAFF/CLIENT. This is a ' +
+          'hard delete (unlike archive_project, which is the safe reversible ' +
+          'alternative for projects; project hard-delete is intentionally not ' +
+          'exposed to agents).',
+        inputSchema: {
+          taskId: z.string().min(1),
+        },
+      },
+      async (args: any) => wrap(await tools.deleteTask(user, args)),
+    );
+
     server.registerTool(
       'list_project_documents',
       {

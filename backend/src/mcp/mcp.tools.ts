@@ -1814,6 +1814,41 @@ export class ProjectOpsTools {
     return updated;
   }
 
+  /**
+   * Permanently delete a task. Mirrors REST `DELETE /tasks/:id`
+   * (`TasksController.remove` @Roles(UserRole.ADMIN) + `TasksService.remove`):
+   * ADMIN only — not STAFF/MANAGER/CLIENT. Visibility is checked first via
+   * runScoped + project filter (defense in depth; ADMIN filter is open).
+   *
+   * Intentional asymmetry vs `archive_project`: project hard-delete is NOT
+   * exposed to agents (archive is the safe reversible alternative). Task
+   * hard-delete IS exposed because REST already allows it for ADMIN and
+   * agents need cleanup of mistaken creates. Projects cascade more and are
+   * irreversible in ways tasks are not treated as.
+   */
+  async deleteTask(user: User, args: { taskId: string }) {
+    this.assertAdmin(user, 'delete tasks');
+    if (!args?.taskId) {
+      throw new Error("'taskId' is required.");
+    }
+    const result = await this.runScoped(user, async (tx) => {
+      const found = await tx.task.findFirst({
+        where: {
+          id: args.taskId,
+          project: buildVisibilityFilter(user),
+        },
+        select: { id: true },
+      });
+      if (!found) {
+        throw new Error('Task not found or no access');
+      }
+      await tx.task.delete({ where: { id: found.id } });
+      return { message: 'Task deleted successfully', id: found.id };
+    });
+    this.logger.log(`MCP delete_task: user=${user.email} task=${result.id}`);
+    return result;
+  }
+
   async listProjectDocuments(user: User, args: { projectId?: string; projectNumber?: string }) {
     if (!args.projectId && !args.projectNumber) {
       throw new Error('Either projectId or projectNumber must be provided');
@@ -2215,6 +2250,13 @@ export class ProjectOpsTools {
   private assertManagerOrAdmin(user: User, surface: string) {
     if (user.role !== UserRole.ADMIN && user.role !== UserRole.MANAGER) {
       throw new Error(`Only ADMIN or MANAGER roles can ${surface}.`);
+    }
+  }
+
+  /** ADMIN-only gate — mirrors controllers' @Roles(ADMIN), e.g. DELETE /tasks/:id. */
+  private assertAdmin(user: User, surface: string) {
+    if (user.role !== UserRole.ADMIN) {
+      throw new Error(`Only ADMIN can ${surface}.`);
     }
   }
 

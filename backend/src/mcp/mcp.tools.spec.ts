@@ -160,6 +160,528 @@ describe('ProjectOpsTools.assertCanWrite', () => {
   });
 });
 
+describe('ProjectOpsTools — Wave 2 role gates', () => {
+  // Each Wave 2 service is a jest stub; we assert the role GATE fires (or
+  // doesn't) and, when it passes, that the tool delegates to the right service
+  // with the resolved workspace. The workspace stub mirrors the addTaskComment
+  // spec: resolveAuthorized hands back the active workspace.
+  const WS_ID = 'ws-1';
+
+  function makeTools(overrides?: {
+    reporting?: any;
+    capacity?: any;
+    automations?: any;
+    customFields?: any;
+    approvals?: any;
+  }) {
+    const reporting = overrides?.reporting ?? {
+      getPortfolio: jest.fn(async () => ({ ok: 'portfolio' })),
+      getProfitability: jest.fn(async () => ({ ok: 'profitability' })),
+      getThroughput: jest.fn(async () => ({ ok: 'throughput' })),
+    };
+    const capacity = overrides?.capacity ?? {
+      getTeamCapacity: jest.fn(async () => ({ ok: 'team' })),
+      getMyCapacity: jest.fn(async () => ({ ok: 'me' })),
+    };
+    const automations = overrides?.automations ?? {
+      findAll: jest.fn(async () => [{ id: 'r1' }]),
+      create: jest.fn(async () => ({ id: 'r1' })),
+      update: jest.fn(async () => ({ id: 'r1', enabled: false })),
+      remove: jest.fn(async () => ({ message: 'deleted' })),
+    };
+    const customFields = overrides?.customFields ?? {
+      findAllForEntity: jest.fn(async () => [{ id: 'cf1', key: 'k' }]),
+      validateValues: jest.fn(async () => ({ k: 'v' })),
+    };
+    const approvals = overrides?.approvals ?? {
+      listForProject: jest.fn(async () => ({ data: [], total: 0 })),
+      request: jest.fn(async () => ({ id: 'a1' })),
+    };
+    const workspace = {
+      resolveAuthorized: jest.fn(async () => WS_ID),
+    } as any;
+    const wave2 = { reporting, capacity, automations, customFields, approvals };
+    const tools = new ProjectOpsTools(
+      {} as any, // prisma
+      {} as any, // minio
+      { log: () => {}, warn: () => {} },
+      undefined, // triage
+      undefined, // tt
+      null, // bearerToken
+      workspace,
+      undefined, // events
+      wave2 as any,
+    );
+    return { tools, reporting, capacity, automations, customFields, approvals };
+  }
+
+  const admin = baseUser({ role: UserRole.ADMIN });
+  const manager = baseUser({ role: UserRole.MANAGER });
+  const staff = baseUser({ role: UserRole.STAFF });
+  const client = baseUser({ role: UserRole.CLIENT });
+
+  it('get_profitability_report is MANAGER/ADMIN only', async () => {
+    const { tools, reporting } = makeTools();
+    await expect(tools.getProfitabilityReport(staff, {})).rejects.toThrow(/ADMIN or MANAGER/);
+    await expect(tools.getProfitabilityReport(client, {})).rejects.toThrow(/ADMIN or MANAGER/);
+    expect(reporting.getProfitability).not.toHaveBeenCalled();
+
+    await tools.getProfitabilityReport(manager, { from: 'f', to: 't' });
+    expect(reporting.getProfitability).toHaveBeenCalledWith(WS_ID, manager, { from: 'f', to: 't' });
+  });
+
+  it('get_portfolio_report + get_throughput_report are readable by any member', async () => {
+    const { tools, reporting } = makeTools();
+    await tools.getPortfolioReport(staff, {} as any);
+    await tools.getThroughputReport(client, {});
+    expect(reporting.getPortfolio).toHaveBeenCalledWith(WS_ID, staff);
+    expect(reporting.getThroughput).toHaveBeenCalledWith(WS_ID, client, {
+      from: undefined,
+      to: undefined,
+    });
+  });
+
+  it('get_team_capacity is MANAGER/ADMIN only; get_my_capacity is any member', async () => {
+    const { tools, capacity } = makeTools();
+    await expect(tools.getTeamCapacity(staff, {})).rejects.toThrow(/ADMIN or MANAGER/);
+    expect(capacity.getTeamCapacity).not.toHaveBeenCalled();
+
+    await tools.getTeamCapacity(admin, { from: 'f', to: 't' });
+    expect(capacity.getTeamCapacity).toHaveBeenCalledWith(WS_ID, admin, 'f', 't');
+
+    await tools.getMyCapacity(staff, {});
+    expect(capacity.getMyCapacity).toHaveBeenCalledWith(WS_ID, staff, undefined, undefined);
+  });
+
+  it('automation write tools (create/set-enabled/delete) are MANAGER/ADMIN only', async () => {
+    const { tools, automations } = makeTools();
+    await expect(
+      tools.createAutomation(staff, {
+        name: 'r',
+        trigger: 'TASK_CREATED',
+        actions: [{ type: 'notify', params: { userId: 'u' } }],
+      }),
+    ).rejects.toThrow(/ADMIN or MANAGER/);
+    await expect(tools.setAutomationEnabled(staff, { id: 'r1', enabled: false })).rejects.toThrow(
+      /ADMIN or MANAGER/,
+    );
+    await expect(tools.deleteAutomation(client, { id: 'r1' })).rejects.toThrow(/ADMIN or MANAGER/);
+    expect(automations.create).not.toHaveBeenCalled();
+    expect(automations.update).not.toHaveBeenCalled();
+    expect(automations.remove).not.toHaveBeenCalled();
+  });
+
+  it('create_automation rejects an unknown trigger and an empty actions array', async () => {
+    const { tools, automations } = makeTools();
+    await expect(
+      tools.createAutomation(admin, {
+        name: 'r',
+        trigger: 'NOT_A_TRIGGER',
+        actions: [{ type: 'notify', params: {} }],
+      }),
+    ).rejects.toThrow(/Invalid trigger/);
+    await expect(
+      tools.createAutomation(admin, { name: 'r', trigger: 'TASK_CREATED', actions: [] }),
+    ).rejects.toThrow(/actions is required/);
+    expect(automations.create).not.toHaveBeenCalled();
+  });
+
+  it('create_automation forwards the rule shape to AutomationsService.create', async () => {
+    const { tools, automations } = makeTools();
+    await tools.createAutomation(manager, {
+      name: 'auto',
+      trigger: 'TASK_CREATED',
+      conditions: [{ field: 'priority', op: 'eq', value: 'URGENT' }],
+      actions: [{ type: 'notify', params: { userId: 'u' } }],
+      enabled: true,
+    });
+    expect(automations.create).toHaveBeenCalledWith(
+      WS_ID,
+      manager,
+      expect.objectContaining({
+        name: 'auto',
+        trigger: 'TASK_CREATED',
+        enabled: true,
+        conditions: [{ field: 'priority', op: 'eq', value: 'URGENT' }],
+        actions: [{ type: 'notify', params: { userId: 'u' } }],
+      }),
+    );
+  });
+
+  it('list_custom_fields rejects an invalid entity and forwards a valid one', async () => {
+    const { tools, customFields } = makeTools();
+    await expect(tools.listCustomFields(staff, { entity: 'NOPE' })).rejects.toThrow(
+      /Invalid entity/,
+    );
+    await tools.listCustomFields(staff, { entity: 'TASK' });
+    expect(customFields.findAllForEntity).toHaveBeenCalledWith(WS_ID, staff, 'TASK');
+  });
+
+  it('approval tools are staff-gated (CLIENT cannot)', async () => {
+    const { tools, approvals } = makeTools();
+    await expect(tools.listProjectApprovals(client, { projectId: 'p1' })).rejects.toThrow(
+      /Read-only role/,
+    );
+    await expect(
+      tools.requestApproval(client, { entityType: 'DOCUMENT', entityId: 'd1' }),
+    ).rejects.toThrow(/Read-only role/);
+    expect(approvals.listForProject).not.toHaveBeenCalled();
+    expect(approvals.request).not.toHaveBeenCalled();
+
+    await tools.listProjectApprovals(staff, { projectId: 'p1' });
+    expect(approvals.listForProject).toHaveBeenCalledWith(WS_ID, staff, 'p1');
+  });
+
+  it('request_approval rejects an invalid entityType and forwards a valid request', async () => {
+    const { tools, approvals } = makeTools();
+    await expect(
+      tools.requestApproval(staff, { entityType: 'NOPE', entityId: 'd1' }),
+    ).rejects.toThrow(/Invalid entityType/);
+    await tools.requestApproval(staff, {
+      entityType: 'DOCUMENT',
+      entityId: 'd1',
+      projectId: 'p1',
+      note: 'please review',
+    });
+    expect(approvals.request).toHaveBeenCalledWith(
+      WS_ID,
+      staff,
+      expect.objectContaining({
+        entityType: 'DOCUMENT',
+        entityId: 'd1',
+        projectId: 'p1',
+        note: 'please review',
+      }),
+    );
+  });
+});
+
+describe('ProjectOpsTools — custom-field VALUE pass-through on create_task', () => {
+  // Pins that create_task validates customFields against the workspace TASK
+  // definitions ON THE SAME tx and folds the result into metadata.customFields,
+  // mirroring TasksService.resolveMetadataWithCustomFields. recurrenceRule +
+  // estimatedHours pass straight through as columns.
+  const WS_ID = 'ws-1';
+
+  it('validates customFields on the tx and stores them under metadata.customFields', async () => {
+    const validateValues = jest.fn(async () => ({ priority_score: 8 }));
+    const taskCreate = jest.fn(async (arg: any) => ({ id: 't1', ...arg.data }));
+    const tx = {
+      project: { findFirst: async () => ({ id: 'p1', projectNumber: 'P-00001' }) },
+      task: { create: taskCreate },
+    };
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) => fn(tx, WS_ID),
+    } as any;
+    const wave2 = { customFields: { validateValues } } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+      undefined,
+      wave2,
+    );
+
+    await tools.createTask(baseUser({ role: UserRole.STAFF }), {
+      projectId: 'p1',
+      title: 'T',
+      customFields: { priority_score: 8 },
+      recurrenceRule: 'FREQ=WEEKLY;INTERVAL=1',
+      estimatedHours: 4.5,
+    });
+
+    // validateValues called with (tx, workspaceId, 'TASK', incoming).
+    expect(validateValues).toHaveBeenCalledWith(tx, WS_ID, 'TASK', { priority_score: 8 });
+    const data = taskCreate.mock.calls[0][0].data;
+    expect(data.metadata).toEqual({ customFields: { priority_score: 8 } });
+    expect(data.recurrenceRule).toBe('FREQ=WEEKLY;INTERVAL=1');
+    expect(data.estimatedHours).toBe(4.5);
+  });
+
+  it('does NOT touch metadata/validator when customFields is omitted', async () => {
+    const validateValues = jest.fn();
+    const taskCreate = jest.fn(async (arg: any) => ({ id: 't1', ...arg.data }));
+    const tx = {
+      project: { findFirst: async () => ({ id: 'p1', projectNumber: 'P-00001' }) },
+      task: { create: taskCreate },
+    };
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) => fn(tx, WS_ID),
+    } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+      undefined,
+      { customFields: { validateValues } } as any,
+    );
+
+    await tools.createTask(baseUser({ role: UserRole.STAFF }), { projectId: 'p1', title: 'T' });
+    expect(validateValues).not.toHaveBeenCalled();
+    expect(taskCreate.mock.calls[0][0].data.metadata).toBeUndefined();
+  });
+});
+
+describe('ProjectOpsTools.addTaskComment — domain event', () => {
+  // Minimal WorkspaceContextService stub: resolveAuthorized hands back the
+  // active workspace, runForUser runs the callback against a fake tx (no DB).
+  // This pins the MCP path's `task.comment.created` emit so MCP-posted task
+  // comments fan out @mentions identically to the REST TasksService.addComment.
+  const WS_ID = 'ws-1';
+
+  function makeTools(overrides?: {
+    taskFindFirst?: () => Promise<any>;
+    taskCommentCreate?: () => Promise<any>;
+  }) {
+    const emit = jest.fn();
+    const events = { emit } as any;
+    const tx = {
+      task: {
+        findFirst: overrides?.taskFindFirst ?? (async () => ({ id: 'task1', projectId: 'p1' })),
+      },
+      taskComment: {
+        create:
+          overrides?.taskCommentCreate ??
+          (async () => ({
+            id: 'comment1',
+            content: 'hey @bob',
+            createdAt: new Date(),
+            author: { firstName: 'A', lastName: 'B' },
+          })),
+      },
+    };
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_user: User, fn: (t: any) => Promise<any>) => fn(tx),
+    } as any;
+    const tools = new ProjectOpsTools(
+      {} as any, // prisma (unused — runForUser stub supplies tx)
+      {} as any, // minio
+      { log: () => {}, warn: () => {} },
+      undefined, // triage
+      undefined, // tt
+      null, // bearerToken
+      workspace,
+      events,
+    );
+    return { tools, emit };
+  }
+
+  const user = baseUser({ id: 'u1', role: UserRole.STAFF });
+
+  it('emits task.comment.created with the expected payload after commit', async () => {
+    const { tools, emit } = makeTools();
+
+    await tools.addTaskComment(user, { taskId: 'task1', content: 'hey @bob' });
+
+    // Byte-for-byte the same event + payload shape TasksService.addComment emits.
+    expect(emit).toHaveBeenCalledWith('task.comment.created', {
+      workspaceId: WS_ID,
+      taskId: 'task1',
+      commentId: 'comment1',
+      authorId: 'u1',
+      content: 'hey @bob',
+    });
+  });
+
+  it('does NOT emit if the task is missing (create never runs)', async () => {
+    const { tools, emit } = makeTools({ taskFindFirst: async () => null });
+
+    await expect(tools.addTaskComment(user, { taskId: 'missing', content: 'x' })).rejects.toThrow(
+      /Task not found/,
+    );
+    expect(emit).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProjectOpsTools — agent-surface gap tools', () => {
+  // Tools added to close the gaps the agent-readiness eval exposed:
+  // create_custom_field, issue_invoice, archive_project, and the member tools.
+  // We assert each tool's OWN gate + validation + delegation; the deeper RBAC
+  // (CustomFieldsService conflict handling, the billable rollup, the
+  // WorkspacesService OWNER/last-owner rules) is the delegated service's
+  // contract and is covered by those services' own tests.
+  const WS = 'ws-gap';
+
+  function makeGapTools() {
+    const workspace = { resolveAuthorized: jest.fn(async () => WS) } as any;
+    const customFields = { create: jest.fn(async () => ({ id: 'cf-new', key: 'risk_level' })) };
+    const rollup = { createBillableDraft: jest.fn(async () => ({ status: 'SENT', invoiceId: 'inv-1' })) };
+    const tt = { timer: {}, timeEntry: {}, timesheet: {}, reports: {}, rollup, workspace } as any;
+    const workspaceAdmin = {
+      listMembers: jest.fn(async () => ({ members: [{ userKey: 'u-1' }] })),
+      addMember: jest.fn(async () => ({ status: 'invited', inviteUrl: 'https://x/invite' })),
+      updateMemberRole: jest.fn(async () => ({ userKey: 'u-1', role: 'MANAGER' })),
+      removeMember: jest.fn(async () => ({ removed: true })),
+    };
+    const wave2 = { reporting: {}, capacity: {}, automations: {}, customFields, approvals: {} };
+    const tools = new ProjectOpsTools(
+      {} as any, // prisma
+      {} as any, // minio
+      { log: () => {}, warn: () => {} },
+      undefined, // triage
+      tt, // tt (issue_invoice → createBillableDraft)
+      null, // bearerToken
+      workspace,
+      undefined, // events
+      wave2 as any,
+      workspaceAdmin as any,
+    );
+    return { tools, customFields, rollup, workspaceAdmin };
+  }
+
+  const admin = baseUser({ role: UserRole.ADMIN });
+  const staff = baseUser({ role: UserRole.STAFF });
+  const client = baseUser({ role: UserRole.CLIENT });
+
+  it('create_custom_field rejects CLIENT and validates entity + type', async () => {
+    const { tools, customFields } = makeGapTools();
+    await expect(
+      tools.createCustomField(client, { entity: 'TASK', label: 'L', type: 'TEXT' }),
+    ).rejects.toThrow(/Read-only role/);
+    await expect(
+      tools.createCustomField(staff, { entity: 'NOPE', label: 'L', type: 'TEXT' }),
+    ).rejects.toThrow(/Invalid entity/);
+    await expect(
+      tools.createCustomField(staff, { entity: 'PROJECT', label: 'L', type: 'NOPE' }),
+    ).rejects.toThrow(/Invalid type/);
+    expect(customFields.create).not.toHaveBeenCalled();
+  });
+
+  it('create_custom_field forwards a valid definition to CustomFieldsService.create', async () => {
+    const { tools, customFields } = makeGapTools();
+    await tools.createCustomField(staff, {
+      entity: 'PROJECT',
+      label: 'Risk Level',
+      type: 'SELECT',
+      options: ['low', 'high'],
+    });
+    expect(customFields.create).toHaveBeenCalledWith(
+      WS,
+      staff,
+      expect.objectContaining({ entity: 'PROJECT', label: 'Risk Level', type: 'SELECT', options: ['low', 'high'] }),
+    );
+  });
+
+  it('issue_invoice delegates to createBillableDraft with autoSend=true', async () => {
+    const { tools, rollup } = makeGapTools();
+    await tools.issueInvoice(admin, { projectId: 'p-1', groupBy: 'TASK' });
+    expect(rollup.createBillableDraft).toHaveBeenCalledTimes(1);
+    // (workspaceId, user, args, ctx) — args must carry autoSend:true.
+    const billArgs = rollup.createBillableDraft.mock.calls[0] as any[];
+    expect(billArgs[2]).toEqual(
+      expect.objectContaining({ projectId: 'p-1', groupBy: 'TASK', autoSend: true }),
+    );
+  });
+
+  it('archive_project rejects CLIENT and requires an identifier (gate fires pre-DB)', async () => {
+    const { tools } = makeGapTools();
+    await expect(tools.archiveProject(client, { projectNumber: 'P-1' })).rejects.toThrow(
+      /Read-only role/,
+    );
+    await expect(tools.archiveProject(staff, {})).rejects.toThrow(/Either id or projectNumber/);
+  });
+
+  it('list_members delegates to WorkspacesService with the active workspace', async () => {
+    const { tools, workspaceAdmin } = makeGapTools();
+    await tools.listMembers(admin, {} as any);
+    expect(workspaceAdmin.listMembers).toHaveBeenCalledWith(admin, WS);
+  });
+
+  it('invite_member requires email, validates role, then forwards to addMember', async () => {
+    const { tools, workspaceAdmin } = makeGapTools();
+    await expect(tools.inviteMember(admin, { email: '' })).rejects.toThrow(/email/);
+    await expect(tools.inviteMember(admin, { email: 'a@b.com', role: 'WIZARD' })).rejects.toThrow(
+      /Invalid role/,
+    );
+    expect(workspaceAdmin.addMember).not.toHaveBeenCalled();
+    await tools.inviteMember(admin, { email: 'a@b.com', role: 'MANAGER' });
+    expect(workspaceAdmin.addMember).toHaveBeenCalledWith(
+      admin,
+      WS,
+      expect.objectContaining({ email: 'a@b.com', role: 'MANAGER' }),
+    );
+  });
+
+  it('update_member_role requires userKey + valid role, then forwards', async () => {
+    const { tools, workspaceAdmin } = makeGapTools();
+    await expect(tools.updateMemberRole(admin, { userKey: '', role: 'MANAGER' })).rejects.toThrow(
+      /userKey/,
+    );
+    await expect(tools.updateMemberRole(admin, { userKey: 'u-1', role: 'WIZARD' })).rejects.toThrow(
+      /Invalid role/,
+    );
+    expect(workspaceAdmin.updateMemberRole).not.toHaveBeenCalled();
+    await tools.updateMemberRole(admin, { userKey: 'u-1', role: 'OWNER' });
+    expect(workspaceAdmin.updateMemberRole).toHaveBeenCalledWith(admin, WS, 'u-1', 'OWNER');
+  });
+
+  it('remove_member requires userKey, then forwards', async () => {
+    const { tools, workspaceAdmin } = makeGapTools();
+    await expect(tools.removeMember(admin, { userKey: '' })).rejects.toThrow(/userKey/);
+    await tools.removeMember(admin, { userKey: 'u-1' });
+    expect(workspaceAdmin.removeMember).toHaveBeenCalledWith(admin, WS, 'u-1');
+  });
+
+  it('submit_candidate_action_items resolves workspace via resolveAuthorized (not env default)', async () => {
+    // Partner-user parity: claimless callers must land on DEFAULT MEMBERSHIP,
+    // never DEFAULT_WORKSPACE_ID. Pins the membership-aware chokepoint.
+    const resolveAuthorized = jest.fn(async () => 'ws-partner-default');
+    const ingestCandidates = jest.fn(async () => ({ created: 1, skipped: 0, proposals: [] }));
+    const triage = { ingestCandidates } as any;
+    const workspace = { resolveAuthorized } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      triage,
+      undefined,
+      null,
+      workspace,
+    );
+    const staffUser = baseUser({ role: UserRole.STAFF });
+    await tools.submitCandidateActionItems(staffUser, {
+      items: [{ text: 'Ship MCP parity docs' }],
+      sourceType: 'MANUAL',
+    });
+    expect(resolveAuthorized).toHaveBeenCalledWith(staffUser);
+    expect(ingestCandidates).toHaveBeenCalledWith(
+      'ws-partner-default',
+      staffUser,
+      expect.arrayContaining([expect.objectContaining({ text: 'Ship MCP parity docs' })]),
+    );
+  });
+
+  it('member tools fail loudly when WorkspacesService is not wired', async () => {
+    const workspace = { resolveAuthorized: jest.fn(async () => WS) } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+      undefined,
+      undefined,
+      // workspaceAdmin omitted
+    );
+    await expect(tools.listMembers(admin, {} as any)).rejects.toThrow(
+      /Workspace administration is not enabled/,
+    );
+  });
+});
+
 describe('normalizeTaskStatus / normalizeTaskPriority — forgiving filters', () => {
   it('returns undefined for empty / missing input (no filter)', () => {
     expect(normalizeTaskStatus(undefined)).toBeUndefined();
@@ -467,278 +989,6 @@ describe('ProjectOpsTools.listProjectTasks — filters + pagination window', () 
   });
 });
 
-describe('ProjectOpsTools — Wave 2 role gates', () => {
-  // Each Wave 2 service is a jest stub; we assert the role GATE fires (or
-  // doesn't) and, when it passes, that the tool delegates to the right service
-  // with the resolved workspace. The workspace stub mirrors the addTaskComment
-  // spec: resolveAuthorized hands back the active workspace.
-  const WS_ID = 'ws-1';
-
-  function makeTools(overrides?: {
-    reporting?: any;
-    capacity?: any;
-    automations?: any;
-    customFields?: any;
-    approvals?: any;
-  }) {
-    const reporting = overrides?.reporting ?? {
-      getPortfolio: jest.fn(async () => ({ ok: 'portfolio' })),
-      getProfitability: jest.fn(async () => ({ ok: 'profitability' })),
-      getThroughput: jest.fn(async () => ({ ok: 'throughput' })),
-    };
-    const capacity = overrides?.capacity ?? {
-      getTeamCapacity: jest.fn(async () => ({ ok: 'team' })),
-      getMyCapacity: jest.fn(async () => ({ ok: 'me' })),
-    };
-    const automations = overrides?.automations ?? {
-      findAll: jest.fn(async () => [{ id: 'r1' }]),
-      create: jest.fn(async () => ({ id: 'r1' })),
-      update: jest.fn(async () => ({ id: 'r1', enabled: false })),
-      remove: jest.fn(async () => ({ message: 'deleted' })),
-    };
-    const customFields = overrides?.customFields ?? {
-      findAllForEntity: jest.fn(async () => [{ id: 'cf1', key: 'k' }]),
-      validateValues: jest.fn(async () => ({ k: 'v' })),
-    };
-    const approvals = overrides?.approvals ?? {
-      listForProject: jest.fn(async () => ({ data: [], total: 0 })),
-      request: jest.fn(async () => ({ id: 'a1' })),
-    };
-    const workspace = {
-      resolveAuthorized: jest.fn(async () => WS_ID),
-    } as any;
-    const wave2 = { reporting, capacity, automations, customFields, approvals };
-    const tools = new ProjectOpsTools(
-      {} as any, // prisma
-      {} as any, // minio
-      { log: () => {}, warn: () => {} },
-      undefined, // triage
-      undefined, // tt
-      null, // bearerToken
-      workspace,
-      undefined, // events
-      wave2 as any,
-    );
-    return { tools, reporting, capacity, automations, customFields, approvals };
-  }
-
-  const admin = baseUser({ role: UserRole.ADMIN });
-  const manager = baseUser({ role: UserRole.MANAGER });
-  const staff = baseUser({ role: UserRole.STAFF });
-  const client = baseUser({ role: UserRole.CLIENT });
-
-  it('get_profitability_report is MANAGER/ADMIN only', async () => {
-    const { tools, reporting } = makeTools();
-    await expect(tools.getProfitabilityReport(staff, {})).rejects.toThrow(/ADMIN or MANAGER/);
-    await expect(tools.getProfitabilityReport(client, {})).rejects.toThrow(/ADMIN or MANAGER/);
-    expect(reporting.getProfitability).not.toHaveBeenCalled();
-
-    await tools.getProfitabilityReport(manager, { from: 'f', to: 't' });
-    expect(reporting.getProfitability).toHaveBeenCalledWith(WS_ID, manager, { from: 'f', to: 't' });
-  });
-
-  it('get_portfolio_report + get_throughput_report are readable by any member', async () => {
-    const { tools, reporting } = makeTools();
-    await tools.getPortfolioReport(staff, {} as any);
-    await tools.getThroughputReport(client, {});
-    expect(reporting.getPortfolio).toHaveBeenCalledWith(WS_ID, staff);
-    expect(reporting.getThroughput).toHaveBeenCalledWith(WS_ID, client, {
-      from: undefined,
-      to: undefined,
-    });
-  });
-
-  it('get_team_capacity is MANAGER/ADMIN only; get_my_capacity is any member', async () => {
-    const { tools, capacity } = makeTools();
-    await expect(tools.getTeamCapacity(staff, {})).rejects.toThrow(/ADMIN or MANAGER/);
-    expect(capacity.getTeamCapacity).not.toHaveBeenCalled();
-
-    await tools.getTeamCapacity(admin, { from: 'f', to: 't' });
-    expect(capacity.getTeamCapacity).toHaveBeenCalledWith(WS_ID, admin, 'f', 't');
-
-    await tools.getMyCapacity(staff, {});
-    expect(capacity.getMyCapacity).toHaveBeenCalledWith(WS_ID, staff, undefined, undefined);
-  });
-
-  it('automation write tools (create/set-enabled/delete) are MANAGER/ADMIN only', async () => {
-    const { tools, automations } = makeTools();
-    await expect(
-      tools.createAutomation(staff, {
-        name: 'r',
-        trigger: 'TASK_CREATED',
-        actions: [{ type: 'notify', params: { userId: 'u' } }],
-      }),
-    ).rejects.toThrow(/ADMIN or MANAGER/);
-    await expect(tools.setAutomationEnabled(staff, { id: 'r1', enabled: false })).rejects.toThrow(
-      /ADMIN or MANAGER/,
-    );
-    await expect(tools.deleteAutomation(client, { id: 'r1' })).rejects.toThrow(/ADMIN or MANAGER/);
-    expect(automations.create).not.toHaveBeenCalled();
-    expect(automations.update).not.toHaveBeenCalled();
-    expect(automations.remove).not.toHaveBeenCalled();
-  });
-
-  it('create_automation rejects an unknown trigger and an empty actions array', async () => {
-    const { tools, automations } = makeTools();
-    await expect(
-      tools.createAutomation(admin, {
-        name: 'r',
-        trigger: 'NOT_A_TRIGGER',
-        actions: [{ type: 'notify', params: {} }],
-      }),
-    ).rejects.toThrow(/Invalid trigger/);
-    await expect(
-      tools.createAutomation(admin, { name: 'r', trigger: 'TASK_CREATED', actions: [] }),
-    ).rejects.toThrow(/actions is required/);
-    expect(automations.create).not.toHaveBeenCalled();
-  });
-
-  it('create_automation forwards the rule shape to AutomationsService.create', async () => {
-    const { tools, automations } = makeTools();
-    await tools.createAutomation(manager, {
-      name: 'auto',
-      trigger: 'TASK_CREATED',
-      conditions: [{ field: 'priority', op: 'eq', value: 'URGENT' }],
-      actions: [{ type: 'notify', params: { userId: 'u' } }],
-      enabled: true,
-    });
-    expect(automations.create).toHaveBeenCalledWith(
-      WS_ID,
-      manager,
-      expect.objectContaining({
-        name: 'auto',
-        trigger: 'TASK_CREATED',
-        enabled: true,
-        conditions: [{ field: 'priority', op: 'eq', value: 'URGENT' }],
-        actions: [{ type: 'notify', params: { userId: 'u' } }],
-      }),
-    );
-  });
-
-  it('list_custom_fields rejects an invalid entity and forwards a valid one', async () => {
-    const { tools, customFields } = makeTools();
-    await expect(tools.listCustomFields(staff, { entity: 'NOPE' })).rejects.toThrow(
-      /Invalid entity/,
-    );
-    await tools.listCustomFields(staff, { entity: 'TASK' });
-    expect(customFields.findAllForEntity).toHaveBeenCalledWith(WS_ID, staff, 'TASK');
-  });
-
-  it('approval tools are staff-gated (CLIENT cannot)', async () => {
-    const { tools, approvals } = makeTools();
-    await expect(tools.listProjectApprovals(client, { projectId: 'p1' })).rejects.toThrow(
-      /Read-only role/,
-    );
-    await expect(
-      tools.requestApproval(client, { entityType: 'DOCUMENT', entityId: 'd1' }),
-    ).rejects.toThrow(/Read-only role/);
-    expect(approvals.listForProject).not.toHaveBeenCalled();
-    expect(approvals.request).not.toHaveBeenCalled();
-
-    await tools.listProjectApprovals(staff, { projectId: 'p1' });
-    expect(approvals.listForProject).toHaveBeenCalledWith(WS_ID, staff, 'p1');
-  });
-
-  it('request_approval rejects an invalid entityType and forwards a valid request', async () => {
-    const { tools, approvals } = makeTools();
-    await expect(
-      tools.requestApproval(staff, { entityType: 'NOPE', entityId: 'd1' }),
-    ).rejects.toThrow(/Invalid entityType/);
-    await tools.requestApproval(staff, {
-      entityType: 'DOCUMENT',
-      entityId: 'd1',
-      projectId: 'p1',
-      note: 'please review',
-    });
-    expect(approvals.request).toHaveBeenCalledWith(
-      WS_ID,
-      staff,
-      expect.objectContaining({
-        entityType: 'DOCUMENT',
-        entityId: 'd1',
-        projectId: 'p1',
-        note: 'please review',
-      }),
-    );
-  });
-});
-
-describe('ProjectOpsTools — custom-field VALUE pass-through on create_task', () => {
-  // Pins that create_task validates customFields against the workspace TASK
-  // definitions ON THE SAME tx and folds the result into metadata.customFields,
-  // mirroring TasksService.resolveMetadataWithCustomFields. recurrenceRule +
-  // estimatedHours pass straight through as columns.
-  const WS_ID = 'ws-1';
-
-  it('validates customFields on the tx and stores them under metadata.customFields', async () => {
-    const validateValues = jest.fn(async () => ({ priority_score: 8 }));
-    const taskCreate = jest.fn(async (arg: any) => ({ id: 't1', ...arg.data }));
-    const tx = {
-      project: { findFirst: async () => ({ id: 'p1', projectNumber: 'P-00001' }) },
-      task: { create: taskCreate },
-    };
-    const workspace = {
-      resolveAuthorized: async () => WS_ID,
-      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) => fn(tx, WS_ID),
-    } as any;
-    const wave2 = { customFields: { validateValues } } as any;
-    const tools = new ProjectOpsTools(
-      {} as any,
-      {} as any,
-      { log: () => {}, warn: () => {} },
-      undefined,
-      undefined,
-      null,
-      workspace,
-      undefined,
-      wave2,
-    );
-
-    await tools.createTask(baseUser({ role: UserRole.STAFF }), {
-      projectId: 'p1',
-      title: 'T',
-      customFields: { priority_score: 8 },
-      recurrenceRule: 'FREQ=WEEKLY;INTERVAL=1',
-      estimatedHours: 4.5,
-    });
-
-    // validateValues called with (tx, workspaceId, 'TASK', incoming).
-    expect(validateValues).toHaveBeenCalledWith(tx, WS_ID, 'TASK', { priority_score: 8 });
-    const data = taskCreate.mock.calls[0][0].data;
-    expect(data.metadata).toEqual({ customFields: { priority_score: 8 } });
-    expect(data.recurrenceRule).toBe('FREQ=WEEKLY;INTERVAL=1');
-    expect(data.estimatedHours).toBe(4.5);
-  });
-
-  it('does NOT touch metadata/validator when customFields is omitted', async () => {
-    const validateValues = jest.fn();
-    const taskCreate = jest.fn(async (arg: any) => ({ id: 't1', ...arg.data }));
-    const tx = {
-      project: { findFirst: async () => ({ id: 'p1', projectNumber: 'P-00001' }) },
-      task: { create: taskCreate },
-    };
-    const workspace = {
-      resolveAuthorized: async () => WS_ID,
-      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) => fn(tx, WS_ID),
-    } as any;
-    const tools = new ProjectOpsTools(
-      {} as any,
-      {} as any,
-      { log: () => {}, warn: () => {} },
-      undefined,
-      undefined,
-      null,
-      workspace,
-      undefined,
-      { customFields: { validateValues } } as any,
-    );
-
-    await tools.createTask(baseUser({ role: UserRole.STAFF }), { projectId: 'p1', title: 'T' });
-    expect(validateValues).not.toHaveBeenCalled();
-    expect(taskCreate.mock.calls[0][0].data.metadata).toBeUndefined();
-  });
-});
-
 describe('ProjectOpsTools.createTask — parentTaskId subtask validation', () => {
   // Mirrors TasksService.createInTx: parent must resolve under the workspace
   // tx (cross-workspace → not found) and must share the same project.
@@ -947,78 +1197,6 @@ describe('ProjectOpsTools.listTaskSubtasks', () => {
   });
 });
 
-describe('ProjectOpsTools.addTaskComment — domain event', () => {
-  // Minimal WorkspaceContextService stub: resolveAuthorized hands back the
-  // active workspace, runForUser runs the callback against a fake tx (no DB).
-  // This pins the MCP path's `task.comment.created` emit so MCP-posted task
-  // comments fan out @mentions identically to the REST TasksService.addComment.
-  const WS_ID = 'ws-1';
-
-  function makeTools(overrides?: {
-    taskFindFirst?: () => Promise<any>;
-    taskCommentCreate?: () => Promise<any>;
-  }) {
-    const emit = jest.fn();
-    const events = { emit } as any;
-    const tx = {
-      task: {
-        findFirst: overrides?.taskFindFirst ?? (async () => ({ id: 'task1', projectId: 'p1' })),
-      },
-      taskComment: {
-        create:
-          overrides?.taskCommentCreate ??
-          (async () => ({
-            id: 'comment1',
-            content: 'hey @bob',
-            createdAt: new Date(),
-            author: { firstName: 'A', lastName: 'B' },
-          })),
-      },
-    };
-    const workspace = {
-      resolveAuthorized: async () => WS_ID,
-      runForUser: async (_user: User, fn: (t: any) => Promise<any>) => fn(tx),
-    } as any;
-    const tools = new ProjectOpsTools(
-      {} as any, // prisma (unused — runForUser stub supplies tx)
-      {} as any, // minio
-      { log: () => {}, warn: () => {} },
-      undefined, // triage
-      undefined, // tt
-      null, // bearerToken
-      workspace,
-      events,
-    );
-    return { tools, emit };
-  }
-
-  const user = baseUser({ id: 'u1', role: UserRole.STAFF });
-
-  it('emits task.comment.created with the expected payload after commit', async () => {
-    const { tools, emit } = makeTools();
-
-    await tools.addTaskComment(user, { taskId: 'task1', content: 'hey @bob' });
-
-    // Byte-for-byte the same event + payload shape TasksService.addComment emits.
-    expect(emit).toHaveBeenCalledWith('task.comment.created', {
-      workspaceId: WS_ID,
-      taskId: 'task1',
-      commentId: 'comment1',
-      authorId: 'u1',
-      content: 'hey @bob',
-    });
-  });
-
-  it('does NOT emit if the task is missing (create never runs)', async () => {
-    const { tools, emit } = makeTools({ taskFindFirst: async () => null });
-
-    await expect(tools.addTaskComment(user, { taskId: 'missing', content: 'x' })).rejects.toThrow(
-      /Task not found/,
-    );
-    expect(emit).not.toHaveBeenCalled();
-  });
-});
-
 describe('ProjectOpsTools — task comment list/update/delete parity (G-05)', () => {
   const WS_ID = 'ws-1';
 
@@ -1195,180 +1373,87 @@ describe('ProjectOpsTools — task comment list/update/delete parity (G-05)', ()
   });
 });
 
-describe('ProjectOpsTools — agent-surface gap tools', () => {
-  // Tools added to close the gaps the agent-readiness eval exposed:
-  // create_custom_field, issue_invoice, archive_project, and the member tools.
-  // We assert each tool's OWN gate + validation + delegation; the deeper RBAC
-  // (CustomFieldsService conflict handling, the billable rollup, the
-  // WorkspacesService OWNER/last-owner rules) is the delegated service's
-  // contract and is covered by those services' own tests.
-  const WS = 'ws-gap';
+describe('ProjectOpsTools.deleteTask', () => {
+  // Mirrors REST DELETE /tasks/:id (@Roles ADMIN only). Gate fires before DB;
+  // happy path + not-found exercise the runScoped mock service surface.
+  const WS_ID = 'ws-delete';
 
-  function makeGapTools() {
-    const workspace = { resolveAuthorized: jest.fn(async () => WS) } as any;
-    const customFields = { create: jest.fn(async () => ({ id: 'cf-new', key: 'risk_level' })) };
-    const rollup = { createBillableDraft: jest.fn(async () => ({ status: 'SENT', invoiceId: 'inv-1' })) };
-    const tt = { timer: {}, timeEntry: {}, timesheet: {}, reports: {}, rollup, workspace } as any;
-    const workspaceAdmin = {
-      listMembers: jest.fn(async () => ({ members: [{ userKey: 'u-1' }] })),
-      addMember: jest.fn(async () => ({ status: 'invited', inviteUrl: 'https://x/invite' })),
-      updateMemberRole: jest.fn(async () => ({ userKey: 'u-1', role: 'MANAGER' })),
-      removeMember: jest.fn(async () => ({ removed: true })),
-    };
-    const wave2 = { reporting: {}, capacity: {}, automations: {}, customFields, approvals: {} };
+  function makeDeleteTools(opts?: {
+    findFirst?: jest.Mock;
+    deleteFn?: jest.Mock;
+  }) {
+    const findFirst = opts?.findFirst ?? jest.fn(async () => ({ id: 'task-1' }));
+    const deleteFn = opts?.deleteFn ?? jest.fn(async () => ({}));
+    const workspace = {
+      resolveAuthorized: jest.fn(async () => WS_ID),
+      runForUser: jest.fn(async (_u: User, fn: (t: any, ws: string) => Promise<any>) =>
+        fn({ task: { findFirst, delete: deleteFn } }, WS_ID),
+      ),
+    } as any;
     const tools = new ProjectOpsTools(
-      {} as any, // prisma
-      {} as any, // minio
+      {} as any,
+      {} as any,
       { log: () => {}, warn: () => {} },
-      undefined, // triage
-      tt, // tt (issue_invoice → createBillableDraft)
-      null, // bearerToken
+      undefined,
+      undefined,
+      null,
       workspace,
-      undefined, // events
-      wave2 as any,
-      workspaceAdmin as any,
     );
-    return { tools, customFields, rollup, workspaceAdmin };
+    return { tools, findFirst, deleteFn, workspace };
   }
 
   const admin = baseUser({ role: UserRole.ADMIN });
-  const staff = baseUser({ role: UserRole.STAFF });
   const client = baseUser({ role: UserRole.CLIENT });
 
-  it('create_custom_field rejects CLIENT and validates entity + type', async () => {
-    const { tools, customFields } = makeGapTools();
-    await expect(
-      tools.createCustomField(client, { entity: 'TASK', label: 'L', type: 'TEXT' }),
-    ).rejects.toThrow(/Read-only role/);
-    await expect(
-      tools.createCustomField(staff, { entity: 'NOPE', label: 'L', type: 'TEXT' }),
-    ).rejects.toThrow(/Invalid entity/);
-    await expect(
-      tools.createCustomField(staff, { entity: 'PROJECT', label: 'L', type: 'NOPE' }),
-    ).rejects.toThrow(/Invalid type/);
-    expect(customFields.create).not.toHaveBeenCalled();
+  it('rejects CLIENT (ADMIN-only RBAC, same as REST)', async () => {
+    const { tools, findFirst, deleteFn } = makeDeleteTools();
+    await expect(tools.deleteTask(client, { taskId: 'task-1' })).rejects.toThrow(/Only ADMIN/);
+    expect(findFirst).not.toHaveBeenCalled();
+    expect(deleteFn).not.toHaveBeenCalled();
   });
 
-  it('create_custom_field forwards a valid definition to CustomFieldsService.create', async () => {
-    const { tools, customFields } = makeGapTools();
-    await tools.createCustomField(staff, {
-      entity: 'PROJECT',
-      label: 'Risk Level',
-      type: 'SELECT',
-      options: ['low', 'high'],
+  it.each([UserRole.STAFF, UserRole.MANAGER])(
+    'rejects %s (REST is ADMIN only, not assertCanWrite)',
+    async (role) => {
+      const { tools, findFirst, deleteFn } = makeDeleteTools();
+      await expect(tools.deleteTask(baseUser({ role }), { taskId: 'task-1' })).rejects.toThrow(
+        /Only ADMIN/,
+      );
+      expect(findFirst).not.toHaveBeenCalled();
+      expect(deleteFn).not.toHaveBeenCalled();
+    },
+  );
+
+  it('requires taskId before touching the DB', async () => {
+    const { tools, findFirst } = makeDeleteTools();
+    await expect(tools.deleteTask(admin, { taskId: '' })).rejects.toThrow(/taskId/);
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  it('not-found when the task is missing or not visible', async () => {
+    const { tools, deleteFn } = makeDeleteTools({
+      findFirst: jest.fn(async () => null),
     });
-    expect(customFields.create).toHaveBeenCalledWith(
-      WS,
-      staff,
-      expect.objectContaining({ entity: 'PROJECT', label: 'Risk Level', type: 'SELECT', options: ['low', 'high'] }),
+    await expect(tools.deleteTask(admin, { taskId: 'missing' })).rejects.toThrow(
+      /Task not found or no access/,
     );
+    expect(deleteFn).not.toHaveBeenCalled();
   });
 
-  it('issue_invoice delegates to createBillableDraft with autoSend=true', async () => {
-    const { tools, rollup } = makeGapTools();
-    await tools.issueInvoice(admin, { projectId: 'p-1', groupBy: 'TASK' });
-    expect(rollup.createBillableDraft).toHaveBeenCalledTimes(1);
-    // (workspaceId, user, args, ctx) — args must carry autoSend:true.
-    const billArgs = rollup.createBillableDraft.mock.calls[0] as any[];
-    expect(billArgs[2]).toEqual(
-      expect.objectContaining({ projectId: 'p-1', groupBy: 'TASK', autoSend: true }),
+  it('happy path: ADMIN deletes via findFirst + delete (mock service)', async () => {
+    const { tools, findFirst, deleteFn, workspace } = makeDeleteTools();
+    const res = await tools.deleteTask(admin, { taskId: 'task-1' });
+    expect(res).toEqual({ message: 'Task deleted successfully', id: 'task-1' });
+    expect(workspace.resolveAuthorized).toHaveBeenCalledWith(admin);
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'task-1' }),
+        select: { id: true },
+      }),
     );
-  });
-
-  it('archive_project rejects CLIENT and requires an identifier (gate fires pre-DB)', async () => {
-    const { tools } = makeGapTools();
-    await expect(tools.archiveProject(client, { projectNumber: 'P-1' })).rejects.toThrow(
-      /Read-only role/,
-    );
-    await expect(tools.archiveProject(staff, {})).rejects.toThrow(/Either id or projectNumber/);
-  });
-
-  it('list_members delegates to WorkspacesService with the active workspace', async () => {
-    const { tools, workspaceAdmin } = makeGapTools();
-    await tools.listMembers(admin, {} as any);
-    expect(workspaceAdmin.listMembers).toHaveBeenCalledWith(admin, WS);
-  });
-
-  it('invite_member requires email, validates role, then forwards to addMember', async () => {
-    const { tools, workspaceAdmin } = makeGapTools();
-    await expect(tools.inviteMember(admin, { email: '' })).rejects.toThrow(/email/);
-    await expect(tools.inviteMember(admin, { email: 'a@b.com', role: 'WIZARD' })).rejects.toThrow(
-      /Invalid role/,
-    );
-    expect(workspaceAdmin.addMember).not.toHaveBeenCalled();
-    await tools.inviteMember(admin, { email: 'a@b.com', role: 'MANAGER' });
-    expect(workspaceAdmin.addMember).toHaveBeenCalledWith(
-      admin,
-      WS,
-      expect.objectContaining({ email: 'a@b.com', role: 'MANAGER' }),
-    );
-  });
-
-  it('update_member_role requires userKey + valid role, then forwards', async () => {
-    const { tools, workspaceAdmin } = makeGapTools();
-    await expect(tools.updateMemberRole(admin, { userKey: '', role: 'MANAGER' })).rejects.toThrow(
-      /userKey/,
-    );
-    await expect(tools.updateMemberRole(admin, { userKey: 'u-1', role: 'WIZARD' })).rejects.toThrow(
-      /Invalid role/,
-    );
-    expect(workspaceAdmin.updateMemberRole).not.toHaveBeenCalled();
-    await tools.updateMemberRole(admin, { userKey: 'u-1', role: 'OWNER' });
-    expect(workspaceAdmin.updateMemberRole).toHaveBeenCalledWith(admin, WS, 'u-1', 'OWNER');
-  });
-
-  it('remove_member requires userKey, then forwards', async () => {
-    const { tools, workspaceAdmin } = makeGapTools();
-    await expect(tools.removeMember(admin, { userKey: '' })).rejects.toThrow(/userKey/);
-    await tools.removeMember(admin, { userKey: 'u-1' });
-    expect(workspaceAdmin.removeMember).toHaveBeenCalledWith(admin, WS, 'u-1');
-  });
-
-  it('submit_candidate_action_items resolves workspace via resolveAuthorized (not env default)', async () => {
-    // Partner-user parity: claimless callers must land on DEFAULT MEMBERSHIP,
-    // never DEFAULT_WORKSPACE_ID. Pins the membership-aware chokepoint.
-    const resolveAuthorized = jest.fn(async () => 'ws-partner-default');
-    const ingestCandidates = jest.fn(async () => ({ created: 1, skipped: 0, proposals: [] }));
-    const triage = { ingestCandidates } as any;
-    const workspace = { resolveAuthorized } as any;
-    const tools = new ProjectOpsTools(
-      {} as any,
-      {} as any,
-      { log: () => {}, warn: () => {} },
-      triage,
-      undefined,
-      null,
-      workspace,
-    );
-    const staffUser = baseUser({ role: UserRole.STAFF });
-    await tools.submitCandidateActionItems(staffUser, {
-      items: [{ text: 'Ship MCP parity docs' }],
-      sourceType: 'MANUAL',
-    });
-    expect(resolveAuthorized).toHaveBeenCalledWith(staffUser);
-    expect(ingestCandidates).toHaveBeenCalledWith(
-      'ws-partner-default',
-      staffUser,
-      expect.arrayContaining([expect.objectContaining({ text: 'Ship MCP parity docs' })]),
-    );
-  });
-
-  it('member tools fail loudly when WorkspacesService is not wired', async () => {
-    const workspace = { resolveAuthorized: jest.fn(async () => WS) } as any;
-    const tools = new ProjectOpsTools(
-      {} as any,
-      {} as any,
-      { log: () => {}, warn: () => {} },
-      undefined,
-      undefined,
-      null,
-      workspace,
-      undefined,
-      undefined,
-      // workspaceAdmin omitted
-    );
-    await expect(tools.listMembers(admin, {} as any)).rejects.toThrow(
-      /Workspace administration is not enabled/,
-    );
+    // ADMIN visibility filter is open ({}); project key is still present.
+    const where = (findFirst.mock.calls[0] as any[])[0].where;
+    expect(where.project).toEqual({});
+    expect(deleteFn).toHaveBeenCalledWith({ where: { id: 'task-1' } });
   });
 });
