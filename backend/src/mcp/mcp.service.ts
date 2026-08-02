@@ -112,6 +112,15 @@ export class McpService {
     // bearing (scope + workspace gating already happen above). Undefined for
     // JWT/federation callers — capture resolves their identity from `user`.
     patIdentity?: { id: string; name?: string | null } | null,
+    // The workspace THIS REQUEST addressed (SUITE-IDENTITY §D4: path param →
+    // X-Workspace-Id header → token claim), as resolved — and, with tenancy
+    // on, membership-authorized — by WorkspaceMembershipGuard onto
+    // `req.workspaceId`. Threaded into ProjectOpsTools so every tool resolves
+    // its workspace from the REQUEST first (mirroring REST's
+    // @CurrentWorkspace), instead of silently ignoring an explicit
+    // X-Workspace-Id from a JWT-auth'd MCP client. Null/undefined preserves
+    // the prior behavior (claim → default membership).
+    requestWorkspaceId?: string | null,
   ) {
     const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 
@@ -138,6 +147,7 @@ export class McpService {
     // patWorkspaceId == null) pass straight through, preserving behavior.
     const grantedSet = grantedScopes ? new Set(grantedScopes) : null;
     const boundWorkspaceId = patWorkspaceId ?? null;
+    const addressedWorkspaceId = requestWorkspaceId ?? null;
 
     // Resolve this caller's agent identity ONCE (PAT / federation / user) for
     // activity capture. Cheap + pure. Capture itself is best-effort and never
@@ -149,7 +159,8 @@ export class McpService {
     const actor: McpActorIdentity | null = recorder
       ? resolveMcpActor(user, patIdentity, grantedScopes != null)
       : null;
-    const captureWorkspaceId = () => boundWorkspaceId ?? this.workspace.resolve(user);
+    const captureWorkspaceId = () =>
+      boundWorkspaceId ?? addressedWorkspaceId ?? this.workspace.resolve(user);
 
     const rawRegister = server.registerTool.bind(server);
     server.registerTool = (
@@ -264,6 +275,7 @@ export class McpService {
       this.events,
       wave2Deps,
       this.workspaceAdmin,
+      addressedWorkspaceId,
     );
 
     server.registerTool(

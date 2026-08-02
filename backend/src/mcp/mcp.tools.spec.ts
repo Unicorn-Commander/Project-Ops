@@ -655,7 +655,9 @@ describe('ProjectOpsTools — agent-surface gap tools', () => {
       items: [{ text: 'Ship MCP parity docs' }],
       sourceType: 'MANUAL',
     });
-    expect(resolveAuthorized).toHaveBeenCalledWith(staffUser);
+    // Second arg = the request-addressed (X-Workspace-Id) workspace; null here
+    // because none was threaded in — claim/default-membership resolution.
+    expect(resolveAuthorized).toHaveBeenCalledWith(staffUser, null);
     expect(ingestCandidates).toHaveBeenCalledWith(
       'ws-partner-default',
       staffUser,
@@ -1445,7 +1447,7 @@ describe('ProjectOpsTools.deleteTask', () => {
     const { tools, findFirst, deleteFn, workspace } = makeDeleteTools();
     const res = await tools.deleteTask(admin, { taskId: 'task-1' });
     expect(res).toEqual({ message: 'Task deleted successfully', id: 'task-1' });
-    expect(workspace.resolveAuthorized).toHaveBeenCalledWith(admin);
+    expect(workspace.resolveAuthorized).toHaveBeenCalledWith(admin, null);
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ id: 'task-1' }),
@@ -1727,7 +1729,7 @@ describe('ProjectOpsTools.deleteTimeEntry — REST parity thin wrapper', () => {
     const { tools, remove, workspace } = makeDeleteTools();
     const out = await tools.deleteTimeEntry(staff, { id: 'e-42' });
     expect(out).toEqual({ message: 'Time entry deleted' });
-    expect(workspace.resolveAuthorized).toHaveBeenCalledWith(staff);
+    expect(workspace.resolveAuthorized).toHaveBeenCalledWith(staff, null);
     expect(remove).toHaveBeenCalledWith(WS, staff, 'e-42');
   });
 
@@ -1813,5 +1815,64 @@ describe('ProjectOpsTools.searchProjects — visibility filter must survive the 
     const where = (findMany.mock.calls[0] as any[])[0].where;
     expect(where.AND[0]).toEqual({});
     expect(where.AND[1].OR.length).toBe(5);
+  });
+});
+
+describe('ProjectOpsTools — request-addressed workspace (X-Workspace-Id) threading', () => {
+  // The controller threads the guard-resolved `req.workspaceId` (SUITE-IDENTITY
+  // §D4: path param → X-Workspace-Id header → token claim) into ProjectOpsTools
+  // as `requestWorkspaceId`. runScoped MUST hand it to resolveAuthorized as the
+  // requested workspace — this is what makes an explicit X-Workspace-Id from a
+  // JWT-auth'd MCP client actually re-scope the tools instead of being
+  // silently dropped at the controller/tools seam.
+
+  function makeWorkspaceMock(resolvedId: string) {
+    const resolveAuthorized = jest.fn(async () => resolvedId);
+    const runForUser = jest.fn(
+      async (
+        _u: User,
+        fn: (t: any, ws: string) => Promise<any>,
+        _requested?: string | null,
+      ) => fn({ project: { findMany: jest.fn(async () => []) } }, resolvedId),
+    );
+    return { workspace: { resolveAuthorized, runForUser } as any, resolveAuthorized, runForUser };
+  }
+
+  function makeTools(workspace: any, requestWorkspaceId: string | null) {
+    return new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined, // triage
+      undefined, // tt
+      null, // bearerToken
+      workspace,
+      undefined, // events
+      undefined, // wave2
+      undefined, // workspaceAdmin
+      requestWorkspaceId,
+    );
+  }
+
+  it('passes the request-addressed workspace into resolveAuthorized and runForUser', async () => {
+    const { workspace, resolveAuthorized, runForUser } = makeWorkspaceMock('ws-mu');
+    const tools = makeTools(workspace, 'ws-mu');
+    const user = baseUser({ role: UserRole.STAFF, id: 'staff-1' });
+
+    await tools.listMyProjects(user, {});
+
+    expect(resolveAuthorized).toHaveBeenCalledWith(user, 'ws-mu');
+    // runForUser is re-authorized against the SAME resolved id (3rd arg).
+    expect(runForUser.mock.calls[0][2]).toBe('ws-mu');
+  });
+
+  it('falls back to claim/default resolution (null requested) when no workspace was addressed', async () => {
+    const { workspace, resolveAuthorized } = makeWorkspaceMock('ws-default');
+    const tools = makeTools(workspace, null);
+    const user = baseUser({ role: UserRole.STAFF, id: 'staff-1' });
+
+    await tools.listMyProjects(user, {});
+
+    expect(resolveAuthorized).toHaveBeenCalledWith(user, null);
   });
 });
