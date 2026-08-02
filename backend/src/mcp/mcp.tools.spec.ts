@@ -1752,3 +1752,66 @@ describe('ProjectOpsTools.deleteTimeEntry — REST parity thin wrapper', () => {
     );
   });
 });
+
+describe('ProjectOpsTools.searchProjects — visibility filter must survive the text-search OR', () => {
+  // Regression guard for an access-predicate clobber: the old
+  // `{ ...buildVisibilityFilter(user), OR: [terms] }` shape let the search
+  // terms OVERWRITE the visibility `OR` for STAFF/CLIENT callers, so any
+  // STAFF/CLIENT token could enumerate every project in the database through
+  // free-text search. The where MUST AND-nest: [visibility, { OR: terms }].
+  const WS_ID = 'ws-1';
+
+  function makeTools(findMany: jest.Mock) {
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) =>
+        fn({ project: { findMany } }, WS_ID),
+    } as any;
+    return new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+    );
+  }
+
+  it('a STAFF caller cannot match projects outside their visibility filter', async () => {
+    const findMany = jest.fn(async () => []);
+    const tools = makeTools(findMany);
+
+    await tools.searchProjects(baseUser({ role: UserRole.STAFF, id: 'staff-1' }), {
+      query: 'corporal',
+    });
+
+    const where = (findMany.mock.calls[0] as any[])[0].where;
+    // The access predicate is ANDed with the search terms — not clobbered.
+    expect(where.AND[0]).toEqual({
+      OR: [{ assignedToId: 'staff-1' }, { createdById: 'staff-1' }],
+    });
+    expect(where.AND[1].OR).toEqual(
+      expect.arrayContaining([
+        { title: { contains: 'corporal', mode: 'insensitive' } },
+        { projectNumber: { contains: 'corporal', mode: 'insensitive' } },
+      ]),
+    );
+    // And the search terms must NOT sit at the top level where they could
+    // replace the visibility OR (the original bug shape).
+    expect(where.OR).toBeUndefined();
+  });
+
+  it('ADMIN (empty visibility filter) still composes and searches everything', async () => {
+    const findMany = jest.fn(async () => []);
+    const tools = makeTools(findMany);
+
+    await tools.searchProjects(baseUser({ role: UserRole.ADMIN, id: 'admin-1' }), {
+      query: 'qwen',
+    });
+
+    const where = (findMany.mock.calls[0] as any[])[0].where;
+    expect(where.AND[0]).toEqual({});
+    expect(where.AND[1].OR.length).toBe(5);
+  });
+});
