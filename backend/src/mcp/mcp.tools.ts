@@ -748,16 +748,26 @@ export class ProjectOpsTools {
     if (!q) {
       throw new Error('query is required');
     }
+    // SECURITY: AND-nest the text-search OR under the visibility filter —
+    // never spread them into the same object. For STAFF/CLIENT the
+    // visibility filter is itself `{ OR: [...] }` (see buildVisibilityFilter),
+    // so `{ ...visibility, OR: [terms] }` CLOBBERS the access predicate with
+    // the search terms and matches every project in the database. Same
+    // AND-nesting pattern getProject uses for the id/projectNumber OR.
     const projects = await this.runScoped(user, (tx) =>
       tx.project.findMany({
         where: {
-          ...buildVisibilityFilter(user),
-          OR: [
-            { title: { contains: q, mode: 'insensitive' } },
-            { description: { contains: q, mode: 'insensitive' } },
-            { projectNumber: { contains: q, mode: 'insensitive' } },
-            { clientName: { contains: q, mode: 'insensitive' } },
-            { organization: { name: { contains: q, mode: 'insensitive' } } },
+          AND: [
+            buildVisibilityFilter(user),
+            {
+              OR: [
+                { title: { contains: q, mode: 'insensitive' } },
+                { description: { contains: q, mode: 'insensitive' } },
+                { projectNumber: { contains: q, mode: 'insensitive' } },
+                { clientName: { contains: q, mode: 'insensitive' } },
+                { organization: { name: { contains: q, mode: 'insensitive' } } },
+              ],
+            },
           ],
         },
         take: Math.min(args.limit ?? 10, 50),
