@@ -213,6 +213,15 @@ export class ProjectOpsTools {
     // tests construct ProjectOpsTools without it; the member tools surface a
     // clear error if it wasn't wired.
     private readonly workspaceAdmin?: WorkspacesService,
+    // The workspace THIS REQUEST addressed (SUITE-IDENTITY §D4: path param →
+    // X-Workspace-Id header → token claim), resolved — and, with tenancy on,
+    // membership-authorized (403 for non-members) — by WorkspaceMembershipGuard
+    // and threaded down from McpController via `req.workspaceId`. When present
+    // it is the FIRST input to every workspace resolution below, so an
+    // explicit X-Workspace-Id from a JWT-auth'd MCP client re-scopes the tools
+    // exactly like REST's @CurrentWorkspace. Null preserves the prior
+    // behavior: token claim → the user's default membership.
+    private readonly requestWorkspaceId: string | null = null,
   ) {}
 
   // ── Workspace (suite tenancy, Phase 2 G2) ────────────────
@@ -256,12 +265,17 @@ export class ProjectOpsTools {
     fn: (tx: WorkspaceTxClient, workspaceId: string) => Promise<T>,
   ): Promise<T> {
     const ws = this.requireWorkspace();
-    // A claimless human PAT (no `workspace_id` token claim) must resolve to the
-    // user's DEFAULT MEMBERSHIP — not the global DEFAULT_WORKSPACE_ID, which
-    // 403'd partner users (e.g. Shafen, whose only active membership is Genesis
-    // Flow Labs) with "Not a member of the requested workspace". resolveAuthorized
-    // authorizes membership and returns the id we pin as the RLS GUC.
-    const workspaceId = await ws.resolveAuthorized(user);
+    // D4 precedence: the workspace the REQUEST addressed (path param /
+    // X-Workspace-Id header, guard-resolved and threaded in as
+    // `requestWorkspaceId`) wins — this is what lets a JWT-auth'd MCP client
+    // re-scope with X-Workspace-Id instead of the header being silently
+    // ignored. Absent that, a claimless human PAT (no `workspace_id` token
+    // claim) must resolve to the user's DEFAULT MEMBERSHIP — not the global
+    // DEFAULT_WORKSPACE_ID, which 403'd partner users (e.g. Shafen, whose only
+    // active membership is Brightwater Labs) with "Not a member of the
+    // requested workspace". resolveAuthorized authorizes membership and
+    // returns the id we pin as the RLS GUC.
+    const workspaceId = await ws.resolveAuthorized(user, this.requestWorkspaceId);
     return ws.runForUser(user, (tx) => fn(tx, workspaceId), workspaceId);
   }
 
@@ -276,12 +290,13 @@ export class ProjectOpsTools {
   }
 
   private workspaceFor(user: User): Promise<string> {
-    // Membership-aware, same chokepoint as runScoped / the REST layer: an
-    // explicit token claim wins, else the user's DEFAULT MEMBERSHIP — never the
+    // Membership-aware, same chokepoint as runScoped / the REST layer: the
+    // request-addressed workspace (D4 path/header, threaded in) wins, then an
+    // explicit token claim, else the user's DEFAULT MEMBERSHIP — never the
     // global DEFAULT_WORKSPACE_ID. Keeps the time-tracking MCP tools consistent
     // with the read/write tools for partner users (e.g. Shafen in Genesis Flow
     // Labs, whose default membership isn't the env default).
-    return this.requireTt().workspace.resolveAuthorized(user);
+    return this.requireTt().workspace.resolveAuthorized(user, this.requestWorkspaceId);
   }
 
   async startTimer(
@@ -1795,13 +1810,17 @@ export class ProjectOpsTools {
     this.logger.log(
       `MCP submit_candidate_action_items: user=${user.email} items=${items.length} sourceType=${args.sourceType ?? 'MANUAL'}`,
     );
-    // Membership-aware chokepoint (claim → DEFAULT MEMBERSHIP), identical to
-    // runScoped / @CurrentWorkspace / every other MCP write. The previous
-    // resolveWorkspaceId(user, DEFAULT_WORKSPACE_ID) path forced partner users
-    // whose only membership is not the env default through the wrong workspace
-    // (then 403'd inside triage runForUser) — same class of bug the time-tracking
-    // tools already fixed. triage.ingestCandidates re-authorizes via runForUser.
-    const workspaceId = await this.requireWorkspace().resolveAuthorized(user);
+    // Membership-aware chokepoint (request D4 → claim → DEFAULT MEMBERSHIP),
+    // identical to runScoped / @CurrentWorkspace / every other MCP write. The
+    // previous resolveWorkspaceId(user, DEFAULT_WORKSPACE_ID) path forced
+    // partner users whose only membership is not the env default through the
+    // wrong workspace (then 403'd inside triage runForUser) — same class of bug
+    // the time-tracking tools already fixed. triage.ingestCandidates
+    // re-authorizes via runForUser.
+    const workspaceId = await this.requireWorkspace().resolveAuthorized(
+      user,
+      this.requestWorkspaceId,
+    );
     return this.triage.ingestCandidates(workspaceId, user, items);
   }
 
@@ -2419,13 +2438,14 @@ export class ProjectOpsTools {
 
   /**
    * Resolve the caller's active workspace via the membership-aware chokepoint
-   * (token claim → default membership — never the global default), the same id
-   * the REST `@CurrentWorkspace` resolves. The delegated service then runs its
-   * own `runForUser(user, …, workspaceId)`, which re-authorizes membership and
-   * pins the RLS GUC — identical to the time-tracking tools.
+   * (request-addressed D4 workspace → token claim → default membership — never
+   * the global default), the same id the REST `@CurrentWorkspace` resolves.
+   * The delegated service then runs its own `runForUser(user, …, workspaceId)`,
+   * which re-authorizes membership and pins the RLS GUC — identical to the
+   * time-tracking tools.
    */
   private resolveWorkspace(user: User): Promise<string> {
-    return this.requireWorkspace().resolveAuthorized(user);
+    return this.requireWorkspace().resolveAuthorized(user, this.requestWorkspaceId);
   }
 
   /** MANAGER/ADMIN gate — mirrors the controllers' @Roles(ADMIN, MANAGER). */
