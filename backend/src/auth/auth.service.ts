@@ -152,7 +152,12 @@ export class AuthService {
     // keeps today's exact semantics (gate only on first JIT, below), so the
     // flag-OFF default is byte-for-byte unchanged.
     const armed = entitlementsEnabled(getEnv) && !!accessToken;
-    let resolvedAccess: { allowed: boolean; role: UserRole; reason: string } | null = null;
+    let resolvedAccess: {
+      allowed: boolean;
+      role: UserRole;
+      reason: string;
+      orgId?: string | null;
+    } | null = null;
     if (armed) {
       resolvedAccess = await this.resolveSsoAccess(email, accessToken);
       if (!resolvedAccess.allowed) {
@@ -215,6 +220,36 @@ export class AuthService {
       throw new UnauthorizedException('User account is inactive');
     }
 
+    // SELF-SERVE ONBOARDING. Project-Ops is sold inside both paid Suite tiers,
+    // so a customer who just subscribed must be able to USE it without a human
+    // editing PROJECT_OPS_ACCESS_LIST and restarting the container.
+    //
+    // Authenticating was never the blocker once the entitlements gate is armed
+    // — that path already allows an entitled org. The blocker was AFTER login:
+    // memberships are what gate workspace routes, and the only seeding path
+    // (ensureSeededMembership) reads the static allowlist and targets the
+    // BOOTSTRAP workspace. A new customer therefore authenticated and then 403'd
+    // on every workspace route.
+    //
+    // Provision the ENTITLED ORG's own workspace instead (never the operator's
+    // bootstrap tenant), keyed on org_id so all users of one org share it.
+    // Best-effort: a provisioning failure must not break a login that the
+    // entitlements gate already approved.
+    if (resolvedAccess?.allowed && resolvedAccess.orgId) {
+      try {
+        await this.membershipService.ensureEntitledWorkspace(
+          user,
+          resolvedAccess.orgId,
+          resolvedAccess.role,
+          profile.organization || profile.org_name || null,
+        );
+      } catch (err) {
+        this.logger.error(
+          `Entitled workspace provisioning failed for ${email}: ${(err as Error).message}`,
+        );
+      }
+    }
+
     return user;
   }
 
@@ -234,12 +269,12 @@ export class AuthService {
   private async resolveSsoAccess(
     email: string | undefined,
     accessToken?: string,
-  ): Promise<{ allowed: boolean; role: UserRole; reason: string }> {
+  ): Promise<{ allowed: boolean; role: UserRole; reason: string; orgId?: string | null }> {
     const getEnv = (k: string) => this.configService.get<string>(k);
 
     if (!entitlementsEnabled(getEnv) || !accessToken) {
       const a = resolveUserAccess(email);
-      return { allowed: a.allowed, role: a.role, reason: a.reason };
+      return { allowed: a.allowed, role: a.role, reason: a.reason, orgId: null };
     }
 
     const ent = await resolveEntitlement(accessToken, {
@@ -252,7 +287,15 @@ export class AuthService {
     });
 
     if (ent.outcome === 'allowed') {
-      return { allowed: true, role: ent.role ?? UserRole.STAFF, reason: ent.reason };
+      // orgId is carried through so the caller can provision THAT org's
+      // workspace on first login (self-serve onboarding) instead of requiring
+      // a human to edit PROJECT_OPS_ACCESS_LIST and restart the container.
+      return {
+        allowed: true,
+        role: ent.role ?? UserRole.STAFF,
+        reason: ent.reason,
+        orgId: ent.orgId,
+      };
     }
     if (ent.outcome === 'denied') {
       // "Soft enforce" migration aid: while Ops-Center orgs are still being
