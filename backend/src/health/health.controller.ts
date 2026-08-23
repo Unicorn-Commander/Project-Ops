@@ -43,8 +43,10 @@ export class HealthController {
   check() {
     return this.health.check([
       () => this.prismaHealth.isHealthy('database'),
-      () => this.memory.checkHeap('memory_heap', 150 * 1024 * 1024), // 150MB
-      () => this.memory.checkRSS('memory_rss', 300 * 1024 * 1024), // 300MB
+      // Normal RSS is ~217MB observed 2026-08; old 150MB/300MB values caused
+      // status:error on a healthy process.
+      () => this.memory.checkHeap('memory_heap', 1024 * 1024 * 1024), // 1 GiB
+      () => this.memory.checkRSS('memory_rss', 2 * 1024 * 1024 * 1024), // 2 GiB
     ]);
   }
 
