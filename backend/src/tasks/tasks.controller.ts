@@ -14,6 +14,7 @@ import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { CreateTaskCommentDto } from './dto/create-task-comment.dto';
+import { UpdateTaskCommentDto } from './dto/update-task-comment.dto';
 import { UpdateTaskStatusDto } from './dto/update-task-status.dto';
 import { AssignTaskDto } from './dto/assign-task.dto';
 import { CreateTaskDependencyDto } from './dto/create-task-dependency.dto';
@@ -222,6 +223,37 @@ export class TasksController {
     @Param('id') id: string,
   ) {
     return this.tasksService.getTaskComments(workspaceId, user, id);
+  }
+
+  @Patch('comments/:commentId')
+  @ApiOperation({ summary: 'Update a task comment (author or ADMIN)' })
+  @ApiResponse({ status: 200, description: 'Comment updated successfully' })
+  @ApiResponse({ status: 403, description: 'Not the author / not ADMIN' })
+  @ApiResponse({ status: 404, description: 'Comment not found' })
+  updateComment(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('commentId') commentId: string,
+    @Body() dto: UpdateTaskCommentDto,
+  ) {
+    return this.tasksService.updateComment(workspaceId, user, commentId, dto.content);
+  }
+
+  @Delete(':id/comments/:commentId')
+  @ApiOperation({ summary: 'Delete a task comment (author, ADMIN, or MANAGER)' })
+  @ApiResponse({ status: 200, description: 'Comment deleted successfully' })
+  @ApiResponse({ status: 403, description: 'Not allowed to delete this comment' })
+  @ApiResponse({ status: 404, description: 'Comment not found' })
+  removeComment(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('id') _taskId: string,
+    @Param('commentId') commentId: string,
+  ) {
+    // taskId is accepted for REST path parity with the frontend client
+    // (`DELETE /tasks/:taskId/comments/:commentId`); ownership + workspace
+    // scoping are resolved from the comment row itself.
+    return this.tasksService.removeComment(workspaceId, user, commentId);
   }
 
   @Get(':id/subtasks')

@@ -65,17 +65,26 @@ export const MCP_TOOL_SCOPE_MAP: Record<string, PatScope> = {
   update_billing_fields: 'write:billing',
   // read:tasks
   list_my_tasks: 'read:tasks',
+  get_task: 'read:tasks',
+  list_project_tasks: 'read:tasks',
+  list_task_subtasks: 'read:tasks',
+  list_task_comments: 'read:tasks',
   // write:tasks
   create_task: 'write:tasks',
   update_task: 'write:tasks',
   update_task_status: 'write:tasks',
+  delete_task: 'write:tasks',
   add_task_comment: 'write:tasks',
+  update_task_comment: 'write:tasks',
+  delete_task_comment: 'write:tasks',
   submit_candidate_action_items: 'write:tasks',
   // read:documents
   list_project_documents: 'read:documents',
   get_document_content: 'read:documents',
   // write:documents
   upload_document: 'write:documents',
+  update_document: 'write:documents',
+  delete_document: 'write:documents',
   // read:activity
   get_recent_activity: 'read:activity',
   // read:organizations
@@ -92,6 +101,7 @@ export const MCP_TOOL_SCOPE_MAP: Record<string, PatScope> = {
   stop_timer: 'write:time',
   log_time: 'write:time',
   update_time_entry: 'write:time',
+  delete_time_entry: 'write:time',
   submit_timesheet: 'write:time',
   approve_time: 'write:time',
   // billable rollup — write:billing

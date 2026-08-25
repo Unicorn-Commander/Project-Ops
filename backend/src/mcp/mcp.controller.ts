@@ -61,6 +61,18 @@ export class McpController {
     // user's resolved workspace ever drifts from the PAT's workspace.
     const patWorkspaceId = pat ? (pat.workspaceId ?? null) : null;
 
+    // The workspace this REQUEST addressed, resolved by the global
+    // WorkspaceMembershipGuard with the SUITE-IDENTITY §D4 precedence
+    // (path param → X-Workspace-Id header → token claim) and — when
+    // PROJECT_OPS_TENANCY_ENABLED is on — already membership-authorized
+    // (non-members were 403'd before this handler ran). Threading it into
+    // the MCP server is what lets a JWT-auth'd MCP client re-scope with
+    // X-Workspace-Id, exactly like the REST layer's @CurrentWorkspace;
+    // previously the MCP tools re-resolved from the claim/default only,
+    // silently ignoring the header. For a PAT this equals the PAT's bound
+    // workspace (the guard 403'd any disagreeing header).
+    const requestWorkspaceId = ((req as any).workspaceId as string | undefined) ?? null;
+
     // Forward the caller's bearer so cross-app tools (e.g. the billable
     // rollup → Accounting-Ops) can act on the user's behalf.
     const authHeader = req.headers.authorization;
@@ -86,6 +98,8 @@ export class McpController {
         grantedScopes,
         bearerToken,
         patWorkspaceId,
+        undefined, // patIdentity — unchanged (label enrichment not wired here)
+        requestWorkspaceId,
       );
       await server.connect(transport);
       // body has already been parsed by express.json — pass it through.

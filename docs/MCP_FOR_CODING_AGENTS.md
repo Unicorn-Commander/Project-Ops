@@ -26,6 +26,9 @@ uses. You're plugging in via the same door.
 | `update_project_status` | NEW / IN_PROGRESS / UNDER_REVIEW / COMPLETED / ARCHIVED / ON_HOLD |
 | `update_task_status` | PENDING / IN_PROGRESS / WAITING_FOR_CLIENT / COMPLETED / CANCELLED |
 | `add_task_comment` | Post a comment on a task |
+| `list_task_comments` | List comments on a task (paginated) |
+| `update_task_comment` | Edit a task comment (author or ADMIN) |
+| `delete_task_comment` | Delete a task comment (author, ADMIN, or MANAGER) |
 
 CLIENT-role users can only call the read tools; write tools enforce ADMIN /
 MANAGER / STAFF role.
