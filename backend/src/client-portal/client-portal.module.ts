@@ -7,6 +7,7 @@ import { AuditModule } from '../audit/audit.module';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { MembershipService } from '../common/workspace/membership.service';
 import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
+import { CustomerOpsModule } from '../customer-ops/customer-ops.module';
 
 /**
  * Suite tenancy (Phase 2, G3): WorkspaceContextService + MembershipService are
@@ -25,7 +26,9 @@ import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membersh
  * HTTP route. Inert while PROJECT_OPS_TENANCY_ENABLED is off.
  */
 @Module({
-  imports: [PrismaModule, AuditModule],
+  // CustomerOpsModule exports QuotePanelService — the portal's Quote panel
+  // (QUOTES-CONTRACT-v1 §3) reads through to Customer-Ops with the CLIENT mask.
+  imports: [PrismaModule, AuditModule, CustomerOpsModule],
   controllers: [ClientPortalController],
   providers: [
     ClientPortalService,

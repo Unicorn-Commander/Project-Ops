@@ -20,6 +20,7 @@ import {
   normalizeProjectStatus,
   normalizeTaskPriority,
   normalizeTaskStatus,
+  withProjectQuote,
 } from './mcp.tools';
 
 const baseUser = (overrides: Partial<User>): User =>
@@ -1874,5 +1875,61 @@ describe('ProjectOpsTools — request-addressed workspace (X-Workspace-Id) threa
     await tools.listMyProjects(user, {});
 
     expect(resolveAuthorized).toHaveBeenCalledWith(user, null);
+  });
+});
+
+describe('ProjectOpsTools.getProject — metadata.quote exposure (QUOTES-CONTRACT-v1 §3)', () => {
+  const WS_ID = 'ws-1';
+  const META = {
+    quote: {
+      customer_ops_quote_id: 'q-0001',
+      number: 'Q-2026-0001',
+      version: 1,
+      share_url: 'https://customers.example.dev/q/tok_synthetic',
+      schedule_ids: ['sched-deposit'],
+    },
+    quoteSummary: { title: 'Order Pad for the apparel client', currency: 'USD', status: 'accepted', totals: { one_time_total_cents: 140000 } },
+    customFields: { tier: 'gold' },
+  };
+
+  function makeTools(findFirst: jest.Mock) {
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) =>
+        fn({ project: { findFirst } }, WS_ID),
+    } as any;
+    return new ProjectOpsTools({} as any, {} as any, { log: () => {}, warn: () => {} }, undefined, undefined, null, workspace);
+  }
+
+  it('staff/admin: `quote` mirrors metadata.quote (ids, number, version, share_url, schedule_ids) and metadata is untouched', async () => {
+    const findFirst = jest.fn(async () => ({ id: 'p1', projectNumber: 'PROJ-1', metadata: META }));
+    const out: any = await makeTools(findFirst).getProject(baseUser({ role: UserRole.ADMIN }), { id: 'p1' });
+    expect(out.quote).toEqual(META.quote);
+    expect(out.metadata).toEqual(META);
+  });
+
+  it('client: `quote` and metadata.quote are masked to number/version/share_url; other metadata keys survive', async () => {
+    const findFirst = jest.fn(async () => ({ id: 'p1', projectNumber: 'PROJ-1', metadata: META }));
+    const out: any = await makeTools(findFirst).getProject(baseUser({ role: UserRole.CLIENT, id: 'client-1' }), { id: 'p1' });
+    const masked = { number: 'Q-2026-0001', version: 1, share_url: 'https://customers.example.dev/q/tok_synthetic' };
+    expect(out.quote).toEqual(masked);
+    expect(out.metadata.quote).toEqual(masked);
+    expect(out.metadata.customFields).toEqual({ tier: 'gold' });
+    expect(out.metadata.quoteSummary).toEqual(META.quoteSummary); // cache is client-whitelisted by construction
+    expect(JSON.stringify(out)).not.toContain('customer_ops_quote_id');
+    expect(JSON.stringify(out)).not.toContain('sched-deposit');
+  });
+
+  it('quote is null when the project did not come from a quote', async () => {
+    const findFirst = jest.fn(async () => ({ id: 'p1', projectNumber: 'PROJ-1', metadata: { customFields: {} } }));
+    const out: any = await makeTools(findFirst).getProject(baseUser({ role: UserRole.STAFF, id: 'staff-1' }), { id: 'p1' });
+    expect(out.quote).toBeNull();
+    expect(out.metadata).toEqual({ customFields: {} });
+  });
+
+  it('withProjectQuote drops an unparseable metadata.quote for a CLIENT rather than passing it through', () => {
+    const out: any = withProjectQuote({ metadata: { quote: { number: 'Q-1' }, keep: true } }, { role: UserRole.CLIENT });
+    expect(out.quote).toBeNull();
+    expect(out.metadata).toEqual({ keep: true });
   });
 });

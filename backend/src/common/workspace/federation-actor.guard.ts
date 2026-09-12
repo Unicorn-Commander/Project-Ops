@@ -23,10 +23,15 @@ import { WithWorkspaceClaim } from './workspace.util';
  *   - The calling app (`__federationActor`) must be on the explicit allow-list
  *     `PROJECT_OPS_FEDERATION_ACTORS` (CSV; DEFAULT EMPTY ⇒ zero federation
  *     trust — safe by default).
- *   - It only activates on designated FEDERATION_ROUTES (currently the
- *     propose-only `triage/ingest`). On any other handler a federation actor
- *     falls through to the normal guards (no req.federationActor) and is
- *     rejected (it has no human role / membership).
+ *   - It only activates on designated FEDERATION_ROUTES (the propose-only
+ *     `triage/ingest`, and the Quotes & Proposals `federation/quotes/accepted`
+ *     seam). On any other handler a federation actor falls through to the
+ *     normal guards (no req.federationActor) and is rejected (it has no human
+ *     role / membership).
+ *   - A route may additionally NAME the actors it accepts (route scope). The
+ *     quotes seam accepts only `customer-ops` (the quote's system of record,
+ *     QUOTES-CONTRACT-v1 §3): another allow-listed sibling (e.g. meeting-ops)
+ *     is NOT elevated there and falls through to the human path.
  *
  * When it elevates, it stamps `req.workspaceId` from the Brigade-vouched claim
  * and marks `req.federationActor`; RolesGuard + WorkspaceMembershipGuard then
@@ -39,8 +44,19 @@ import { WithWorkspaceClaim } from './workspace.util';
 export class FederationActorGuard implements CanActivate {
   private readonly logger = new Logger(FederationActorGuard.name);
 
-  /** Handlers (by method name) that accept a trusted federation actor. */
-  private static readonly FEDERATION_ROUTES = new Set<string>(['ingest']);
+  /**
+   * Handlers (by method name) that accept a trusted federation actor, mapped
+   * to the actors permitted on each route. `null` = any allow-listed actor
+   * (the original `triage/ingest` contract). A named set narrows further: the
+   * actor must be BOTH on PROJECT_OPS_FEDERATION_ACTORS and in the route's set.
+   * Handler names must stay unique across controllers for this to be exact.
+   */
+  private static readonly FEDERATION_ROUTES = new Map<string, ReadonlySet<string> | null>([
+    ['ingest', null],
+    // Quotes & Proposals seam: POST federation/quotes/accepted. Only
+    // Customer-Ops may federate a quote acceptance into a project.
+    ['quoteAccepted', new Set(['customer-ops'])],
+  ]);
 
   constructor(private readonly config: ConfigService) {}
 
@@ -73,7 +89,9 @@ export class FederationActorGuard implements CanActivate {
       user.__workspaceClaim.trim()
     ) {
       const allow = this.allowList();
-      if (allow.has(user.__federationActor)) {
+      const routeActors = FederationActorGuard.FEDERATION_ROUTES.get(handler) ?? null;
+      const permittedOnRoute = routeActors === null || routeActors.has(user.__federationActor);
+      if (allow.has(user.__federationActor) && permittedOnRoute) {
         // Brigade signature + aud=project-ops were already enforced by
         // JwtStrategy (a synthetic federation principal is created ONLY for
         // such a token). The actor allow-list is the remaining gate.
@@ -85,7 +103,9 @@ export class FederationActorGuard implements CanActivate {
         return true;
       }
       this.logger.warn(
-        `federation actor '${user.__federationActor}' is NOT allow-listed (PROJECT_OPS_FEDERATION_ACTORS); falling through to membership path`,
+        allow.has(user.__federationActor)
+          ? `federation actor '${user.__federationActor}' is allow-listed but NOT permitted on handler '${handler}' (route scope); falling through to membership path`
+          : `federation actor '${user.__federationActor}' is NOT allow-listed (PROJECT_OPS_FEDERATION_ACTORS); falling through to membership path`,
       );
     }
 

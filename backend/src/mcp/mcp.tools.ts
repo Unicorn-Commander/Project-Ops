@@ -47,6 +47,10 @@ import type { ApprovalsService } from '../client-portal/approvals/approvals.serv
 // compile time, so no runtime cycle. Control-plane (non-RLS) service.
 import type { WorkspacesService } from '../workspaces/workspaces.service';
 import { clampLimit, clampOffset } from '../common/pagination/clamp';
+import {
+  maskProjectQuoteRefForClient,
+  readProjectQuoteRef,
+} from '../customer-ops/quote-summary';
 
 type Logger = { log: (msg: string) => void; warn: (msg: string) => void };
 
@@ -114,6 +118,31 @@ async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as any));
   }
   return Buffer.concat(chunks);
+}
+
+/**
+ * Quotes & Proposals seam (QUOTES-CONTRACT-v1 §3): a project created from an
+ * accepted quote carries `metadata.quote` (Customer-Ops ids: customer_ops_quote_id,
+ * number, version, share_url, schedule_ids). Surface it as a top-level `quote`
+ * too. A CLIENT caller sees number, version and the share link only — the
+ * foreign ids are internal wiring — on BOTH `quote` and `metadata.quote`.
+ * `quote: null` when the project did not come from a quote.
+ */
+export function withProjectQuote<T extends { metadata: unknown }>(
+  project: T,
+  user: Pick<User, 'role'>,
+): T & { quote: unknown } {
+  const ref = readProjectQuoteRef(project.metadata);
+  if (user.role !== UserRole.CLIENT) {
+    return { ...project, quote: ref };
+  }
+  const masked = ref ? maskProjectQuoteRefForClient(ref) : null;
+  const meta = project.metadata;
+  if (meta && typeof meta === 'object' && 'quote' in (meta as Record<string, unknown>)) {
+    const { quote: _dropped, ...rest } = meta as Record<string, unknown>;
+    return { ...project, metadata: masked ? { ...rest, quote: masked } : rest, quote: masked };
+  }
+  return { ...project, quote: masked };
 }
 
 export function buildVisibilityFilter(user: User): Prisma.ProjectWhereInput {
@@ -485,7 +514,7 @@ export class ProjectOpsTools {
     if (!project) {
       throw new Error(`Project not found or you don't have access`);
     }
-    return project;
+    return withProjectQuote(project, user);
   }
 
   async listMyTasks(user: User, args: { status?: string; limit?: number }) {
