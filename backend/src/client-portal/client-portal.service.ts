@@ -6,6 +6,7 @@ import { WorkspaceTxClient } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreatePortalCommentDto } from './dto/create-portal-comment.dto';
 import { clampLimit, clampOffset } from '../common/pagination/clamp';
+import { QuotePanel, QuotePanelService } from '../customer-ops/quote-panel.service';
 
 /**
  * Read-only portal surface for CLIENT users: their own projects, project
@@ -31,6 +32,7 @@ export class ClientPortalService {
     private readonly workspaceContext: WorkspaceContextService,
     private readonly auditService: AuditService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly quotePanel: QuotePanelService,
   ) {}
 
   /**
@@ -290,6 +292,28 @@ export class ClientPortalService {
       },
       workspaceId,
     );
+  }
+
+  /**
+   * The client's Quote panel for one of THEIR projects (QUOTES-CONTRACT-v1 §3,
+   * §5): number, title, totals, status and the share link ONLY. Ownership
+   * (contact ↔ project) is asserted inside the workspace tx exactly like
+   * getProjectDetails; the Customer-Ops read-through runs OUTSIDE the tx and
+   * degrades to the cached summary. `{ linked: false }` when the project did
+   * not come from a quote.
+   */
+  async getProjectQuote(workspaceId: string, user: User, projectId: string): Promise<QuotePanel> {
+    const project = await this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const contact = await this.requireContact(tx, user);
+        return this.requireOwnedProject(tx, contact.id, projectId);
+      },
+      workspaceId,
+    );
+    return this.quotePanel.buildPanel({ id: project.id, metadata: project.metadata }, 'client', {
+      workspaceId,
+    });
   }
 
   async getDocuments(workspaceId: string, user: User) {

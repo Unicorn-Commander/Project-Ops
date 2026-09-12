@@ -42,6 +42,9 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 import { CapacityModule } from './capacity/capacity.module';
 import { ReportingModule } from './reporting/reporting.module';
 import { AgentsModule } from './agents/agents.module';
+// Quotes & Proposals seam (QUOTES-CONTRACT-v1 §3): Customer-Ops → Project-Ops
+// federation ingress + the Quote panel (read-through, degrade-clean).
+import { QuotesModule } from './quotes/quotes.module';
 
 @Module({
   imports: [
@@ -97,6 +100,7 @@ import { AgentsModule } from './agents/agents.module';
     CapacityModule,
     ReportingModule,
     AgentsModule,
+    QuotesModule,
   ],
   providers: [
     // MembershipService is needed to construct the GLOBAL WorkspaceMembershipGuard

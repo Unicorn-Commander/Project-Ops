@@ -7,8 +7,52 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- **MCP `get_project` masks the studio's commercial columns for `CLIENT`
+  callers** and now always returns a top-level `quote` key (`null` when the
+  project did not come from a quote). `defaultBillRate`, `budgetAmount`,
+  `budgetHours`, `billByDefault` and `billingNotes` are dropped for a `CLIENT`:
+  the tool loads the project with `include` and no `select`, so every Project
+  scalar was reaching the caller — including the quote's primary hourly rate
+  (A14), which the quotes seam writes into `defaultBillRate`. The same surface
+  now also filters project comments to `isInternal: false` for a `CLIENT`,
+  matching the client portal. Existing MCP consumers see one added key and,
+  for client-role callers only, five fewer.
+
 ### Added
 
+- **Quotes & Proposals seam (QUOTES-CONTRACT-v1 §3 + Amendment 01).** New
+  `POST /api/v1/federation/quotes/accepted` for the `customer-ops` federation
+  actor only (Brigade token exchange, allow-listed via
+  `PROJECT_OPS_FEDERATION_ACTORS`, workspace re-gated from the vouched claim —
+  `X-Workspace-Id` is never the boundary). Idempotent by
+  `customer_ops_quote_id + version`: creates the project (title, clientName,
+  contactId when it resolves in the workspace, `billingAmount` = `budgetAmount`
+  = one-time + milestones, `defaultBillRate` from the resolved `hourly.primary`
+  rate, `billingNotes` = "Quote <number> v<version>: <schedule_text>",
+  `metadata.quote` = ids + `schedule_ids` merged idempotently, plus a small
+  client-safe `metadata.quoteSummary` whose blended per-month figure is
+  recomputed from `billing.recurring[]` with `computeQuote`'s own
+  `month + quarter/3 + year/12` formula), one PENDING `TASK` per accepted
+  `one_time`/`milestone` line in position order (never an unselected option
+  line), the accepted PDF as a project Document, and answers
+  `{ status: done, created, project_id, project_number, task_ids[], document_id }`
+  — every failure is `{ status: failed, code, reason }`. Writes are attributed
+  to a deterministic non-login service user (`federation:customer-ops`).
+  New Quote panel: `GET /projects/:id/quote` (staff) and
+  `GET /client-portal/projects/:id/quote` (CLIENT: number, title, totals,
+  status, share link only; "Amounts exclude tax") reading through to
+  Customer-Ops (`CUSTOMER_OPS_BASE_URL` + `CUSTOMER_OPS_SERVICE_TOKEN`, always
+  sends the Project-Ops project id, degrades to the cached summary with a
+  "connect Customer-Ops" note). MCP `get_project` surfaces `quote` /
+  `metadata.quote` (masked for CLIENT). Frontend: a Quote panel above Billing
+  on the project page and in the portal. Docs: `docs/QUOTES-SEAM.md`.
+  `pdf.url` is an **origin-pinned** server-side fetch (allow-list from
+  `CUSTOMER_OPS_BASE_URL` + `QUOTES_PDF_ALLOWED_ORIGINS`, fail closed when
+  neither is set), never follows a redirect, and enforces its 25 MB cap while
+  streaming; the vouched `workspace_id` claim is checked for existence and
+  `active` status before anything is created.
 - **`delete_task` MCP tool** — permanently delete a task by `taskId`. ADMIN only,
   matching REST `DELETE /tasks/:id` (`@Roles(UserRole.ADMIN)`). PAT scope
   `write:tasks`. Visibility is checked via `runScoped` + project filter before

@@ -20,6 +20,7 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { useHydrated } from "@/lib/use-hydrated";
 import api from "@/lib/api";
+import { QuotePanel } from "@/components/project/quote-panel";
 import {
   statusBadgeClass,
   priorityBadgeClass,
@@ -249,6 +250,10 @@ export default function ProjectDetailsPage() {
           </div>
         )}
       </Card>
+
+      {/* Quote — number, title, totals, status and the share link only
+          (the backend masks everything else for the CLIENT role). */}
+      <QuotePanel endpoint={`/client-portal/projects/${projectId}/quote`} variant="portal" />
 
       {/* Billing */}
       {projectData.billingAmount != null && (

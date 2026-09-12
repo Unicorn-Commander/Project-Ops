@@ -90,6 +90,22 @@ export class ClientPortalController {
     return this.clientPortalService.getProjectDetails(workspaceId, user, id);
   }
 
+  @Get('projects/:id/quote')
+  @ApiOperation({
+    summary: "Quote panel for one of the client's projects (number, title, totals, status, share link only)",
+  })
+  @ApiResponse({ status: 200, description: 'Quote panel; { linked: false } when the project did not come from a quote' })
+  @ApiResponse({ status: 403, description: 'Access denied - not a client or project owner' })
+  @ApiResponse({ status: 404, description: 'Project or client profile not found' })
+  getProjectQuote(
+    @Param('id') id: string,
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+  ) {
+    this.verifyClientRole(user);
+    return this.clientPortalService.getProjectQuote(workspaceId, user, id);
+  }
+
   @Get('documents')
   @ApiOperation({ summary: 'Get all documents for the client' })
   @ApiResponse({ status: 200, description: 'List of documents' })

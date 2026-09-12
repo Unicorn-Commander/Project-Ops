@@ -32,6 +32,7 @@ import { DocumentList } from "@/components/documents/document-list";
 import { TaskList } from "@/components/tasks/task-list";
 import { ProjectSnapshot } from "@/components/project/project-snapshot";
 import { BudgetPanel, type ProjectBudget } from "@/components/schedule/budget";
+import { QuotePanel } from "@/components/project/quote-panel";
 import { TaskTimeline } from "@/components/schedule/task-timeline";
 import { EmptyState } from "@/components/ui/empty-state";
 import { recordVisit } from "@/lib/recently-visited";
@@ -545,6 +546,13 @@ export default function ProjectDetailPage() {
               )}
             </div>
           </Card>
+
+          {/* Quote — the accepted Customer-Ops quote this project came from
+              (QUOTES-CONTRACT-v1 §3): number, status, totals, share link, read
+              through to Customer-Ops. Sits above billing because it is the
+              commercial paper the billing fields were mirrored from. Self-hides
+              when the project has no quote. */}
+          <QuotePanel endpoint={`/projects/${projectId}/quote`} variant="staff" />
 
           {/* Billing Information */}
           {(projectData.invoiceNumber || projectData.billingAmount || projectData.paymentStatus) && (

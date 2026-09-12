@@ -301,7 +301,11 @@ export class McpService {
         title: 'Get a project by id or projectNumber',
         description:
           'Return full detail for a single project the user can see, ' +
-          'including recent tasks and comments.',
+          'including recent tasks and comments. A project created from an ' +
+          'accepted quote also carries `quote` / `metadata.quote` ' +
+          '(Customer-Ops ids: customer_ops_quote_id, number, version, ' +
+          'share_url, schedule_ids); CLIENT callers see number, version and ' +
+          'share_url only.',
         inputSchema: {
           id: z.string().optional(),
           projectNumber: z.string().optional(),

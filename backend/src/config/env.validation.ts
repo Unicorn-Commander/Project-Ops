@@ -116,6 +116,30 @@ export class EnvironmentVariables {
   @IsString()
   UC_REGISTRY_URL?: string;
 
+  // --- Customer-Ops read-through (Quotes & Proposals seam, QUOTES-CONTRACT-v1
+  // §3) — OPTIONAL. Unset ⇒ the Quote panel renders its cached summary with a
+  // "connect Customer-Ops" note and nothing else changes. Type-checked only;
+  // the token VALUE lives in the env / Vaultwarden, never in a repo. ---
+  @IsOptional()
+  @IsString()
+  CUSTOMER_OPS_BASE_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  CUSTOMER_OPS_SERVICE_TOKEN?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => (value === undefined ? value : Number(value)))
+  @IsInt()
+  CUSTOMER_OPS_TIMEOUT_MS?: number;
+
+  // Extra origins a `pdf.url` on the quote-accepted seam may be fetched from,
+  // beyond CUSTOMER_OPS_BASE_URL (CSV of absolute URLs). With neither set, a
+  // `pdf.url` is REFUSED and only `pdf.base64` federates — fail closed.
+  @IsOptional()
+  @IsString()
+  QUOTES_PDF_ALLOWED_ORIGINS?: string;
+
   // Optional per-request timeout (ms) for uc-registry calls; defaults to 5000.
   @IsOptional()
   @Transform(({ value }) => (value === undefined ? value : Number(value)))
