@@ -70,7 +70,9 @@ part of this contract and are therefore rejected by construction (§2.6, A3).
 | `currency` | ISO 4217 | v1 = 2-decimal currencies only; `JPY`, `KWD`, … → `400 UNSUPPORTED_CURRENCY` (A17) |
 | `billing.one_time_total_cents` | int | Σ accepted one-time lines |
 | `billing.milestone_total_cents` | int | Σ accepted milestone lines |
-| `billing.recurring_monthly_cents` | int | Σ recurring lines normalised to a month (recorded on the cached summary; recurring lines are narrative in `schedule_text` in v1) |
+| `billing.deposit_cents` | int? | the deposit Customer-Ops computed from the per-line `payment_split` (A5). **Accepted and echoed, not stored**: the deposit is Accounting-Ops' paper (§3), and the Quote panel reads it live off the Customer-Ops summary rather than keeping a copy that can go stale. |
+| `billing.recurring[]` | array? | the accepted recurring lines: `{ interval: month\|quarter\|year, amount_cents, label? }`. Project-Ops creates no task and no schedule for them (§3: recurring lines are narrative in `schedule_text` in v1); it blends them into the one cached figure below. Absent/empty = no recurring commitment. |
+| `billing.recurring_monthly_cents` | int? | optional pre-blended monthly equivalent, for a sender without the per-line breakdown. **`recurring[]` wins when both are present** (one compute path, A4). The stored figure is always `month + quarter/3 + year/12`, rounded — the same formula as `computeQuote`'s `monthly_equivalent_cents`, so the cached tile and the live tile agree. |
 | `billing.hourly_rate_cents` | int? | the rate of the line flagged `hourly.primary` (A14), already resolved by Customer-Ops → `defaultBillRate` |
 | `billing.schedule_text` | string | → `billingNotes = "Quote <number> v<version>: <schedule_text>"` |
 | `billing.version_no` | int? | the version the billing block was computed from; must equal `version` (`400 VERSION_MISMATCH` otherwise) |
@@ -175,7 +177,11 @@ curl -sS -X POST "$PROJECT_OPS_URL/api/v1/federation/quotes/accepted" \
   "billing": {
     "one_time_total_cents": 140000,
     "milestone_total_cents": 290000,
-    "recurring_monthly_cents": 35000,
+    "deposit_cents": 215000,
+    "recurring": [
+      { "interval": "month", "amount_cents": 35000, "label": "Managed hosting" },
+      { "interval": "year",  "amount_cents": 12000, "label": "AI allowance" }
+    ],
     "hourly_rate_cents": 15000,
     "schedule_text": "50% on acceptance, 50% on acceptance of each milestone; hosting billed monthly in advance.",
     "version_no": 1
@@ -256,11 +262,16 @@ client refuses to call without a project id).
 The reader is tolerant: the summary may be top-level or under `quote`, totals
 nested under `totals` or flat, snake_case; it reads `id|customer_ops_quote_id`,
 `number`, `version|current_version_no|version_no`, `title`, `status`,
-`currency`, `one_time_total_cents`, `milestone_total_cents`,
-`recurring_monthly_cents`, optional `year_one_illustration_cents`,
-`deposit_cents`, `tax_estimate_cents`, `hourly_rate_cents`, `share_url`,
-`valid_until`, `accepted_at`, `sent_at`, `pdf_url`, `federated`. Unknown keys
-are ignored. (Full request/response proposal:
+`currency`, `one_time_total_cents|one_time_cents`,
+`milestone_total_cents|milestone_cents`, optional
+`year_one_illustration_cents|year_one_cents`, `deposit_cents`,
+`tax_estimate_cents`, `hourly_rate_cents` (or `hourly_primary.rate_cents`),
+`share_url`, `valid_until`, `accepted_at`, `sent_at`, `pdf_url`, `federated`.
+The recurring figure is read from `recurring_monthly_cents`, from
+`computeQuote`'s `recurring { month_cents, quarter_cents, year_cents,
+monthly_equivalent_cents }` object, or from a `recurring[]` array — blended
+with the same `month + quarter/3 + year/12` formula — so the panel does not
+break on whichever projection L1 chooses to serve. Unknown keys are ignored. (Full request/response proposal:
 `docs/quotes/proposals/L4-federation-wire-contract.md`.)
 
 ---

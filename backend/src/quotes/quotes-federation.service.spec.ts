@@ -36,7 +36,11 @@ function payload(overrides: Partial<QuoteAcceptedDto> = {}): QuoteAcceptedDto {
     billing: {
       one_time_total_cents: 140000,
       milestone_total_cents: 290000,
-      recurring_monthly_cents: 35000,
+      deposit_cents: 215000,
+      recurring: [
+        { interval: 'month', amount_cents: 35000, label: 'Managed hosting' },
+        { interval: 'year', amount_cents: 12000, label: 'AI allowance' },
+      ],
       hourly_rate_cents: 15000,
       schedule_text: '50% on acceptance, 50% per milestone; hosting monthly in advance.',
       version_no: 1,
@@ -198,7 +202,8 @@ describe('QuotesFederationService.acceptQuote — first acceptance', () => {
       title: 'Order Pad for the apparel client',
       currency: 'USD',
       status: 'accepted',
-      totals: { one_time_total_cents: 140000, milestone_total_cents: 290000, recurring_monthly_cents: 35000 },
+      // 35000/mo + 12000/yr → 35000 + round(12000/12) = 36000 (A4/A8 blend).
+      totals: { one_time_total_cents: 140000, milestone_total_cents: 290000, recurring_monthly_cents: 36000 },
     });
     // Nothing internal ever lands on the project (§2.6, A3).
     expect(JSON.stringify(project.metadata)).not.toMatch(/internal|split|cost/i);

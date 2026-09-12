@@ -1,9 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import {
-  CUSTOMER_OPS_PORT,
-  CustomerOpsFailureReason,
-  CustomerOpsPort,
-} from './customer-ops.port';
+import { CUSTOMER_OPS_PORT, CustomerOpsFailureReason, CustomerOpsPort } from './customer-ops.port';
 import {
   ClientQuoteSummary,
   QUOTE_TAX_NOTE,

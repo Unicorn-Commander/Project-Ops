@@ -33,6 +33,8 @@ stores `project_id` as `federated.project_ops_project_id` (needed for P4).
 | `billing.version_no` | A14: must equal `version` or the call fails `VERSION_MISMATCH` |
 | `accepted_at` | informational |
 | `contact_id` semantics | a **Project-Ops** Contact id; linked only when it resolves in the target workspace, else `contact_linked: false` (no error, nothing stored) |
+| `billing.recurring[]` = `[{interval: month\|quarter\|year, amount_cents, label?}]` | §3 gives Project-Ops no recurring object of its own; it needs the per-line breakdown only to blend the one cached "per month" tile. `billing.recurring_monthly_cents` stays accepted as a pre-blended fallback, and `recurring[]` wins when both arrive (A4: one compute path). Blend = `month + quarter/3 + year/12`, rounded — identical to `computeQuote`'s `monthly_equivalent_cents`. |
+| `billing.deposit_cents` | accepted and echoed, **not stored**. The deposit is Accounting-Ops' paper (§3, A5); the Quote panel reads it live off the Customer-Ops summary. Accepting it keeps one payload shape across L3 and L4. |
 
 Unknown keys are rejected (`400 VALIDATION`) by the app-wide validation
 policy — internal notes, split rule and direct costs can never ride along.
@@ -80,7 +82,12 @@ without a project id.
 ```
 
 The top-level wrapper is optional (the reader accepts the summary at the
-root), totals may be flat, unknown keys are ignored. **Never** include
+root), totals may be flat, unknown keys are ignored. The reader also accepts
+`computeQuote`'s **own** spelling verbatim — `one_time_cents`,
+`milestone_cents`, `recurring { month_cents, quarter_cents, year_cents,
+monthly_equivalent_cents }`, `year_one_cents`, `hourly_primary.rate_cents` —
+so L1 may serve the shared `QuoteTotals` object as-is without a projection
+layer. **Never** include
 `internal_notes_md`, `split_rule`, `quote_costs`, `accepted_by` — the summary
 is served to sibling apps; Project-Ops masks for CLIENT anyway, but the
 contract says these never leave Customer-Ops.

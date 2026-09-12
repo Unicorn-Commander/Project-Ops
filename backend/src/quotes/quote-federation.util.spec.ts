@@ -10,6 +10,7 @@ import {
   mergeScheduleIds,
   normalizeCurrency,
   quotePdfObjectKey,
+  recurringMonthlyCents,
   safeFileName,
   scheduleIdsChanged,
   selectTaskLines,
@@ -108,6 +109,42 @@ describe('quote-federation.util', () => {
     });
   });
 
+  describe('recurringMonthlyCents (A4/A8 — month + quarter/3 + year/12, rounded)', () => {
+    const b = (over: any) => ({ one_time_total_cents: 0, milestone_total_cents: 0, schedule_text: '', ...over }) as any;
+
+    it('blends the accepted recurring lines the way computeQuote does', () => {
+      expect(
+        recurringMonthlyCents(
+          b({
+            recurring: [
+              { interval: 'month', amount_cents: 35000 },
+              { interval: 'quarter', amount_cents: 30000 },
+              { interval: 'year', amount_cents: 12000 },
+            ],
+          }),
+        ),
+      ).toBe(35000 + 10000 + 1000);
+    });
+
+    it('rounds the blend once, half up', () => {
+      expect(recurringMonthlyCents(b({ recurring: [{ interval: 'year', amount_cents: 100 }] }))).toBe(8); // 8.33
+      expect(recurringMonthlyCents(b({ recurring: [{ interval: 'quarter', amount_cents: 100 }] }))).toBe(33); // 33.33
+      expect(recurringMonthlyCents(b({ recurring: [{ interval: 'quarter', amount_cents: 50 }] }))).toBe(17); // 16.67
+    });
+
+    it('the array wins over a pre-blended scalar (one compute path)', () => {
+      expect(
+        recurringMonthlyCents(b({ recurring: [{ interval: 'month', amount_cents: 35000 }], recurring_monthly_cents: 99999 })),
+      ).toBe(35000);
+    });
+
+    it('falls back to the scalar when no lines are sent, and to 0 when neither is', () => {
+      expect(recurringMonthlyCents(b({ recurring_monthly_cents: 35000 }))).toBe(35000);
+      expect(recurringMonthlyCents(b({ recurring: [], recurring_monthly_cents: 35000 }))).toBe(35000);
+      expect(recurringMonthlyCents(b({}))).toBe(0);
+    });
+  });
+
   describe('metadata builders', () => {
     const dto = {
       customer_ops_quote_id: 'q-0001',
@@ -118,7 +155,8 @@ describe('quote-federation.util', () => {
       billing: {
         one_time_total_cents: 140000,
         milestone_total_cents: 290000,
-        recurring_monthly_cents: 35000,
+        deposit_cents: 215000,
+        recurring: [{ interval: 'month', amount_cents: 35000, label: 'Managed hosting' }],
         hourly_rate_cents: 15000,
         schedule_text: 'x',
       },
@@ -142,6 +180,9 @@ describe('quote-federation.util', () => {
         status: 'accepted',
         totals: { one_time_total_cents: 140000, milestone_total_cents: 290000, recurring_monthly_cents: 35000 },
       });
+      // The deposit is Accounting-Ops' paper (§3); Project-Ops accepts it on the
+      // wire and keeps no copy.
+      expect(JSON.stringify(cache)).not.toContain('deposit');
       expect(JSON.stringify(cache)).not.toContain('hourly');
       expect(JSON.stringify(cache)).not.toContain('schedule');
     });

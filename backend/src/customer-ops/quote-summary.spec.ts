@@ -183,6 +183,62 @@ describe('normalizeQuoteSummary (tolerant reader of GET /api/quotes/:id/summary)
     expect(s.federated).toEqual({ project_ops_project_id: 'p1' });
   });
 
+  it("accepts computeQuote's OWN spelling (one_time_cents / recurring{} / year_one_cents / hourly_primary)", () => {
+    // The shape Customer-Ops' shared quote-model.ts produces (lane L2's
+    // computeQuote), in case L1 serves the totals object verbatim.
+    const s = normalizeQuoteSummary(
+      {
+        quote: {
+          id: 'q-0001',
+          number: 'Q-2026-0001',
+          version: 2,
+          title: 'T',
+          status: 'accepted',
+          totals: {
+            currency: 'USD',
+            one_time_cents: 140000,
+            milestone_cents: 290000,
+            recurring: { month_cents: 35000, quarter_cents: 30000, year_cents: 12000, monthly_equivalent_cents: 46000 },
+            hourly_primary: { line_id: 'l9', label: 'Change work', rate_cents: 15000, minimum_hours: 2 },
+            deposit_cents: 215000,
+            year_one_cents: 850000,
+          },
+          share_url: 'https://x.test/q/t',
+        },
+      },
+      REF,
+    );
+    expect(s.totals.one_time_total_cents).toBe(140000);
+    expect(s.totals.milestone_total_cents).toBe(290000);
+    expect(s.totals.one_time_plus_milestones_cents).toBe(430000);
+    expect(s.totals.recurring_monthly_cents).toBe(46000);
+    expect(s.totals.hourly_rate_cents).toBe(15000);
+    expect(s.totals.year_one_illustration_cents).toBe(850000);
+    expect(s.version).toBe(2);
+  });
+
+  it('blends a recurring block itself when no monthly equivalent is given (object or array)', () => {
+    const asObject = normalizeQuoteSummary(
+      { totals: { recurring: { month_cents: 35000, quarter_cents: 30000, year_cents: 12000 } } },
+      REF,
+    );
+    expect(asObject.totals.recurring_monthly_cents).toBe(46000);
+
+    const asArray = normalizeQuoteSummary(
+      {
+        totals: {
+          recurring: [
+            { interval: 'month', amount_cents: 35000 },
+            { interval: 'quarter', amount_cents: 30000 },
+            { interval: 'year', amount_cents: 12000 },
+          ],
+        },
+      },
+      REF,
+    );
+    expect(asArray.totals.recurring_monthly_cents).toBe(46000);
+  });
+
   it('accepts a flat shape with numeric strings and falls back to the stored ref for missing ids', () => {
     const s = normalizeQuoteSummary(
       { title: 'T', status: 'sent', one_time_total_cents: '100', milestone_total_cents: '0', recurring_monthly_cents: 0 },

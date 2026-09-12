@@ -29,8 +29,14 @@ export class QuotePanelController {
   ) {}
 
   @Get(':id/quote')
-  @ApiOperation({ summary: 'Quote panel for a project (read-through to Customer-Ops; cached summary when unavailable)' })
-  @ApiResponse({ status: 200, description: '{ linked:false } when the project did not come from a quote' })
+  @ApiOperation({
+    summary:
+      'Quote panel for a project (read-through to Customer-Ops; cached summary when unavailable)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '{ linked:false } when the project did not come from a quote',
+  })
   @ApiResponse({ status: 404, description: 'Project not found' })
   async getProjectQuote(
     @CurrentWorkspace() workspaceId: string,
@@ -39,6 +45,8 @@ export class QuotePanelController {
   ): Promise<QuotePanel> {
     const project = await this.projects.findOne(workspaceId, user, id);
     const viewer = user.role === UserRole.CLIENT ? 'client' : 'staff';
-    return this.panel.buildPanel({ id: project.id, metadata: project.metadata }, viewer, { workspaceId });
+    return this.panel.buildPanel({ id: project.id, metadata: project.metadata }, viewer, {
+      workspaceId,
+    });
   }
 }

@@ -182,6 +182,7 @@ export interface CachedQuoteSummary {
   totals: {
     one_time_total_cents: number;
     milestone_total_cents: number;
+    /** Blended per month (month + quarter/3 + year/12); per-interval detail stays in Customer-Ops (§3). */
     recurring_monthly_cents: number;
   };
 }
@@ -216,7 +217,10 @@ export function maskProjectQuoteRefForClient(ref: ProjectQuoteRef): {
 }
 
 /** Build the staff view from the ids + cache alone (Customer-Ops unreachable/unconfigured). */
-export function summaryFromCache(ref: ProjectQuoteRef, cached: CachedQuoteSummary | null): QuoteSummary {
+export function summaryFromCache(
+  ref: ProjectQuoteRef,
+  cached: CachedQuoteSummary | null,
+): QuoteSummary {
   const one = cached?.totals.one_time_total_cents ?? 0;
   const ms = cached?.totals.milestone_total_cents ?? 0;
   return {
@@ -238,21 +242,70 @@ export function summaryFromCache(ref: ProjectQuoteRef, cached: CachedQuoteSummar
 }
 
 /**
+ * Blend a recurring block into one per-month figure, whatever shape it arrives
+ * in: the pre-blended scalar, Customer-Ops' `computeQuote` object
+ * (`{month_cents, quarter_cents, year_cents, monthly_equivalent_cents}`), or
+ * the wire array (`[{interval, amount_cents}]`). Same formula everywhere:
+ * `month + quarter/3 + year/12`, rounded (A4/A8).
+ */
+export function blendRecurringMonthly(totals: any): number {
+  const scalar =
+    totals?.recurring_monthly_cents ??
+    totals?.recurring_monthly_total_cents ??
+    totals?.recurring_monthly_total;
+  if (scalar !== undefined && scalar !== null && scalar !== '') return asCents(scalar);
+
+  const r = totals?.recurring;
+  if (r && typeof r === 'object' && !Array.isArray(r)) {
+    if (r.monthly_equivalent_cents !== undefined && r.monthly_equivalent_cents !== null) {
+      return asCents(r.monthly_equivalent_cents);
+    }
+    return Math.round(
+      asCents(r.month_cents) + asCents(r.quarter_cents) / 3 + asCents(r.year_cents) / 12,
+    );
+  }
+  if (Array.isArray(r)) {
+    let month = 0;
+    let quarter = 0;
+    let year = 0;
+    for (const line of r) {
+      const amount = asCents(line?.amount_cents);
+      if (line?.interval === 'quarter') quarter += amount;
+      else if (line?.interval === 'year') year += amount;
+      else month += amount;
+    }
+    return Math.round(month + quarter / 3 + year / 12);
+  }
+  return 0;
+}
+
+/**
  * Normalise Customer-Ops' `GET /api/quotes/:id/summary` body into QuoteSummary.
  * Tolerant by design: accepts the summary at the top level or under `quote`,
  * totals nested under `totals` or flat, snake_case throughout (the suite wire
- * convention). Unknown keys are ignored — nothing beyond this shape is ever
- * surfaced to a panel.
+ * convention), and BOTH spellings of the totals block — the seam's
+ * `*_total_cents` names and the names `computeQuote` itself produces
+ * (`one_time_cents`, `milestone_cents`, `recurring{}`, `year_one_cents`,
+ * `hourly_primary.rate_cents`), so the panel does not break on whichever
+ * projection L1 chooses to serve. Unknown keys are ignored — nothing beyond
+ * this shape is ever surfaced to a panel.
  */
 export function normalizeQuoteSummary(raw: unknown, fallback: ProjectQuoteRef): QuoteSummary {
   const body: any = raw && typeof raw === 'object' ? raw : {};
   const q: any = body.quote && typeof body.quote === 'object' ? body.quote : body;
   const t: any = q.totals && typeof q.totals === 'object' ? q.totals : q;
-  const one = asCents(t.one_time_total_cents ?? t.one_time_total);
-  const ms = asCents(t.milestone_total_cents ?? t.milestone_total);
-  const recurring = asCents(t.recurring_monthly_cents ?? t.recurring_monthly_total_cents ?? t.recurring_monthly_total);
+  const one = asCents(t.one_time_total_cents ?? t.one_time_total ?? t.one_time_cents);
+  const ms = asCents(t.milestone_total_cents ?? t.milestone_total ?? t.milestone_cents);
+  const recurring = blendRecurringMonthly(t);
+  const hourlyRate =
+    t.hourly_primary && typeof t.hourly_primary === 'object'
+      ? asOptCents(t.hourly_primary.rate_cents)
+      : asOptCents(t.hourly_rate_cents);
   return {
-    customer_ops_quote_id: asString(q.id ?? q.customer_ops_quote_id, fallback.customer_ops_quote_id),
+    customer_ops_quote_id: asString(
+      q.id ?? q.customer_ops_quote_id,
+      fallback.customer_ops_quote_id,
+    ),
     number: asString(q.number, fallback.number),
     version: asVersion(q.version ?? q.current_version_no ?? q.version_no ?? fallback.version),
     title: asString(q.title),
@@ -263,10 +316,12 @@ export function normalizeQuoteSummary(raw: unknown, fallback: ProjectQuoteRef): 
       milestone_total_cents: ms,
       recurring_monthly_cents: recurring,
       one_time_plus_milestones_cents: one + ms,
-      year_one_illustration_cents: asOptCents(t.year_one_illustration_cents ?? t.year_one_illustration),
+      year_one_illustration_cents: asOptCents(
+        t.year_one_illustration_cents ?? t.year_one_illustration ?? t.year_one_cents,
+      ),
       deposit_cents: asOptCents(t.deposit_cents),
       tax_estimate_cents: asOptCents(t.tax_estimate_cents),
-      hourly_rate_cents: asOptCents(t.hourly_rate_cents),
+      hourly_rate_cents: hourlyRate,
     },
     share_url: asString(q.share_url, fallback.share_url),
     valid_until: asOptString(q.valid_until),

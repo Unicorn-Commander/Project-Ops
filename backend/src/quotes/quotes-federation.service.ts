@@ -257,7 +257,11 @@ export class QuotesFederationService {
     });
   }
 
-  private async creatorFor(tx: WorkspaceTxClient, actor: User, federationActor: string | null): Promise<string> {
+  private async creatorFor(
+    tx: WorkspaceTxClient,
+    actor: User,
+    federationActor: string | null,
+  ): Promise<string> {
     if (!federationActor) return actor.id;
     const svc = await this.ensureFederationUser(tx);
     return svc.id;
@@ -276,7 +280,9 @@ export class QuotesFederationService {
       select: { id: true },
     });
     if (!contact) {
-      this.logger.warn(`quote.accepted: contact_id ${wanted} does not resolve in ws=${workspaceId}; project left unlinked`);
+      this.logger.warn(
+        `quote.accepted: contact_id ${wanted} does not resolve in ws=${workspaceId}; project left unlinked`,
+      );
       return null;
     }
     return contact.id;
@@ -366,7 +372,11 @@ export class QuotesFederationService {
         projectNumber,
         source: 'customer-ops',
         federationActor: opts.federationActor,
-        quote: { customer_ops_quote_id: dto.customer_ops_quote_id, number: dto.number, version: dto.version },
+        quote: {
+          customer_ops_quote_id: dto.customer_ops_quote_id,
+          number: dto.number,
+          version: dto.version,
+        },
         tasks: tasks.length,
         documentId,
       },
@@ -386,7 +396,11 @@ export class QuotesFederationService {
         document_id: documentId,
         contact_linked: contactId !== null,
         schedule_ids: scheduleIds,
-        quote: { customer_ops_quote_id: dto.customer_ops_quote_id, number: dto.number, version: dto.version },
+        quote: {
+          customer_ops_quote_id: dto.customer_ops_quote_id,
+          number: dto.number,
+          version: dto.version,
+        },
       },
     };
   }
@@ -426,7 +440,9 @@ export class QuotesFederationService {
     let creatorId = actor.id;
     if (!documentId && stored) {
       creatorId = await this.creatorFor(tx, actor, opts.federationActor);
-      documentId = (await this.createDocument(tx, workspaceId, existing.project.id, creatorId, dto, stored)).id;
+      documentId = (
+        await this.createDocument(tx, workspaceId, existing.project.id, creatorId, dto, stored)
+      ).id;
     }
 
     return {
@@ -443,7 +459,11 @@ export class QuotesFederationService {
         document_id: documentId,
         contact_linked: existing.project.contactId !== null,
         schedule_ids: merged,
-        quote: { customer_ops_quote_id: dto.customer_ops_quote_id, number: dto.number, version: dto.version },
+        quote: {
+          customer_ops_quote_id: dto.customer_ops_quote_id,
+          number: dto.number,
+          version: dto.version,
+        },
       },
     };
   }
@@ -470,7 +490,11 @@ export class QuotesFederationService {
         description: `Accepted quote ${dto.number} v${dto.version}`,
         tags: ['quote'],
         metadata: {
-          quote: { customer_ops_quote_id: dto.customer_ops_quote_id, number: dto.number, version: dto.version },
+          quote: {
+            customer_ops_quote_id: dto.customer_ops_quote_id,
+            number: dto.number,
+            version: dto.version,
+          },
         } as unknown as Prisma.InputJsonObject,
       },
       select: { id: true },
@@ -479,7 +503,11 @@ export class QuotesFederationService {
 
   // ── PDF (outside any tx) ──────────────────────────────────────────────────
 
-  private async storePdf(workspaceId: string, dto: QuoteAcceptedDto, pdf: QuotePdfDto): Promise<StoredPdf> {
+  private async storePdf(
+    workspaceId: string,
+    dto: QuoteAcceptedDto,
+    pdf: QuotePdfDto,
+  ): Promise<StoredPdf> {
     const bytes = await this.resolvePdfBytes(pdf);
     if (!looksLikePdf(bytes)) {
       throw federationError(
@@ -491,7 +519,9 @@ export class QuotesFederationService {
     const fileName = safeFileName(pdf.file_name);
     const s3Key = quotePdfObjectKey(workspaceId, dto.customer_ops_quote_id, dto.version, fileName);
     try {
-      await this.minio.uploadObject(s3Key, bytes, bytes.length, { 'Content-Type': 'application/pdf' });
+      await this.minio.uploadObject(s3Key, bytes, bytes.length, {
+        'Content-Type': 'application/pdf',
+      });
     } catch (err) {
       throw federationError(
         HttpStatus.SERVICE_UNAVAILABLE,
@@ -506,14 +536,26 @@ export class QuotesFederationService {
     if (pdf.base64) {
       const cleaned = pdf.base64.replace(/^data:application\/pdf;base64,/i, '').replace(/\s+/g, '');
       if (!/^[A-Za-z0-9+/]+={0,2}$/.test(cleaned)) {
-        throw federationError(HttpStatus.BAD_REQUEST, 'PDF_INVALID', 'pdf.base64 is not valid base64.');
+        throw federationError(
+          HttpStatus.BAD_REQUEST,
+          'PDF_INVALID',
+          'pdf.base64 is not valid base64.',
+        );
       }
       const bytes = Buffer.from(cleaned, 'base64');
       if (bytes.length === 0) {
-        throw federationError(HttpStatus.BAD_REQUEST, 'PDF_INVALID', 'pdf.base64 decodes to zero bytes.');
+        throw federationError(
+          HttpStatus.BAD_REQUEST,
+          'PDF_INVALID',
+          'pdf.base64 decodes to zero bytes.',
+        );
       }
       if (bytes.length > QUOTE_PDF_MAX_BYTES) {
-        throw federationError(HttpStatus.PAYLOAD_TOO_LARGE, 'PDF_TOO_LARGE', `The accepted PDF exceeds ${QUOTE_PDF_MAX_BYTES} bytes.`);
+        throw federationError(
+          HttpStatus.PAYLOAD_TOO_LARGE,
+          'PDF_TOO_LARGE',
+          `The accepted PDF exceeds ${QUOTE_PDF_MAX_BYTES} bytes.`,
+        );
       }
       return bytes;
     }
@@ -528,18 +570,34 @@ export class QuotesFederationService {
         signal: controller.signal,
       });
       if (!res.ok) {
-        throw federationError(HttpStatus.BAD_GATEWAY, 'PDF_FETCH_FAILED', `Fetching the accepted PDF returned HTTP ${res.status}.`);
+        throw federationError(
+          HttpStatus.BAD_GATEWAY,
+          'PDF_FETCH_FAILED',
+          `Fetching the accepted PDF returned HTTP ${res.status}.`,
+        );
       }
       const declared = Number(res.headers.get('content-length') ?? '0');
       if (declared > QUOTE_PDF_MAX_BYTES) {
-        throw federationError(HttpStatus.PAYLOAD_TOO_LARGE, 'PDF_TOO_LARGE', `The accepted PDF exceeds ${QUOTE_PDF_MAX_BYTES} bytes.`);
+        throw federationError(
+          HttpStatus.PAYLOAD_TOO_LARGE,
+          'PDF_TOO_LARGE',
+          `The accepted PDF exceeds ${QUOTE_PDF_MAX_BYTES} bytes.`,
+        );
       }
       const bytes = Buffer.from(await res.arrayBuffer());
       if (bytes.length === 0) {
-        throw federationError(HttpStatus.BAD_GATEWAY, 'PDF_FETCH_FAILED', 'The accepted PDF URL returned zero bytes.');
+        throw federationError(
+          HttpStatus.BAD_GATEWAY,
+          'PDF_FETCH_FAILED',
+          'The accepted PDF URL returned zero bytes.',
+        );
       }
       if (bytes.length > QUOTE_PDF_MAX_BYTES) {
-        throw federationError(HttpStatus.PAYLOAD_TOO_LARGE, 'PDF_TOO_LARGE', `The accepted PDF exceeds ${QUOTE_PDF_MAX_BYTES} bytes.`);
+        throw federationError(
+          HttpStatus.PAYLOAD_TOO_LARGE,
+          'PDF_TOO_LARGE',
+          `The accepted PDF exceeds ${QUOTE_PDF_MAX_BYTES} bytes.`,
+        );
       }
       return bytes;
     } catch (err) {

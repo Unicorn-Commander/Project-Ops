@@ -19,7 +19,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   = one-time + milestones, `defaultBillRate` from the resolved `hourly.primary`
   rate, `billingNotes` = "Quote <number> v<version>: <schedule_text>",
   `metadata.quote` = ids + `schedule_ids` merged idempotently, plus a small
-  client-safe `metadata.quoteSummary`), one PENDING `TASK` per accepted
+  client-safe `metadata.quoteSummary` whose blended per-month figure is
+  recomputed from `billing.recurring[]` with `computeQuote`'s own
+  `month + quarter/3 + year/12` formula), one PENDING `TASK` per accepted
   `one_time`/`milestone` line in position order (never an unselected option
   line), the accepted PDF as a project Document, and answers
   `{ status: done, created, project_id, project_number, task_ids[], document_id }`

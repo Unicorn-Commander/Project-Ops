@@ -1,10 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  CustomerOpsPort,
-  QuoteSummaryRequest,
-  QuoteSummaryResult,
-} from './customer-ops.port';
+import { CustomerOpsPort, QuoteSummaryRequest, QuoteSummaryResult } from './customer-ops.port';
 import { normalizeQuoteSummary } from './quote-summary';
 
 /** Default per-request timeout (ms). Override via CUSTOMER_OPS_TIMEOUT_MS. */
@@ -87,7 +83,8 @@ export class HttpCustomerOpsClient extends CustomerOpsPort {
       return {
         ok: false,
         reason: 'ERROR',
-        message: 'A quote summary is read only with its Project-Ops project id (never a bare quote id).',
+        message:
+          'A quote summary is read only with its Project-Ops project id (never a bare quote id).',
       };
     }
 
@@ -111,33 +108,52 @@ export class HttpCustomerOpsClient extends CustomerOpsPort {
         signal: controller.signal,
       });
     } catch (err) {
-      this.logger.warn(`Customer-Ops unreachable for quote ${req.quoteId}: ${(err as Error).message}`);
-      return { ok: false, reason: 'UNREACHABLE', message: 'Customer-Ops is unreachable right now.' };
+      this.logger.warn(
+        `Customer-Ops unreachable for quote ${req.quoteId}: ${(err as Error).message}`,
+      );
+      return {
+        ok: false,
+        reason: 'UNREACHABLE',
+        message: 'Customer-Ops is unreachable right now.',
+      };
     } finally {
       clearTimeout(timer);
     }
 
     if (res.status === 401 || res.status === 403) {
       const text = await res.text().catch(() => '');
-      this.logger.warn(`Customer-Ops denied quote summary ${req.quoteId} (${res.status}): ${text.slice(0, 200)}`);
+      this.logger.warn(
+        `Customer-Ops denied quote summary ${req.quoteId} (${res.status}): ${text.slice(0, 200)}`,
+      );
       return {
         ok: false,
         reason: 'DENIED',
-        message: 'Customer-Ops declined the read (service token not entitled, or the quote is not federated to this project).',
+        message:
+          'Customer-Ops declined the read (service token not entitled, or the quote is not federated to this project).',
       };
     }
     if (res.status === 404) {
-      return { ok: false, reason: 'NOT_FOUND', message: 'Customer-Ops has no summary for this quote and project.' };
+      return {
+        ok: false,
+        reason: 'NOT_FOUND',
+        message: 'Customer-Ops has no summary for this quote and project.',
+      };
     }
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      this.logger.warn(`Customer-Ops quote summary ${req.quoteId} failed ${res.status}: ${text.slice(0, 200)}`);
+      this.logger.warn(
+        `Customer-Ops quote summary ${req.quoteId} failed ${res.status}: ${text.slice(0, 200)}`,
+      );
       return { ok: false, reason: 'ERROR', message: `Customer-Ops error ${res.status}.` };
     }
 
     const data: unknown = await res.json().catch(() => null);
     if (!data || typeof data !== 'object') {
-      return { ok: false, reason: 'ERROR', message: 'Customer-Ops returned an unreadable summary.' };
+      return {
+        ok: false,
+        reason: 'ERROR',
+        message: 'Customer-Ops returned an unreadable summary.',
+      };
     }
     return {
       ok: true,

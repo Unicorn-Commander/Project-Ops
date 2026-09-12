@@ -107,6 +107,10 @@ export function QuotePanel({ endpoint, variant = "staff" }: QuotePanelProps) {
     { label: "Monthly recurring", value: formatCents(quote.totals?.recurring_monthly_cents, currency) },
     { label: "Committed (one-time + milestones)", value: formatCents(quote.totals?.one_time_plus_milestones_cents, currency) },
   ];
+  if (quote.totals?.deposit_cents != null) {
+    // A5 — the first invoice Accounting-Ops drafts. Shown to staff and client alike.
+    tiles.push({ label: "Deposit", value: formatCents(quote.totals.deposit_cents, currency) });
+  }
 
   const header = (
     <div className={isPortal ? "flex flex-wrap items-center gap-2 border-b border-border px-6 py-4" : "mb-4 flex flex-wrap items-center gap-2"}>

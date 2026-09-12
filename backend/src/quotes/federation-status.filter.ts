@@ -41,7 +41,9 @@ export class FederationStatusFilter implements ExceptionFilter {
       );
       Sentry.captureException(exception);
     } else {
-      this.logger.warn(`${req?.method} ${req?.originalUrl ?? req?.url} → ${httpStatus} ${code}: ${reason}`);
+      this.logger.warn(
+        `${req?.method} ${req?.originalUrl ?? req?.url} → ${httpStatus} ${code}: ${reason}`,
+      );
     }
 
     res.status(httpStatus).json({ status: 'failed', code, reason, http_status: httpStatus });

@@ -30,15 +30,42 @@ export const QUOTE_PDF_MAX_BYTES = 25 * 1024 * 1024;
 /** ISO 4217 currencies with 0 or 3+ minor-unit digits — rejected in v1 (Amendment 01 A17). */
 export const NON_TWO_DECIMAL_CURRENCIES: ReadonlySet<string> = new Set([
   // zero-decimal
-  'BIF', 'CLP', 'DJF', 'GNF', 'ISK', 'JPY', 'KMF', 'KRW', 'PYG', 'RWF', 'UGX', 'UYI', 'VND', 'VUV', 'XAF', 'XOF', 'XPF',
+  'BIF',
+  'CLP',
+  'DJF',
+  'GNF',
+  'ISK',
+  'JPY',
+  'KMF',
+  'KRW',
+  'PYG',
+  'RWF',
+  'UGX',
+  'UYI',
+  'VND',
+  'VUV',
+  'XAF',
+  'XOF',
+  'XPF',
   // three-decimal
-  'BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND',
+  'BHD',
+  'IQD',
+  'JOD',
+  'KWD',
+  'LYD',
+  'OMR',
+  'TND',
   // four-decimal
-  'CLF', 'UYW',
+  'CLF',
+  'UYW',
 ]);
 
 /** A classified, machine-readable failure (Amendment 01 A7: Customer-Ops records `federated.project_ops = failed` + reason). */
-export function federationError(httpStatus: HttpStatus, code: string, reason: string): HttpException {
+export function federationError(
+  httpStatus: HttpStatus,
+  code: string,
+  reason: string,
+): HttpException {
   return new HttpException({ status: 'failed', code, reason }, httpStatus);
 }
 
@@ -46,7 +73,11 @@ export function federationError(httpStatus: HttpStatus, code: string, reason: st
 export function normalizeCurrency(raw: string): string {
   const code = (raw ?? '').trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(code)) {
-    throw federationError(HttpStatus.BAD_REQUEST, 'UNSUPPORTED_CURRENCY', `Currency '${raw}' is not a 3-letter ISO 4217 code.`);
+    throw federationError(
+      HttpStatus.BAD_REQUEST,
+      'UNSUPPORTED_CURRENCY',
+      `Currency '${raw}' is not a 3-letter ISO 4217 code.`,
+    );
   }
   if (NON_TWO_DECIMAL_CURRENCIES.has(code)) {
     throw federationError(
@@ -61,7 +92,11 @@ export function normalizeCurrency(raw: string): string {
 /** Integer cents → a Decimal-safe string ("1234567" → "12345.67"). Never floats. */
 export function centsToAmountString(cents: number): string {
   if (!Number.isInteger(cents) || cents < 0) {
-    throw federationError(HttpStatus.BAD_REQUEST, 'INVALID_AMOUNT', `Amount ${cents} is not a non-negative integer number of cents.`);
+    throw federationError(
+      HttpStatus.BAD_REQUEST,
+      'INVALID_AMOUNT',
+      `Amount ${cents} is not a non-negative integer number of cents.`,
+    );
   }
   const whole = Math.floor(cents / 100);
   const minor = cents % 100;
@@ -81,13 +116,19 @@ export function buildBillingNotes(number: string, version: number, scheduleText:
 export function selectTaskLines(lines: ReadonlyArray<QuoteLineDto>): QuoteLineDto[] {
   return lines
     .map((line, index) => ({ line, index }))
-    .filter(({ line }) => (line.kind === 'one_time' || line.kind === 'milestone') && line.selected !== false)
+    .filter(
+      ({ line }) =>
+        (line.kind === 'one_time' || line.kind === 'milestone') && line.selected !== false,
+    )
     .sort((a, b) => a.line.position - b.line.position || a.index - b.index)
     .map(({ line }) => line);
 }
 
 /** Idempotent union: existing order kept, new ids appended once, blanks/dupes dropped. */
-export function mergeScheduleIds(existing: unknown, incoming: ReadonlyArray<string> | undefined): string[] {
+export function mergeScheduleIds(
+  existing: unknown,
+  incoming: ReadonlyArray<string> | undefined,
+): string[] {
   const out: string[] = [];
   const push = (v: unknown) => {
     if (typeof v === 'string' && v.trim() && !out.includes(v)) out.push(v);
@@ -104,7 +145,10 @@ export function scheduleIdsChanged(existing: unknown, merged: ReadonlyArray<stri
 }
 
 /** `project.metadata.quote` — foreign ids only (§3), plus the Accounting-Ops schedule ids (A14). */
-export function buildQuoteRef(dto: QuoteAcceptedDto, scheduleIds: ReadonlyArray<string>): ProjectQuoteRef {
+export function buildQuoteRef(
+  dto: QuoteAcceptedDto,
+  scheduleIds: ReadonlyArray<string>,
+): ProjectQuoteRef {
   return {
     customer_ops_quote_id: dto.customer_ops_quote_id,
     number: dto.number,
@@ -114,8 +158,49 @@ export function buildQuoteRef(dto: QuoteAcceptedDto, scheduleIds: ReadonlyArray<
   };
 }
 
-/** `project.metadata.quoteSummary` — the small cached summary, client-whitelisted by construction. */
-export function buildQuoteSummaryCache(dto: QuoteAcceptedDto, currency: string): CachedQuoteSummary {
+/**
+ * The blended per-month figure for the cached summary, from the accepted
+ * recurring lines: `month + quarter/3 + year/12`, rounded — byte-for-byte the
+ * formula Customer-Ops' `computeQuote` uses for `monthly_equivalent_cents`, so
+ * the cached tile and the live tile agree (A4: one compute path, and where
+ * Project-Ops must hold a number it recomputes rather than store a second
+ * truth). `billing.recurring` wins whenever it is present; the pre-blended
+ * `billing.recurring_monthly_cents` is only a fallback for a sender that has
+ * not got the per-line breakdown. Neither present ⇒ 0.
+ *
+ * Per-interval detail is deliberately NOT cached: §3 keeps recurring lines as
+ * narrative in `billingNotes` in v1, and the panel reads the detail through to
+ * Customer-Ops.
+ */
+export function recurringMonthlyCents(billing: QuoteAcceptedDto['billing']): number {
+  const lines = billing.recurring;
+  if (!lines || lines.length === 0) return billing.recurring_monthly_cents ?? 0;
+  let month = 0;
+  let quarter = 0;
+  let year = 0;
+  for (const line of lines) {
+    if (line.interval === 'month') month += line.amount_cents;
+    else if (line.interval === 'quarter') quarter += line.amount_cents;
+    else year += line.amount_cents;
+  }
+  return Math.round(month + quarter / 3 + year / 12);
+}
+
+/**
+ * `project.metadata.quoteSummary` — the small cached summary, client-whitelisted
+ * by construction (a CLIENT reading project metadata over MCP sees only what the
+ * portal panel would show).
+ *
+ * `billing.deposit_cents` is deliberately NOT stored: the deposit is
+ * Accounting-Ops' paper (§3), not a Project-Ops field, so the staff panel reads
+ * it live off the Customer-Ops summary rather than Project-Ops keeping a second
+ * copy that can go stale. It is accepted on the wire so a spec-shaped payload
+ * validates and so the adapter can cross-check it in a later version.
+ */
+export function buildQuoteSummaryCache(
+  dto: QuoteAcceptedDto,
+  currency: string,
+): CachedQuoteSummary {
   return {
     title: dto.title,
     currency,
@@ -123,7 +208,7 @@ export function buildQuoteSummaryCache(dto: QuoteAcceptedDto, currency: string):
     totals: {
       one_time_total_cents: dto.billing.one_time_total_cents,
       milestone_total_cents: dto.billing.milestone_total_cents,
-      recurring_monthly_cents: dto.billing.recurring_monthly_cents,
+      recurring_monthly_cents: recurringMonthlyCents(dto.billing),
     },
   };
 }
@@ -131,13 +216,23 @@ export function buildQuoteSummaryCache(dto: QuoteAcceptedDto, currency: string):
 /** Keep a file name safe for an object key + a download header. */
 export function safeFileName(name: string, fallback = 'quote.pdf'): string {
   const base = (name ?? '').split(/[\\/]/).pop() ?? '';
-  const cleaned = base.replace(/[^A-Za-z0-9._ -]+/g, '_').replace(/^\.+/, '').trim();
-  const withExt = cleaned.toLowerCase().endsWith('.pdf') ? cleaned : `${cleaned || fallback.replace(/\.pdf$/i, '')}.pdf`;
+  const cleaned = base
+    .replace(/[^A-Za-z0-9._ -]+/g, '_')
+    .replace(/^\.+/, '')
+    .trim();
+  const withExt = cleaned.toLowerCase().endsWith('.pdf')
+    ? cleaned
+    : `${cleaned || fallback.replace(/\.pdf$/i, '')}.pdf`;
   return withExt.slice(0, 200);
 }
 
 /** One key per (workspace, quote, version, file) — a retry overwrites the same object; never a second one. */
-export function quotePdfObjectKey(workspaceId: string, quoteId: string, version: number, fileName: string): string {
+export function quotePdfObjectKey(
+  workspaceId: string,
+  quoteId: string,
+  version: number,
+  fileName: string,
+): string {
   const seg = (v: string) => encodeURIComponent(v).replace(/%/g, '_');
   return `quotes/${seg(workspaceId)}/${seg(quoteId)}/v${version}/${seg(safeFileName(fileName))}`;
 }
@@ -164,12 +259,16 @@ export function buildTaskQuoteMetadata(dto: QuoteAcceptedDto, line: QuoteLineDto
 }
 
 /** Sort task rows by their recorded quote position (fallback: creation order). */
-export function sortTasksByQuotePosition<T extends { metadata: unknown; createdAt?: Date }>(tasks: T[]): T[] {
+export function sortTasksByQuotePosition<T extends { metadata: unknown; createdAt?: Date }>(
+  tasks: T[],
+): T[] {
   const pos = (t: T): number => {
     const p = (t.metadata as any)?.quote?.position;
     return typeof p === 'number' && Number.isFinite(p) ? p : Number.MAX_SAFE_INTEGER;
   };
-  return [...tasks].sort((a, b) => pos(a) - pos(b) || (a.createdAt?.getTime?.() ?? 0) - (b.createdAt?.getTime?.() ?? 0));
+  return [...tasks].sort(
+    (a, b) => pos(a) - pos(b) || (a.createdAt?.getTime?.() ?? 0) - (b.createdAt?.getTime?.() ?? 0),
+  );
 }
 
 /** Magic-bytes check so a broken upstream render never lands as "the accepted PDF". */

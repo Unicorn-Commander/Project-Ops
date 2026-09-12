@@ -57,8 +57,14 @@ export class QuotesFederationController {
     summary:
       'Customer-Ops → Project-Ops: federate an accepted quote into a project (idempotent by customer_ops_quote_id + version)',
   })
-  @ApiResponse({ status: 201, description: 'Project + tasks + billing + PDF created; status=done, created=true' })
-  @ApiResponse({ status: 200, description: 'Idempotent replay; the same ids; status=done, created=false' })
+  @ApiResponse({
+    status: 201,
+    description: 'Project + tasks + billing + PDF created; status=done, created=true',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Idempotent replay; the same ids; status=done, created=false',
+  })
   @ApiResponse({ status: 403, description: 'Not the customer-ops federation actor; status=failed' })
   async quoteAccepted(
     @CurrentUser() user: User,
@@ -78,7 +84,9 @@ export class QuotesFederationController {
       );
     }
 
-    const result = await this.quotes.acceptQuote(workspaceId, user, dto, { federationActor: actor });
+    const result = await this.quotes.acceptQuote(workspaceId, user, dto, {
+      federationActor: actor,
+    });
     res.status(result.created ? HttpStatus.CREATED : HttpStatus.OK);
     return result;
   }
