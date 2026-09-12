@@ -15,11 +15,15 @@ import {
   Length,
   MaxLength,
   Min,
+  Validate,
   ValidateIf,
   ValidateNested,
+  ValidatorConstraint,
+  type ValidationArguments,
+  type ValidatorConstraintInterface,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiHideProperty, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
  * `quote.accepted` federation payload (QUOTES-CONTRACT-v1 §3 + Amendment 01).
@@ -33,6 +37,32 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  * `code: VALIDATION`). Internal notes, the split rule and direct costs are
  * never part of this contract (§2.6, A3) and are therefore rejected.
  */
+
+/** A20: `payment_split` entries are integers that sum to 100, or the payload is refused. */
+@ValidatorConstraint({ name: 'sumsToOneHundred' })
+export class SumsToOneHundred implements ValidatorConstraintInterface {
+  validate(value: unknown): boolean {
+    if (value === undefined || value === null) return true;
+    if (!Array.isArray(value) || value.length === 0) return false;
+    if (!value.every((v) => Number.isInteger(v))) return false;
+    return value.reduce((a: number, b: number) => a + b, 0) === 100;
+  }
+  defaultMessage(): string {
+    return 'payment_split entries must be integers summing to 100 (Amendment 02 A20).';
+  }
+}
+
+/** Exactly one of `pdf.url` / `pdf.base64` — never both, never neither (L8). */
+@ValidatorConstraint({ name: 'exactlyOneOfUrlOrBase64' })
+export class ExactlyOneOfUrlOrBase64 implements ValidatorConstraintInterface {
+  validate(_value: unknown, args?: ValidationArguments): boolean {
+    const o = (args?.object ?? {}) as QuotePdfDto;
+    return (o.url ? 1 : 0) + (o.base64 ? 1 : 0) === 1;
+  }
+  defaultMessage(): string {
+    return 'pdf must carry exactly one of url or base64.';
+  }
+}
 
 /** Every line kind a snapshot can carry (§1). Tasks are created for `one_time` + `milestone` only (A16). */
 export const QUOTE_LINE_KINDS = [
@@ -213,12 +243,59 @@ export class QuoteLineDto {
   @IsString()
   @MaxLength(128)
   customer_ops_line_id?: string;
+
+  // ── Accepted and ignored: the A20/A5 money fields ────────────────────────
+  // Project-Ops does no part arithmetic — Accounting-Ops owns every invoice
+  // (§3) — so these change nothing here. They are declared because
+  // `forbidNonWhitelisted` means an UNDECLARED key is a hard 400: without them,
+  // the single `quote.accepted` projection that already serves the
+  // Accounting-Ops seam (which takes `lines[].amount_cents` and
+  // `lines[].payment_split`) would federate nothing to Project-Ops. Declaring
+  // them lets L1 emit ONE payload for both seams. They are still validated, so
+  // a malformed split is caught rather than waved through, and A20's rule
+  // stands: the parts are taken as given and never re-rounded — Project-Ops
+  // simply never re-rounds them because it never reads them.
+
+  @ApiPropertyOptional({
+    example: 200000,
+    description: 'Line total in integer cents (A4). Ignored by Project-Ops.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  amount_cents?: number;
+
+  @ApiPropertyOptional({
+    example: [50, 50],
+    description:
+      'Payment split percentages; integers summing to 100 (A20). Ignored by Project-Ops.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(24)
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  @Validate(SumsToOneHundred)
+  payment_split?: number[];
+
+  @ApiPropertyOptional({
+    example: [100000, 100000],
+    description:
+      'Exact per-part amounts in integer cents, summing to amount_cents with the remainder in the last part (A20). Ignored by Project-Ops, never re-rounded.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(24)
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  payment_parts?: number[];
 }
 
 export class QuotePdfDto {
   @ApiPropertyOptional({
     example: 'https://customers.example.dev/api/quotes/<id>/versions/1/pdf?sig=...',
-    description: 'Fetchable URL of the accepted PDF (http/https). Exactly one of url | base64.',
+    description:
+      'Fetchable URL of the accepted PDF (http/https), on an allow-listed origin. Exactly one of url | base64.',
   })
   @ValidateIf((o: QuotePdfDto) => !o.base64)
   @IsUrl({ require_protocol: true, require_tld: false, protocols: ['http', 'https'] })
@@ -232,6 +309,13 @@ export class QuotePdfDto {
   @IsString()
   @IsNotEmpty()
   base64?: string;
+
+  // With BOTH present each @ValidateIf predicate above is false, so neither
+  // field is validated and `resolvePdfBytes` silently picks base64 — an
+  // unvalidated URL riding along unnoticed (L8). Make it an explicit either/or.
+  @ApiHideProperty()
+  @Validate(ExactlyOneOfUrlOrBase64)
+  readonly __pdfSource?: never;
 
   @ApiProperty({ example: 'Q-2026-0001-v1.pdf' })
   @IsString()

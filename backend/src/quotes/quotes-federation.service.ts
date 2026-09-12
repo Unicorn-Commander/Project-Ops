@@ -1,4 +1,5 @@
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   DocumentStatus,
@@ -71,7 +72,8 @@ interface StoredPdf {
 interface TxOutcome {
   created: boolean;
   result: QuoteAcceptedResult;
-  creatorId: string;
+  /** null on the replay path, which creates nothing and emits no events (L7). */
+  creatorId: string | null;
   project: Project | null;
   tasks: Task[];
 }
@@ -115,6 +117,7 @@ export class QuotesFederationService {
     private readonly minio: MinioService,
     private readonly auditService: AuditService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly config: ConfigService,
   ) {}
 
   /** Test seam: swap the PDF transport. */
@@ -162,6 +165,7 @@ export class QuotesFederationService {
         if (existing) {
           return this.mergeIntoExisting(tx, workspaceId, actor, existing, dto, stored, opts);
         }
+        await this.requireLiveWorkspace(tx, workspaceId);
         return this.createFederation(tx, workspaceId, actor, dto, currency, stored, opts);
       },
       { maxWait: 5_000, timeout: 20_000 },
@@ -239,6 +243,42 @@ export class QuotesFederationService {
     });
 
     return { project, tasks: sortTasksByQuotePosition(tasks), document };
+  }
+
+  /**
+   * The vouched `workspace_id` claim steers, but nothing downstream proves the
+   * workspace is real: `Project.workspaceId` carries no FK to `workspaces`
+   * (unlike `Membership`), so a typo'd or stale claim would create a live
+   * project row under an id RLS then hides from every human — a silent orphan
+   * (M3). One query converts that into a loud A7 failure.
+   *
+   * Only on the CREATE path: a replay already found rows in this workspace, so
+   * the workspace demonstrably exists, and a workspace suspended after
+   * acceptance must still be able to return its own ids idempotently.
+   *
+   * A proper FK + ON DELETE behaviour is the durable fix and needs a migration;
+   * this PR ships no schema change, so it is recorded as a follow-up in
+   * docs/QUOTES-SEAM.md.
+   */
+  private async requireLiveWorkspace(tx: WorkspaceTxClient, workspaceId: string): Promise<void> {
+    const ws = await tx.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { id: true, status: true },
+    });
+    if (!ws) {
+      throw federationError(
+        HttpStatus.NOT_FOUND,
+        'FEDERATION_WORKSPACE_UNKNOWN',
+        `The vouched workspace ${workspaceId} does not exist in Project-Ops; nothing was created.`,
+      );
+    }
+    if (ws.status !== 'active') {
+      throw federationError(
+        HttpStatus.CONFLICT,
+        'FEDERATION_WORKSPACE_INACTIVE',
+        `The vouched workspace ${workspaceId} is ${ws.status}, not active; nothing was created.`,
+      );
+    }
   }
 
   /** The deterministic non-login service user the adapter attributes its writes to. Atomic upsert (unique username). */
@@ -437,7 +477,11 @@ export class QuotesFederationService {
     }
 
     let documentId = existing.document?.id ?? null;
-    let creatorId = actor.id;
+    // Resolved lazily, and NEVER seeded from `actor.id`: for a federation actor
+    // that is the synthetic string `federation:customer-ops`, not a `users` row
+    // (L7). The replay path emits no events, so today it is unused — this keeps
+    // it from becoming a 500 one refactor from now.
+    let creatorId: string | null = null;
     if (!documentId && stored) {
       creatorId = await this.creatorFor(tx, actor, opts.federationActor);
       documentId = (
@@ -560,7 +604,7 @@ export class QuotesFederationService {
       return bytes;
     }
 
-    const url = pdf.url as string;
+    const url = this.requireAllowedPdfOrigin(pdf.url as string);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PDF_FETCH_TIMEOUT_MS);
     try {
@@ -568,7 +612,18 @@ export class QuotesFederationService {
         method: 'GET',
         headers: { Accept: 'application/pdf' },
         signal: controller.signal,
+        // Never follow a redirect: a pinned origin that 302s inward would
+        // otherwise hand us an internal endpoint (M2).
+        redirect: 'manual',
       });
+      if (res.status >= 300 && res.status < 400) {
+        throw federationError(
+          HttpStatus.BAD_GATEWAY,
+          'PDF_FETCH_FAILED',
+          `Fetching the accepted PDF returned HTTP ${res.status}; redirects are not followed. ` +
+            'Send a direct URL on the allow-listed origin, or send pdf.base64.',
+        );
+      }
       if (!res.ok) {
         throw federationError(
           HttpStatus.BAD_GATEWAY,
@@ -584,19 +639,12 @@ export class QuotesFederationService {
           `The accepted PDF exceeds ${QUOTE_PDF_MAX_BYTES} bytes.`,
         );
       }
-      const bytes = Buffer.from(await res.arrayBuffer());
+      const bytes = await this.readCappedBody(res);
       if (bytes.length === 0) {
         throw federationError(
           HttpStatus.BAD_GATEWAY,
           'PDF_FETCH_FAILED',
           'The accepted PDF URL returned zero bytes.',
-        );
-      }
-      if (bytes.length > QUOTE_PDF_MAX_BYTES) {
-        throw federationError(
-          HttpStatus.PAYLOAD_TOO_LARGE,
-          'PDF_TOO_LARGE',
-          `The accepted PDF exceeds ${QUOTE_PDF_MAX_BYTES} bytes.`,
         );
       }
       return bytes;
@@ -608,7 +656,110 @@ export class QuotesFederationService {
         `Could not fetch the accepted PDF: ${(err as Error).message}`,
       );
     } finally {
+      // Covers the BODY read too, not only the headers: a peer that sends
+      // headers and then stalls is aborted by the same timer.
       clearTimeout(timer);
     }
+  }
+
+  /**
+   * Read the response body with the cap enforced **while streaming**, so a
+   * lying or absent `content-length` cannot make us buffer an unbounded body
+   * into memory first and check afterwards (M2). Falls back to `arrayBuffer()`
+   * only when the runtime gives us no stream (test doubles).
+   */
+  private async readCappedBody(res: Response): Promise<Buffer> {
+    const body = res.body as ReadableStream<Uint8Array> | null | undefined;
+    if (!body || typeof body.getReader !== 'function') {
+      const bytes = Buffer.from(await res.arrayBuffer());
+      if (bytes.length > QUOTE_PDF_MAX_BYTES) {
+        throw federationError(
+          HttpStatus.PAYLOAD_TOO_LARGE,
+          'PDF_TOO_LARGE',
+          `The accepted PDF exceeds ${QUOTE_PDF_MAX_BYTES} bytes.`,
+        );
+      }
+      return bytes;
+    }
+
+    const reader = body.getReader();
+    const chunks: Buffer[] = [];
+    let total = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        total += value.byteLength;
+        if (total > QUOTE_PDF_MAX_BYTES) {
+          throw federationError(
+            HttpStatus.PAYLOAD_TOO_LARGE,
+            'PDF_TOO_LARGE',
+            `The accepted PDF exceeds ${QUOTE_PDF_MAX_BYTES} bytes.`,
+          );
+        }
+        chunks.push(Buffer.from(value));
+      }
+    } finally {
+      // Stop the transfer on the cap/abort path instead of draining it.
+      await reader.cancel().catch(() => undefined);
+    }
+    return Buffer.concat(chunks, total);
+  }
+
+  /**
+   * SSRF fence for `pdf.url` (M2). The URL must sit on an allow-listed origin:
+   * the configured Customer-Ops origin (`CUSTOMER_OPS_BASE_URL`) plus any extra
+   * origins in `QUOTES_PDF_ALLOWED_ORIGINS` (CSV).
+   *
+   * **Fails closed**: with neither configured, a `pdf.url` is refused outright
+   * rather than fetched — same posture as `PROJECT_OPS_FEDERATION_ACTORS`
+   * defaulting to empty. `pdf.base64` is unaffected, so an operator who has not
+   * configured an origin can still federate the PDF inline.
+   */
+  private requireAllowedPdfOrigin(raw: string): string {
+    let parsed: URL;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      throw federationError(HttpStatus.BAD_REQUEST, 'PDF_URL_NOT_ALLOWED', 'pdf.url is not a URL.');
+    }
+
+    const allowed = this.allowedPdfOrigins();
+    if (allowed.length === 0) {
+      throw federationError(
+        HttpStatus.BAD_REQUEST,
+        'PDF_URL_NOT_ALLOWED',
+        'pdf.url is refused because no PDF origin is allow-listed on this deployment. ' +
+          'Set CUSTOMER_OPS_BASE_URL (or QUOTES_PDF_ALLOWED_ORIGINS), or send pdf.base64 instead.',
+      );
+    }
+    if (!allowed.includes(parsed.origin)) {
+      throw federationError(
+        HttpStatus.BAD_REQUEST,
+        'PDF_URL_NOT_ALLOWED',
+        `pdf.url origin ${parsed.origin} is not allow-listed; the accepted PDF must come from the quote's own app.`,
+      );
+    }
+    return parsed.toString();
+  }
+
+  private allowedPdfOrigins(): string[] {
+    const origins: string[] = [];
+    const push = (value: string | undefined) => {
+      const trimmed = value?.trim();
+      if (!trimmed) return;
+      try {
+        const { origin } = new URL(trimmed);
+        if (!origins.includes(origin)) origins.push(origin);
+      } catch {
+        this.logger.warn(`Ignoring unparseable PDF origin in configuration: ${trimmed}`);
+      }
+    };
+    push(this.config.get<string>('CUSTOMER_OPS_BASE_URL'));
+    for (const entry of (this.config.get<string>('QUOTES_PDF_ALLOWED_ORIGINS') ?? '').split(',')) {
+      push(entry);
+    }
+    return origins;
   }
 }

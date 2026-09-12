@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- **MCP `get_project` masks the studio's commercial columns for `CLIENT`
+  callers** and now always returns a top-level `quote` key (`null` when the
+  project did not come from a quote). `defaultBillRate`, `budgetAmount`,
+  `budgetHours`, `billByDefault` and `billingNotes` are dropped for a `CLIENT`:
+  the tool loads the project with `include` and no `select`, so every Project
+  scalar was reaching the caller — including the quote's primary hourly rate
+  (A14), which the quotes seam writes into `defaultBillRate`. The same surface
+  now also filters project comments to `isInternal: false` for a `CLIENT`,
+  matching the client portal. Existing MCP consumers see one added key and,
+  for client-role callers only, five fewer.
+
 ### Added
 
 - **Quotes & Proposals seam (QUOTES-CONTRACT-v1 §3 + Amendment 01).** New
@@ -35,6 +48,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   "connect Customer-Ops" note). MCP `get_project` surfaces `quote` /
   `metadata.quote` (masked for CLIENT). Frontend: a Quote panel above Billing
   on the project page and in the portal. Docs: `docs/QUOTES-SEAM.md`.
+  `pdf.url` is an **origin-pinned** server-side fetch (allow-list from
+  `CUSTOMER_OPS_BASE_URL` + `QUOTES_PDF_ALLOWED_ORIGINS`, fail closed when
+  neither is set), never follows a redirect, and enforces its 25 MB cap while
+  streaming; the vouched `workspace_id` claim is checked for existence and
+  `active` status before anything is created.
 - **`delete_task` MCP tool** — permanently delete a task by `taskId`. ADMIN only,
   matching REST `DELETE /tasks/:id` (`@Roles(UserRole.ADMIN)`). PAT scope
   `write:tasks`. Visibility is checked via `runScoped` + project filter before

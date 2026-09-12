@@ -94,6 +94,22 @@ export class HttpCustomerOpsClient extends CustomerOpsPort {
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      return await this.readSummary(url, req, controller);
+    } finally {
+      // Cleared only after the BODY has been read. Clearing it around the fetch
+      // alone covers the HEADERS only, leaving a peer that sends headers and
+      // then stalls to hold the project page open for the life of the socket
+      // (M5). The PDF path already gets this right.
+      clearTimeout(timer);
+    }
+  }
+
+  private async readSummary(
+    url: string,
+    req: QuoteSummaryRequest,
+    controller: AbortController,
+  ): Promise<QuoteSummaryResult> {
     let res: Response;
     try {
       res = await this.fetchImpl(url, {
@@ -116,8 +132,6 @@ export class HttpCustomerOpsClient extends CustomerOpsPort {
         reason: 'UNREACHABLE',
         message: 'Customer-Ops is unreachable right now.',
       };
-    } finally {
-      clearTimeout(timer);
     }
 
     if (res.status === 401 || res.status === 403) {

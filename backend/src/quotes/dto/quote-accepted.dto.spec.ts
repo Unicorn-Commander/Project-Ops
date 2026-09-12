@@ -105,6 +105,53 @@ describe('QuoteAcceptedDto — the quote.accepted wire contract', () => {
     await expect(run(body)).rejects.toThrow();
   });
 
+  it('accepts the A20/A5 money fields on a line so ONE projection serves both seams (M4)', async () => {
+    const body: any = base();
+    body.lines[1].amount_cents = 200000;
+    body.lines[1].payment_split = [50, 50];
+    body.lines[1].payment_parts = [100000, 100000];
+    const dto = (await run(body)) as any;
+    expect(dto.lines[1].amount_cents).toBe(200000);
+    expect(dto.lines[1].payment_split).toEqual([50, 50]);
+    expect(dto.lines[1].payment_parts).toEqual([100000, 100000]);
+  });
+
+  it('takes A20 exact remainder parts as given and never re-rounds them', async () => {
+    // The amendment's own example: a $3.33 line on [50,50] is 167 + 166.
+    const body: any = base();
+    body.lines[1].amount_cents = 333;
+    body.lines[1].payment_split = [50, 50];
+    body.lines[1].payment_parts = [167, 166];
+    const dto = (await run(body)) as any;
+    expect(dto.lines[1].payment_parts).toEqual([167, 166]);
+  });
+
+  it('still refuses a payment_split that does not sum to 100 (A20)', async () => {
+    for (const split of [[50, 40], [60, 60], [50.5, 49.5], []]) {
+      const body: any = base();
+      body.lines[1].payment_split = split;
+      await expect(run(body)).rejects.toThrow();
+    }
+  });
+
+  it('pdf requires exactly one of url | base64 (L8)', async () => {
+    const both: any = base();
+    both.pdf = { url: 'https://customers.example.dev/q.pdf', base64: 'JVBERi0=', file_name: 'q.pdf' };
+    await expect(run(both)).rejects.toThrow();
+
+    const neither: any = base();
+    neither.pdf = { file_name: 'q.pdf' };
+    await expect(run(neither)).rejects.toThrow();
+
+    const onlyUrl: any = base();
+    onlyUrl.pdf = { url: 'https://customers.example.dev/q.pdf', file_name: 'q.pdf' };
+    await expect(run(onlyUrl)).resolves.toBeDefined();
+
+    const onlyB64: any = base();
+    onlyB64.pdf = { base64: 'JVBERi0=', file_name: 'q.pdf' };
+    await expect(run(onlyB64)).resolves.toBeDefined();
+  });
+
   it('requires the fields the adapter cannot work without', async () => {
     for (const key of ['customer_ops_quote_id', 'number', 'version', 'title', 'share_url', 'client_name', 'currency', 'billing', 'lines']) {
       const body: any = base();

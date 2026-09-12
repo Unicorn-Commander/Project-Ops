@@ -77,6 +77,7 @@ part of this contract and are therefore rejected by construction (§2.6, A3).
 | `billing.schedule_text` | string | → `billingNotes = "Quote <number> v<version>: <schedule_text>"` |
 | `billing.version_no` | int? | the version the billing block was computed from; must equal `version` (`400 VERSION_MISMATCH` otherwise) |
 | `lines[]` | array | `kind` ∈ `one_time\|milestone\|recurring\|hourly\|option\|included\|excluded`, `label`, `acceptance_criteria_md?`, `estimated_hours?`, `weeks?`, `position`, `selected?` (default true), `option_group?`, `customer_ops_line_id?` |
+| `lines[].amount_cents`, `lines[].payment_split`, `lines[].payment_parts` | int / int[] / int[] | **Accepted and ignored.** Project-Ops does no part arithmetic — Accounting-Ops owns every invoice (§3) — but `forbidNonWhitelisted` makes an *undeclared* key a hard `400`, so without these the one `quote.accepted` projection that already serves the Accounting-Ops seam would federate nothing here. Declared so L1 emits ONE payload for both seams. Still validated: `payment_split` must be integers summing to 100 (A20). A20's rule holds trivially — the exact parts are never re-rounded because they are never read. |
 | `pdf` | object? | `{ url \| base64, file_name }` — the accepted PDF. May arrive on a retry; attached once. |
 | `schedule_ids` | string[]? | Accounting-Ops schedule ids (A14). May arrive on a later call; merged idempotently. |
 | `accepted_at` | ISO date? | informational |
@@ -144,9 +145,12 @@ re-run only the failed adapter.
 | `VERSION_MISMATCH` | 400 | `billing.version_no ≠ version` |
 | `PDF_INVALID` | 400 / 422 | bad base64 / bytes are not a PDF |
 | `PDF_TOO_LARGE` | 413 | > 25 MB |
-| `PDF_FETCH_FAILED` | 502 | `pdf.url` unreachable / non-2xx / empty |
+| `PDF_FETCH_FAILED` | 502 | `pdf.url` unreachable / non-2xx / empty / a redirect (never followed) |
+| `PDF_URL_NOT_ALLOWED` | 400 | `pdf.url` is not on an allow-listed origin, or no origin is configured |
 | `PDF_STORE_FAILED` | 503 | object store refused the upload |
 | `FEDERATION_ACTOR_REQUIRED` | 403 | not the `customer-ops` actor, or no vouched workspace |
+| `FEDERATION_WORKSPACE_UNKNOWN` | 404 | the vouched `workspace_id` does not exist here (create path only) |
+| `FEDERATION_WORKSPACE_INACTIVE` | 409 | the vouched workspace is suspended / archived (create path only) |
 | `UNAUTHENTICATED` | 401 | no / invalid token |
 | `INTERNAL` | 500 | unexpected; nothing partial is left behind (single transaction) — retry federation |
 
@@ -344,10 +348,35 @@ Postgres; it does not cover this seam (no new tables/policies).
   honoured on `one_time` / `milestone` lines that sit in an option group.
 - **No due dates from `weeks`**: recorded on task metadata only; scheduling is
   a human call. Recurring lines are narrative in `billingNotes` (contract v1).
+- **The vouched workspace must be real.** On the create path the adapter checks
+  that the `workspace_id` in the claim exists and is `active`
+  (`FEDERATION_WORKSPACE_UNKNOWN` / `FEDERATION_WORKSPACE_INACTIVE`), because
+  `Project.workspaceId` carries **no FK to `workspaces`** — a typo'd claim would
+  otherwise create a live row under an id RLS then hides from every human. A
+  replay skips the check: it found rows in that workspace, so it demonstrably
+  exists, and a workspace suspended after acceptance must still be able to
+  return its own ids idempotently. **Follow-up:** the durable fix is a real FK
+  on `Project.workspaceId` (+ `Task`, `Document`), which needs a migration; this
+  PR ships no schema change.
 - **A new `version` is a new project** (contract: keyed by id + version).
   Compensating actions on void / supersede are v1.1 (Amendment 01, deferred).
 - **`pdf` optional, attached once on a later call** — so a render failure in
   Customer-Ops does not block the project, and "retry federation" completes it.
-- **Trusted-actor URLs.** `pdf.url` is fetched server-side (http/https, 15 s,
-  25 MB cap, `%PDF-` check); no private-range blocking — the caller is an
-  allow-listed sibling app, and quote PDFs live on the suite's own hosts.
+- **`pdf.url` is an origin-pinned server-side fetch.** It is still a fetch the
+  server makes on a caller's say-so, so it is fenced rather than trusted:
+  - the URL's **origin must be allow-listed** — `CUSTOMER_OPS_BASE_URL` counts
+    automatically, `QUOTES_PDF_ALLOWED_ORIGINS` (CSV) adds others. With neither
+    configured a `pdf.url` is **refused** (`400 PDF_URL_NOT_ALLOWED`) and only
+    `pdf.base64` federates: **fail closed**, like `PROJECT_OPS_FEDERATION_ACTORS`
+    defaulting to empty;
+  - **redirects are never followed** (`redirect: 'manual'`; a 3xx is
+    `PDF_FETCH_FAILED`), so a pinned origin cannot bounce the fetch inward;
+  - the 25 MB cap is enforced **while streaming the body**, not after buffering
+    it, so an absent or lying `content-length` cannot make the server hold an
+    unbounded body in memory; the 15 s abort covers the body read, not just the
+    headers.
+
+  This matters because the actor rail is only as tight as Brigade's minting: a
+  token exchange that carried `act.client_id=customer-ops` without a human
+  identity claim would make this fetch a caller's, and an unpinned fetch would
+  then reach anything the container can route to.

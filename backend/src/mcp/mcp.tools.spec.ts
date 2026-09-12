@@ -21,6 +21,7 @@ import {
   normalizeTaskPriority,
   normalizeTaskStatus,
   withProjectQuote,
+  CLIENT_MASKED_PROJECT_FIELDS,
 } from './mcp.tools';
 
 const baseUser = (overrides: Partial<User>): User =>
@@ -1892,6 +1893,26 @@ describe('ProjectOpsTools.getProject — metadata.quote exposure (QUOTES-CONTRAC
     customFields: { tier: 'gold' },
   };
 
+  /**
+   * A row shaped like the one `getProject` actually loads: `include` with no
+   * `select` returns EVERY Project scalar, including the studio's commercial
+   * columns. The quotes seam writes the A14 hourly rate into `defaultBillRate`,
+   * so this fixture is what a CLIENT would receive unmasked.
+   */
+  const BILLING_ROW = {
+    id: 'p1',
+    projectNumber: 'PROJ-1',
+    metadata: META,
+    billingAmount: '4300.00',
+    paymentStatus: 'UNPAID',
+    invoiceNumber: 'INV-1',
+    defaultBillRate: '150.0000',
+    budgetAmount: '4300.00',
+    budgetHours: '48.00',
+    billByDefault: true,
+    billingNotes: 'Quote Q-2026-0001 v1: 50% on acceptance, 50% per milestone.',
+  };
+
   function makeTools(findFirst: jest.Mock) {
     const workspace = {
       resolveAuthorized: async () => WS_ID,
@@ -1909,7 +1930,7 @@ describe('ProjectOpsTools.getProject — metadata.quote exposure (QUOTES-CONTRAC
   });
 
   it('client: `quote` and metadata.quote are masked to number/version/share_url; other metadata keys survive', async () => {
-    const findFirst = jest.fn(async () => ({ id: 'p1', projectNumber: 'PROJ-1', metadata: META }));
+    const findFirst = jest.fn(async () => ({ ...BILLING_ROW }));
     const out: any = await makeTools(findFirst).getProject(baseUser({ role: UserRole.CLIENT, id: 'client-1' }), { id: 'p1' });
     const masked = { number: 'Q-2026-0001', version: 1, share_url: 'https://customers.example.dev/q/tok_synthetic' };
     expect(out.quote).toEqual(masked);
@@ -1918,6 +1939,47 @@ describe('ProjectOpsTools.getProject — metadata.quote exposure (QUOTES-CONTRAC
     expect(out.metadata.quoteSummary).toEqual(META.quoteSummary); // cache is client-whitelisted by construction
     expect(JSON.stringify(out)).not.toContain('customer_ops_quote_id');
     expect(JSON.stringify(out)).not.toContain('sched-deposit');
+  });
+
+  it('client: the studio commercial columns never reach a CLIENT — above all the A14 hourly rate', async () => {
+    const findFirst = jest.fn(async () => ({ ...BILLING_ROW }));
+    const out: any = await makeTools(findFirst).getProject(baseUser({ role: UserRole.CLIENT, id: 'client-1' }), { id: 'p1' });
+
+    for (const field of CLIENT_MASKED_PROJECT_FIELDS) {
+      expect(out).not.toHaveProperty(field);
+    }
+    // The rate is staff-only (A14) wherever it appears, not merely absent by key.
+    expect(JSON.stringify(out)).not.toContain('150.0000');
+    expect(JSON.stringify(out)).not.toContain('48.00');
+    expect(JSON.stringify(out)).not.toContain('50% on acceptance');
+
+    // …and the client's OWN invoice-facing fields still come through, exactly
+    // as the client portal hands them over.
+    expect(out.billingAmount).toBe('4300.00');
+    expect(out.paymentStatus).toBe('UNPAID');
+    expect(out.invoiceNumber).toBe('INV-1');
+  });
+
+  it('staff keep every commercial column', async () => {
+    const findFirst = jest.fn(async () => ({ ...BILLING_ROW }));
+    const out: any = await makeTools(findFirst).getProject(baseUser({ role: UserRole.STAFF, id: 'staff-1' }), { id: 'p1' });
+    for (const field of CLIENT_MASKED_PROJECT_FIELDS) {
+      expect(out).toHaveProperty(field);
+    }
+    expect(out.defaultBillRate).toBe('150.0000');
+  });
+
+  it('a CLIENT never reads an internal comment on this surface; staff do', async () => {
+    const seen: any[] = [];
+    const findFirst = jest.fn(async (args: any) => {
+      seen.push(args.include.comments.where);
+      return { ...BILLING_ROW };
+    });
+    const tools = makeTools(findFirst);
+    await tools.getProject(baseUser({ role: UserRole.CLIENT, id: 'client-1' }), { id: 'p1' });
+    await tools.getProject(baseUser({ role: UserRole.ADMIN }), { id: 'p1' });
+    expect(seen[0]).toEqual({ isInternal: false });
+    expect(seen[1]).toBeUndefined();
   });
 
   it('quote is null when the project did not come from a quote', async () => {

@@ -242,21 +242,43 @@ export function summaryFromCache(
 }
 
 /**
- * Blend a recurring block into one per-month figure, whatever shape it arrives
- * in: the pre-blended scalar, Customer-Ops' `computeQuote` object
- * (`{month_cents, quarter_cents, year_cents, monthly_equivalent_cents}`), or
- * the wire array (`[{interval, amount_cents}]`). Same formula everywhere:
- * `month + quarter/3 + year/12`, rounded (A4/A8).
+ * THE blend: one per-month figure from a recurring block, whatever shape it
+ * arrives in — the wire array (`[{interval, amount_cents}]`), Customer-Ops'
+ * `computeQuote` object (`{month_cents, quarter_cents, year_cents,
+ * monthly_equivalent_cents}`), or a pre-blended scalar
+ * (`recurring_monthly_cents`). Same formula everywhere:
+ * `month + quarter/3 + year/12`, rounded (A4/A8) — byte-for-byte
+ * `computeQuote`'s `monthly_equivalent_cents`.
+ *
+ * ONE precedence, on every surface (L10): **a structured breakdown always beats
+ * a pre-blended scalar**, because the breakdown is what `computeQuote` derived
+ * the scalar from, and A4 says there is one compute path. Inside a
+ * `computeQuote` object, its own `monthly_equivalent_cents` IS the breakdown's
+ * answer, so it is taken as given rather than recomputed.
+ *
+ * This is the only implementation of the rule: the federation adapter's
+ * `recurringMonthlyCents` delegates here instead of writing it a second time
+ * with its own tie-break.
  */
 export function blendRecurringMonthly(totals: any): number {
-  const scalar =
-    totals?.recurring_monthly_cents ??
-    totals?.recurring_monthly_total_cents ??
-    totals?.recurring_monthly_total;
-  if (scalar !== undefined && scalar !== null && scalar !== '') return asCents(scalar);
-
   const r = totals?.recurring;
-  if (r && typeof r === 'object' && !Array.isArray(r)) {
+
+  if (Array.isArray(r)) {
+    if (r.length > 0) {
+      let month = 0;
+      let quarter = 0;
+      let year = 0;
+      for (const line of r) {
+        const amount = asCents(line?.amount_cents);
+        if (line?.interval === 'quarter') quarter += amount;
+        else if (line?.interval === 'year') year += amount;
+        else month += amount;
+      }
+      return Math.round(month + quarter / 3 + year / 12);
+    }
+    // An EMPTY array says "no recurring lines" but carries no figure of its
+    // own; fall through to the scalar before concluding 0.
+  } else if (r && typeof r === 'object') {
     if (r.monthly_equivalent_cents !== undefined && r.monthly_equivalent_cents !== null) {
       return asCents(r.monthly_equivalent_cents);
     }
@@ -264,19 +286,12 @@ export function blendRecurringMonthly(totals: any): number {
       asCents(r.month_cents) + asCents(r.quarter_cents) / 3 + asCents(r.year_cents) / 12,
     );
   }
-  if (Array.isArray(r)) {
-    let month = 0;
-    let quarter = 0;
-    let year = 0;
-    for (const line of r) {
-      const amount = asCents(line?.amount_cents);
-      if (line?.interval === 'quarter') quarter += amount;
-      else if (line?.interval === 'year') year += amount;
-      else month += amount;
-    }
-    return Math.round(month + quarter / 3 + year / 12);
-  }
-  return 0;
+
+  const scalar =
+    totals?.recurring_monthly_cents ??
+    totals?.recurring_monthly_total_cents ??
+    totals?.recurring_monthly_total;
+  return scalar === undefined || scalar === null || scalar === '' ? 0 : asCents(scalar);
 }
 
 /**

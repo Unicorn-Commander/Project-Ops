@@ -133,6 +133,13 @@ export class EnvironmentVariables {
   @IsInt()
   CUSTOMER_OPS_TIMEOUT_MS?: number;
 
+  // Extra origins a `pdf.url` on the quote-accepted seam may be fetched from,
+  // beyond CUSTOMER_OPS_BASE_URL (CSV of absolute URLs). With neither set, a
+  // `pdf.url` is REFUSED and only `pdf.base64` federates — fail closed.
+  @IsOptional()
+  @IsString()
+  QUOTES_PDF_ALLOWED_ORIGINS?: string;
+
   // Optional per-request timeout (ms) for uc-registry calls; defaults to 5000.
   @IsOptional()
   @Transform(({ value }) => (value === undefined ? value : Number(value)))

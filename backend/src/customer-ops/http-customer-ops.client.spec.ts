@@ -115,3 +115,44 @@ describe('HttpCustomerOpsClient', () => {
     await expect(client.getQuoteSummary(req)).resolves.toMatchObject({ ok: false, reason: 'ERROR' });
   });
 });
+
+describe('HttpCustomerOpsClient — the timeout covers the response BODY (M5)', () => {
+  it('aborts a peer that sends headers and then stalls, instead of hanging the panel', async () => {
+    jest.useFakeTimers();
+    try {
+      const client = new HttpCustomerOpsClient({
+        get: (k: string) =>
+          ({
+            CUSTOMER_OPS_BASE_URL: 'https://customers.example.dev',
+            CUSTOMER_OPS_SERVICE_TOKEN: 'token-name-only',
+            CUSTOMER_OPS_TIMEOUT_MS: '5000',
+          })[k],
+      } as any);
+
+      // Headers arrive; the body never does — it settles only when the signal aborts.
+      client.useFetch((async (_url: string, init: any) => ({
+        ok: true,
+        status: 200,
+        json: () =>
+          new Promise((_resolve, reject) => {
+            init.signal.addEventListener('abort', () => reject(new Error('aborted')));
+          }),
+        text: async () => '',
+      })) as any);
+
+      const pending = client.getQuoteSummary({
+        quoteId: 'q-0001',
+        projectOpsProjectId: 'p1',
+        workspaceId: 'ws-1',
+      });
+      await Promise.resolve();
+      jest.advanceTimersByTime(5001);
+
+      const res = await pending;
+      // The read failed and degraded cleanly rather than hanging forever.
+      expect(res.ok).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});

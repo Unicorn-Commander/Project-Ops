@@ -34,6 +34,7 @@ stores `project_id` as `federated.project_ops_project_id` (needed for P4).
 | `accepted_at` | informational |
 | `contact_id` semantics | a **Project-Ops** Contact id; linked only when it resolves in the target workspace, else `contact_linked: false` (no error, nothing stored) |
 | `billing.recurring[]` = `[{interval: month\|quarter\|year, amount_cents, label?}]` | §3 gives Project-Ops no recurring object of its own; it needs the per-line breakdown only to blend the one cached "per month" tile. `billing.recurring_monthly_cents` stays accepted as a pre-blended fallback, and `recurring[]` wins when both arrive (A4: one compute path). Blend = `month + quarter/3 + year/12`, rounded — identical to `computeQuote`'s `monthly_equivalent_cents`. |
+| `lines[].amount_cents`, `lines[].payment_split`, `lines[].payment_parts` (A20/A5) | accepted, **validated**, and ignored. PO does no part arithmetic, but `forbidNonWhitelisted` turns an undeclared key into a hard `400` — so declaring them is what lets L1 emit ONE `quote.accepted` projection for both the PO and the AO seams (AO already takes `amount_cents` and `payment_split` on every line). `payment_split` must be integers summing to 100. A20's "never re-round" holds trivially here: PO never reads the parts. |
 | `billing.deposit_cents` | accepted and echoed, **not stored**. The deposit is Accounting-Ops' paper (§3, A5); the Quote panel reads it live off the Customer-Ops summary. Accepting it keeps one payload shape across L3 and L4. |
 
 Unknown keys are rejected (`400 VALIDATION`) by the app-wide validation
@@ -108,3 +109,25 @@ milestone_total_cents, recurring_monthly_cents, one_time_plus_milestones_cents }
 `metadata.quote` are `{ number, version, share_url }`. Nothing else, on any
 surface, by construction (whitelist), with tests that assert the whitelist
 never widens silently.
+
+## P7 · Two envelope shapes for one federation status (A7)
+
+The two seams answer differently, and both are legitimate per-adapter cursors:
+
+```
+Project-Ops    { status: "done"|"failed", … }                        // top level
+Accounting-Ops { …, federated: { accounting_ops: "done", partner: … } }
+```
+
+L1 reads each adapter's own shape when it records
+`federated.{project_ops,accounting_ops,partner}`; there is no shared envelope to
+converge on in v1. Noted so it is a known difference rather than a surprise.
+
+## P8 · `pdf.url` is origin-pinned and never redirected
+
+Project-Ops fetches `pdf.url` only when its **origin** is allow-listed
+(`CUSTOMER_OPS_BASE_URL`, plus `QUOTES_PDF_ALLOWED_ORIGINS`), never follows a
+redirect, and enforces the 25 MB cap while streaming. With no origin configured
+a `pdf.url` is refused (`400 PDF_URL_NOT_ALLOWED`) and only `pdf.base64`
+federates. **For L1:** emit the PDF URL on the Customer-Ops origin itself, or
+send `pdf.base64`, and do not rely on a redirect to a signed object-store URL.

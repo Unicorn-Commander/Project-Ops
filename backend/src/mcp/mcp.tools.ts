@@ -121,12 +121,40 @@ async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
 }
 
 /**
- * Quotes & Proposals seam (QUOTES-CONTRACT-v1 §3): a project created from an
+ * Project columns a CLIENT-role caller must never receive (QUOTES-CONTRACT-v1
+ * §5). These are the studio's own commercial policy, not the client's paper:
+ *
+ *   defaultBillRate  — the quote's primary hourly rate (A14). `quote-summary.ts`
+ *                      calls it "staff-only, never in the client mask", and the
+ *                      quote seam writes exactly that number into this column,
+ *                      so any CLIENT-reachable surface returning the row leaks it.
+ *   budgetAmount / budgetHours / billByDefault — internal budget + billing policy.
+ *   billingNotes     — free text; carries the quote schedule and whatever else
+ *                      staff put there.
+ *
+ * The client portal is already clean by construction: `getProjectDetails`
+ * returns an explicit whitelist that includes none of these (it does hand back
+ * `billingAmount` / `paymentStatus` / `invoiceNumber`, the client's own
+ * invoice-facing fields, which is deliberate and unchanged here). MCP
+ * `get_project` is the one surface that loads the row with `include` and no
+ * `select`, so it needs this mask.
+ */
+export const CLIENT_MASKED_PROJECT_FIELDS = [
+  'defaultBillRate',
+  'budgetAmount',
+  'budgetHours',
+  'billByDefault',
+  'billingNotes',
+] as const;
+
+/**
+ * Quotes & Proposals seam (QUOTES-CONTRACT-v1 §3, §5): a project created from an
  * accepted quote carries `metadata.quote` (Customer-Ops ids: customer_ops_quote_id,
  * number, version, share_url, schedule_ids). Surface it as a top-level `quote`
  * too. A CLIENT caller sees number, version and the share link only — the
- * foreign ids are internal wiring — on BOTH `quote` and `metadata.quote`.
- * `quote: null` when the project did not come from a quote.
+ * foreign ids are internal wiring — on BOTH `quote` and `metadata.quote`, AND
+ * loses the staff-only project columns above. `quote: null` when the project did
+ * not come from a quote.
  */
 export function withProjectQuote<T extends { metadata: unknown }>(
   project: T,
@@ -136,13 +164,21 @@ export function withProjectQuote<T extends { metadata: unknown }>(
   if (user.role !== UserRole.CLIENT) {
     return { ...project, quote: ref };
   }
+
+  // Drop the studio's commercial columns before anything else, so a future
+  // caller cannot reach them by skipping the metadata branch below.
+  const row = { ...project } as Record<string, unknown>;
+  for (const field of CLIENT_MASKED_PROJECT_FIELDS) delete row[field];
+
   const masked = ref ? maskProjectQuoteRefForClient(ref) : null;
-  const meta = project.metadata;
+  const meta = row.metadata;
   if (meta && typeof meta === 'object' && 'quote' in (meta as Record<string, unknown>)) {
-    const { quote: _dropped, ...rest } = meta as Record<string, unknown>;
-    return { ...project, metadata: masked ? { ...rest, quote: masked } : rest, quote: masked };
+    const rest = { ...(meta as Record<string, unknown>) };
+    delete rest.quote;
+    row.metadata = masked ? { ...rest, quote: masked } : rest;
   }
-  return { ...project, quote: masked };
+  row.quote = masked;
+  return row as T & { quote: unknown };
 }
 
 export function buildVisibilityFilter(user: User): Prisma.ProjectWhereInput {
@@ -498,6 +534,11 @@ export class ProjectOpsTools {
             },
           },
           comments: {
+            // Parity with the client portal (client-portal.service.ts): a
+            // CLIENT never reads an internal comment. Pre-existing gap on this
+            // surface, closed here because the quotes seam puts
+            // client-commercial projects in front of this tool.
+            ...(user.role === UserRole.CLIENT ? { where: { isInternal: false } } : {}),
             orderBy: { createdAt: 'desc' },
             take: 10,
             select: {

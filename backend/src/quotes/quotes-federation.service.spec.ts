@@ -62,9 +62,17 @@ function payload(overrides: Partial<QuoteAcceptedDto> = {}): QuoteAcceptedDto {
 
 /** In-memory stand-in for the workspace tx, honouring the JSON-path filters the service uses. */
 function makeTx() {
-  const state = { projects: [] as any[], tasks: [] as any[], documents: [] as any[], users: [] as any[] };
+  const state = {
+    projects: [] as any[],
+    tasks: [] as any[],
+    documents: [] as any[],
+    users: [] as any[],
+    // The vouched workspace claim is checked for existence + status before
+    // anything is created (M3); by default the fixture workspace is live.
+    workspaces: { [WS]: { id: WS, status: 'active' } } as Record<string, any>,
+  };
   const tx = {
-    $executeRaw: jest.fn(async () => 1),
+    $executeRaw: jest.fn(async (..._a: any[]) => 1),
     project: {
       findFirst: jest.fn(async ({ where }: any) => {
         const [idF, verF] = where.AND;
@@ -128,15 +136,68 @@ function makeTx() {
         where.id === 'contact-ok' && where.workspaceId === WS ? { id: 'contact-ok' } : null,
       ),
     },
+    workspace: {
+      findUnique: jest.fn(async ({ where }: any) => state.workspaces[where.id] ?? null),
+    },
   };
   return { tx, state };
 }
 
-function makeService(opts: { fetchImpl?: any } = {}) {
+/**
+ * Serialises callers on the advisory-lock key the service passes to
+ * `pg_advisory_xact_lock`, the way Postgres does inside a transaction, so a
+ * concurrency test exercises the real lock argument rather than assuming it
+ * (L6). Released when the tx callback returns.
+ */
+function makeLockTable() {
+  const held = new Map<string, Promise<void>>();
+  return {
+    async acquire(key: string): Promise<() => void> {
+      while (held.has(key)) await held.get(key);
+      let release!: () => void;
+      held.set(
+        key,
+        new Promise<void>((res) => {
+          release = () => {
+            held.delete(key);
+            res();
+          };
+        }),
+      );
+      return release;
+    },
+  };
+}
+
+function makeService(opts: { fetchImpl?: any; config?: Record<string, string>; locks?: any } = {}) {
   const { tx, state } = makeTx();
+  const locks = opts.locks;
+  const lockKeys: string[] = [];
+  // The real service takes the advisory lock via $executeRaw as the FIRST
+  // statement in the write tx; the fake tx records the key and, when a lock
+  // table is supplied, actually blocks on it.
+  const releases: Array<() => void> = [];
+  tx.$executeRaw = jest.fn(async (...args: any[]) => {
+    const [strings, ...values] = args as [TemplateStringsArray, ...unknown[]];
+    const key = String(values[0] ?? '');
+    lockKeys.push(key);
+    expect(String(strings.join('?'))).toContain('pg_advisory_xact_lock');
+    if (locks) releases.push(await locks.acquire(key));
+    return 1;
+  });
   const workspaceContext = {
-    runInWorkspace: jest.fn(async (_ws: string, _uid: string, fn: (t: any) => any) => fn(tx)),
+    runInWorkspace: jest.fn(async (_ws: string, _uid: string, fn: (t: any) => any) => {
+      try {
+        return await fn(tx);
+      } finally {
+        // Commit/rollback ends the transaction and drops its advisory locks.
+        while (releases.length) releases.pop()!();
+      }
+    }),
     runForUser: jest.fn(async (_u: any, fn: (t: any) => any) => fn(tx)),
+  };
+  const config = {
+    get: jest.fn((key: string) => (opts.config ?? { CUSTOMER_OPS_BASE_URL: 'https://customers.example.dev' })[key]),
   };
   let n = 0;
   const projectsService = {
@@ -154,9 +215,23 @@ function makeService(opts: { fetchImpl?: any } = {}) {
     minio as any,
     audit as any,
     emitter as any,
+    config as any,
   );
   if (opts.fetchImpl) svc.useFetch(opts.fetchImpl);
-  return { svc, tx, state, workspaceContext, projectsService, minio, audit, emitter };
+  return { svc, tx, state, workspaceContext, projectsService, minio, audit, emitter, config, lockKeys };
+}
+
+/** Assert a classified A7 failure: the right code, the right HTTP status. */
+async function expectFailure(run: () => Promise<unknown>, code: string, httpStatus: number) {
+  let err: HttpException | undefined;
+  try {
+    await run();
+  } catch (e) {
+    err = e as HttpException;
+  }
+  expect(err).toBeInstanceOf(HttpException);
+  expect(err!.getStatus()).toBe(httpStatus);
+  expect(err!.getResponse()).toMatchObject({ status: 'failed', code });
 }
 
 describe('QuotesFederationService.acceptQuote — first acceptance', () => {
@@ -349,6 +424,7 @@ describe('QuotesFederationService.acceptQuote — idempotency by (quote id, vers
 
   it('never matches a project from another workspace (explicit workspaceId AND in the lookup)', async () => {
     const { svc, state, tx } = makeService();
+    state.workspaces['ws-2'] = { id: 'ws-2', status: 'active' };
     await svc.acceptQuote(WS, federationActor, payload(), { federationActor: 'customer-ops' });
     const other = await svc.acceptQuote('ws-2', federationActor, payload(), { federationActor: 'customer-ops' });
     expect(other.created).toBe(true);
@@ -412,18 +488,6 @@ describe('QuotesFederationService.acceptQuote — idempotency by (quote id, vers
 });
 
 describe('QuotesFederationService.acceptQuote — failures are classified and create nothing', () => {
-  async function expectFailure(run: () => Promise<unknown>, code: string, httpStatus: number) {
-    let err: HttpException | undefined;
-    try {
-      await run();
-    } catch (e) {
-      err = e as HttpException;
-    }
-    expect(err).toBeInstanceOf(HttpException);
-    expect(err!.getStatus()).toBe(httpStatus);
-    expect(err!.getResponse()).toMatchObject({ status: 'failed', code });
-  }
-
   it('rejects a non-2-decimal currency (A17) before touching the DB', async () => {
     const { svc, tx, state } = makeService();
     await expectFailure(
@@ -506,6 +570,123 @@ describe('QuotesFederationService.acceptQuote — failures are classified and cr
     expect(failing.minio.uploadObject).not.toHaveBeenCalled();
   });
 
+  it('refuses a pdf.url off the allow-listed origin, and never opens a socket to it (M2 — SSRF)', async () => {
+    const fetchImpl = jest.fn();
+    for (const url of [
+      'http://127.0.0.1:9000/quotes/q.pdf',
+      'http://169.254.169.254/latest/meta-data/iam/security-credentials/',
+      'https://customers.example.dev.attacker.test/q.pdf',
+      'http://customers.example.dev/q.pdf', // right host, wrong scheme ⇒ a different origin
+    ]) {
+      const { svc, state, minio } = makeService({ fetchImpl });
+      await expectFailure(
+        () =>
+          svc.acceptQuote(WS, federationActor, payload({ pdf: { url, file_name: 'q.pdf' } }), {
+            federationActor: 'customer-ops',
+          }),
+        'PDF_URL_NOT_ALLOWED',
+        400,
+      );
+      expect(state.projects).toHaveLength(0);
+      expect(minio.uploadObject).not.toHaveBeenCalled();
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('refuses every pdf.url when no origin is allow-listed — fail closed (M2)', async () => {
+    const fetchImpl = jest.fn();
+    const { svc } = makeService({ fetchImpl, config: {} });
+    await expectFailure(
+      () =>
+        svc.acceptQuote(
+          WS,
+          federationActor,
+          payload({ pdf: { url: 'https://customers.example.dev/q.pdf', file_name: 'q.pdf' } }),
+          { federationActor: 'customer-ops' },
+        ),
+      'PDF_URL_NOT_ALLOWED',
+      400,
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+
+    // …and base64 still federates on such a deployment.
+    const inline = makeService({ config: {} });
+    const ok = await inline.svc.acceptQuote(WS, federationActor, payload(), {
+      federationActor: 'customer-ops',
+    });
+    expect(ok.document_id).toBe('d1');
+  });
+
+  it('does not follow redirects on pdf.url (M2)', async () => {
+    const redirecting = jest.fn(async () => ({
+      ok: false,
+      status: 302,
+      headers: { get: () => null },
+    }));
+    const { svc, state } = makeService({ fetchImpl: redirecting });
+    await expectFailure(
+      () =>
+        svc.acceptQuote(
+          WS,
+          federationActor,
+          payload({ pdf: { url: 'https://customers.example.dev/q.pdf', file_name: 'q.pdf' } }),
+          { federationActor: 'customer-ops' },
+        ),
+      'PDF_FETCH_FAILED',
+      502,
+    );
+    expect(redirecting).toHaveBeenCalledWith(
+      'https://customers.example.dev/q.pdf',
+      expect.objectContaining({ redirect: 'manual' }),
+    );
+    expect(state.projects).toHaveLength(0);
+  });
+
+  it('caps an oversized body WHILE streaming — a lying content-length is not believed (M2)', async () => {
+    // No content-length at all, and a body that never ends: the old code would
+    // have buffered it whole before checking the cap.
+    let served = 0;
+    const chunk = new Uint8Array(1024 * 1024); // 1 MB
+    chunk.set([0x25, 0x50, 0x44, 0x46, 0x2d]); // "%PDF-"
+    let cancelled = false;
+    const streaming = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null }, // content-length absent
+      body: {
+        getReader: () => ({
+          read: async () => {
+            served += 1;
+            return { done: false, value: chunk };
+          },
+          cancel: async () => {
+            cancelled = true;
+          },
+        }),
+      },
+      arrayBuffer: async () => {
+        throw new Error('must not buffer the whole body');
+      },
+    }));
+    const { svc, state, minio } = makeService({ fetchImpl: streaming });
+    await expectFailure(
+      () =>
+        svc.acceptQuote(
+          WS,
+          federationActor,
+          payload({ pdf: { url: 'https://customers.example.dev/q.pdf', file_name: 'q.pdf' } }),
+          { federationActor: 'customer-ops' },
+        ),
+      'PDF_TOO_LARGE',
+      413,
+    );
+    // Stopped just past the 25 MB cap rather than reading forever.
+    expect(served).toBeLessThanOrEqual(27);
+    expect(cancelled).toBe(true);
+    expect(state.projects).toHaveLength(0);
+    expect(minio.uploadObject).not.toHaveBeenCalled();
+  });
+
   it('surfaces an object-store failure as PDF_STORE_FAILED (503) with no project created', async () => {
     const { svc, state, minio } = makeService();
     (minio.uploadObject as jest.Mock).mockRejectedValueOnce(new Error('minio down'));
@@ -515,5 +696,81 @@ describe('QuotesFederationService.acceptQuote — failures are classified and cr
       503,
     );
     expect(state.projects).toHaveLength(0);
+  });
+});
+
+describe('QuotesFederationService.acceptQuote — the vouched workspace must be real (M3)', () => {
+  it('an unknown workspace is FEDERATION_WORKSPACE_UNKNOWN (404) and creates nothing', async () => {
+    const { svc, state } = makeService();
+    await expectFailure(
+      () => svc.acceptQuote('ws-typo', federationActor, payload(), { federationActor: 'customer-ops' }),
+      'FEDERATION_WORKSPACE_UNKNOWN',
+      404,
+    );
+    expect(state.projects).toHaveLength(0);
+    expect(state.tasks).toHaveLength(0);
+  });
+
+  it('a suspended or archived workspace is FEDERATION_WORKSPACE_INACTIVE (409)', async () => {
+    for (const status of ['suspended', 'archived', 'deleting']) {
+      const { svc, state } = makeService();
+      state.workspaces[WS] = { id: WS, status };
+      await expectFailure(
+        () => svc.acceptQuote(WS, federationActor, payload(), { federationActor: 'customer-ops' }),
+        'FEDERATION_WORKSPACE_INACTIVE',
+        409,
+      );
+      expect(state.projects).toHaveLength(0);
+    }
+  });
+
+  it('a REPLAY still answers from a workspace that has since been suspended', async () => {
+    const { svc, state } = makeService();
+    const first = await svc.acceptQuote(WS, federationActor, payload(), {
+      federationActor: 'customer-ops',
+    });
+    state.workspaces[WS] = { id: WS, status: 'suspended' };
+    const replay = await svc.acceptQuote(WS, federationActor, payload(), {
+      federationActor: 'customer-ops',
+    });
+    expect(replay.created).toBe(false);
+    expect(replay.project_id).toBe(first.project_id);
+    expect(state.projects).toHaveLength(1);
+  });
+});
+
+describe('QuotesFederationService.acceptQuote — concurrency (L6)', () => {
+  it('two simultaneous first calls serialise on the advisory lock: ONE project, same ids', async () => {
+    const locks = makeLockTable();
+    const { svc, state, lockKeys } = makeService({ locks });
+
+    const [a, b] = await Promise.all([
+      svc.acceptQuote(WS, federationActor, payload(), { federationActor: 'customer-ops' }),
+      svc.acceptQuote(WS, federationActor, payload(), { federationActor: 'customer-ops' }),
+    ]);
+
+    expect(state.projects).toHaveLength(1);
+    expect(a.project_id).toBe(b.project_id);
+    expect(a.task_ids).toEqual(b.task_ids);
+    // Exactly one of them did the creating.
+    expect([a.created, b.created].filter(Boolean)).toHaveLength(1);
+    // Both took the same, correctly-scoped lock.
+    expect(lockKeys).toEqual([
+      'project-ops:quote-accept:ws-1:q-0001:1',
+      'project-ops:quote-accept:ws-1:q-0001:1',
+    ]);
+  });
+
+  it('different versions of the same quote take different locks and do not serialise into one project', async () => {
+    const locks = makeLockTable();
+    const { svc, state, lockKeys } = makeService({ locks });
+    await Promise.all([
+      svc.acceptQuote(WS, federationActor, payload(), { federationActor: 'customer-ops' }),
+      svc.acceptQuote(WS, federationActor, payload({ version: 2, billing: { ...payload().billing, version_no: 2 } }), {
+        federationActor: 'customer-ops',
+      }),
+    ]);
+    expect(state.projects).toHaveLength(2);
+    expect(new Set(lockKeys).size).toBe(2);
   });
 });

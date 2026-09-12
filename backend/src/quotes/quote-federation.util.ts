@@ -1,5 +1,9 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
-import { CachedQuoteSummary, ProjectQuoteRef } from '../customer-ops/quote-summary';
+import {
+  CachedQuoteSummary,
+  ProjectQuoteRef,
+  blendRecurringMonthly,
+} from '../customer-ops/quote-summary';
 import { QuoteAcceptedDto, QuoteLineDto } from './dto/quote-accepted.dto';
 
 /**
@@ -159,31 +163,20 @@ export function buildQuoteRef(
 }
 
 /**
- * The blended per-month figure for the cached summary, from the accepted
- * recurring lines: `month + quarter/3 + year/12`, rounded — byte-for-byte the
- * formula Customer-Ops' `computeQuote` uses for `monthly_equivalent_cents`, so
- * the cached tile and the live tile agree (A4: one compute path, and where
- * Project-Ops must hold a number it recomputes rather than store a second
- * truth). `billing.recurring` wins whenever it is present; the pre-blended
- * `billing.recurring_monthly_cents` is only a fallback for a sender that has
- * not got the per-line breakdown. Neither present ⇒ 0.
+ * The blended per-month figure for the cached summary. Delegates to the ONE
+ * implementation of the rule (`blendRecurringMonthly`), so the adapter and the
+ * summary reader cannot drift apart on the formula OR on the tie-break (L10):
+ * `billing.recurring[]` wins over the pre-blended
+ * `billing.recurring_monthly_cents`, and the formula is
+ * `month + quarter/3 + year/12`, rounded — byte-for-byte `computeQuote`'s
+ * `monthly_equivalent_cents`, so the cached tile and the live tile agree.
  *
  * Per-interval detail is deliberately NOT cached: §3 keeps recurring lines as
  * narrative in `billingNotes` in v1, and the panel reads the detail through to
  * Customer-Ops.
  */
 export function recurringMonthlyCents(billing: QuoteAcceptedDto['billing']): number {
-  const lines = billing.recurring;
-  if (!lines || lines.length === 0) return billing.recurring_monthly_cents ?? 0;
-  let month = 0;
-  let quarter = 0;
-  let year = 0;
-  for (const line of lines) {
-    if (line.interval === 'month') month += line.amount_cents;
-    else if (line.interval === 'quarter') quarter += line.amount_cents;
-    else year += line.amount_cents;
-  }
-  return Math.round(month + quarter / 3 + year / 12);
+  return blendRecurringMonthly(billing);
 }
 
 /**

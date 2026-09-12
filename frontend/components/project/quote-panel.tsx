@@ -107,8 +107,10 @@ export function QuotePanel({ endpoint, variant = "staff" }: QuotePanelProps) {
     { label: "Monthly recurring", value: formatCents(quote.totals?.recurring_monthly_cents, currency) },
     { label: "Committed (one-time + milestones)", value: formatCents(quote.totals?.one_time_plus_milestones_cents, currency) },
   ];
-  if (quote.totals?.deposit_cents != null) {
-    // A5 — the first invoice Accounting-Ops drafts. Shown to staff and client alike.
+  if (!isPortal && quote.totals?.deposit_cents != null) {
+    // A5 — the first invoice Accounting-Ops drafts. STAFF ONLY: the backend's
+    // client mask never emits `deposit_cents`, and this guard keeps that a
+    // deliberate choice here rather than an accident of the payload.
     tiles.push({ label: "Deposit", value: formatCents(quote.totals.deposit_cents, currency) });
   }
 
