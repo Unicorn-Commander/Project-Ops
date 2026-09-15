@@ -43,6 +43,7 @@ export class ProjectsController {
   ) {}
 
   @Post()
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @ApiOperation({ summary: 'Create a new project' })
   @ApiResponse({ status: 201, description: 'Project created successfully' })
   create(
