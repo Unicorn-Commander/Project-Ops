@@ -1,6 +1,7 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { EMAIL_OPS_PORT, EmailOpsPort } from '../email-ops/email-ops.port';
 import * as nodemailer from 'nodemailer';
 import { Transporter } from 'nodemailer';
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
@@ -32,6 +33,10 @@ export class EmailService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    // Optional Email-Ops port. Wired only when EmailOpsModule is imported;
+    // when unconfigured (EMAIL_OPS_BASE_URL unset) the port is inert and every
+    // send path below keeps its today-SMTP behaviour.
+    @Optional() @Inject(EMAIL_OPS_PORT) private readonly emailOps?: EmailOpsPort,
   ) {
     // Initialize the field-encryption key from the environment.
     //
@@ -638,7 +643,35 @@ export class EmailService {
     to: string,
     recipientName: string,
     content: NotificationEmailContent,
+    routing?: { workspaceId: string; externalRef: string },
   ): Promise<{ success: boolean; message: string }> {
+    // Email-Ops routing (internal notifications = mode `send`). When the port
+    // is configured AND the caller supplied the workspace idempotency key, route
+    // through Email-Ops instead of the local SMTP transporter. Otherwise this
+    // method is byte-identical to today's behaviour.
+    if (this.emailOps?.isConfigured() && routing?.workspaceId && routing?.externalRef) {
+      // Resolve the same from-name the SMTP path uses (cosmetic in the body
+      // copy; Email-Ops owns the actual envelope sender).
+      const emailConfig = await this.prisma.emailConfig.findFirst({ where: { isEnabled: true } });
+      const fromName =
+        emailConfig?.fromName || this.configService.get<string>('SMTP_FROM_NAME', 'Project Ops');
+
+      const result = await this.emailOps.compose({
+        workspaceId: routing.workspaceId,
+        externalRef: routing.externalRef,
+        toAddress: to,
+        subject: content.subject,
+        body: getNotificationEmailText(content, recipientName, fromName),
+        mode: 'send',
+      });
+      if (result.ok) {
+        this.logger.log(`Notification email routed through Email-Ops (${result.messageId}) to ${to}`);
+        return { success: true, message: `Notification email composed in Email-Ops (${result.messageId})` };
+      }
+      this.logger.warn(`Email-Ops route failed (${result.reason}): ${result.message}`);
+      return { success: false, message: `Email-Ops route failed: ${result.message}` };
+    }
+
     const transporter = await this.createTransporter();
     if (!transporter) {
       this.logger.warn('Email not configured. Skipping notification email.');
@@ -685,5 +718,16 @@ export class EmailService {
     const envPassword = this.configService.get<string>('SMTP_PASSWORD');
 
     return !!(envHost && envUser && envPassword);
+  }
+
+  /**
+   * True when ANY mail transport can send: the local SMTP config OR the
+   * Email-Ops port. The notification listener gates on this (rather than the
+   * SMTP-only `isConfigured`) so a deployment that routes mail exclusively
+   * through Email-Ops (no SMTP) still delivers.
+   */
+  async canSend(): Promise<boolean> {
+    if (await this.isConfigured()) return true;
+    return !!this.emailOps?.isConfigured();
   }
 }
