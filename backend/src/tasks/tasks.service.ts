@@ -192,6 +192,7 @@ export class TasksService {
             projectNumber: true,
             title: true,
             status: true,
+            priority: true,
           },
         },
         createdBy: {
@@ -539,6 +540,8 @@ export class TasksService {
                 id: true,
                 projectNumber: true,
                 title: true,
+                status: true,
+                priority: true,
               },
             },
             createdBy: {
@@ -547,6 +550,7 @@ export class TasksService {
                 email: true,
                 firstName: true,
                 lastName: true,
+                role: true,
               },
             },
             assignedTo: {
@@ -555,6 +559,7 @@ export class TasksService {
                 email: true,
                 firstName: true,
                 lastName: true,
+                role: true,
               },
             },
           },
@@ -651,6 +656,8 @@ export class TasksService {
                 id: true,
                 projectNumber: true,
                 title: true,
+                status: true,
+                priority: true,
               },
             },
             assignedTo: {
@@ -659,6 +666,7 @@ export class TasksService {
                 email: true,
                 firstName: true,
                 lastName: true,
+                role: true,
               },
             },
             createdBy: {
@@ -667,6 +675,7 @@ export class TasksService {
                 email: true,
                 firstName: true,
                 lastName: true,
+                role: true,
               },
             },
           },
@@ -717,6 +726,8 @@ export class TasksService {
                 id: true,
                 projectNumber: true,
                 title: true,
+                status: true,
+                priority: true,
               },
             },
             assignedTo: {
@@ -725,6 +736,7 @@ export class TasksService {
                 email: true,
                 firstName: true,
                 lastName: true,
+                role: true,
               },
             },
             createdBy: {
@@ -733,6 +745,7 @@ export class TasksService {
                 email: true,
                 firstName: true,
                 lastName: true,
+                role: true,
               },
             },
           },
@@ -792,6 +805,8 @@ export class TasksService {
                 id: true,
                 projectNumber: true,
                 title: true,
+                status: true,
+                priority: true,
               },
             },
             assignedTo: {
@@ -800,6 +815,7 @@ export class TasksService {
                 email: true,
                 firstName: true,
                 lastName: true,
+                role: true,
               },
             },
             createdBy: {
@@ -808,6 +824,7 @@ export class TasksService {
                 email: true,
                 firstName: true,
                 lastName: true,
+                role: true,
               },
             },
           },

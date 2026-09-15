@@ -3,6 +3,7 @@ import { TasksService } from './tasks.service';
 import { TaskDependencyType, UserRole } from '@prisma/client';
 import { DependencyDirection } from './dto/create-task-dependency.dto';
 import { TaskSortBy, TaskSortDir } from './dto/query-tasks.dto';
+import { resolveField } from '../automations/automation-conditions';
 
 /**
  * Unit tests for the Push B task features: subtasks, dependency cycle
@@ -747,10 +748,10 @@ describe('TasksService write routes — safe selects + CLIENT masking', () => {
     quote: { customer_ops_quote_id: 'q-1', customer_ops_line_id: 'line-9', number: 'Q-1' },
   };
   const SAFE_USER_SELECT = {
-    select: { id: true, email: true, firstName: true, lastName: true },
+    select: { id: true, email: true, firstName: true, lastName: true, role: true },
   };
   const SAFE_PROJECT_SELECT = {
-    select: { id: true, projectNumber: true, title: true },
+    select: { id: true, projectNumber: true, title: true, status: true, priority: true },
   };
 
   it('updateStatus returns safe selects (no full user/project row)', async () => {
@@ -824,5 +825,48 @@ describe('TasksService write routes — safe selects + CLIENT masking', () => {
     const out: any = await svc.update('ws1', client, 't1', { title: 'x' } as any, UserRole.CLIENT);
     expect(out.metadata.quote.customer_ops_quote_id).toBeUndefined();
     expect(out.metadata.quote.customer_ops_line_id).toBeUndefined();
+  });
+});
+
+describe('TasksService write events — automation-rule fields resolve', () => {
+  const staff = { id: 'u1', role: UserRole.STAFF } as any;
+
+  const taskEventFixture = () => ({
+    id: 't1',
+    projectId: 'p1',
+    status: 'IN_PROGRESS',
+    project: { id: 'p1', projectNumber: 'PN-1', title: 'P', status: 'ACTIVE', priority: 'HIGH' },
+    createdBy: { id: 'u1', email: 'a@x.co', firstName: 'A', lastName: 'S', role: 'STAFF' },
+    assignedTo: { id: 'u2', email: 'b@x.co', firstName: 'B', lastName: 'T', role: 'STAFF' },
+  });
+
+  it('task.status_changed carries task.project.status/priority and task.createdBy/assignedTo.role', async () => {
+    const { svc, emit } = makeService({
+      taskFindUnique: async () => ({ id: 't1', status: 'PENDING', projectId: 'p1' }),
+      taskUpdate: async () => taskEventFixture(),
+    });
+
+    await svc.updateStatus('ws1', staff, 't1', 'IN_PROGRESS' as any);
+
+    const evt = emit.mock.calls.find((c) => c[0] === 'task.status_changed')?.[1];
+    expect(evt).toBeDefined();
+    expect(resolveField(evt, 'task.project.status')).toBe('ACTIVE');
+    expect(resolveField(evt, 'task.project.priority')).toBe('HIGH');
+    expect(resolveField(evt, 'task.createdBy.role')).toBe('STAFF');
+    expect(resolveField(evt, 'task.assignedTo.role')).toBe('STAFF');
+  });
+
+  it('task.assigned carries task.project.status and task.createdBy.role', async () => {
+    const { svc, emit } = makeService({
+      taskFindUnique: async () => ({ id: 't1', assignedToId: null }),
+      taskUpdate: async () => ({ ...taskEventFixture(), assignedToId: 'u2' }),
+    });
+
+    await svc.assignTask('ws1', staff, 't1', 'u2');
+
+    const evt = emit.mock.calls.find((c) => c[0] === 'task.assigned')?.[1];
+    expect(evt).toBeDefined();
+    expect(resolveField(evt, 'task.project.status')).toBe('ACTIVE');
+    expect(resolveField(evt, 'task.createdBy.role')).toBe('STAFF');
   });
 });
