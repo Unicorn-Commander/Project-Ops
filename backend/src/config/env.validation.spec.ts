@@ -95,4 +95,28 @@ describe('validateEnv', () => {
       /UC_REGISTRY_TIMEOUT_MS/,
     );
   });
+
+  // --- Health memory guardrails (P-00085) — optional, positive decimal int. ---
+  it('accepts absent health memory thresholds (optional, defaults apply)', () => {
+    expect(() => validateEnv({ ...baseProd })).not.toThrow();
+  });
+
+  it('accepts positive decimal health memory thresholds', () => {
+    expect(() =>
+      validateEnv({
+        ...baseProd,
+        HEALTH_MEMORY_HEAP_MB: '2048',
+        HEALTH_MEMORY_RSS_MB: 4096,
+      }),
+    ).not.toThrow();
+  });
+
+  it.each(['abc', '0', '-1', '12.5', '0x10', '1e30'])(
+    'rejects invalid HEALTH_MEMORY_HEAP_MB value %p',
+    (value) => {
+      expect(() =>
+        validateEnv({ ...baseProd, HEALTH_MEMORY_HEAP_MB: value }),
+      ).toThrow(/HEALTH_MEMORY_HEAP_MB/);
+    },
+  );
 });

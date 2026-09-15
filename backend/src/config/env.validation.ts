@@ -25,6 +25,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Min,
   MinLength,
   validateSync,
   ValidateIf,
@@ -46,6 +47,18 @@ const toBool = ({ value }: { value: unknown }): unknown => {
   if (['true', '1', 'yes', 'on'].includes(s)) return true;
   if (['false', '0', 'no', 'off'].includes(s)) return false;
   return value; // let @IsBoolean flag anything else
+};
+
+/** Coerce a decimal-integer env string to a number; leave anything else for
+ * @IsInt to reject. `Number('0x10')` and `Number('1e30')` would otherwise slip
+ * through as valid ints and then be misread at runtime by the health
+ * controller's own (strict decimal) parser. */
+const toIntStrict = ({ value }: { value: unknown }): unknown => {
+  if (typeof value === 'number') return value;
+  if (typeof value !== 'string') return value;
+  const s = value.trim();
+  if (!/^\d+$/.test(s)) return value;
+  return Number(s);
 };
 
 export class EnvironmentVariables {
@@ -145,6 +158,23 @@ export class EnvironmentVariables {
   @Transform(({ value }) => (value === undefined ? value : Number(value)))
   @IsInt()
   UC_REGISTRY_TIMEOUT_MS?: number;
+
+  // --- Health memory guardrails (MB) — OPTIONAL. Raise without a rebuild when
+  // the running backend's working set exceeds the defaults; see
+  // HealthController. Only a positive decimal integer is accepted (the same
+  // shape the controller parses), so a typo is caught at boot rather than
+  // silently ignored or misread. ---
+  @IsOptional()
+  @Transform(toIntStrict)
+  @IsInt()
+  @Min(1)
+  HEALTH_MEMORY_HEAP_MB?: number;
+
+  @IsOptional()
+  @Transform(toIntStrict)
+  @IsInt()
+  @Min(1)
+  HEALTH_MEMORY_RSS_MB?: number;
 }
 
 /**

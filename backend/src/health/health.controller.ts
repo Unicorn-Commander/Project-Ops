@@ -1,4 +1,5 @@
 import { Controller, Get, Header, Res } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import {
@@ -14,6 +15,33 @@ import { IntegrationsHealthService } from './integrations.health';
 import { Public } from '../common/decorators/public.decorator';
 import { SkipWorkspaceMembership } from '../common/workspace/skip-workspace-membership.decorator';
 import { getMcpMetricsSnapshot, renderPrometheus } from '../mcp/mcp.metrics';
+
+/**
+ * Resolve a memory limit (in MB) from configuration with a safe default.
+ *
+ * Only a plain positive decimal (e.g. `512`, `"2048"`) is accepted, matching
+ * the `@IsInt() @Min(1)` gate in env.validation.ts. Anything else — missing,
+ * empty, non-numeric, zero, negative, `"0x10"`, `"1e30"`, `"true"` — falls
+ * back to `defaultMb` rather than weakening or disabling the guardrail, so a
+ * malformed env var can never take the health endpoint down. Exported for the
+ * spec.
+ */
+export function resolveMemoryLimitBytes(
+  config: Pick<ConfigService, 'get'>,
+  key: string,
+  defaultMb: number,
+): number {
+  const raw = config.get<string | number>(key);
+  const asString = typeof raw === 'number' ? String(raw) : raw;
+  if (typeof asString !== 'string' || !/^\d+$/.test(asString.trim())) {
+    return defaultMb * 1024 * 1024;
+  }
+  const mb = Number(asString.trim());
+  if (!Number.isSafeInteger(mb) || mb <= 0) {
+    return defaultMb * 1024 * 1024;
+  }
+  return mb * 1024 * 1024;
+}
 
 @ApiTags('health')
 // Unauthenticated probe surface: opt out of the global auth + membership guards
@@ -33,6 +61,7 @@ export class HealthController {
     private disk: DiskHealthIndicator,
     private prismaHealth: PrismaHealthIndicator,
     private integrationsHealth: IntegrationsHealthService,
+    private config: ConfigService,
   ) {}
 
   @Get()
@@ -42,11 +71,27 @@ export class HealthController {
   @ApiResponse({ status: 503, description: 'Service is unhealthy' })
   check() {
     return this.health.check([
+      // The database check stays strict — it is the one signal that should
+      // fail the probe when the service truly cannot serve traffic.
       () => this.prismaHealth.isHealthy('database'),
-      // Normal RSS is ~217MB observed 2026-08; old 150MB/300MB values caused
-      // status:error on a healthy process.
-      () => this.memory.checkHeap('memory_heap', 1024 * 1024 * 1024), // 1 GiB
-      () => this.memory.checkRSS('memory_rss', 2 * 1024 * 1024 * 1024), // 2 GiB
+      // Memory thresholds are guardrails against runaway growth, not a
+      // measure of normal steady state. They were once hardcoded at 150 MB
+      // heap / 300 MB RSS — below the app's ordinary working set (RSS ~217 MB
+      // observed 2026-08) — which made /api/v1/health flap to `error` on a
+      // healthy service under load (docker-compose.yml even had to switch its
+      // probe to /health/live as a workaround). The values are now the
+      // realistic 1 GiB / 2 GiB defaults *and* env-tunable, so a deploy can
+      // raise them without a code change or rebuild.
+      () =>
+        this.memory.checkHeap(
+          'memory_heap',
+          resolveMemoryLimitBytes(this.config, 'HEALTH_MEMORY_HEAP_MB', 1024),
+        ),
+      () =>
+        this.memory.checkRSS(
+          'memory_rss',
+          resolveMemoryLimitBytes(this.config, 'HEALTH_MEMORY_RSS_MB', 2048),
+        ),
     ]);
   }
 
