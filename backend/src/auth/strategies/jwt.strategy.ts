@@ -6,6 +6,12 @@ import * as jsonwebtoken from 'jsonwebtoken';
 import jwksClient, { JwksClient } from 'jwks-rsa';
 import { AuthService, JwtPayload } from '../auth.service';
 import { User } from '@prisma/client';
+import {
+  FEDERATION_ACTORS_ENV,
+  isHumanSessionPayload,
+  parseFederationActors,
+  readActorClientId,
+} from '../../common/workspace/federation-token';
 
 /**
  * Multi-token JWT strategy.
@@ -39,6 +45,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   private readonly brigadeExpectedAudience: string;
   private readonly keycloakEnforceAudience: boolean;
   private readonly keycloakExpectedAudiences: Set<string>;
+  private readonly federationActors: Set<string>;
 
   constructor(
     configService: ConfigService,
@@ -66,6 +73,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       true,
     );
     const keycloakExpectedAudiences = JwtStrategy.buildKeycloakExpectedAudiences(configService);
+    const federationActors = parseFederationActors(
+      configService.get<string>(FEDERATION_ACTORS_ENV),
+    );
 
     let jwks: JwksClient | undefined;
     if (realmJwksUri) {
@@ -137,6 +147,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     this.brigadeExpectedAudience = brigadeExpectedAudience;
     this.keycloakEnforceAudience = keycloakEnforceAudience;
     this.keycloakExpectedAudiences = keycloakExpectedAudiences;
+    this.federationActors = federationActors;
 
     if (realmJwksUri) {
       this.logger.log(`Keycloak realm JWT validation enabled via ${realmJwksUri}`);
@@ -299,20 +310,31 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         // bind the token to THIS app by its `azp`/`aud` — otherwise a token
         // minted for a sibling client in the same realm would be accepted
         // (cross-app confused-deputy). Gated by KEYCLOAK_ENFORCE_AUDIENCE.
+        //
+        // Exception: a MACHINE client-credentials token whose azp/client_id
+        // is on PROJECT_OPS_FEDERATION_ACTORS (and has no human session) is
+        // the documented federation write proof. Those tokens typically have
+        // azp=<sibling> and aud=account; rejecting them here would make the
+        // allow-list unreachable. A HUMAN token from a sibling client is
+        // still rejected.
         this.keycloakEnforceAudience &&
         typeof issuer === 'string' &&
         this.realmIssuer != null &&
         issuer === this.realmIssuer
       ) {
-        if (
-          !JwtStrategy.keycloakAudienceMatches(
-            payload?.aud,
-            payload?.azp,
-            this.keycloakExpectedAudiences,
-          )
-        ) {
+        const matchesPo = JwtStrategy.keycloakAudienceMatches(
+          payload?.aud,
+          payload?.azp,
+          this.keycloakExpectedAudiences,
+        );
+        const actorId = readActorClientId(payload);
+        const machineFederationActor =
+          !isHumanSessionPayload(payload) &&
+          !!actorId &&
+          this.federationActors.has(actorId);
+        if (!matchesPo && !machineFederationActor) {
           this.logger.warn(
-            `Rejected Keycloak realm token: azp=${JSON.stringify(payload?.azp)} aud=${JSON.stringify(payload?.aud)} matches none of [${[...this.keycloakExpectedAudiences].join(', ')}]`,
+            `Rejected Keycloak realm token: azp=${JSON.stringify(payload?.azp)} aud=${JSON.stringify(payload?.aud)} matches none of [${[...this.keycloakExpectedAudiences].join(', ')}] and is not an allow-listed machine actor`,
           );
           throw new UnauthorizedException('Token is not authorized for project-ops');
         }

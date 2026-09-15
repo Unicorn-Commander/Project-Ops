@@ -1,14 +1,18 @@
-import { ExecutionContext } from '@nestjs/common';
+import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FederationActorGuard } from './federation-actor.guard';
+import { FEDERATION_ACTOR_REQUIRED } from './federation-token';
 
 /**
- * FederationActorGuard contract: elevate a trusted sibling-app actor ONLY when
+ * FederationActorGuard: elevate a trusted sibling-app MACHINE actor ONLY when
  * ALL hold — synthetic federation principal (__isFederationActor), the actor is
- * on PROJECT_OPS_FEDERATION_ACTORS, the handler is a federation route
- * (`ingest`), and a Brigade-vouched workspace claim is present. Then it stamps
- * req.workspaceId + req.federationActor. Otherwise it falls through (no marker)
- * so the human RolesGuard + WorkspaceMembershipGuard reject as usual.
+ * on PROJECT_OPS_FEDERATION_ACTORS, the handler is a federation write route,
+ * and a vouched workspace claim is present. Then it stamps req.workspaceId +
+ * req.federationActor.
+ *
+ * On federation write routes (ingest, quoteAccepted) anything else is 403
+ * FEDERATION_ACTOR_REQUIRED — human tokens, unknown actors, missing
+ * workspace. Non-federation handlers still fall through (no marker).
  */
 describe('FederationActorGuard', () => {
   const WS = '01924a3c-0000-7f1a-beef-67f1ab5c0001';
@@ -33,6 +37,19 @@ describe('FederationActorGuard', () => {
     __workspaceClaim: ws,
   });
 
+  const expectActorRequired = (fn: () => unknown) => {
+    try {
+      fn();
+      throw new Error('expected ForbiddenException');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ForbiddenException);
+      expect((e as ForbiddenException).getResponse()).toMatchObject({
+        status: 'failed',
+        code: FEDERATION_ACTOR_REQUIRED,
+      });
+    }
+  };
+
   it('elevates an allow-listed federation actor on the ingest route', () => {
     const req: any = { user: fedUser('meeting-ops', WS) };
     expect(guardWith('meeting-ops').canActivate(ctx(req, 'ingest'))).toBe(true);
@@ -40,36 +57,36 @@ describe('FederationActorGuard', () => {
     expect(req.federationActor).toBe('meeting-ops');
   });
 
-  it('does NOT elevate an actor that is not allow-listed (falls through)', () => {
+  it('rejects an actor that is not allow-listed (unknown-actor)', () => {
     const req: any = { user: fedUser('rogue-app', WS) };
-    expect(guardWith('meeting-ops').canActivate(ctx(req, 'ingest'))).toBe(true);
+    expectActorRequired(() => guardWith('meeting-ops').canActivate(ctx(req, 'ingest')));
     expect(req.federationActor).toBeUndefined();
     expect(req.workspaceId).toBeUndefined();
   });
 
-  it('does NOT elevate with an empty allow-list (default = zero trust)', () => {
+  it('rejects with an empty allow-list (default = zero trust)', () => {
     const req: any = { user: fedUser('meeting-ops', WS) };
-    expect(guardWith('').canActivate(ctx(req, 'ingest'))).toBe(true);
+    expectActorRequired(() => guardWith('').canActivate(ctx(req, 'ingest')));
     expect(req.federationActor).toBeUndefined();
   });
 
-  it('does NOT elevate on a non-federation route (e.g. approve)', () => {
+  it('does NOT elevate on a non-federation route (e.g. approve) — falls through', () => {
     const req: any = { user: fedUser('meeting-ops', WS) };
     expect(guardWith('meeting-ops').canActivate(ctx(req, 'approve'))).toBe(true);
     expect(req.federationActor).toBeUndefined();
   });
 
-  it('does NOT elevate a non-federation (human) principal even on ingest', () => {
+  it('rejects a human (even STAFF) on ingest — no human session on federation writes', () => {
     const req: any = {
       user: { id: 'u1', role: 'STAFF', __workspaceClaim: WS },
     };
-    expect(guardWith('meeting-ops').canActivate(ctx(req, 'ingest'))).toBe(true);
+    expectActorRequired(() => guardWith('meeting-ops').canActivate(ctx(req, 'ingest')));
     expect(req.federationActor).toBeUndefined();
   });
 
-  it('does NOT elevate a federation actor missing a workspace claim', () => {
+  it('rejects a federation actor missing a workspace claim', () => {
     const req: any = { user: fedUser('meeting-ops', null) };
-    expect(guardWith('meeting-ops').canActivate(ctx(req, 'ingest'))).toBe(true);
+    expectActorRequired(() => guardWith('meeting-ops').canActivate(ctx(req, 'ingest')));
     expect(req.federationActor).toBeUndefined();
   });
 
@@ -89,11 +106,9 @@ describe('FederationActorGuard', () => {
 });
 
 /**
- * Quotes & Proposals seam (QUOTES-CONTRACT-v1 §3): the `quoteAccepted` handler
- * is a federation route SCOPED to the `customer-ops` actor. The allow-list is
- * still required; another allow-listed sibling is not elevated there; the
- * `ingest` contract (any allow-listed actor) is unchanged; and the workspace is
- * ALWAYS the Brigade-vouched claim — the X-Workspace-Id header is never read.
+ * Quotes & Proposals seam: `quoteAccepted` is SCOPED to `customer-ops`.
+ * Another allow-listed sibling is 403; humans are 403; workspace is ALWAYS
+ * the vouched claim — the X-Workspace-Id header is never read.
  */
 describe('FederationActorGuard — quotes seam route scope (quoteAccepted)', () => {
   const WS = '01924a3c-0000-7f1a-beef-67f1ab5c0001';
@@ -115,6 +130,10 @@ describe('FederationActorGuard — quotes seam route scope (quoteAccepted)', () 
     __workspaceClaim: ws,
   });
 
+  const expectActorRequired = (fn: () => unknown) => {
+    expect(fn).toThrow(ForbiddenException);
+  };
+
   it('elevates an allow-listed customer-ops actor on quoteAccepted', () => {
     const req: any = { user: fedUser('customer-ops', WS) };
     expect(guardWith('customer-ops').canActivate(ctx(req, 'quoteAccepted'))).toBe(true);
@@ -122,20 +141,22 @@ describe('FederationActorGuard — quotes seam route scope (quoteAccepted)', () 
     expect(req.workspaceId).toBe(WS);
   });
 
-  it('does NOT elevate meeting-ops on quoteAccepted even when it is allow-listed (route scope)', () => {
+  it('rejects meeting-ops on quoteAccepted even when it is allow-listed (route scope)', () => {
     const req: any = { user: fedUser('meeting-ops', WS) };
-    expect(guardWith('meeting-ops, customer-ops').canActivate(ctx(req, 'quoteAccepted'))).toBe(true);
+    expectActorRequired(() =>
+      guardWith('meeting-ops, customer-ops').canActivate(ctx(req, 'quoteAccepted')),
+    );
     expect(req.federationActor).toBeUndefined();
     expect(req.workspaceId).toBeUndefined();
   });
 
-  it('does NOT elevate customer-ops when it is not on PROJECT_OPS_FEDERATION_ACTORS', () => {
+  it('rejects customer-ops when it is not on PROJECT_OPS_FEDERATION_ACTORS', () => {
     const req: any = { user: fedUser('customer-ops', WS) };
-    expect(guardWith('meeting-ops').canActivate(ctx(req, 'quoteAccepted'))).toBe(true);
+    expectActorRequired(() => guardWith('meeting-ops').canActivate(ctx(req, 'quoteAccepted')));
     expect(req.federationActor).toBeUndefined();
   });
 
-  it('stamps the Brigade-vouched claim and ignores an X-Workspace-Id header (hint, never the boundary)', () => {
+  it('stamps the vouched claim and ignores an X-Workspace-Id header', () => {
     const req: any = {
       user: fedUser('customer-ops', WS),
       headers: { 'x-workspace-id': OTHER_WS },
@@ -145,9 +166,9 @@ describe('FederationActorGuard — quotes seam route scope (quoteAccepted)', () 
     expect(req.workspaceId).toBe(WS);
   });
 
-  it('does NOT elevate a human principal on quoteAccepted', () => {
+  it('rejects a human principal on quoteAccepted', () => {
     const req: any = { user: { id: 'u1', role: 'ADMIN', __workspaceClaim: WS } };
-    expect(guardWith('customer-ops').canActivate(ctx(req, 'quoteAccepted'))).toBe(true);
+    expectActorRequired(() => guardWith('customer-ops').canActivate(ctx(req, 'quoteAccepted')));
     expect(req.federationActor).toBeUndefined();
   });
 

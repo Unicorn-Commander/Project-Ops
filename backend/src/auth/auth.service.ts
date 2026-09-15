@@ -19,6 +19,10 @@ import {
   MembershipService,
   ActiveWorkspaceMembership,
 } from '../common/workspace/membership.service';
+import {
+  isHumanSessionPayload,
+  readActorClientId,
+} from '../common/workspace/federation-token';
 
 export interface JwtPayload {
   sub: string;
@@ -365,24 +369,20 @@ export class AuthService {
         );
       }
 
-      // Federation ACTOR detection. A Brigade token-exchange minted for a
-      // sibling APP (not a human) carries an RFC-8693 `act.client_id` and a
-      // service `sub` (not an email). Such a token must NOT be forced through
-      // the human access-list (it would 401); resolve a synthetic, non-DB
-      // federation principal instead. WHAT it may do is gated downstream by
-      // FederationActorGuard (actor allow-list + route scope + the
-      // Brigade-vouched workspace claim) — never by a Membership row. A token
-      // that ALSO resolves to a human (email claim / sub looks like an email)
-      // is treated as that human (on-behalf-of-user) so the human's membership
-      // governs, NOT the federation path.
-      const actorClientId =
-        payload?.act && typeof payload.act.client_id === 'string'
-          ? payload.act.client_id.trim()
-          : null;
-      const subIsEmail =
-        typeof payload?.sub === 'string' && payload.sub.includes('@');
-      const hasHumanIdentity = !!payload?.email || subIsEmail;
-      if (actorClientId && !hasHumanIdentity) {
+    }
+
+    // Federation ACTOR detection (Brigade token-exchange AND Keycloak
+    // client-credentials). A machine token carries azp / client_id /
+    // act.client_id and NO human session (no email, no sid/session_state,
+    // sub is not an email). It must NOT be forced through the human
+    // access-list (it would 401 or JIT-provision a service account as a
+    // person); resolve a synthetic, non-DB federation principal instead.
+    // WHAT it may do is gated by FederationActorGuard (allow-list + route
+    // scope). A token that ALSO looks like a human session is treated as
+    // that human (on-behalf-of-user) so membership governs, not federation.
+    if (isBrigadeFederationToken || isKeycloakRealmToken) {
+      const actorClientId = readActorClientId(payload);
+      if (actorClientId && !isHumanSessionPayload(payload)) {
         return AuthService.buildFederationPrincipal(actorClientId);
       }
     }
@@ -426,9 +426,10 @@ export class AuthService {
   /**
    * A synthetic, NON-PERSISTENT principal for a trusted sibling-app federation
    * call (a Brigade token-exchange whose `act.client_id` is the calling app,
-   * e.g. `meeting-ops`). It has no DB row and no human UserRole; it is
-   * authorized ONLY by FederationActorGuard (actor allow-list + route scope +
-   * the Brigade-vouched workspace claim), never by a Membership row. The `id`
+   * or a Keycloak client-credentials token whose `azp`/`client_id` is the
+   * calling app, e.g. `meeting-ops`). It has no DB row and no human UserRole;
+   * it is authorized ONLY by FederationActorGuard (actor allow-list + route
+   * scope + the vouched workspace claim), never by a Membership row. The `id`
    * is a stable `federation:<app>` string used for the soft, non-FK
    * `TriageProposal.createdById` attribution and `app.uc_uid`. The marker
    * fields are read via the WithWorkspaceClaim cast downstream.

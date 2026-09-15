@@ -256,4 +256,52 @@ describe('JwtStrategy Keycloak realm audience binding', () => {
       JwtStrategy.keycloakAudienceMatches(undefined, undefined, expected),
     ).toBe(false);
   });
+
+  it('accepts a Keycloak client-credentials machine token whose azp is on PROJECT_OPS_FEDERATION_ACTORS', async () => {
+    const machineUser = { id: 'federation:meeting-ops' } as User;
+    const strategy = makeStrategy(async () => machineUser, {
+      ...kcConfig(),
+      PROJECT_OPS_FEDERATION_ACTORS: 'meeting-ops,customer-ops',
+    });
+    await expect(
+      strategy.validate({
+        sub: 'svc-uuid',
+        iss: REALM_ISS,
+        azp: 'meeting-ops',
+        aud: 'account',
+        preferred_username: 'service-account-meeting-ops',
+      } as any),
+    ).resolves.toEqual(machineUser);
+  });
+
+  it('rejects a HUMAN sibling-client token even when that azp is allow-listed', async () => {
+    const validate = jest.fn(async () => fakeUser);
+    const strategy = makeStrategy(validate as unknown as AuthService['validateJwtPayload'], {
+      ...kcConfig(),
+      PROJECT_OPS_FEDERATION_ACTORS: 'meeting-ops,customer-ops',
+    });
+    await expect(
+      strategy.validate(
+        kcPayload({ azp: 'meeting-ops', aud: 'account' }),
+      ),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(validate).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unknown-actor machine token (azp not on the allow-list)', async () => {
+    const validate = jest.fn(async () => fakeUser);
+    const strategy = makeStrategy(validate as unknown as AuthService['validateJwtPayload'], {
+      ...kcConfig(),
+      PROJECT_OPS_FEDERATION_ACTORS: 'meeting-ops,customer-ops',
+    });
+    await expect(
+      strategy.validate({
+        sub: 'svc-uuid',
+        iss: REALM_ISS,
+        azp: 'rogue-app',
+        aud: 'account',
+      } as any),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(validate).not.toHaveBeenCalled();
+  });
 });

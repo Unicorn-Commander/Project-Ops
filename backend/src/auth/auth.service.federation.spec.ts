@@ -96,4 +96,41 @@ describe('AuthService federation-actor resolution', () => {
       } as any),
     ).rejects.toThrow();
   });
+
+  it('resolves a Keycloak client-credentials token (azp, no human session) to a synthetic principal', async () => {
+    const spy = jest.spyOn(svc, 'validateKeycloakUser' as any);
+    const user = (await svc.validateJwtPayload({
+      iss: 'https://auth.unicorncommander.ai/realms/uchub',
+      azp: 'customer-ops',
+      aud: 'account',
+      sub: 'b3b1f0a2-0000-7000-8000-000000000002',
+      preferred_username: 'service-account-customer-ops',
+      workspace_id: '01924a3c-0000-7f1a-beef-67f1ab5c0001',
+    } as any)) as any;
+
+    expect(user.__isFederationActor).toBe(true);
+    expect(user.__federationActor).toBe('customer-ops');
+    expect(user.id).toBe('federation:customer-ops');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('does NOT treat a Keycloak HUMAN session (email + sid, azp=project-ops) as a federation actor', async () => {
+    const human = { id: 'u-human', role: 'ADMIN' };
+    const spy = jest
+      .spyOn(svc, 'validateKeycloakUser' as any)
+      .mockResolvedValue(human as any);
+
+    const user = (await svc.validateJwtPayload({
+      iss: 'https://auth.unicorncommander.ai/realms/uchub',
+      azp: 'project-ops',
+      aud: 'account',
+      sub: 'aaron-uuid',
+      email: 'aaron@magicunicorn.tech',
+      sid: 'session-1',
+    } as any)) as any;
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(user).toBe(human);
+    expect(user.__isFederationActor).toBeUndefined();
+  });
 });
