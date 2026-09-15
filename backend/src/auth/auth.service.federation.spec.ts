@@ -114,6 +114,37 @@ describe('AuthService federation-actor resolution', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
+  it('L2c: a REAL uchub service-account token (WITH email) resolves to a synthetic principal, NOT a human', async () => {
+    const spy = jest.spyOn(svc, 'validateKeycloakUser' as any);
+    // Decoded uchub client_credentials claims (Persephone, 2026-09-15): the
+    // service account carries email + email_verified + name/given/family, yet
+    // is a MACHINE token (no sid/session_state, preferred_username prefix
+    // `service-account-`).
+    const user = (await svc.validateJwtPayload({
+      iss: 'https://auth.unicorncommander.ai/realms/uchub',
+      aud: ['broker', 'account'],
+      sub: 'b3b1f0a2-0000-7000-8000-000000000002',
+      azp: 'meeting-ops',
+      client_id: 'meeting-ops',
+      scope: 'email user-attributes profile uc-identity',
+      email_verified: true,
+      name: 'service-account-meeting-ops',
+      preferred_username: 'service-account-meeting-ops',
+      given_name: 'service-account',
+      family_name: 'meeting-ops',
+      email: 'service-account-meeting-ops@magicunicorn.tech',
+      clientHost: '10.10.0.11',
+      clientAddress: '10.10.0.11',
+      workspace_id: '01924a3c-0000-7f1a-beef-67f1ab5c0001',
+    } as any)) as any;
+
+    expect(user.__isFederationActor).toBe(true);
+    expect(user.__federationActor).toBe('meeting-ops');
+    expect(user.id).toBe('federation:meeting-ops');
+    // The email must NOT force this through the human JIT/access-list path.
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it('does NOT treat a Keycloak HUMAN session (email + sid, azp=project-ops) as a federation actor', async () => {
     const human = { id: 'u-human', role: 'ADMIN' };
     const spy = jest

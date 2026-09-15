@@ -274,6 +274,34 @@ describe('JwtStrategy Keycloak realm audience binding', () => {
     ).resolves.toEqual(machineUser);
   });
 
+  it('L2c: accepts a REAL uchub service-account token (WITH email) when its client is allow-listed', async () => {
+    const machineUser = { id: 'federation:meeting-ops' } as User;
+    const strategy = makeStrategy(async () => machineUser, {
+      ...kcConfig(),
+      PROJECT_OPS_FEDERATION_ACTORS: 'meeting-ops,customer-ops',
+    });
+    // Decoded uchub client_credentials claims: email + email_verified + names,
+    // NO sid/session_state, preferred_username prefix `service-account-`.
+    await expect(
+      strategy.validate({
+        iss: REALM_ISS,
+        aud: ['broker', 'account'],
+        sub: 'b3b1f0a2-0000-7000-8000-000000000002',
+        azp: 'meeting-ops',
+        client_id: 'meeting-ops',
+        scope: 'email user-attributes profile uc-identity',
+        email_verified: true,
+        name: 'service-account-meeting-ops',
+        preferred_username: 'service-account-meeting-ops',
+        given_name: 'service-account',
+        family_name: 'meeting-ops',
+        email: 'service-account-meeting-ops@magicunicorn.tech',
+        clientHost: '10.10.0.11',
+        clientAddress: '10.10.0.11',
+      } as any),
+    ).resolves.toEqual(machineUser);
+  });
+
   it('rejects a HUMAN sibling-client token even when that azp is allow-listed', async () => {
     const validate = jest.fn(async () => fakeUser);
     const strategy = makeStrategy(validate as unknown as AuthService['validateJwtPayload'], {

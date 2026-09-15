@@ -373,10 +373,13 @@ export class AuthService {
 
     // Federation ACTOR detection (Brigade token-exchange AND Keycloak
     // client-credentials). A machine token carries azp / client_id /
-    // act.client_id and NO human session (no email, no sid/session_state,
-    // sub is not an email). It must NOT be forced through the human
-    // access-list (it would 401 or JIT-provision a service account as a
-    // person); resolve a synthetic, non-DB federation principal instead.
+    // act.client_id and NO human session (classified by service-account
+    // markers — preferred_username `service-account-` prefix, clientHost,
+    // client_id with no sid/session_state — NEVER by email absence, since
+    // uchub service-account tokens CARRY an email). It must NOT be forced
+    // through the human access-list (it would 401 or JIT-provision a service
+    // account as a person); resolve a synthetic, non-DB federation principal
+    // instead.
     // WHAT it may do is gated by FederationActorGuard (allow-list + route
     // scope). A token that ALSO looks like a human session is treated as
     // that human (on-behalf-of-user) so membership governs, not federation.
