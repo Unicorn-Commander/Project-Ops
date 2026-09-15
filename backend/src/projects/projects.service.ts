@@ -16,6 +16,7 @@ import { Project, Prisma, ProjectStatus, TaskStatus, User, UserRole } from '@pri
 import { Decimal } from '@prisma/client/runtime/library';
 import { AuditService } from '../audit/audit.service';
 import { CUSTOM_FIELDS_SERVICE, CustomFieldsValidator } from './custom-fields.contract';
+import { withProjectQuote } from '../common/serializers/client-metadata';
 
 /**
  * Domain events emitted (after the tx commits) for the automations + webhooks
@@ -599,7 +600,7 @@ export class ProjectsService {
           throw new NotFoundException(`Project with ID ${id} not found`);
         }
 
-        return projectData;
+        return withProjectQuote(projectData, user);
       },
       workspaceId,
     );

@@ -96,10 +96,9 @@ export function maskTaskMetadataForClient(metadata: unknown): unknown {
   return out;
 }
 
-export function withTaskMetadataForRole<T extends { metadata?: unknown }>(
-  task: T,
-  user: Pick<User, 'role'>,
-): T {
+export function withTaskMetadataForRole<T>(task: T, user: Pick<User, 'role'>): T {
   if (user.role !== UserRole.CLIENT) return task;
-  return { ...task, metadata: maskTaskMetadataForClient(task.metadata) };
+  const metadata = (task as { metadata?: unknown } | null | undefined)?.metadata;
+  if (metadata === undefined || metadata === null) return task;
+  return { ...task, metadata: maskTaskMetadataForClient(metadata) } as T;
 }

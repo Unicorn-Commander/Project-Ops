@@ -150,3 +150,52 @@ describe('ProjectsService.updateStatus — project.status_changed event', () => 
     expect(emit).not.toHaveBeenCalled();
   });
 });
+
+describe('ProjectsService.findOne — CLIENT-role quote metadata masking', () => {
+  const client = { id: 'c1', email: 'client@x.co', role: 'CLIENT' } as any;
+  const staff = { id: 'u1', email: 'a@x.co', role: 'ADMIN' } as any;
+  const PROJECT_META = {
+    quote: {
+      customer_ops_quote_id: 'q-1',
+      number: 'Q-2026-0001',
+      version: 1,
+      share_url: 'https://customers.example.dev/q/tok',
+      schedule_ids: ['sched-1'],
+    },
+    quoteSummary: { title: 'Order Pad', currency: 'USD', status: 'accepted' },
+  };
+  const projectRow = () => ({
+    id: 'p1',
+    projectNumber: 'PROJ-1',
+    title: 'Order Pad',
+    metadata: PROJECT_META,
+    defaultBillRate: '150.0000',
+    budgetAmount: '4300.00',
+    billingNotes: 'Quote Q-2026-0001 v1',
+  });
+
+  it('strips quote foreign ids + commercial columns for a CLIENT caller', async () => {
+    const tx = { project: { findUnique: jest.fn(async () => projectRow()) } };
+    const { svc } = makeService({ tx });
+    const out: any = await svc.findOne('ws1', client, 'p1');
+    expect(out.quote).toEqual({
+      number: 'Q-2026-0001',
+      version: 1,
+      share_url: 'https://customers.example.dev/q/tok',
+    });
+    expect(out).not.toHaveProperty('defaultBillRate');
+    expect(out).not.toHaveProperty('budgetAmount');
+    expect(out).not.toHaveProperty('billingNotes');
+    const wire = JSON.stringify(out);
+    expect(wire).not.toContain('customer_ops_quote_id');
+    expect(wire).not.toContain('sched-1');
+  });
+
+  it('leaves quote foreign ids + commercial columns for a STAFF caller', async () => {
+    const tx = { project: { findUnique: jest.fn(async () => projectRow()) } };
+    const { svc } = makeService({ tx });
+    const out: any = await svc.findOne('ws1', staff, 'p1');
+    expect(out.quote).toEqual(PROJECT_META.quote);
+    expect(out.defaultBillRate).toBe('150.0000');
+  });
+});

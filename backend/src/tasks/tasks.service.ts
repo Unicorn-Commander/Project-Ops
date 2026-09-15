@@ -27,6 +27,7 @@ import {
   User,
   Prisma,
 } from '@prisma/client';
+import { withTaskMetadataForRole } from '../common/serializers/client-metadata';
 
 /**
  * SUITE TENANCY (Phase 2, B2): Task + TaskComment are RLS-scoped tables, so
@@ -386,7 +387,7 @@ export class TasksService {
         ]);
 
         return {
-          data: tasks,
+          data: tasks.map((t) => withTaskMetadataForRole(t, user)),
           total,
           skip,
           take,
@@ -454,7 +455,7 @@ export class TasksService {
           throw new NotFoundException(`Task with ID ${id} not found`);
         }
 
-        return task;
+        return withTaskMetadataForRole(task, user);
       },
       workspaceId,
     );
@@ -1003,7 +1004,7 @@ export class TasksService {
    * Get all tasks for a specific project
    */
   async getProjectTasks(workspaceId: string, user: User, projectId: string) {
-    return this.workspaceContext.runForUser(
+    const tasks = await this.workspaceContext.runForUser(
       user,
       (tx) =>
         tx.task.findMany({
@@ -1035,6 +1036,7 @@ export class TasksService {
         }),
       workspaceId,
     );
+    return tasks.map((t) => withTaskMetadataForRole(t, user));
   }
 
   /**

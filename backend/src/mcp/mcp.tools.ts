@@ -649,9 +649,10 @@ export class ProjectOpsTools {
     if (!result) {
       throw new Error('Task not found or you don\'t have access');
     }
-    // Drop the raw Prisma _count bag now that we flattened the counters.
+    // Drop the raw Prisma _count bag now that we flattened the counters, then
+    // apply the CLIENT-role metadata mask (drops quote foreign ids / line ids).
     const { _count: _ignored, ...task } = result as typeof result & { _count?: unknown };
-    return task;
+    return withTaskMetadataForRole(task, user);
   }
 
   /**
@@ -747,11 +748,16 @@ export class ProjectOpsTools {
 
       return {
         project,
-        tasks: tasks.map(({ _count, ...t }) => ({
-          ...t,
-          commentsCount: _count.comments,
-          subtasksCount: _count.subtasks,
-        })),
+        tasks: tasks.map(({ _count, ...t }) =>
+          withTaskMetadataForRole(
+            {
+              ...t,
+              commentsCount: _count.comments,
+              subtasksCount: _count.subtasks,
+            },
+            user,
+          ),
+        ),
         total,
       };
     });

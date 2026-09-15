@@ -37,11 +37,12 @@ export class TriageController {
   // Opt OUT of the GLOBAL WorkspaceMembershipGuard: this is the federation
   // ingress. A trusted sibling-app actor is NOT a workspace member, and the
   // global guard runs BEFORE this route's per-route FederationActorGuard (which
-  // is what stamps req.federationActor + the Brigade-vouched workspace). The
-  // per-route chain below (FederationActorGuard → RolesGuard →
-  // WorkspaceMembershipGuard) authorizes both the federation actor and a human
-  // caller exactly as before. Humans hitting this route still pass the per-route
-  // membership guard.
+  // is what stamps req.federationActor + the vouched workspace claim).
+  //
+  // L2 hardening: this route is MACHINE-TOKEN ONLY. FederationActorGuard now
+  // rejects a human session with 403 FEDERATION_ACTOR_REQUIRED — there is no
+  // human fall-through on the Meeting-Ops bridge write. The @Roles decorator
+  // remains only as documentation of the (now-unreachable) human surface.
   @SkipWorkspaceMembership()
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @ApiOperation({ summary: 'Submit candidate action items for triage (propose-only)' })

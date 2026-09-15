@@ -627,3 +627,69 @@ describe('TasksService — customFields validation + merge', () => {
     expect((tx.task.create as jest.Mock).mock.calls[0][0].data.metadata).toEqual({ a: 1 });
   });
 });
+
+describe('TasksService — CLIENT-role quote metadata masking', () => {
+  const client = { id: 'c1', email: 'client@x.co', role: UserRole.CLIENT } as any;
+  const staff = { id: 'u1', email: 'a@x.co', role: UserRole.ADMIN } as any;
+  const TASK_META = {
+    quote: {
+      customer_ops_quote_id: 'q-1',
+      customer_ops_line_id: 'line-9',
+      number: 'Q-2026-0001',
+      version: 1,
+      line_kind: 'milestone',
+      position: 2,
+      weeks: 3,
+      option_group: 'hosting',
+    },
+    customFields: { score: 1 },
+  };
+
+  it('findOne strips quote foreign ids from metadata for a CLIENT caller', async () => {
+    const { svc } = makeService({
+      taskFindUnique: async () => ({ id: 't1', metadata: TASK_META }),
+    });
+    const out: any = await svc.findOne('ws1', client, 't1');
+    expect(out.metadata.quote).toEqual({
+      number: 'Q-2026-0001',
+      version: 1,
+      line_kind: 'milestone',
+      position: 2,
+      weeks: 3,
+    });
+    expect(JSON.stringify(out)).not.toContain('customer_ops_quote_id');
+    expect(JSON.stringify(out)).not.toContain('customer_ops_line_id');
+  });
+
+  it('findOne leaves metadata intact for a STAFF caller', async () => {
+    const { svc } = makeService({
+      taskFindUnique: async () => ({ id: 't1', metadata: TASK_META }),
+    });
+    const out: any = await svc.findOne('ws1', staff, 't1');
+    expect(out.metadata).toEqual(TASK_META);
+  });
+
+  it('findAll masks every task in the page for a CLIENT caller', async () => {
+    const { svc } = makeService({
+      taskFindMany: async () => [
+        { id: 't1', metadata: TASK_META },
+        { id: 't2', metadata: TASK_META },
+      ],
+      taskCount: async () => 2,
+    });
+    const out: any = await svc.findAll('ws1', client, {});
+    for (const t of out.data) {
+      expect(t.metadata.quote.customer_ops_quote_id).toBeUndefined();
+      expect(t.metadata.quote.customer_ops_line_id).toBeUndefined();
+    }
+  });
+
+  it('getProjectTasks masks every task for a CLIENT caller', async () => {
+    const { svc } = makeService({
+      taskFindMany: async () => [{ id: 't1', metadata: TASK_META }],
+    });
+    const out: any = await svc.getProjectTasks('ws1', client, 'p1');
+    expect(out[0].metadata.quote.customer_ops_quote_id).toBeUndefined();
+    expect(out[0].metadata.quote.customer_ops_line_id).toBeUndefined();
+  });
+});

@@ -845,6 +845,43 @@ describe('ProjectOpsTools.getTask — full detail + visibility', () => {
       tools.getTask(baseUser({ role: UserRole.STAFF }), { taskId: 'missing' }),
     ).rejects.toThrow(/Task not found or you don't have access/);
   });
+
+  it('strips quote foreign ids from metadata for a CLIENT caller', async () => {
+    const { tools } = makeTools({
+      taskFindFirst: jest.fn(async () => ({
+        id: 't1',
+        title: 'Ship MCP',
+        metadata: {
+          quote: {
+            customer_ops_quote_id: 'q-1',
+            customer_ops_line_id: 'line-9',
+            number: 'Q-2026-0001',
+            version: 1,
+            line_kind: 'milestone',
+            position: 2,
+            weeks: 3,
+            option_group: 'hosting',
+          },
+          customFields: { score: 1 },
+        },
+        project: { id: 'p1' },
+        _count: { comments: 0, subtasks: 0 },
+      })),
+      depFindMany: jest.fn().mockResolvedValue([]),
+    });
+    const result: any = await tools.getTask(baseUser({ role: UserRole.CLIENT }), { taskId: 't1' });
+    expect(result.metadata.quote).toEqual({
+      number: 'Q-2026-0001',
+      version: 1,
+      line_kind: 'milestone',
+      position: 2,
+      weeks: 3,
+    });
+    const wire = JSON.stringify(result);
+    expect(wire).not.toContain('customer_ops_quote_id');
+    expect(wire).not.toContain('customer_ops_line_id');
+    expect(wire).not.toContain('option_group');
+  });
 });
 
 describe('ProjectOpsTools.listProjectTasks — filters + pagination window', () => {
