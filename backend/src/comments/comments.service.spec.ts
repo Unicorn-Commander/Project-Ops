@@ -87,3 +87,78 @@ describe('CommentsService.findByProjectId pagination', () => {
     });
   });
 });
+
+/**
+ * Safe-select regression tests for findOne/findOneInTx.
+ *
+ * findOneInTx used to `include: { author: true, project: true }`, which
+ * returned full User + Project rows (password hash, keycloakId, full project
+ * payload). It must select only the safe, non-sensitive fields.
+ */
+function makeFindOneService(findUniqueImpl: (args: any) => Promise<any>) {
+  const findUnique = jest.fn(async (args: any) => findUniqueImpl(args));
+  const tx = { comment: { findUnique } };
+
+  const workspaceContext = {
+    runForUser: jest.fn(async (_u: any, fn: (t: any) => any) => fn(tx)),
+  };
+
+  const svc = new CommentsService(
+    {} as any, // prisma
+    workspaceContext as any,
+    { log: async () => null } as any, // audit
+    { emit: () => true } as any, // events
+    { createMentionNotifications: async () => [] } as any, // notifications
+  );
+  return { svc, findUnique };
+}
+
+describe('CommentsService.findOne safe-select', () => {
+  it('selects only safe user fields (no passwordHash/keycloakId)', async () => {
+    const { svc, findUnique } = makeFindOneService(async () => ({
+      ...rawComment('c1'),
+      author: { id: 'u1', email: 'a@x.co', firstName: 'Aaron', lastName: 'S' },
+      project: { id: 'p1', projectNumber: 'PN-1', title: 'T' },
+    }));
+
+    await svc.findOne('ws1', user, 'c1');
+
+    const args = findUnique.mock.calls[0][0];
+    expect(args.include.author).toEqual({
+      select: { id: true, email: true, firstName: true, lastName: true },
+    });
+    expect(args.include.author).not.toEqual(true);
+    expect(args.include.project).toEqual({
+      select: { id: true, projectNumber: true, title: true },
+    });
+    expect(args.include.project).not.toEqual(true);
+  });
+
+  it('returns the comment with the safe author/project selects', async () => {
+    const { svc } = makeFindOneService(async () => ({
+      ...rawComment('c1'),
+      author: { id: 'u1', email: 'a@x.co', firstName: 'Aaron', lastName: 'S' },
+      project: { id: 'p1', projectNumber: 'PN-1', title: 'T' },
+    }));
+
+    const out: any = await svc.findOne('ws1', user, 'c1');
+
+    expect(out.author).toEqual({
+      id: 'u1',
+      email: 'a@x.co',
+      firstName: 'Aaron',
+      lastName: 'S',
+    });
+    expect(out.author.passwordHash).toBeUndefined();
+    expect(out.author.keycloakId).toBeUndefined();
+    expect(out.project).toEqual({ id: 'p1', projectNumber: 'PN-1', title: 'T' });
+  });
+
+  it('throws NotFoundException when the comment is missing', async () => {
+    const { svc } = makeFindOneService(async () => null);
+
+    await expect(svc.findOne('ws1', user, 'nope')).rejects.toThrow(
+      'Comment with ID nope not found',
+    );
+  });
+});

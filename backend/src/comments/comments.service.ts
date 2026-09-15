@@ -199,8 +199,21 @@ export class CommentsService {
     const comment = await tx.comment.findUnique({
       where: { id },
       include: {
-        author: true,
-        project: true,
+        author: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        project: {
+          select: {
+            id: true,
+            projectNumber: true,
+            title: true,
+          },
+        },
       },
     });
 
