@@ -283,7 +283,7 @@ describe('TasksService.removeDependency', () => {
 describe('TasksService.addComment — domain event', () => {
   it('emits task.comment.created with the expected payload after commit', async () => {
     const { svc, emit } = makeService({
-      taskFindUnique: async () => ({ id: 'task1' }),
+      taskFindUnique: async () => ({ id: 'task1', assignedToId: 'u9', title: 'Ship it' }),
       taskCommentCreate: async () => ({
         id: 'comment1',
         content: 'hey @bob',
@@ -298,6 +298,8 @@ describe('TasksService.addComment — domain event', () => {
       taskId: 'task1',
       commentId: 'comment1',
       authorId: 'u1',
+      assignedToId: 'u9',
+      title: 'Ship it',
       content: 'hey @bob',
     });
   });
@@ -435,7 +437,12 @@ describe('TasksService.updateStatus — status_changed / completed events', () =
   it('emits status_changed (and completed) when transitioning to COMPLETED', async () => {
     const { svc, emit } = makeService({
       taskFindUnique: async () => ({ id: 't1', status: 'IN_PROGRESS', projectId: 'p1' }),
-      taskUpdate: async () => ({ id: 't1', status: 'COMPLETED', projectId: 'p1' }),
+      taskUpdate: async () => ({
+        id: 't1',
+        status: 'COMPLETED',
+        projectId: 'p1',
+        assignedToId: 'u9',
+      }),
     });
     await svc.updateStatus('ws1', user, 't1', 'COMPLETED' as any);
 
@@ -446,14 +453,15 @@ describe('TasksService.updateStatus — status_changed / completed events', () =
       fromStatus: 'IN_PROGRESS',
       toStatus: 'COMPLETED',
       actorId: 'u1',
-      task: { id: 't1', status: 'COMPLETED', projectId: 'p1' },
+      assignedToId: 'u9',
+      task: { id: 't1', status: 'COMPLETED', projectId: 'p1', assignedToId: 'u9' },
     });
     expect(emittedPayload(emit, 'task.completed')).toEqual({
       workspaceId: 'ws1',
       taskId: 't1',
       projectId: 'p1',
       actorId: 'u1',
-      task: { id: 't1', status: 'COMPLETED', projectId: 'p1' },
+      task: { id: 't1', status: 'COMPLETED', projectId: 'p1', assignedToId: 'u9' },
     });
   });
 

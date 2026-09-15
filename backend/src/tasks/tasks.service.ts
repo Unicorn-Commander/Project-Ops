@@ -600,7 +600,12 @@ export class TasksService {
   private emitTaskStatusEvents(
     workspaceId: string,
     actorId: string,
-    updatedTask: { id: string; projectId: string; status: TaskStatus },
+    updatedTask: {
+      id: string;
+      projectId: string;
+      status: TaskStatus;
+      assignedToId: string | null;
+    },
     fromStatus: TaskStatus,
   ): void {
     if (updatedTask.status === fromStatus) {
@@ -614,6 +619,7 @@ export class TasksService {
       fromStatus,
       toStatus: updatedTask.status,
       actorId,
+      assignedToId: updatedTask.assignedToId,
       task: updatedTask,
     });
 
@@ -880,6 +886,8 @@ export class TasksService {
     taskId: string,
     createCommentDto: CreateTaskCommentDto,
   ) {
+    let taskAssignedToId: string | null = null;
+    let taskTitle: string | null = null;
     const comment = await this.workspaceContext.runForUser(
       user,
       async (tx) => {
@@ -890,6 +898,12 @@ export class TasksService {
         if (!task) {
           throw new NotFoundException(`Task with ID ${taskId} not found`);
         }
+
+        // Capture the assignee + title so the comment event is self-describing:
+        // a downstream receiver (e.g. the Stable agent-room webhook) can map the
+        // task's assignee to their room without re-querying Project-Ops.
+        taskAssignedToId = task.assignedToId;
+        taskTitle = task.title;
 
         const created = await tx.taskComment.create({
           data: {
@@ -923,6 +937,8 @@ export class TasksService {
       taskId,
       commentId: comment.id,
       authorId: user.id,
+      assignedToId: taskAssignedToId,
+      title: taskTitle,
       content: comment.content,
     });
 
