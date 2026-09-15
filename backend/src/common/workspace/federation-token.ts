@@ -56,13 +56,16 @@ export function parseFederationActors(raw: string | undefined | null): Set<strin
  *     carry `azp` + `sid`/`session_state`, not `client_id`).
  */
 export function isKeycloakServiceAccountPayload(payload: Record<string, unknown>): boolean {
-  const pu = payload.preferred_username;
-  if (typeof pu === 'string' && pu.trim().startsWith('service-account-')) return true;
-  if (typeof payload.clientHost === 'string' && payload.clientHost.trim()) return true;
+  // Session claims win over service-account-looking profile fields. A signed
+  // token with conflicting claims must never gain machine-only privileges.
   const hasSession =
     (typeof payload.sid === 'string' && payload.sid.trim()) ||
     (typeof payload.session_state === 'string' && payload.session_state.trim());
-  return !hasSession && typeof payload.client_id === 'string' && payload.client_id.trim() !== '';
+  if (hasSession) return false;
+  const pu = payload.preferred_username;
+  if (typeof pu === 'string' && pu.trim().startsWith('service-account-')) return true;
+  if (typeof payload.clientHost === 'string' && payload.clientHost.trim()) return true;
+  return typeof payload.client_id === 'string' && payload.client_id.trim() !== '';
 }
 
 /**
