@@ -185,6 +185,7 @@ export class ProjectsController {
   }
 
   @Patch(':id')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @ApiOperation({ summary: 'Update project' })
   @ApiResponse({ status: 200, description: 'Project updated successfully' })
   @ApiResponse({ status: 404, description: 'Project not found' })
@@ -198,6 +199,7 @@ export class ProjectsController {
   }
 
   @Patch(':id/status')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @ApiOperation({ summary: 'Update project status' })
   @ApiResponse({ status: 200, description: 'Project status updated successfully' })
   updateStatus(

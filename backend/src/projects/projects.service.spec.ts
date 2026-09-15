@@ -269,3 +269,65 @@ describe('ProjectsService.findAll — CLIENT-role masking on the list', () => {
     expect(p.budgetSummary.budgetHours).toBe(40);
   });
 });
+
+describe('ProjectsService — safe User selects (never the full User row)', () => {
+  const SAFE_USER_SELECT = {
+    select: { id: true, email: true, firstName: true, lastName: true },
+  };
+
+  it('findOne selects safe User fields for createdBy/assignedTo', async () => {
+    const findUnique = jest.fn(async () => ({
+      id: 'p1',
+      projectNumber: 'PROJ-1',
+      metadata: {},
+      createdBy: {},
+      assignedTo: {},
+    }));
+    const tx = { project: { findUnique } };
+    const { svc } = makeService({ tx });
+    await svc.findOne('ws1', user, 'p1');
+    const args = (findUnique as jest.Mock).mock.calls[0][0];
+    expect(args.include.createdBy).toEqual(SAFE_USER_SELECT);
+    expect(args.include.assignedTo).toEqual(SAFE_USER_SELECT);
+  });
+
+  it('update selects safe User fields for createdBy/assignedTo', async () => {
+    const update = jest.fn(async () => ({ id: 'p1', projectNumber: 'PROJ-1', metadata: {} }));
+    const tx = { project: { update } };
+    const { svc } = makeService({ tx });
+    await svc.update('ws1', user, 'p1', { title: 'T' } as any);
+    const args = (update as jest.Mock).mock.calls[0][0];
+    expect(args.include.createdBy).toEqual(SAFE_USER_SELECT);
+    expect(args.include.assignedTo).toEqual(SAFE_USER_SELECT);
+  });
+
+  it('updateStatus selects safe User fields for createdBy/assignedTo', async () => {
+    const update = jest.fn(async () => ({
+      id: 'p1',
+      projectNumber: 'PROJ-1',
+      status: ProjectStatus.IN_PROGRESS,
+    }));
+    const tx = {
+      project: {
+        findUnique: jest.fn(async () => ({ status: ProjectStatus.NEW })),
+        update,
+      },
+    };
+    const { svc } = makeService({ tx });
+    await svc.updateStatus('ws1', user, 'p1', ProjectStatus.IN_PROGRESS);
+    const args = (update as jest.Mock).mock.calls[0][0];
+    expect(args.include.createdBy).toEqual(SAFE_USER_SELECT);
+    expect(args.include.assignedTo).toEqual(SAFE_USER_SELECT);
+  });
+
+  it('create selects safe User fields for createdBy/assignedTo', async () => {
+    const created = { id: 'p1', projectNumber: 'PROJ-1', metadata: {} };
+    const create = jest.fn(async () => created);
+    const tx = { project: { count: jest.fn(async () => 0), create } };
+    const { svc } = makeService({ tx });
+    await svc.create('ws1', user, { title: 'T', clientName: 'C' } as any);
+    const args = (create as jest.Mock).mock.calls[0][0];
+    expect(args.include.createdBy).toEqual(SAFE_USER_SELECT);
+    expect(args.include.assignedTo).toEqual(SAFE_USER_SELECT);
+  });
+});

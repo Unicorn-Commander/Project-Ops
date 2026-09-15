@@ -135,6 +135,7 @@ export class TasksController {
   }
 
   @Patch(':id')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @ApiOperation({ summary: 'Update a task' })
   @ApiResponse({ status: 200, description: 'Task updated successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
@@ -149,6 +150,7 @@ export class TasksController {
   }
 
   @Patch(':id/status')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @ApiOperation({ summary: 'Update task status' })
   @ApiResponse({ status: 200, description: 'Task status updated successfully' })
   @ApiResponse({ status: 404, description: 'Task not found' })
@@ -176,6 +178,7 @@ export class TasksController {
   }
 
   @Post(':id/complete')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @ApiOperation({ summary: 'Mark task as completed' })
   @ApiResponse({ status: 200, description: 'Task marked as completed' })
   @ApiResponse({ status: 404, description: 'Task not found' })

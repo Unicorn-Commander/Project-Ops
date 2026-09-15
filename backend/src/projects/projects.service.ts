@@ -283,8 +283,22 @@ export class ProjectsService {
             company: true,
           },
         },
-        createdBy: true,
-        assignedTo: true,
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
       },
     });
 
@@ -572,8 +586,22 @@ export class ProjectsService {
                 company: true,
               },
             },
-            createdBy: true,
-            assignedTo: true,
+            createdBy: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+            assignedTo: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
             documents: {
               orderBy: { uploadedAt: 'desc' },
               take: 10,
@@ -627,8 +655,22 @@ export class ProjectsService {
         const projectData = await tx.project.findFirst({
           where: { projectNumber },
           include: {
-            createdBy: true,
-            assignedTo: true,
+            createdBy: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+            assignedTo: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
           },
         });
 
@@ -676,8 +718,22 @@ export class ProjectsService {
             ...(metadata !== undefined && { metadata }),
           },
           include: {
-            createdBy: true,
-            assignedTo: true,
+            createdBy: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+            assignedTo: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
           },
         });
 
@@ -731,8 +787,22 @@ export class ProjectsService {
           where: { id },
           data: updateData,
           include: {
-            createdBy: true,
-            assignedTo: true,
+            createdBy: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+            assignedTo: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
           },
         });
 
@@ -785,8 +855,22 @@ export class ProjectsService {
             assignedToId: assignProjectDto.assignedToId,
           },
           include: {
-            createdBy: true,
-            assignedTo: true,
+            createdBy: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+            assignedTo: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
           },
         });
 

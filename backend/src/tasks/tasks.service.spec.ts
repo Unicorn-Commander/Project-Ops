@@ -720,3 +720,111 @@ describe('TasksService — CLIENT-role quote metadata masking', () => {
     expect(out[0].metadata.quote.customer_ops_line_id).toBeUndefined();
   });
 });
+
+describe('TasksService.getUserTasks — ownership', () => {
+  const client = { id: 'c1', role: UserRole.CLIENT } as any;
+  const staff = { id: 'u1', role: UserRole.STAFF } as any;
+
+  it('CLIENT cannot enumerate another user\'s tasks', async () => {
+    const { svc } = makeService({ taskFindMany: async () => [] });
+    await expect(svc.getUserTasks('ws1', client, 'c2')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('CLIENT can enumerate their own tasks', async () => {
+    const { svc } = makeService({ taskFindMany: async () => [] });
+    await expect(svc.getUserTasks('ws1', client, 'c1')).resolves.toEqual([]);
+  });
+
+  it('STAFF can enumerate another user\'s tasks', async () => {
+    const { svc } = makeService({ taskFindMany: async () => [] });
+    await expect(svc.getUserTasks('ws1', staff, 'c2')).resolves.toEqual([]);
+  });
+});
+
+describe('TasksService write routes — safe selects + CLIENT masking', () => {
+  const client = { id: 'c1', role: UserRole.CLIENT } as any;
+  const TASK_META = {
+    quote: { customer_ops_quote_id: 'q-1', customer_ops_line_id: 'line-9', number: 'Q-1' },
+  };
+  const SAFE_USER_SELECT = {
+    select: { id: true, email: true, firstName: true, lastName: true },
+  };
+  const SAFE_PROJECT_SELECT = {
+    select: { id: true, projectNumber: true, title: true },
+  };
+
+  it('updateStatus returns safe selects (no full user/project row)', async () => {
+    const { svc, tx } = makeService({
+      taskFindUnique: async () => ({ id: 't1', status: 'PENDING', projectId: 'p1' }),
+      taskUpdate: async () => ({ id: 't1', status: 'IN_PROGRESS', projectId: 'p1' }),
+    });
+    await svc.updateStatus('ws1', user, 't1', 'IN_PROGRESS' as any);
+    const args = (tx.task.update as jest.Mock).mock.calls[0][0];
+    expect(args.include.project).toEqual(SAFE_PROJECT_SELECT);
+    expect(args.include.assignedTo).toEqual(SAFE_USER_SELECT);
+    expect(args.include.createdBy).toEqual(SAFE_USER_SELECT);
+  });
+
+  it('markComplete returns safe selects (no full user/project row)', async () => {
+    const { svc, tx } = makeService({
+      taskFindUnique: async () => ({ id: 't1', status: 'PENDING', projectId: 'p1' }),
+      taskUpdate: async () => ({ id: 't1', status: 'COMPLETED', projectId: 'p1' }),
+    });
+    await svc.markComplete('ws1', user, 't1');
+    const args = (tx.task.update as jest.Mock).mock.calls[0][0];
+    expect(args.include.project).toEqual(SAFE_PROJECT_SELECT);
+    expect(args.include.assignedTo).toEqual(SAFE_USER_SELECT);
+    expect(args.include.createdBy).toEqual(SAFE_USER_SELECT);
+  });
+
+  it('assignTask returns safe selects (no full user/project row)', async () => {
+    const { svc, tx } = makeService({
+      taskFindUnique: async () => ({ id: 't1', assignedToId: null }),
+      taskUpdate: async () => ({ id: 't1', assignedToId: 'u9' }),
+    });
+    await svc.assignTask('ws1', user, 't1', 'u9');
+    const args = (tx.task.update as jest.Mock).mock.calls[0][0];
+    expect(args.include.project).toEqual(SAFE_PROJECT_SELECT);
+    expect(args.include.assignedTo).toEqual(SAFE_USER_SELECT);
+    expect(args.include.createdBy).toEqual(SAFE_USER_SELECT);
+  });
+
+  it('updateStatus masks metadata for a CLIENT caller', async () => {
+    const { svc } = makeService({
+      taskFindUnique: async () => ({ id: 't1', status: 'PENDING', projectId: 'p1' }),
+      taskUpdate: async () => ({
+        id: 't1',
+        status: 'IN_PROGRESS',
+        projectId: 'p1',
+        metadata: TASK_META,
+      }),
+    });
+    const out: any = await svc.updateStatus('ws1', client, 't1', 'IN_PROGRESS' as any);
+    expect(out.metadata.quote.customer_ops_quote_id).toBeUndefined();
+    expect(out.metadata.quote.customer_ops_line_id).toBeUndefined();
+  });
+
+  it('update masks metadata for a CLIENT caller (creator)', async () => {
+    const { svc } = makeService({
+      taskFindUnique: async () => ({
+        id: 't1',
+        status: 'PENDING',
+        projectId: 'p1',
+        createdById: 'c1',
+        assignedToId: null,
+      }),
+      taskUpdate: async (a: any) => ({
+        id: 't1',
+        status: 'PENDING',
+        projectId: 'p1',
+        metadata: TASK_META,
+        ...a.data,
+      }),
+    });
+    const out: any = await svc.update('ws1', client, 't1', { title: 'x' } as any, UserRole.CLIENT);
+    expect(out.metadata.quote.customer_ops_quote_id).toBeUndefined();
+    expect(out.metadata.quote.customer_ops_line_id).toBeUndefined();
+  });
+});

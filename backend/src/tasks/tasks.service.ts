@@ -582,7 +582,7 @@ export class TasksService {
       });
     }
 
-    return updatedTask;
+    return withTaskMetadataForRole(updatedTask, user);
   }
 
   /**
@@ -646,9 +646,29 @@ export class TasksService {
             completedAt: status === TaskStatus.COMPLETED ? new Date() : null,
           },
           include: {
-            project: true,
-            assignedTo: true,
-            createdBy: true,
+            project: {
+              select: {
+                id: true,
+                projectNumber: true,
+                title: true,
+              },
+            },
+            assignedTo: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+            createdBy: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
           },
         });
 
@@ -660,7 +680,7 @@ export class TasksService {
 
     this.emitTaskStatusEvents(workspaceId, user.id, updatedTask, fromStatus);
 
-    return updatedTask;
+    return withTaskMetadataForRole(updatedTask, user);
   }
 
   /**
@@ -692,9 +712,29 @@ export class TasksService {
           where: { id },
           data: { assignedToId },
           include: {
-            project: true,
-            assignedTo: true,
-            createdBy: true,
+            project: {
+              select: {
+                id: true,
+                projectNumber: true,
+                title: true,
+              },
+            },
+            assignedTo: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+            createdBy: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
           },
         });
 
@@ -721,7 +761,7 @@ export class TasksService {
     // emitted `task.assigned` event and respects the recipient's notification
     // preferences. The inline un-gated send was removed to avoid double-emailing
     // and to make the task_assigned preference actually take effect.
-    return updatedTask;
+    return withTaskMetadataForRole(updatedTask, user);
   }
 
   /**
@@ -747,9 +787,29 @@ export class TasksService {
             completedAt: new Date(),
           },
           include: {
-            project: true,
-            assignedTo: true,
-            createdBy: true,
+            project: {
+              select: {
+                id: true,
+                projectNumber: true,
+                title: true,
+              },
+            },
+            assignedTo: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+            createdBy: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
           },
         });
 
@@ -761,7 +821,7 @@ export class TasksService {
 
     this.emitTaskStatusEvents(workspaceId, user.id, updatedTask, fromStatus);
 
-    return updatedTask;
+    return withTaskMetadataForRole(updatedTask, user);
   }
 
   /**
@@ -1031,6 +1091,12 @@ export class TasksService {
    * Get all tasks assigned to a specific user
    */
   async getUserTasks(workspaceId: string, user: User, userId: string) {
+    // Ownership: a CLIENT may only enumerate their OWN task list. Staff roles
+    // (STAFF/MANAGER/ADMIN) may query any user's list (team views, reassignment).
+    if (user.role === UserRole.CLIENT && userId !== user.id) {
+      throw new ForbiddenException("You do not have permission to view another user's tasks");
+    }
+
     return this.workspaceContext.runForUser(
       user,
       async (tx) => {
