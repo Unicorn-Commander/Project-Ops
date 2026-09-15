@@ -172,6 +172,7 @@ export class ProjectsController {
   }
 
   @Get(':projectId/budget')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @ApiOperation({ summary: 'Get budget burn-down (hours + amount) for a project' })
   @ApiResponse({ status: 200, description: 'Returns the project budget burn-down' })
   @ApiResponse({ status: 404, description: 'Project not found' })

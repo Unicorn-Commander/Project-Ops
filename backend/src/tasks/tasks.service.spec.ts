@@ -683,4 +683,40 @@ describe('TasksService — CLIENT-role quote metadata masking', () => {
     expect(out[0].metadata.quote.customer_ops_quote_id).toBeUndefined();
     expect(out[0].metadata.quote.customer_ops_line_id).toBeUndefined();
   });
+
+  it('getUserTasks masks every task for a CLIENT caller (my-tasks + user/:userId)', async () => {
+    const { svc } = makeService({
+      taskFindMany: async () => [{ id: 't1', metadata: TASK_META }],
+    });
+    const out: any = await svc.getUserTasks('ws1', client, 'c1');
+    expect(out[0].metadata.quote.customer_ops_quote_id).toBeUndefined();
+    expect(out[0].metadata.quote.customer_ops_line_id).toBeUndefined();
+  });
+
+  it('getUserTasks leaves metadata intact for a STAFF caller', async () => {
+    const { svc } = makeService({
+      taskFindMany: async () => [{ id: 't1', metadata: TASK_META }],
+    });
+    const out: any = await svc.getUserTasks('ws1', staff, 'c1');
+    expect(out[0].metadata).toEqual(TASK_META);
+  });
+
+  it('getOverdueTasks masks every task for a CLIENT caller', async () => {
+    const { svc } = makeService({
+      taskFindMany: async () => [{ id: 't1', metadata: TASK_META }],
+    });
+    const out: any = await svc.getOverdueTasks('ws1', client);
+    expect(out[0].metadata.quote.customer_ops_quote_id).toBeUndefined();
+    expect(out[0].metadata.quote.customer_ops_line_id).toBeUndefined();
+  });
+
+  it('getSubtasks masks every subtask for a CLIENT caller', async () => {
+    const { svc } = makeService({
+      taskFindUnique: async () => ({ id: 'parent' }),
+      taskFindMany: async () => [{ id: 't1', metadata: TASK_META }],
+    });
+    const out: any = await svc.getSubtasks('ws1', client, 'parent');
+    expect(out[0].metadata.quote.customer_ops_quote_id).toBeUndefined();
+    expect(out[0].metadata.quote.customer_ops_line_id).toBeUndefined();
+  });
 });

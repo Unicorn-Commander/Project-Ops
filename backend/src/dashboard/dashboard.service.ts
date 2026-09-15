@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { ProjectStatus, User, UserRole, Prisma } from '@prisma/client';
+import { withProjectQuote } from '../common/serializers/client-metadata';
 
 /**
  * Dashboard aggregates: overview counts, project statistics, due-date lists,
@@ -179,7 +180,7 @@ export class DashboardService {
   async getRecentProjects(tx: WorkspaceTxClient, limit: number = 10, user: User) {
     const roleWhere = this.buildRoleBasedWhere(user);
 
-    return tx.project.findMany({
+    const projects = await tx.project.findMany({
       where: roleWhere,
       take: limit,
       orderBy: { createdAt: 'desc' },
@@ -208,6 +209,10 @@ export class DashboardService {
         },
       },
     });
+
+    // Same CLIENT-role mask as the REST project list: strip commercial columns
+    // + quote foreign ids. These full-row summaries are CLIENT-reachable.
+    return projects.map((p) => withProjectQuote(p, user));
   }
 
   async getUpcomingDueDates(workspaceId: string, days: number = 7, user: User) {
@@ -218,8 +223,8 @@ export class DashboardService {
 
     return this.workspaceContext.runForUser(
       user,
-      (tx) =>
-        tx.project.findMany({
+      async (tx) => {
+        const projects = await tx.project.findMany({
           where: {
             ...roleWhere,
             dueDate: {
@@ -247,7 +252,11 @@ export class DashboardService {
               },
             },
           },
-        }),
+        });
+
+        // Same CLIENT-role mask as the REST project list.
+        return projects.map((p) => withProjectQuote(p, user));
+      },
       workspaceId,
     );
   }

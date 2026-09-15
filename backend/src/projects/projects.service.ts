@@ -385,7 +385,10 @@ export class ProjectsService {
           budgetSummary: this.toBudgetSummary(project, loggedSecondsByProject.get(project.id) ?? 0),
         }));
 
-        return { projects: enriched, total };
+        // CLIENT-role mask on the LIST surface (same serializer as get_project):
+        // strips the commercial columns, the quote foreign ids, and the
+        // `budgetSummary` rollup. Staff/admin rows pass through untouched.
+        return { projects: enriched.map((p) => withProjectQuote(p, user)), total };
       },
       workspaceId,
     );

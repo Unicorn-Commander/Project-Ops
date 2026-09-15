@@ -199,3 +199,73 @@ describe('ProjectsService.findOne — CLIENT-role quote metadata masking', () =>
     expect(out.defaultBillRate).toBe('150.0000');
   });
 });
+
+describe('ProjectsService.findAll — CLIENT-role masking on the list', () => {
+  const client = { id: 'c1', email: 'client@x.co', role: 'CLIENT' } as any;
+  const staff = { id: 'u1', email: 'a@x.co', role: 'ADMIN' } as any;
+  const PROJECT_META = {
+    quote: {
+      customer_ops_quote_id: 'q-1',
+      number: 'Q-2026-0001',
+      version: 1,
+      share_url: 'https://customers.example.dev/q/tok',
+      schedule_ids: ['sched-1'],
+    },
+    quoteSummary: { title: 'Order Pad', currency: 'USD', status: 'accepted' },
+  };
+  const projectRow = () => ({
+    id: 'p1',
+    projectNumber: 'PROJ-1',
+    title: 'Order Pad',
+    metadata: PROJECT_META,
+    defaultBillRate: '150.0000',
+    budgetAmount: '4300.00',
+    budgetHours: '40',
+    billingNotes: 'Quote Q-2026-0001 v1',
+  });
+
+  const makeListTx = () => ({
+    project: {
+      findMany: jest.fn(async () => [projectRow()]),
+      count: jest.fn(async () => 1),
+    },
+    task: { groupBy: jest.fn(async () => []) },
+    timeEntry: { groupBy: jest.fn(async () => []) },
+  });
+
+  it('strips commercial columns + quote ids + budgetSummary for a CLIENT caller', async () => {
+    const { svc } = makeService({ tx: makeListTx() });
+    const out: any = await svc.findAll('ws1', client, {
+      skip: 0,
+      take: 20,
+      where: {},
+      orderBy: { createdAt: 'desc' },
+    });
+    const p = out.projects[0];
+    expect(p).not.toHaveProperty('defaultBillRate');
+    expect(p).not.toHaveProperty('budgetAmount');
+    expect(p).not.toHaveProperty('budgetHours');
+    expect(p).not.toHaveProperty('billingNotes');
+    expect(p.budgetSummary).toBeUndefined();
+    expect(p.taskStats).toEqual({ total: 0, completed: 0 });
+    expect(p.quote).toEqual({
+      number: 'Q-2026-0001',
+      version: 1,
+      share_url: 'https://customers.example.dev/q/tok',
+    });
+    const wire = JSON.stringify(p);
+    expect(wire).not.toContain('customer_ops_quote_id');
+    expect(wire).not.toContain('sched-1');
+    expect(wire).not.toContain('150.0000');
+    expect(wire).not.toContain('4300');
+  });
+
+  it('leaves commercial columns + budgetSummary for a STAFF caller', async () => {
+    const { svc } = makeService({ tx: makeListTx() });
+    const out: any = await svc.findAll('ws1', staff, {});
+    const p = out.projects[0];
+    expect(p.defaultBillRate).toBe('150.0000');
+    expect(p.budgetSummary.budgetAmount).toBe('4300.00');
+    expect(p.budgetSummary.budgetHours).toBe(40);
+  });
+});

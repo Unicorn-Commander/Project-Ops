@@ -1033,8 +1033,8 @@ export class TasksService {
   async getUserTasks(workspaceId: string, user: User, userId: string) {
     return this.workspaceContext.runForUser(
       user,
-      (tx) =>
-        tx.task.findMany({
+      async (tx) => {
+        const tasks = await tx.task.findMany({
           where: { assignedToId: userId },
           orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
           include: {
@@ -1060,7 +1060,9 @@ export class TasksService {
               },
             },
           },
-        }),
+        });
+        return tasks.map((t) => withTaskMetadataForRole(t, user));
+      },
       workspaceId,
     );
   }
@@ -1073,8 +1075,8 @@ export class TasksService {
 
     return this.workspaceContext.runForUser(
       user,
-      (tx) =>
-        tx.task.findMany({
+      async (tx) => {
+        const tasks = await tx.task.findMany({
           where: {
             dueDate: {
               lt: now,
@@ -1109,7 +1111,9 @@ export class TasksService {
               },
             },
           },
-        }),
+        });
+        return tasks.map((t) => withTaskMetadataForRole(t, user));
+      },
       workspaceId,
     );
   }
@@ -1135,7 +1139,7 @@ export class TasksService {
           throw new NotFoundException(`Task with ID ${parentTaskId} not found`);
         }
 
-        return tx.task.findMany({
+        const tasks = await tx.task.findMany({
           where: { parentTaskId },
           orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
           include: {
@@ -1163,6 +1167,7 @@ export class TasksService {
             },
           },
         });
+        return tasks.map((t) => withTaskMetadataForRole(t, user));
       },
       workspaceId,
     );

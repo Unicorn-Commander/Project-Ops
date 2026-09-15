@@ -11,6 +11,20 @@
  * share_url) plus a blocklist of commercial columns. The task mask is a
  * whitelist of client-safe quote-line keys (number, version, line_kind,
  * position, weeks) and drops foreign ids wherever they appear.
+ *
+ * MASKING STRATEGY (L2b decision, documented): we use a **recursive blocklist**
+ * for task `metadata` and a **blocklist of commercial columns** for the project
+ * row — NOT a full allowlist serializer. Rationale:
+ *   - An allowlist on every read route would have to enumerate each client-safe
+ *     Task/Project field and would silently drop any column added later (a
+ *     fail-open client contract we can't maintain across the suite).
+ *   - A recursive blocklist instead drops the KNOWN foreign ids
+ *     (customer_ops_quote_id / customer_ops_line_id / schedule_ids) at ANY depth
+ *     of the metadata bag and treats the `quote` subtree as a narrow allowlist
+ *     (CLIENT_TASK_QUOTE_KEYS), because that is the one known, Customer-Ops-
+ *     owned place foreign ids are written. This is fail-closed for the ids we
+ *     must protect (they are uniquely ours to mint) and forward-compatible with
+ *     new, client-safe metadata keys.
  */
 
 import { User, UserRole } from '@prisma/client';
@@ -59,6 +73,13 @@ export function withProjectQuote<T extends { metadata: unknown }>(
   const row = { ...project } as Record<string, unknown>;
   for (const field of CLIENT_MASKED_PROJECT_FIELDS) delete row[field];
 
+  // The GET /projects list attaches a `budgetSummary` rollup (budgetHours /
+  // budgetAmount / loggedHours / pctHours) for the master-schedule UI. That is
+  // studio-commercial too — a CLIENT must not receive money or hour-budget
+  // figures through it — so drop the whole rollup. `taskStats` (total/completed
+  // task counts) stays: it is neutral progress, not commercial.
+  delete row.budgetSummary;
+
   const masked = ref ? maskProjectQuoteRefForClient(ref) : null;
   const meta = row.metadata;
   if (meta && typeof meta === 'object' && 'quote' in (meta as Record<string, unknown>)) {
@@ -70,26 +91,49 @@ export function withProjectQuote<T extends { metadata: unknown }>(
   return row as T & { quote: unknown };
 }
 
-/** Strip quote foreign ids from a JSON-ish metadata bag. Staff: identity. */
-export function maskTaskMetadataForClient(metadata: unknown): unknown {
-  if (metadata === null || metadata === undefined) return metadata;
-  if (typeof metadata !== 'object' || Array.isArray(metadata)) return metadata;
-  const src = metadata as Record<string, unknown>;
+/**
+ * Whitelist a `quote` subtree to the client-safe line keys. `quote` is the one
+ * metadata key Customer-Ops writes foreign ids into, so an allowlist there is
+ * the fail-closed default; every other key is passed through (or recursed into)
+ * by the blocklist above.
+ */
+function maskQuoteSubtreeForClient(q: Record<string, unknown>): Record<string, unknown> {
+  const masked: Record<string, unknown> = {};
+  for (const key of CLIENT_TASK_QUOTE_KEYS) {
+    if (key in q) masked[key] = q[key];
+  }
+  return masked;
+}
+
+/**
+ * Recursive blocklist over a JSON-ish metadata bag. Drops the foreign-id keys
+ * at ANY depth (arrays and nested objects included) and whitelists `quote`
+ * subtrees; everything else passes through unchanged. Primitives and arrays of
+ * primitives are returned as-is (arrays are mapped so ids inside them are still
+ * stripped).
+ */
+function maskMetadataValueForClient(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map(maskMetadataValueForClient);
+  if (typeof value !== 'object') return value;
+
+  const src = value as Record<string, unknown>;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(src)) {
     if (FOREIGN_ID_KEYS.has(k)) continue;
     if (k === 'quote' && v && typeof v === 'object' && !Array.isArray(v)) {
-      const q = v as Record<string, unknown>;
-      const masked: Record<string, unknown> = {};
-      for (const key of CLIENT_TASK_QUOTE_KEYS) {
-        if (key in q) masked[key] = q[key];
-      }
+      const masked = maskQuoteSubtreeForClient(v as Record<string, unknown>);
       if (Object.keys(masked).length > 0) out.quote = masked;
       continue;
     }
-    out[k] = v;
+    out[k] = maskMetadataValueForClient(v);
   }
   return out;
+}
+
+/** Strip quote foreign ids from a JSON-ish metadata bag. Staff: identity. */
+export function maskTaskMetadataForClient(metadata: unknown): unknown {
+  return maskMetadataValueForClient(metadata);
 }
 
 export function withTaskMetadataForRole<T>(task: T, user: Pick<User, 'role'>): T {

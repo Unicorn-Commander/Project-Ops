@@ -71,3 +71,63 @@ describe('DashboardService.getProjectBreakdown', () => {
     }
   });
 });
+
+describe('DashboardService — CLIENT-role masking on full-row project summaries', () => {
+  const projectRow = () => ({
+    id: 'p1',
+    projectNumber: 'PROJ-1',
+    title: 'Order Pad',
+    metadata: {
+      quote: {
+        customer_ops_quote_id: 'q-1',
+        number: 'Q-2026-0001',
+        version: 1,
+        share_url: 'https://customers.example.dev/q/tok',
+        schedule_ids: ['sched-1'],
+      },
+    },
+    defaultBillRate: '150.0000',
+    budgetAmount: '4300.00',
+    budgetHours: '40',
+    billingNotes: 'Quote Q-2026-0001 v1',
+  });
+
+  function makeListService(findManyImpl: (args: any) => Promise<any[]>) {
+    const findMany = jest.fn(async (args: any) => findManyImpl(args));
+    const tx = { project: { findMany } };
+    const workspaceContext = {
+      runForUser: jest.fn(async (_u: any, fn: (t: any) => any) => fn(tx)),
+    };
+    const svc = new DashboardService({} as any, workspaceContext as any);
+    return { svc, findMany };
+  }
+
+  it('getRecentProjects strips commercial columns + quote ids for a CLIENT', async () => {
+    const { svc, findMany } = makeListService(async () => [projectRow()]);
+    const out: any = await svc.getRecentProjects({ project: { findMany } } as any, 10, client);
+    const p = out[0];
+    expect(p).not.toHaveProperty('defaultBillRate');
+    expect(p).not.toHaveProperty('budgetAmount');
+    expect(p).not.toHaveProperty('budgetHours');
+    expect(p).not.toHaveProperty('billingNotes');
+    expect(JSON.stringify(p)).not.toContain('customer_ops_quote_id');
+    expect(JSON.stringify(p)).not.toContain('sched-1');
+  });
+
+  it('getRecentProjects leaves full rows for an ADMIN', async () => {
+    const { svc, findMany } = makeListService(async () => [projectRow()]);
+    const out: any = await svc.getRecentProjects({ project: { findMany } } as any, 10, admin);
+    expect(out[0].defaultBillRate).toBe('150.0000');
+    expect(out[0].metadata.quote.customer_ops_quote_id).toBe('q-1');
+  });
+
+  it('getUpcomingDueDates strips commercial columns + quote ids for a CLIENT', async () => {
+    const { svc } = makeListService(async () => [projectRow()]);
+    const out: any = await svc.getUpcomingDueDates('ws1', 7, client);
+    const p = out[0];
+    expect(p).not.toHaveProperty('defaultBillRate');
+    expect(p).not.toHaveProperty('budgetAmount');
+    expect(p).not.toHaveProperty('billingNotes');
+    expect(JSON.stringify(p)).not.toContain('customer_ops_quote_id');
+  });
+});
