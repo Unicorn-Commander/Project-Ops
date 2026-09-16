@@ -122,6 +122,7 @@ jobs:
             "20260609000000_phase2_tenancy_cols"
             "20260609120000_phase2_workspace_seed"
             "20260610090000_mu_canonical_rekey"
+            "20260916040000_manual_workspace_invitations"
           )
           for m in "${MIGRATIONS[@]}"; do
             file="prisma/migrations/${m}/migration.sql"
@@ -163,6 +164,12 @@ jobs:
         # test:rls reads PROJECT_OPS_APP_DATABASE_URL (set in job env above), so
         # the suite runs — it would self-skip if that URL were unset.
         run: npm run test:rls
+
+      - name: Manual invitations (real HTTP guards and non-bypass database)
+        env:
+          INVITATION_ADMIN_DATABASE_URL: postgresql://postgres:REMOVED@postgres:5432/project_ops?schema=public
+          INVITATION_APP_DATABASE_URL: postgresql://project_ops_app:REMOVED@postgres:5432/project_ops?schema=public
+        run: npx jest --config tests/jest-integration.json --runInBand --runTestsByPath tests/integration/invitations/workspace-invitations.integration.test.ts
 
   # ---------------------------------------------------------------------------
   # FRONTEND — install, lint, typecheck, production build.
