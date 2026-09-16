@@ -1,3 +1,4 @@
+import { tenancyEnabled } from '../common/workspace/feature-flags';
 import {
   Injectable,
   UnauthorizedException,
@@ -31,6 +32,7 @@ export interface JwtPayload {
   email: string;
   role: string;
   username: string;
+  email_verified?: boolean;
 }
 
 @Injectable()
@@ -172,10 +174,28 @@ export class AuthService {
 
     if (!user && email) {
       // Check if a local user exists with this email (link accounts)
-      user = await this.usersService.findByEmail(email);
+      const matches = await this.prisma.user.findMany({
+        where: { email: { equals: email.trim().toLowerCase(), mode: 'insensitive' } },
+        take: 2,
+      });
+      if (matches.length > 1) throw new UnauthorizedException('Ambiguous email identity.');
+      user = matches[0] ?? null;
       if (user) {
-        // Link existing local account to Keycloak
-        await this.usersService.update(user.id, { keycloakId });
+        if (user.keycloakId && user.keycloakId !== keycloakId) {
+          throw new UnauthorizedException('This email is linked to a different identity.');
+        }
+        // Only link an unbound existing account; never replace a known subject.
+        if (!user.keycloakId && profile.email_verified !== true) {
+          throw new UnauthorizedException('Verified email required to link an identity.');
+        }
+        await this.prisma.user.updateMany({
+          where: { id: user.id, keycloakId: null },
+          data: { keycloakId },
+        });
+        user = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+        if (user.keycloakId !== keycloakId) {
+          throw new UnauthorizedException('This email is linked to a different identity.');
+        }
         this.logger.log(`Linked existing user ${email} to Keycloak ID ${keycloakId}`);
       }
     }
@@ -188,7 +208,22 @@ export class AuthService {
       // JIT-provision and at what role. See `auth/access-list.ts` +
       // `auth/entitlements.client.ts`.
       const access = resolvedAccess ?? (await this.resolveSsoAccess(email, accessToken));
-      if (!access.allowed) {
+      const invited =
+        tenancyEnabled(getEnv) &&
+        !entitlementsEnabled(getEnv) &&
+        !access.allowed &&
+        profile.email_verified === true &&
+        typeof email === 'string' &&
+        !!(await this.prisma.workspaceInvitation.findFirst({
+          where: {
+            email: email.trim().toLowerCase(),
+            status: 'pending',
+            expiresAt: { gt: new Date() },
+            workspace: { status: 'active' },
+          },
+          select: { id: true },
+        }));
+      if (!access.allowed && !invited) {
         this.logger.warn(`Rejected SSO JIT for ${email || '(no email)'} — ${access.reason}`);
         throw new UnauthorizedException(
           'You are not authorized for Project-Ops. Contact your administrator.',
@@ -205,7 +240,7 @@ export class AuthService {
         firstName: profile.given_name || profile.firstName || '',
         lastName: profile.family_name || profile.lastName || '',
         keycloakId,
-        role: access.role,
+        role: invited ? UserRole.STAFF : access.role,
       });
 
       this.logger.log(
@@ -217,7 +252,12 @@ export class AuthService {
       throw new UnauthorizedException('User account is inactive');
     }
 
-    return user;
+    return Object.assign(user, {
+      __verifiedEmail:
+        profile.email_verified === true &&
+        typeof email === 'string' &&
+        email.trim().toLowerCase() === user.email.trim().toLowerCase(),
+    });
   }
 
   /**
@@ -309,6 +349,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       username: user.username,
+      email_verified: (user as any).__verifiedEmail === true,
     };
 
     return {
@@ -402,6 +443,12 @@ export class AuthService {
       const subLooksLikeEmail = typeof payload.sub === 'string' && payload.sub.includes('@');
       const profile = {
         email: payload.email ?? (subLooksLikeEmail ? payload.sub : undefined),
+        email_verified:
+          isKeycloakRealmToken &&
+          !payload.act &&
+          !payload.client_id &&
+          !payload.clientId &&
+          payload.email_verified === true,
         preferred_username: payload.preferred_username,
         given_name: payload.given_name,
         family_name: payload.family_name,
@@ -414,7 +461,12 @@ export class AuthService {
     if (!user || !user.isActive) {
       throw new UnauthorizedException('User not found or inactive');
     }
-    return user;
+    return Object.assign(user, {
+      __verifiedEmail:
+        payload.email_verified === true &&
+        typeof payload.email === 'string' &&
+        payload.email.trim().toLowerCase() === user.email.trim().toLowerCase(),
+    });
   }
 
   /**

@@ -34,6 +34,7 @@ export class AuthController {
   }
 
   @Get('profile')
+  @SkipWorkspaceMembership()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Get current user profile' })

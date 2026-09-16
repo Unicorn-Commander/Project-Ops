@@ -1,3 +1,5 @@
+import { WorkspaceInvitationsController } from './workspace-invitations.controller';
+import { WorkspaceInvitationsService } from './workspace-invitations.service';
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuditModule } from '../audit/audit.module';
@@ -18,8 +20,13 @@ import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membersh
  */
 @Module({
   imports: [PrismaModule, AuditModule],
-  controllers: [WorkspacesController],
-  providers: [WorkspacesService, MembershipService, WorkspaceMembershipGuard],
+  controllers: [WorkspacesController, WorkspaceInvitationsController],
+  providers: [
+    WorkspaceInvitationsService,
+    WorkspacesService,
+    MembershipService,
+    WorkspaceMembershipGuard,
+  ],
   exports: [WorkspacesService],
 })
 export class WorkspacesModule {}

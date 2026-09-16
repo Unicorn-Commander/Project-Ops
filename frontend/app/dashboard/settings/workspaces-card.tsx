@@ -1,5 +1,6 @@
 "use client";
 
+import { AcceptWorkspaceInvitation, ManualWorkspaceInvitation } from "@/components/workspace-invitations";
 import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -82,6 +83,7 @@ export function WorkspacesCard() {
 
   return (
     <>
+      <AcceptWorkspaceInvitation />
       <Card className="p-6">
         <div className="mb-6 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -322,6 +324,7 @@ function MembersPanel({
 
   return (
     <div className="border-t bg-muted/20 p-4">
+      {myRole === "OWNER" && <ManualWorkspaceInvitation workspaceId={workspaceId} />}
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm font-medium">
           <Users className="h-4 w-4 text-muted-foreground" />
