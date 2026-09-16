@@ -50,7 +50,8 @@ jobs:
           POSTGRES_PASSWORD: pw
           POSTGRES_DB: project_ops
         ports:
-          - 5432:5432
+          # Each push/PR job receives its own host port; concurrent runs must not collide.
+          - "5432"
         options: >-
           --health-cmd "pg_isready -U postgres -d project_ops"
           --health-interval 5s
@@ -60,11 +61,12 @@ jobs:
     env:
       # Owner/admin URL (superuser) — db push, migrations, and seeds run here,
       # exactly as run.sh uses DATABASE_URL.
-      DATABASE_URL: postgresql://postgres:REMOVED@localhost:5432/project_ops?schema=public
+      PGPORT: ${{ job.services.postgres.ports[5432] }}
+      DATABASE_URL: postgresql://postgres:REMOVED@localhost:${{ job.services.postgres.ports[5432] }}/project_ops?schema=public
       # Non-bypass runtime URL the RLS test connects as. The password
       # 'verify_app' is set idempotently by the rls_roles migration's
       # CREATE/ALTER ROLE project_ops_app ... PASSWORD 'verify_app'.
-      PROJECT_OPS_APP_DATABASE_URL: postgresql://project_ops_app:REMOVED@localhost:5432/project_ops?schema=public
+      PROJECT_OPS_APP_DATABASE_URL: postgresql://project_ops_app:REMOVED@localhost:${{ job.services.postgres.ports[5432] }}/project_ops?schema=public
 
     steps:
       - uses: actions/checkout@v4
