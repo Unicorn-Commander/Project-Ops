@@ -20,6 +20,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole, User } from '@prisma/client';
 import { AuthService } from '../auth/auth.service';
+import { CurrentWorkspace } from '../common/workspace/current-workspace.decorator';
 
 @ApiTags('users')
 @Controller('users')
@@ -98,8 +99,12 @@ export class UsersController {
   @ApiOperation({ summary: 'Get user by ID' })
   @ApiResponse({ status: 200, description: 'Returns user details' })
   @ApiResponse({ status: 404, description: 'User not found' })
-  findOne(@Param('id') id: string) {
-    return this.usersService.findOne(id);
+  findOne(
+    @Param('id') id: string,
+    @CurrentUser() user: User,
+    @CurrentWorkspace() workspaceId: string,
+  ) {
+    return this.usersService.findPublicOne(id, user, workspaceId);
   }
 
   @Patch(':id')

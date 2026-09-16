@@ -13,6 +13,7 @@ import { initializeOpenTelemetry } from './telemetry/opentelemetry';
 import { WinstonModule } from 'nest-winston';
 import { createLogger } from './common/logger/winston.config';
 import { SentryFilter } from './common/filters/sentry.filter';
+import { PublicUserInterceptor } from './common/serialization/public-user.interceptor';
 
 async function bootstrap() {
   // Initialize OpenTelemetry
@@ -28,6 +29,7 @@ async function bootstrap() {
   // Security
   app.use(helmet());
   app.use(compression());
+  app.useGlobalInterceptors(new PublicUserInterceptor());
 
   // Body size limit - Allow up to 100MB file uploads
   // Preserve bootstrap module-loading order after instrumentation setup.
