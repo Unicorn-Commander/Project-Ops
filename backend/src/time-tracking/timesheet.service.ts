@@ -100,6 +100,7 @@ export class TimesheetService {
     );
 
     this.events.emit('timesheet.submitted', {
+      workspaceId,
       timesheetPeriodId: period.id,
       userId: user.id,
       entryCount,
@@ -119,7 +120,7 @@ export class TimesheetService {
 
     // Target-id resolution + bulk approve + period close + audit are ONE
     // workspace tx (RLS-scoped, atomic).
-    const count = await this.workspaceContext.runForUser(
+    const { count, userIds } = await this.workspaceContext.runForUser(
       approver,
       async (tx) => {
         const entryIds = await this.targetEntryIds(
@@ -155,12 +156,21 @@ export class TimesheetService {
           details: { action: 'approve_time', count: result.count, periodId: dto.timesheetPeriodId },
         });
 
-        return result.count;
+        const recipients = await tx.timeEntry.findMany({
+          where: { workspaceId, id: { in: entryIds } },
+          select: { userId: true },
+        });
+        return {
+          count: result.count,
+          userIds: [...new Set(recipients.map((entry) => entry.userId))],
+        };
       },
       workspaceId,
     );
 
     this.events.emit('timesheet.approved', {
+      workspaceId,
+      userIds,
       timesheetPeriodId: dto.timesheetPeriodId ?? null,
       approvedBy: approver.id,
       count,
@@ -180,7 +190,7 @@ export class TimesheetService {
 
     // Target-id resolution + bulk reject + period status + audit are ONE
     // workspace tx (RLS-scoped, atomic).
-    const count = await this.workspaceContext.runForUser(
+    const { count, userIds } = await this.workspaceContext.runForUser(
       approver,
       async (tx) => {
         const entryIds = await this.targetEntryIds(
@@ -219,12 +229,21 @@ export class TimesheetService {
           details: { action: 'reject_time', count: result.count, reason: dto.reason },
         });
 
-        return result.count;
+        const recipients = await tx.timeEntry.findMany({
+          where: { workspaceId, id: { in: entryIds } },
+          select: { userId: true },
+        });
+        return {
+          count: result.count,
+          userIds: [...new Set(recipients.map((entry) => entry.userId))],
+        };
       },
       workspaceId,
     );
 
     this.events.emit('timesheet.rejected', {
+      workspaceId,
+      userIds,
       timesheetPeriodId: dto.timesheetPeriodId ?? null,
       rejectedBy: approver.id,
       count,

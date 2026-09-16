@@ -174,6 +174,32 @@ export class MembershipService {
     return def.workspaceId;
   }
 
+  /** Re-read authority for every write, including calls on an existing MCP server. */
+  async assertCanWrite(user: User, workspaceId: string): Promise<void> {
+    if (!this.enabled) return;
+    const member = await this.prisma.membership.findUnique({
+      where: {
+        userKey_workspaceId: { userKey: MembershipService.membershipKey(user), workspaceId },
+      },
+      include: { workspace: { select: { status: true } } },
+    });
+    if (
+      !member ||
+      member.status !== MembershipStatus.ACTIVE ||
+      member.workspace.status !== 'active' ||
+      ![
+        WorkspaceRole.MEMBER,
+        WorkspaceRole.MANAGER,
+        WorkspaceRole.ADMIN,
+        WorkspaceRole.OWNER,
+      ].includes(member.role as any)
+    ) {
+      throw new ForbiddenException(
+        'An active MEMBER or higher workspace role is required for this operation.',
+      );
+    }
+  }
+
   /**
    * If `user` is on the SSO allow-list but has no membership yet, seed one into
    * the bootstrap workspace at the role mapped from their access-list role.

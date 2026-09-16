@@ -1,3 +1,22 @@
+import { TimesheetService } from '../../../src/time-tracking/timesheet.service';
+import { TriageController } from '../../../src/triage/triage.controller';
+import { TriageService } from '../../../src/triage/triage.service';
+import { ClientPortalController } from '../../../src/client-portal/client-portal.controller';
+import { ApprovalsService } from '../../../src/client-portal/approvals/approvals.service';
+import { PatController } from '../../../src/auth/pat/pat.controller';
+import { io, Socket as ClientSocket } from 'socket.io-client';
+import { RealtimeGateway } from '../../../src/websocket/realtime.gateway';
+import { ClientPortalService } from '../../../src/client-portal/client-portal.service';
+import { WorkspaceContextService } from '../../../src/common/workspace/workspace-context.service';
+import { ProjectsController } from '../../../src/projects/projects.controller';
+import { ProjectsService } from '../../../src/projects/projects.service';
+import { TasksController } from '../../../src/tasks/tasks.controller';
+import { TasksService } from '../../../src/tasks/tasks.service';
+import { TimeEntriesController } from '../../../src/time-tracking/time-entries.controller';
+import { TimeEntryService } from '../../../src/time-tracking/time-entry.service';
+import { TimerService } from '../../../src/time-tracking/timer.service';
+import { McpController } from '../../../src/mcp/mcp.controller';
+import { McpService } from '../../../src/mcp/mcp.service';
 import { spawn } from 'child_process';
 import { WorkspacesController } from '../../../src/workspaces/workspaces.controller';
 import { WorkspacesService } from '../../../src/workspaces/workspaces.service';
@@ -33,7 +52,9 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
     membership: MembershipService,
     invites: WorkspaceInvitationsService,
     config: ConfigService,
-    pat: PatService;
+    pat: PatService,
+    workspace: WorkspaceContextService,
+    mcp: McpService;
   const mail = jest.fn(() => {
     throw new Error('No outbound email permitted');
   });
@@ -62,11 +83,67 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
     );
     invites = new WorkspaceInvitationsService(prisma);
     pat = new PatService(prisma, membership);
+    workspace = new WorkspaceContextService(config, prisma, membership);
+    const events = { emit: jest.fn() } as any;
+    const projects = new ProjectsService(prisma, { log: jest.fn() } as any, workspace, events);
+    const tasks = new TasksService(prisma, workspace, { sendEmail: mail } as any, config, events);
+    const unused = {} as any;
+    mcp = new McpService(
+      prisma,
+      unused,
+      unused,
+      workspace,
+      unused,
+      unused,
+      unused,
+      unused,
+      unused,
+      events,
+      unused,
+      unused,
+      unused,
+      unused,
+      unused,
+      unused,
+    );
     const module = await Test.createTestingModule({
       imports: [PassportModule.register({ defaultStrategy: 'jwt' })],
-      controllers: [WorkspaceInvitationsController, AuthController, WorkspacesController],
+      controllers: [
+        WorkspaceInvitationsController,
+        AuthController,
+        WorkspacesController,
+        ProjectsController,
+        TasksController,
+        TimeEntriesController,
+        McpController,
+        TriageController,
+        ClientPortalController,
+        PatController,
+      ],
       providers: [
         JwtStrategy,
+        { provide: ApprovalsService, useValue: {} },
+        RealtimeGateway,
+        { provide: JwtService, useValue: jwt },
+        { provide: WorkspaceContextService, useValue: workspace },
+        {
+          provide: ClientPortalService,
+          useValue: new ClientPortalService(
+            workspace,
+            { log: jest.fn() } as any,
+            events,
+            {} as any,
+          ),
+        },
+        { provide: ProjectsService, useValue: projects },
+        {
+          provide: TriageService,
+          useValue: new TriageService(config, prisma, workspace, projects, tasks),
+        },
+        { provide: TasksService, useValue: tasks },
+        { provide: TimerService, useValue: unused },
+        { provide: TimeEntryService, useValue: unused },
+        { provide: McpService, useValue: mcp },
         { provide: APP_GUARD, useClass: JwtAuthGuard },
         { provide: APP_GUARD, useClass: WorkspaceMembershipGuard },
         { provide: AuthService, useValue: auth },
@@ -96,6 +173,11 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
   afterAll(async () => {
     expect(mail).not.toHaveBeenCalled();
     await app?.close();
+    await admin.comment.deleteMany({ where: { workspaceId: { in: created } } });
+    await admin.timeEntry.deleteMany({ where: { workspaceId: { in: created } } });
+    await admin.task.deleteMany({ where: { workspaceId: { in: created } } });
+    await admin.project.deleteMany({ where: { workspaceId: { in: created } } });
+    await admin.contact.deleteMany({ where: { workspaceId: { in: created } } });
     await admin.workspace.deleteMany({ where: { id: { in: created } } });
     await admin.user.deleteMany({
       where: { email: { endsWith: '@workspace-invite.example', mode: 'insensitive' } },
@@ -130,7 +212,7 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
     return { owner, ws };
   }
   const token = (u: User, verified = true) =>
-    jwt.sign({ sub: u.id, email: u.email, email_verified: verified });
+    jwt.sign({ sub: u.id, email: u.email, email_verified: verified }, { expiresIn: '1h' });
   const post = (u: User, path: string, body: any, verified = true) =>
     request(app.getHttpServer())
       .post(path)
@@ -455,6 +537,405 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
     expect(response.status).toBe(200);
     await expect(login(g.invited)).rejects.toThrow();
   });
+  it('VIEWER session and overscoped PAT cannot write REST projects/tasks/time; MEMBER writes still work', async () => {
+    const f = await fixture();
+    await admin.membership.update({
+      where: { userKey_workspaceId: { userKey: f.owner.keycloakId!, workspaceId: f.ws.id } },
+      data: { role: 'VIEWER' },
+    });
+    const mint = await post(f.owner, '/auth/pats', {
+      name: 'Viewer personal token',
+      scopes: ['read:projects'],
+      workspaceId: f.ws.id,
+      expiresAt: new Date(Date.now() + 60000).toISOString(),
+    });
+    expect(mint.status).toBe(201);
+    expect(
+      (
+        await post(f.owner, '/client-portal/projects/unknown/comments', {
+          content: 'Denied staff viewer',
+        })
+      ).status,
+    ).toBe(403);
+    const p = await pat.create(f.owner, {
+      name: 'isolated overscoped fixture',
+      scopes: ['read:projects', 'write:projects', 'write:tasks', 'write:time'],
+      workspaceId: f.ws.id,
+      expiresAt: new Date(Date.now() + 60000),
+    });
+    for (const credential of [token(f.owner), p.plaintext])
+      for (const path of ['/projects', '/tasks', '/time-entries', '/time-entries/timer/start']) {
+        expect(
+          (
+            await request(app.getHttpServer())
+              .post(path)
+              .set('Authorization', 'Bearer ' + credential)
+              .send({ title: 'Denied', clientName: 'Fixture' })
+          ).status,
+        ).toBe(403);
+      }
+    expect(await admin.project.count({ where: { workspaceId: f.ws.id } })).toBe(0);
+    expect(
+      (
+        await request(app.getHttpServer())
+          .get('/projects')
+          .set('Authorization', 'Bearer ' + token(f.owner))
+      ).status,
+    ).toBe(200);
+    await admin.membership.update({
+      where: { userKey_workspaceId: { userKey: f.owner.keycloakId!, workspaceId: f.ws.id } },
+      data: { role: 'MEMBER' },
+    });
+    expect(
+      (await post(f.owner, '/projects', { title: 'Member project', clientName: 'Fixture' })).status,
+    ).toBe(201);
+    const ingest = await request(app.getHttpServer())
+      .post('/triage/ingest')
+      .set('Authorization', 'Bearer ' + token(f.owner))
+      .set('X-Workspace-Id', f.ws.id)
+      .send({ items: [] });
+    expect(ingest.status).toBe(201);
+    expect(ingest.body.created).toBe(0);
+    expect(await admin.project.count({ where: { workspaceId: f.ws.id } })).toBe(1);
+    await admin.membership.update({
+      where: { userKey_workspaceId: { userKey: f.owner.keycloakId!, workspaceId: f.ws.id } },
+      data: { role: 'VIEWER' },
+    });
+    expect(
+      (await post(f.owner, '/projects', { title: 'Denied after demotion', clientName: 'Fixture' }))
+        .status,
+    ).toBe(403);
+  });
+  it('real MCP POST permits reads but denies session and overscoped PAT writes; role revocation is fresh', async () => {
+    const f = await fixture();
+    await admin.membership.update({
+      where: { userKey_workspaceId: { userKey: f.owner.keycloakId!, workspaceId: f.ws.id } },
+      data: { role: 'VIEWER' },
+    });
+    const p = await pat.create(f.owner, {
+      name: 'isolated MCP fixture',
+      scopes: ['read:projects', 'write:projects'],
+      workspaceId: f.ws.id,
+      expiresAt: new Date(Date.now() + 60000),
+    });
+    async function rpc(credential: string, name: string, args = {}) {
+      const r = await request(app.getHttpServer())
+        .post('/mcp')
+        .set('Authorization', 'Bearer ' + credential)
+        .set('Accept', 'application/json, text/event-stream')
+        .send({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
+      expect(r.status).toBe(200);
+      const row = r.text.split('\n').find((x) => x.startsWith('data: '));
+      return row ? JSON.parse(row.slice(6)).result : r.body.result;
+    }
+    for (const credential of [token(f.owner), p.plaintext]) {
+      expect((await rpc(credential, 'list_my_projects')).isError).not.toBe(true);
+      const denied = await rpc(credential, 'create_project', {
+        title: 'Denied MCP',
+        clientName: 'Fixture',
+      });
+      expect(denied.isError).toBe(true);
+      expect(JSON.parse(denied.content[0].text).error).toBe('workspace_write_denied');
+    }
+    await admin.membership.update({
+      where: { userKey_workspaceId: { userKey: f.owner.keycloakId!, workspaceId: f.ws.id } },
+      data: { role: 'MEMBER' },
+    });
+    expect(
+      (
+        await rpc(token(f.owner), 'create_project', {
+          title: 'Member MCP project',
+          clientName: 'Fixture',
+        })
+      ).isError,
+    ).not.toBe(true);
+    expect(await admin.project.count({ where: { workspaceId: f.ws.id } })).toBe(1);
+    await admin.membership.update({
+      where: { userKey_workspaceId: { userKey: f.owner.keycloakId!, workspaceId: f.ws.id } },
+      data: { status: 'SUSPENDED' },
+    });
+    expect(
+      (
+        await request(app.getHttpServer())
+          .post('/mcp')
+          .set('Authorization', 'Bearer ' + p.plaintext)
+          .send({ jsonrpc: '2.0', id: 2, method: 'tools/list' })
+      ).status,
+    ).toBe(403);
+  });
+  it('actual triage guard order preserves only an allow-listed federation principal', async () => {
+    const f = await fixture();
+    // Inject only the identity boundary; the signed local fixture token still
+    // crosses the real HTTP guards, including federation then mutation guard.
+    const original = auth.validateJwtPayload.bind(auth);
+    const identity = jest.spyOn(auth, 'validateJwtPayload').mockImplementation(async (claims) => {
+      if (claims.sub === 'isolated-federation-order')
+        return AuthService.buildFederationPrincipal('meeting-ops');
+      return original(claims);
+    });
+    const credential = jwt.sign(
+      { sub: 'isolated-federation-order', workspace_id: f.ws.id },
+      { expiresIn: '1h' },
+    );
+    try {
+      config.set('PROJECT_OPS_FEDERATION_ACTORS', 'meeting-ops');
+      expect(
+        (
+          await request(app.getHttpServer())
+            .post('/triage/ingest')
+            .set('Authorization', 'Bearer ' + credential)
+            .send({ items: [] })
+        ).status,
+      ).toBe(201);
+      config.set('PROJECT_OPS_FEDERATION_ACTORS', '');
+      expect(
+        (
+          await request(app.getHttpServer())
+            .post('/triage/ingest')
+            .set('Authorization', 'Bearer ' + credential)
+            .send({ items: [] })
+        ).status,
+      ).toBe(403);
+    } finally {
+      identity.mockRestore();
+      config.set('PROJECT_OPS_FEDERATION_ACTORS', '');
+    }
+  });
+  it('timesheet decisions emit the exact tenant and affected user audience', async () => {
+    const f = await fixture();
+    const manager = await admin.user.update({
+      where: { id: f.owner.id },
+      data: { role: 'MANAGER' },
+    });
+    const project = await post(manager, '/projects', {
+      title: 'Time audience fixture',
+      clientName: 'Fixture',
+    });
+    expect(project.status).toBe(201);
+    const captured = jest.fn();
+    const service = new TimesheetService(
+      prisma,
+      { log: jest.fn() } as any,
+      { emit: captured } as any,
+      config,
+      workspace,
+    );
+    for (const decision of ['approve', 'reject'] as const) {
+      const entry = await admin.timeEntry.create({
+        data: {
+          workspaceId: f.ws.id,
+          userId: manager.id,
+          projectId: project.body.id,
+          startedAt: new Date('2026-09-01T10:00:00Z'),
+          endedAt: new Date('2026-09-01T10:01:00Z'),
+          durationSeconds: 60,
+          approvalStatus: 'SUBMITTED',
+        },
+      });
+      if (decision === 'approve')
+        await service.approve(f.ws.id, manager, { timeEntryIds: [entry.id] });
+      else
+        await service.reject(f.ws.id, manager, {
+          timeEntryIds: [entry.id],
+          reason: 'Synthetic fixture',
+        });
+      expect(captured).toHaveBeenCalledWith(
+        'timesheet.' + (decision === 'approve' ? 'approved' : 'rejected'),
+        expect.objectContaining({ workspaceId: f.ws.id, userIds: [manager.id], count: 1 }),
+      );
+    }
+  });
+  it('real sockets enforce project/CLIENT access, deny VIEWER updates and stop revoked recipients', async () => {
+    const f = await fixture(),
+      foreign = await fixture();
+    const createdProject = await post(f.owner, '/projects', {
+      title: 'Socket fixture',
+      clientName: 'Fixture',
+    });
+    expect(createdProject.status).toBe(201);
+    const pid = createdProject.body.id;
+    const peerEmail = email();
+    const peer = await admin.user.create({
+      data: {
+        email: peerEmail,
+        username: peerEmail,
+        firstName: 'Peer',
+        lastName: 'Fixture',
+        keycloakId: randomUUID(),
+        role: 'STAFF',
+      },
+    });
+    await admin.membership.create({
+      data: { userKey: peer.keycloakId!, workspaceId: f.ws.id, role: 'VIEWER' },
+    });
+    await app.listen(0, '127.0.0.1');
+    const port = (app.getHttpServer().address() as any).port;
+    const sockets: ClientSocket[] = [];
+    async function connect(user: User, workspaceId: string) {
+      const sock = io(`http://127.0.0.1:${port}/realtime`, {
+        auth: { token: token(user), workspaceId },
+        transports: ['websocket'],
+        reconnection: false,
+      });
+      sockets.push(sock);
+      await new Promise<void>((resolve, reject) => {
+        sock.once('connected', () => resolve());
+        sock.once('connect_error', reject);
+        setTimeout(() => reject(new Error('Socket fixture auth timeout')), 3000).unref();
+      });
+      return sock;
+    }
+    async function send(sock: ClientSocket, event: string, data: any, success: string) {
+      return new Promise<string>((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error('Socket response timeout: ' + event)),
+          2000,
+        );
+        const ok = () => {
+          clearTimeout(timer);
+          sock.off('error', error);
+          resolve(success);
+        };
+        const error = () => {
+          clearTimeout(timer);
+          sock.off(success, ok);
+          resolve('error');
+        };
+        sock.once(success, ok);
+        sock.once('error', error);
+        sock.emit(event, data);
+      });
+    }
+    const gateway = app.get(RealtimeGateway);
+    try {
+      const writer = await connect(f.owner, f.ws.id),
+        viewer = await connect(peer, f.ws.id),
+        outsider = await connect(foreign.owner, foreign.ws.id);
+      const events: any[] = [];
+      viewer.on('project-updated', (v) => events.push(v));
+      const outside: any[] = [];
+      outsider.on('project-updated', (v) => outside.push(v));
+      expect(await send(viewer, 'join-project', { projectId: pid }, 'joined-project')).toBe(
+        'joined-project',
+      );
+      expect(await send(outsider, 'join-project', { projectId: pid }, 'joined-project')).toBe(
+        'error',
+      );
+      expect(
+        await send(
+          viewer,
+          'project-update',
+          { projectId: pid, title: 'Forbidden' },
+          'project-update-accepted',
+        ),
+      ).toBe('error');
+      expect(
+        await send(
+          writer,
+          'project-update',
+          { projectId: pid, title: 'Allowed hint' },
+          'project-update-accepted',
+        ),
+      ).toBe('project-update-accepted');
+      await new Promise((r) => setTimeout(r, 50));
+      expect(events).toEqual([{ projectId: pid }]);
+      expect(outside).toHaveLength(0);
+      await admin.membership.update({
+        where: { userKey_workspaceId: { userKey: peer.keycloakId!, workspaceId: f.ws.id } },
+        data: { status: 'SUSPENDED' },
+      });
+      await gateway.broadcastToProject(pid, 'project-updated', {
+        projectId: pid,
+        title: 'After revoke',
+      });
+      await new Promise((r) => setTimeout(r, 50));
+      expect(events).toHaveLength(1);
+      expect(await send(viewer, 'join-project', { projectId: pid }, 'joined-project')).toBe(
+        'error',
+      );
+      // A CLIENT in the same workspace still cannot subscribe to an unassigned project.
+      await admin.membership.update({
+        where: { userKey_workspaceId: { userKey: peer.keycloakId!, workspaceId: f.ws.id } },
+        data: { status: 'ACTIVE' },
+      });
+      await admin.user.update({ where: { id: peer.id }, data: { role: 'CLIENT' } });
+      expect(await send(viewer, 'join-project', { projectId: pid }, 'joined-project')).toBe(
+        'error',
+      );
+      const contact = await admin.contact.create({
+        data: {
+          workspaceId: f.ws.id,
+          userId: peer.id,
+          createdById: f.owner.id,
+          firstName: 'Portal',
+          lastName: 'Fixture',
+          email: peer.email,
+        },
+      });
+      await admin.project.update({ where: { id: pid }, data: { contactId: contact.id } });
+      expect(await send(viewer, 'join-project', { projectId: pid }, 'joined-project')).toBe(
+        'joined-project',
+      );
+      await admin.membership.update({
+        where: { userKey_workspaceId: { userKey: peer.keycloakId!, workspaceId: f.ws.id } },
+        data: { role: 'MEMBER' },
+      });
+      expect(
+        await send(
+          viewer,
+          'project-update',
+          { projectId: pid, title: 'Client forged' },
+          'project-update-accepted',
+        ),
+      ).toBe('error');
+      const portalComment = await post(peer, `/client-portal/projects/${pid}/comments`, {
+        content: 'Allowed portal fixture',
+      });
+      expect(portalComment.status).toBe(201);
+      const comments: any[] = [];
+      viewer.on('comment-created', (v) => comments.push(v));
+      await gateway.handleCommentCreated({
+        projectId: pid,
+        comment: { id: 'internal', isInternal: true, content: 'Not for portal' },
+      });
+      await gateway.handleCommentCreated({
+        projectId: pid,
+        comment: {
+          id: 'public',
+          isInternal: false,
+          content: 'Portal content',
+          author: {
+            id: peer.id,
+            email: peer.email,
+            username: peer.username,
+            password: 'must-not-leak',
+            keycloakId: peer.keycloakId,
+          },
+        },
+      });
+      await new Promise((r) => setTimeout(r, 50));
+      expect(comments.map((x) => x.id)).toEqual(['public']);
+      expect(comments[0].author.password).toBeUndefined();
+      expect(comments[0].author.keycloakId).toBeUndefined();
+      // Timesheet metadata reaches only the target user/authorized approvers, never another tenant.
+      const ownerEvents: any[] = [];
+      const foreignEvents: any[] = [];
+      writer.on('timesheet-approved', (v) => ownerEvents.push(v));
+      outsider.on('timesheet-approved', (v) => foreignEvents.push(v));
+      await gateway.handleTimesheetApproved({
+        workspaceId: f.ws.id,
+        userIds: [f.owner.id],
+        count: 1,
+      });
+      await new Promise((r) => setTimeout(r, 50));
+      expect(ownerEvents).toHaveLength(1);
+      expect(foreignEvents).toHaveLength(0);
+      await expect(gateway.broadcastToAll('unsafe', { private: true })).rejects.toThrow();
+    } finally {
+      sockets.forEach((s) => s.disconnect());
+      await new Promise<void>((resolve) => app.getHttpServer().close(() => resolve()));
+    }
+  }, 15000);
   (process.env.INVITATION_BROWSER_URL ? it : it.skip)(
     'actual owner and invitee browser UI uses body-only capability and real guarded routes',
     async () => {

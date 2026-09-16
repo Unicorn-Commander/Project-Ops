@@ -1,3 +1,4 @@
+import { WorkspaceWriteException } from '../../common/workspace/workspace-write-policy.decorator';
 import {
   Body,
   Controller,
@@ -33,6 +34,7 @@ export class PatController {
   constructor(private readonly pats: PatService) {}
 
   @Post()
+  @WorkspaceWriteException('personal')
   @ApiBearerAuth('JWT-auth')
   @Throttle({ short: { limit: 10, ttl: 60_000 } })
   @ApiOperation({
@@ -72,6 +74,7 @@ export class PatController {
   }
 
   @Delete(':id')
+  @WorkspaceWriteException('personal')
   @ApiBearerAuth('JWT-auth')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Revoke a Personal Access Token' })

@@ -1,3 +1,4 @@
+import { getStoredWorkspaceId } from '@/lib/workspace';
 import { io, Socket } from 'socket.io-client';
 
 class WebSocketClient {
@@ -18,7 +19,7 @@ class WebSocketClient {
     const wsUrl = apiUrl.replace(/^http/, 'ws').replace(/\/api\/v1\/?$/, '');
 
     this.socket = io(`${wsUrl}/realtime`, {
-      auth: { token },
+      auth: { token, workspaceId: getStoredWorkspaceId() },
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
@@ -49,7 +50,10 @@ class WebSocketClient {
 
   joinProject(projectId: string) {
     if (!this.socket) return;
-    this.socket.emit('join-project', { projectId });
+    this.socket.emit('join-project', {
+      projectId,
+      workspaceId: getStoredWorkspaceId(),
+    });
   }
 
   leaveProject(projectId: string) {

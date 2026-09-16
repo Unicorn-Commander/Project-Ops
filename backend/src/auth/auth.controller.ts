@@ -1,3 +1,4 @@
+import { WorkspaceWriteException } from '../common/workspace/workspace-write-policy.decorator';
 import { Controller, Post, Body, UseGuards, Get, Req, Res, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -45,6 +46,7 @@ export class AuthController {
   }
 
   @Post('change-password')
+  @WorkspaceWriteException('personal')
   @Throttle({ short: { limit: 3, ttl: 3600000 } }) // 3 attempts per hour
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')

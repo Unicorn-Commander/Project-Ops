@@ -145,6 +145,7 @@ describe('TimeEntryService.remove — DRAFT/unlocked/unbilled only', () => {
     expect(out).toEqual({ message: 'Time entry deleted' });
     expect(deletedIds).toEqual(['e1']);
     expect(events.emit).toHaveBeenCalledWith('timeEntry.deleted', {
+      workspaceId: 'ws',
       projectId: 'p1',
       userId: 'u1',
       id: 'e1',

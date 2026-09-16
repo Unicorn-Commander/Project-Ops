@@ -6,7 +6,8 @@ import {
   Optional,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { User } from '@prisma/client';
+import { User, UserRole } from '@prisma/client';
+import { WORKSPACE_WRITE_POLICY, WorkspaceWritePolicy } from './workspace-write-policy.decorator';
 import { MembershipService } from './membership.service';
 import { explicitRequestedWorkspaceId, WithWorkspaceClaim } from './workspace.util';
 import { SKIP_WORKSPACE_MEMBERSHIP_KEY } from './skip-workspace-membership.decorator';
@@ -94,6 +95,19 @@ export class WorkspaceMembershipGuard implements CanActivate {
     const requested = explicitRequestedWorkspaceId(req) ?? user.__workspaceClaim ?? null;
 
     const resolved = await this.membership.resolveAndAuthorize(user, requested);
+    const method = String(req.method || 'GET').toUpperCase();
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      const policy = this.reflector?.getAllAndOverride<WorkspaceWritePolicy>(
+        WORKSPACE_WRITE_POLICY,
+        [context.getHandler(), context.getClass()],
+      );
+      if (policy === 'client-portal') {
+        if (user.role !== UserRole.CLIENT)
+          throw new ForbiddenException('Client portal participation requires a client identity.');
+      } else if (policy !== 'personal' && policy !== 'mcp') {
+        await this.membership.assertCanWrite(user, resolved);
+      }
+    }
     // Stash for downstream handlers + the withWorkspace GUC chokepoint.
     req.workspaceId = resolved;
     return true;

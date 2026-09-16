@@ -258,6 +258,7 @@ export class TriageService {
     items: CandidateItem[],
     opts?: { federationActor?: string | null },
   ) {
+    if (!opts?.federationActor) await this.workspaceContext.assertCanWrite(user, workspaceId);
     if (!items?.length) return { created: 0, skipped: 0, proposals: [] as any[] };
 
     const ingest = async (tx: WorkspaceTxClient) => {
