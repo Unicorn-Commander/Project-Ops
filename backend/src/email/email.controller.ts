@@ -13,7 +13,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
-import { CreateEmailConfigDto, UpdateEmailConfigDto, EmailConfigResponseDto } from './dto/email-config.dto';
+import { CreateEmailConfigDto, EmailConfigResponseDto } from './dto/email-config.dto';
 import { TestEmailDto } from './dto/test-email.dto';
 import { TestTemplateEmailDto, EmailTemplateType } from './dto/test-template-email.dto';
 
@@ -79,7 +79,9 @@ export class EmailController {
    */
   @Post('test-template')
   @Roles(UserRole.ADMIN)
-  async sendTestTemplate(@Body() dto: TestTemplateEmailDto): Promise<{ success: boolean; message: string }> {
+  async sendTestTemplate(
+    @Body() dto: TestTemplateEmailDto,
+  ): Promise<{ success: boolean; message: string }> {
     const userName = dto.userName || 'Test User';
     const frontendUrl = process.env.FRONTEND_URL || 'https://projectops.unicorncommander.ai';
 

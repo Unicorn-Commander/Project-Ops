@@ -12,7 +12,6 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService, WorkspaceTxClient } from '../../prisma/prisma.service';
 import { WorkspaceContextService } from '../../common/workspace/workspace-context.service';
 import { AuditService } from '../../audit/audit.service';
-import { decToNum } from '../serialize';
 import { BillableDraftAssembler, BillableSource } from './billable-draft.assembler';
 import { InvoicePdfService } from './invoice-pdf.service';
 import {
@@ -281,7 +280,8 @@ export class BillableRollupService {
 
       const total = inv.total != null ? Number(inv.total) : null;
       const balance = inv.balanceDue != null ? Number(inv.balanceDue) : null;
-      const amountPaid = total != null && balance != null ? Math.max(0, total - balance) : undefined;
+      const amountPaid =
+        total != null && balance != null ? Math.max(0, total - balance) : undefined;
       const paymentStatus = mapPaymentStatus(inv.status);
 
       // Read affected projects + mirror onto them in one short workspace tx.
@@ -309,7 +309,10 @@ export class BillableRollupService {
       }
       synced += 1;
     }
-    if (synced) this.logger.log(`syncInvoiceStatuses: updated ${synced} invoice mirror(s) ws=${scope.workspaceId}`);
+    if (synced)
+      this.logger.log(
+        `syncInvoiceStatuses: updated ${synced} invoice mirror(s) ws=${scope.workspaceId}`,
+      );
     return { synced };
   }
 
@@ -369,7 +372,9 @@ export class BillableRollupService {
             clientName: true,
             clientEmail: true,
             contactId: true,
-            contact: { select: { id: true, firstName: true, lastName: true, email: true, company: true } },
+            contact: {
+              select: { id: true, firstName: true, lastName: true, email: true, company: true },
+            },
           },
         },
       },
@@ -385,7 +390,8 @@ export class BillableRollupService {
     if (dto.clientId) {
       const contact = await tx.contact.findUnique({ where: { id: dto.clientId } });
       if (contact) {
-        const name = `${contact.firstName} ${contact.lastName}`.trim() || contact.company || 'Client';
+        const name =
+          `${contact.firstName} ${contact.lastName}`.trim() || contact.company || 'Client';
         return { name, email: contact.email, contactId: contact.id };
       }
     }
@@ -395,7 +401,11 @@ export class BillableRollupService {
       const name = `${c.firstName} ${c.lastName}`.trim() || c.company || project.clientName;
       return { name, email: c.email ?? project.clientEmail, contactId: c.id };
     }
-    return { name: project?.clientName ?? 'Client', email: project?.clientEmail, contactId: project?.contactId };
+    return {
+      name: project?.clientName ?? 'Client',
+      email: project?.clientEmail,
+      contactId: project?.contactId,
+    };
   }
 
   private lineSourceRef(refs: string[]): string {
@@ -452,7 +462,12 @@ export class BillableRollupService {
     );
   }
 
-  private draftView(draft: { lineItems: any[]; total: string; currency: string; entryCount: number }) {
+  private draftView(draft: {
+    lineItems: any[];
+    total: string;
+    currency: string;
+    entryCount: number;
+  }) {
     return {
       currency: draft.currency,
       total: draft.total,

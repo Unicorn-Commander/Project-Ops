@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { AutomationTrigger, TaskStatus } from '@prisma/client';
+import { AutomationTrigger } from '@prisma/client';
 import { AutomationsService } from './automations.service';
 import {
   CommentCreatedEvent,

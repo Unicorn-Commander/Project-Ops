@@ -14,7 +14,8 @@ export function initializeOpenTelemetry() {
   }
 
   const serviceName = process.env.OTEL_SERVICE_NAME || 'project-ops-backend';
-  const jaegerEndpoint = process.env.OTEL_EXPORTER_JAEGER_ENDPOINT || 'http://localhost:14268/api/traces';
+  const jaegerEndpoint =
+    process.env.OTEL_EXPORTER_JAEGER_ENDPOINT || 'http://localhost:14268/api/traces';
 
   // Configure Jaeger exporter
   const jaegerExporter = new JaegerExporter({
@@ -22,7 +23,7 @@ export function initializeOpenTelemetry() {
   });
 
   // Configure Prometheus exporter
-  const prometheusExporter = new PrometheusExporter(
+  new PrometheusExporter(
     {
       port: 9464,
     },
