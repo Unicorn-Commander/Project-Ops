@@ -48,6 +48,8 @@ function makeService(resolvedWorkspace: string): McpService {
   const workspace = {
     // resolve() is what the workspace-drift gate consults.
     resolve: () => resolvedWorkspace,
+    resolveAuthorized: async () => resolvedWorkspace,
+    assertCanWrite: async () => undefined,
   } as any;
   const svc = new McpService(
     noop, // prisma

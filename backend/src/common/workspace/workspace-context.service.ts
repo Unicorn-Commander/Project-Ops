@@ -63,6 +63,14 @@ export class WorkspaceContextService {
     return this.membership.resolveAndAuthorize(user, claim);
   }
 
+  async assertCanWrite(
+    user: User & Partial<WithWorkspaceClaim>,
+    requestedWorkspaceId?: string | null,
+  ): Promise<void> {
+    const workspaceId = await this.resolveAuthorized(user, requestedWorkspaceId);
+    await this.membership.assertCanWrite(user, workspaceId);
+  }
+
   /**
    * Run `fn` inside the resolved workspace's RLS transaction. Resolves the
    * workspace id from the user's claim (authorizing membership when tenancy is

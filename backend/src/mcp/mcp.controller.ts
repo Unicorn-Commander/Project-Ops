@@ -1,3 +1,4 @@
+import { WorkspaceWriteException } from '../common/workspace/workspace-write-policy.decorator';
 /**
  * Streamable HTTP transport endpoint for the Project Ops MCP server.
  *
@@ -36,6 +37,7 @@ export class McpController {
   constructor(private readonly mcp: McpService) {}
 
   @All()
+  @WorkspaceWriteException('mcp')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
     summary:

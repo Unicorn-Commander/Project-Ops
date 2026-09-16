@@ -1,3 +1,4 @@
+import { publicUserPayload } from '../common/serialization/public-user';
 import {
   WebSocketGateway,
   WebSocketServer,
@@ -8,7 +9,12 @@ import {
   MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
+import { ForbiddenException, Logger } from '@nestjs/common';
+import { User, UserRole } from '@prisma/client';
+import { AuthService } from '../auth/auth.service';
+import { ProjectsService } from '../projects/projects.service';
+import { ClientPortalService } from '../client-portal/client-portal.service';
+import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { OnEvent } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
 
@@ -26,7 +32,13 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   private readonly logger = new Logger(RealtimeGateway.name);
   private connectedClients = new Map<string, Socket>();
 
-  constructor(private jwtService: JwtService) {}
+  constructor(
+    private jwtService: JwtService,
+    private readonly auth: AuthService,
+    private readonly workspace: WorkspaceContextService,
+    private readonly projects: ProjectsService,
+    private readonly portal: ClientPortalService,
+  ) {}
 
   async handleConnection(client: Socket) {
     try {
@@ -42,12 +54,19 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
       // Verify JWT token
       const payload = this.jwtService.verify(token);
-      client.data.user = payload;
+      client.data.authClaims = payload;
+      client.data.workspaceId = client.handshake.auth.workspaceId ?? payload.workspace_id ?? null;
+      const user = await this.freshUser(client);
+      client.data.workspaceId = await this.workspace.resolveAuthorized(
+        user,
+        client.data.workspaceId,
+      );
+      client.data.user = user;
 
       // Auto-join the per-user room so the timer widget + personal timesheet
       // get realtime updates regardless of which project room they're in.
       if (payload?.sub) {
-        client.join(`user:${payload.sub}`);
+        client.join(`user:${user.id}`);
       }
 
       this.connectedClients.set(client.id, client);
@@ -70,132 +89,209 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage('join-project')
-  handleJoinProject(@ConnectedSocket() client: Socket, @MessageBody() data: { projectId: string }) {
-    const room = `project:${data.projectId}`;
-    client.join(room);
-    this.logger.log(`Client ${client.id} joined ${room}`);
-    return { event: 'joined-project', data: { projectId: data.projectId } };
+  async handleJoinProject(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { projectId: string; workspaceId?: string },
+  ) {
+    try {
+      const workspaceId = data.workspaceId ?? client.data.workspaceId;
+      await this.authorizeProject(client, data.projectId, workspaceId);
+      client.data.projectWorkspaces ??= {};
+      client.data.projectWorkspaces[data.projectId] = workspaceId;
+      await client.join(`project:${data.projectId}`);
+      return { event: 'joined-project', data: { projectId: data.projectId } };
+    } catch {
+      return { event: 'error', data: { code: 'forbidden' } };
+    }
   }
 
   @SubscribeMessage('leave-project')
-  handleLeaveProject(
+  async handleLeaveProject(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { projectId: string },
   ) {
-    const room = `project:${data.projectId}`;
-    client.leave(room);
-    this.logger.log(`Client ${client.id} left ${room}`);
+    await client.leave(`project:${data.projectId}`);
+    delete client.data.projectWorkspaces?.[data.projectId];
     return { event: 'left-project', data: { projectId: data.projectId } };
   }
 
   @SubscribeMessage('project-update')
-  handleProjectUpdate(@ConnectedSocket() client: Socket, @MessageBody() data: any) {
-    const room = `project:${data.projectId}`;
-    client.to(room).emit('project-updated', data);
-    this.logger.log(`Project update broadcasted to ${room}`);
+  async handleProjectUpdate(@ConnectedSocket() client: Socket, @MessageBody() data: any) {
+    try {
+      const ws = client.data.projectWorkspaces?.[data.projectId] ?? client.data.workspaceId;
+      const user = await this.authorizeProject(client, data.projectId, ws);
+      if (user.role === UserRole.CLIENT) throw new ForbiddenException();
+      await this.workspace.assertCanWrite(user, ws);
+      await this.emitProject(
+        data.projectId,
+        'project-updated',
+        { projectId: data.projectId },
+        client.id,
+      );
+      return { event: 'project-update-accepted' };
+    } catch {
+      return { event: 'error', data: { code: 'forbidden' } };
+    }
+  }
+
+  private async freshUser(client: Socket): Promise<User> {
+    const claims = client.data.authClaims;
+    if (!claims || typeof claims.exp !== 'number' || claims.exp * 1000 <= Date.now())
+      throw new ForbiddenException();
+    return this.auth.validateJwtPayload(claims);
+  }
+
+  private async authorizeProject(client: Socket, projectId: string, requestedWorkspaceId?: string) {
+    const user = await this.freshUser(client);
+    const workspaceId = await this.workspace.resolveAuthorized(
+      user,
+      requestedWorkspaceId ?? client.data.workspaceId,
+    );
+    // Reuse the existing CLIENT contact/project fence rather than treating a
+    // same-workspace project as automatically visible to every portal client.
+    if (user.role === UserRole.CLIENT)
+      await this.portal.getProjectDetails(workspaceId, user, projectId);
+    else await this.projects.findOne(workspaceId, user, projectId);
+    return user;
+  }
+
+  private async emitProject(projectId: string, event: string, data: any, excludeId?: string) {
+    const room = `project:${projectId}`;
+    for (const client of this.connectedClients.values()) {
+      if (client.id === excludeId || !client.rooms.has(room)) continue;
+      try {
+        const user = await this.authorizeProject(
+          client,
+          projectId,
+          client.data.projectWorkspaces?.[projectId],
+        );
+        if (
+          user.role === UserRole.CLIENT &&
+          ['comment-created', 'comment-updated'].includes(event) &&
+          data?.isInternal !== false
+        )
+          continue;
+        client.emit(event, publicUserPayload(data));
+      } catch {
+        await client.leave(room);
+      }
+    }
+  }
+
+  private async emitWorkspace(payload: any, event: string, data: any, approversOnly = false) {
+    if (typeof payload.workspaceId !== 'string') return; // Never guess a tenant.
+    for (const client of this.connectedClients.values()) {
+      try {
+        const user = await this.freshUser(client);
+        await this.workspace.resolveAuthorized(user, payload.workspaceId);
+        const owner = user.id === payload.userId || (payload.userIds ?? []).includes(user.id);
+        let approver = [UserRole.ADMIN, UserRole.MANAGER].includes(user.role as any);
+        if (approver) {
+          try {
+            await this.workspace.assertCanWrite(user, payload.workspaceId);
+          } catch {
+            approver = false;
+          }
+        }
+        if (approversOnly ? approver : owner || approver)
+          client.emit(event, publicUserPayload(data));
+      } catch {
+        /* Revoked/foreign sockets never receive the payload. */
+      }
+    }
   }
 
   // Event listeners for automatic broadcasts
 
   @OnEvent('comment.created')
-  handleCommentCreated(payload: any) {
+  async handleCommentCreated(payload: any) {
     const room = `project:${payload.projectId}`;
-    this.server.to(room).emit('comment-created', payload.comment);
+    await this.emitProject(payload.projectId, 'comment-created', payload.comment);
     this.logger.log(`Comment created event broadcasted to ${room}`);
   }
 
   @OnEvent('comment.updated')
-  handleCommentUpdated(payload: any) {
+  async handleCommentUpdated(payload: any) {
     const room = `project:${payload.projectId}`;
-    this.server.to(room).emit('comment-updated', payload.comment);
+    await this.emitProject(payload.projectId, 'comment-updated', payload.comment);
     this.logger.log(`Comment updated event broadcasted to ${room}`);
   }
 
   @OnEvent('comment.deleted')
-  handleCommentDeleted(payload: any) {
+  async handleCommentDeleted(payload: any) {
     const room = `project:${payload.projectId}`;
-    this.server.to(room).emit('comment-deleted', { commentId: payload.commentId });
+    await this.emitProject(payload.projectId, 'comment-deleted', { commentId: payload.commentId });
     this.logger.log(`Comment deleted event broadcasted to ${room}`);
   }
 
   @OnEvent('project.status-changed')
-  handleProjectStatusChanged(payload: any) {
+  async handleProjectStatusChanged(payload: any) {
     const room = `project:${payload.projectId}`;
-    this.server.to(room).emit('project-status-changed', payload);
+    await this.emitProject(payload.projectId, 'project-status-changed', payload);
     this.logger.log(`Project status changed event broadcasted to ${room}`);
   }
 
   @OnEvent('document.uploaded')
-  handleDocumentUploaded(payload: any) {
+  async handleDocumentUploaded(payload: any) {
     const room = `project:${payload.projectId}`;
-    this.server.to(room).emit('document-uploaded', payload.document);
+    await this.emitProject(payload.projectId, 'document-uploaded', payload.document);
     this.logger.log(`Document uploaded event broadcasted to ${room}`);
   }
 
   // ── Time tracking ────────────────────────────────────────
 
   @OnEvent('timeEntry.created')
-  handleTimeEntryCreated(payload: any) {
-    this.toProjectAndUser(payload, 'time-entry-created', payload.timeEntry);
+  async handleTimeEntryCreated(payload: any) {
+    await this.toProjectAndUser(payload, 'time-entry-created', payload.timeEntry);
   }
 
   @OnEvent('timeEntry.updated')
-  handleTimeEntryUpdated(payload: any) {
-    this.toProjectAndUser(payload, 'time-entry-updated', payload.timeEntry);
+  async handleTimeEntryUpdated(payload: any) {
+    await this.toProjectAndUser(payload, 'time-entry-updated', payload.timeEntry);
   }
 
   @OnEvent('timeEntry.stopped')
-  handleTimeEntryStopped(payload: any) {
-    this.toProjectAndUser(payload, 'time-entry-stopped', payload.timeEntry);
+  async handleTimeEntryStopped(payload: any) {
+    await this.toProjectAndUser(payload, 'time-entry-stopped', payload.timeEntry);
   }
 
   @OnEvent('timeEntry.deleted')
-  handleTimeEntryDeleted(payload: any) {
-    this.toProjectAndUser(payload, 'time-entry-deleted', { id: payload.id });
+  async handleTimeEntryDeleted(payload: any) {
+    await this.toProjectAndUser(payload, 'time-entry-deleted', { id: payload.id });
   }
 
   @OnEvent('timesheet.submitted')
-  handleTimesheetSubmitted(payload: any) {
-    if (payload.userId)
-      this.server.to(`user:${payload.userId}`).emit('timesheet-submitted', payload);
-    // Notify approvers' queues (low-volume metadata).
-    this.server.emit('timesheet-pending', payload);
+  async handleTimesheetSubmitted(payload: any) {
+    await this.emitWorkspace(payload, 'timesheet-submitted', payload);
+    await this.emitWorkspace(payload, 'timesheet-pending', payload, true);
   }
-
   @OnEvent('timesheet.approved')
-  handleTimesheetApproved(payload: any) {
-    this.server.emit('timesheet-approved', payload);
+  async handleTimesheetApproved(payload: any) {
+    await this.emitWorkspace(payload, 'timesheet-approved', payload);
   }
-
   @OnEvent('timesheet.rejected')
-  handleTimesheetRejected(payload: any) {
-    this.server.emit('timesheet-rejected', payload);
+  async handleTimesheetRejected(payload: any) {
+    await this.emitWorkspace(payload, 'timesheet-rejected', payload);
   }
-
   @OnEvent('billing.invoiced')
-  handleBillingInvoiced(payload: any) {
-    for (const projectId of payload.projectIds || []) {
-      this.server.to(`project:${projectId}`).emit('billing-invoiced', payload.invoice);
-    }
+  async handleBillingInvoiced(payload: any) {
+    for (const projectId of payload.projectIds || [])
+      await this.emitProject(projectId, 'billing-invoiced', payload.invoice);
   }
-
-  /** Emit to both the entry's project room and the owning user's room. */
-  private toProjectAndUser(payload: any, event: string, data: any) {
-    if (payload.projectId) this.server.to(`project:${payload.projectId}`).emit(event, data);
-    if (payload.userId) this.server.to(`user:${payload.userId}`).emit(event, data);
+  private async toProjectAndUser(payload: any, event: string, data: any) {
+    await this.emitWorkspace(
+      { ...payload, workspaceId: payload.workspaceId ?? payload.timeEntry?.workspaceId },
+      event,
+      data,
+    );
   }
-
-  // Utility methods
-
-  broadcastToProject(projectId: string, event: string, data: any) {
-    const room = `project:${projectId}`;
-    this.server.to(room).emit(event, data);
-    this.logger.log(`Custom event '${event}' broadcasted to ${room}`);
+  async broadcastToProject(projectId: string, event: string, data: any) {
+    await this.emitProject(projectId, event, data);
   }
-
-  broadcastToAll(event: string, data: any) {
-    this.server.emit(event, data);
-    this.logger.log(`Custom event '${event}' broadcasted to all clients`);
+  /** No callers currently exist. A tenant is mandatory; global payload broadcasts are forbidden. */
+  async broadcastToAll(event: string, data: any, workspaceId?: string) {
+    if (!workspaceId) throw new ForbiddenException('A workspace is required.');
+    await this.emitWorkspace({ workspaceId }, event, data, true);
   }
 
   getConnectedClientsCount(): number {

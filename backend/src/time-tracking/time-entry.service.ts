@@ -238,6 +238,7 @@ export class TimeEntryService {
     );
 
     this.events.emit('timeEntry.deleted', {
+      workspaceId,
       projectId: entry.projectId,
       userId: entry.userId,
       id: entry.id,
