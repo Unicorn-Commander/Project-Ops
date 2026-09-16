@@ -36,6 +36,7 @@ jobs:
   backend:
     name: backend (build, unit, RLS-as-project_ops_app)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # Job and PostgreSQL share an isolated service network; no host port or
     # runner-specific dynamic-port metadata is needed.
     container: node:20-bookworm
@@ -161,6 +162,7 @@ jobs:
   frontend:
     name: frontend (lint, typecheck, build)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: frontend
