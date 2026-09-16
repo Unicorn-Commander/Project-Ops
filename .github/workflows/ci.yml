@@ -86,7 +86,9 @@ jobs:
         run: npm run build
 
       - name: Unit tests
-        run: npm test -- --ci
+        # Shared runners already execute multiple jobs; do not multiply each
+        # job into a host-CPU-sized Jest worker pool. All suites still run.
+        run: npm test -- --ci --runInBand
 
       # --- RLS isolation proof -------------------------------------------------
       # Replicates run.sh against the Postgres service container:
