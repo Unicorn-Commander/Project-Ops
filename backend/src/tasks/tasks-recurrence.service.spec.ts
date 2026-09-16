@@ -67,10 +67,7 @@ describe('TasksRecurrenceService.materializeForWorkspace', () => {
   it('spawns the next instance and copies template content (rule nulled)', async () => {
     const { svc, taskCreate } = makeService({ templates: [baseTemplate] });
     // Anchor = template.dueDate Jun 1; next weekly = Jun 8. now = Jun 8 → due.
-    const created = await svc.materializeForWorkspace(
-      'ws1',
-      new Date('2026-06-08T09:00:00.000Z'),
-    );
+    const created = await svc.materializeForWorkspace('ws1', new Date('2026-06-08T09:00:00.000Z'));
 
     expect(created).toBe(1);
     const data = taskCreate.mock.calls[0][0].data;
@@ -92,10 +89,7 @@ describe('TasksRecurrenceService.materializeForWorkspace', () => {
       templates: [baseTemplate],
       existingAtOccurrence: async () => ({ id: 'already' }),
     });
-    const created = await svc.materializeForWorkspace(
-      'ws1',
-      new Date('2026-06-08T09:00:00.000Z'),
-    );
+    const created = await svc.materializeForWorkspace('ws1', new Date('2026-06-08T09:00:00.000Z'));
     expect(created).toBe(0);
     expect(taskCreate).not.toHaveBeenCalled();
   });
@@ -106,23 +100,15 @@ describe('TasksRecurrenceService.materializeForWorkspace', () => {
       latestInstance: async () => ({ dueDate: new Date('2026-06-08T09:00:00.000Z') }),
     });
     // Latest instance Jun 8 → next weekly Jun 15. now Jun 15 → due.
-    const created = await svc.materializeForWorkspace(
-      'ws1',
-      new Date('2026-06-15T09:00:00.000Z'),
-    );
+    const created = await svc.materializeForWorkspace('ws1', new Date('2026-06-15T09:00:00.000Z'));
     expect(created).toBe(1);
-    expect(taskCreate.mock.calls[0][0].data.dueDate.toISOString()).toBe(
-      '2026-06-15T09:00:00.000Z',
-    );
+    expect(taskCreate.mock.calls[0][0].data.dueDate.toISOString()).toBe('2026-06-15T09:00:00.000Z');
   });
 
   it('does not spawn when the next occurrence is beyond the look-ahead horizon', async () => {
     const { svc, taskCreate } = makeService({ templates: [baseTemplate] });
     // Anchor Jun 1 → next Jun 8, but now is Jun 1 (a week away, > 1d horizon).
-    const created = await svc.materializeForWorkspace(
-      'ws1',
-      new Date('2026-06-01T09:00:00.000Z'),
-    );
+    const created = await svc.materializeForWorkspace('ws1', new Date('2026-06-01T09:00:00.000Z'));
     expect(created).toBe(0);
     expect(taskCreate).not.toHaveBeenCalled();
   });
@@ -131,10 +117,7 @@ describe('TasksRecurrenceService.materializeForWorkspace', () => {
     const { svc, taskCreate } = makeService({
       templates: [{ ...baseTemplate, recurrenceRule: 'FREQ=YEARLY' }],
     });
-    const created = await svc.materializeForWorkspace(
-      'ws1',
-      new Date('2026-12-31T00:00:00.000Z'),
-    );
+    const created = await svc.materializeForWorkspace('ws1', new Date('2026-12-31T00:00:00.000Z'));
     expect(created).toBe(0);
     expect(taskCreate).not.toHaveBeenCalled();
   });

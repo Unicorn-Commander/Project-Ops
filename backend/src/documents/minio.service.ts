@@ -35,11 +35,17 @@ export class MinioService implements OnModuleInit {
 
     // Public endpoint configuration (for presigned URLs accessible from browser)
     this.publicEndpoint = this.configService.get('MINIO_PUBLIC_ENDPOINT', this.internalEndpoint);
-    this.publicPort = parseInt(this.configService.get('MINIO_PUBLIC_PORT', this.internalPort.toString()));
+    this.publicPort = parseInt(
+      this.configService.get('MINIO_PUBLIC_PORT', this.internalPort.toString()),
+    );
     this.publicUseSSL = this.configService.get('MINIO_PUBLIC_USE_SSL', 'false') === 'true';
 
-    this.logger.log(`MinIO configured - Internal: ${internalUseSSL ? 'https' : 'http'}://${this.internalEndpoint}:${this.internalPort}`);
-    this.logger.log(`MinIO configured - Public: ${this.publicUseSSL ? 'https' : 'http'}://${this.publicEndpoint}:${this.publicPort}`);
+    this.logger.log(
+      `MinIO configured - Internal: ${internalUseSSL ? 'https' : 'http'}://${this.internalEndpoint}:${this.internalPort}`,
+    );
+    this.logger.log(
+      `MinIO configured - Public: ${this.publicUseSSL ? 'https' : 'http'}://${this.publicEndpoint}:${this.publicPort}`,
+    );
   }
 
   async onModuleInit() {
@@ -62,12 +68,16 @@ export class MinioService implements OnModuleInit {
   private replaceEndpoint(url: string): string {
     // Build the public URL
     const protocol = this.publicUseSSL ? 'https' : 'http';
-    const port = (this.publicUseSSL && this.publicPort === 443) ||
-                 (!this.publicUseSSL && this.publicPort === 80) ? '' : `:${this.publicPort}`;
+    const port =
+      (this.publicUseSSL && this.publicPort === 443) ||
+      (!this.publicUseSSL && this.publicPort === 80)
+        ? ''
+        : `:${this.publicPort}`;
     const publicUrl = `${protocol}://${this.publicEndpoint}${port}`;
 
     // Build the internal URL pattern to replace
-    const internalProtocol = this.configService.get('MINIO_USE_SSL', 'false') === 'true' ? 'https' : 'http';
+    const internalProtocol =
+      this.configService.get('MINIO_USE_SSL', 'false') === 'true' ? 'https' : 'http';
     const internalUrl = `${internalProtocol}://${this.internalEndpoint}:${this.internalPort}`;
 
     // Replace internal URL with public URL
@@ -80,10 +90,7 @@ export class MinioService implements OnModuleInit {
     return replacedUrl;
   }
 
-  async getPresignedUploadUrl(
-    objectName: string,
-    expirySeconds: number = 3600,
-  ): Promise<string> {
+  async getPresignedUploadUrl(objectName: string, expirySeconds: number = 3600): Promise<string> {
     try {
       const url = await this.minioClient.presignedPutObject(
         this.bucketName,
@@ -100,10 +107,7 @@ export class MinioService implements OnModuleInit {
     }
   }
 
-  async getPresignedDownloadUrl(
-    objectName: string,
-    expirySeconds: number = 3600,
-  ): Promise<string> {
+  async getPresignedDownloadUrl(objectName: string, expirySeconds: number = 3600): Promise<string> {
     try {
       const url = await this.minioClient.presignedGetObject(
         this.bucketName,

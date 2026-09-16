@@ -117,7 +117,9 @@ export class TimerService {
       details: { source: 'TIMER', action: 'start_timer' },
     });
     this.emit('timeEntry.created', created);
-    this.logger.log(`start_timer: user=${user.email} project=${created.projectId} entry=${created.id}`);
+    this.logger.log(
+      `start_timer: user=${user.email} project=${created.projectId} entry=${created.id}`,
+    );
 
     return serializeTimeEntry(created, user.role);
   }

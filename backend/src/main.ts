@@ -30,7 +30,11 @@ async function bootstrap() {
   app.use(compression());
 
   // Body size limit - Allow up to 100MB file uploads
+  // Preserve bootstrap module-loading order after instrumentation setup.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   app.use(require('express').json({ limit: '100mb' }));
+  // Preserve bootstrap module-loading order after instrumentation setup.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   app.use(require('express').urlencoded({ limit: '100mb', extended: true }));
 
   // CORS

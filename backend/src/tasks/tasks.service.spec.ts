@@ -56,17 +56,14 @@ function makeService(opts: {
     },
     taskComment: {
       create: jest.fn(
-        opts.taskCommentCreate ??
-          (async () => ({ id: 'c1', content: 'hello', author: {} })),
+        opts.taskCommentCreate ?? (async () => ({ id: 'c1', content: 'hello', author: {} })),
       ),
       findUnique: jest.fn(
-        opts.taskCommentFindUnique ??
-          (async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' })),
+        opts.taskCommentFindUnique ?? (async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' })),
       ),
       findMany: jest.fn(opts.taskCommentFindMany ?? (async () => [])),
       update: jest.fn(
-        opts.taskCommentUpdate ??
-          (async (a: any) => ({ id: a.where.id, ...a.data, author: {} })),
+        opts.taskCommentUpdate ?? (async (a: any) => ({ id: a.where.id, ...a.data, author: {} })),
       ),
       delete: jest.fn(opts.taskCommentDelete ?? (async () => ({}))),
     },
@@ -173,11 +170,7 @@ describe('TasksService.findAll — search / window / sort', () => {
     const { svc, tx } = makeService({});
     await svc.findAll('ws1', user, {});
     const args = (tx.task.findMany as jest.Mock).mock.calls[0][0];
-    expect(args.orderBy).toEqual([
-      { priority: 'desc' },
-      { dueDate: 'asc' },
-      { createdAt: 'desc' },
-    ]);
+    expect(args.orderBy).toEqual([{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }]);
   });
 
   it('clamps an oversized take to 100 and filters by parentTaskId', async () => {
@@ -268,9 +261,9 @@ describe('TasksService.removeDependency', () => {
         successorId: 'other2',
       }),
     });
-    await expect(
-      svc.removeDependency('ws1', user, 'taskX', 'd1'),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.removeDependency('ws1', user, 'taskX', 'd1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('deletes when the dependency belongs to the URL task', async () => {
@@ -358,7 +351,7 @@ describe('TasksService.updateComment / removeComment — ownership', () => {
     expect(out.content).toBe('admin-edit');
   });
 
-  it('MANAGER can delete but not update others\' comments', async () => {
+  it("MANAGER can delete but not update others' comments", async () => {
     const { svc, tx } = makeService({
       taskCommentFindUnique: async () => ({ id: 'c1', authorId: 'other', taskId: 't1' }),
     });
@@ -384,9 +377,9 @@ describe('TasksService.updateComment / removeComment — ownership', () => {
     const { svc } = makeService({
       taskCommentFindUnique: async () => null,
     });
-    await expect(
-      svc.updateComment('ws1', user, 'missing', 'x'),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.updateComment('ws1', user, 'missing', 'x')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
     await expect(svc.removeComment('ws1', user, 'missing')).rejects.toBeInstanceOf(
       NotFoundException,
     );
@@ -593,16 +586,14 @@ describe('TasksService — customFields validation + merge', () => {
       customFields: { tier: 'gold' },
     } as any);
 
-    expect(customFields!.validateValues).toHaveBeenCalledWith(
-      tx,
-      'ws1',
-      'TASK',
-      { tier: 'gold' },
-    );
+    expect(customFields!.validateValues).toHaveBeenCalledWith(tx, 'ws1', 'TASK', { tier: 'gold' });
     const data = (tx.task.create as jest.Mock).mock.calls[0][0].data;
     // Preserves other metadata keys, nests normalized values under customFields,
     // and does NOT leak the raw `customFields` DTO key into the Prisma data.
-    expect(data.metadata).toEqual({ existing: 1, customFields: { tier: 'gold', normalized: true } });
+    expect(data.metadata).toEqual({
+      existing: 1,
+      customFields: { tier: 'gold', normalized: true },
+    });
     expect(data.customFields).toBeUndefined();
   });
 

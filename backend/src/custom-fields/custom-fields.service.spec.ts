@@ -215,9 +215,9 @@ describe('CustomFieldsService.update', () => {
     const update = jest.fn();
     const { svc } = makeService({ customFieldDefinition: { findUnique, update } });
 
-    await expect(
-      svc.update('ws1', user, 'missing', { label: 'X' } as any),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.update('ws1', user, 'missing', { label: 'X' } as any)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
     expect(update).not.toHaveBeenCalled();
   });
 });

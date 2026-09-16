@@ -118,10 +118,7 @@ export class CustomFieldsService {
       );
     } catch (err) {
       // unique(workspaceId, entity, key) collision -> 409 with a clear message.
-      if (
-        err instanceof Prisma.PrismaClientKnownRequestError &&
-        err.code === 'P2002'
-      ) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new ConflictException(
           `A custom field with key "${key}" already exists for ${dto.entity}`,
         );
@@ -149,10 +146,7 @@ export class CustomFieldsService {
    * absent / not in this workspace. Shared by update + remove so the read +
    * write run in ONE workspace transaction (no TOCTOU across two txns).
    */
-  private async loadInTx(
-    tx: WorkspaceTxClient,
-    id: string,
-  ): Promise<CustomFieldDefinition> {
+  private async loadInTx(tx: WorkspaceTxClient, id: string): Promise<CustomFieldDefinition> {
     const def = await tx.customFieldDefinition.findUnique({ where: { id } });
     if (!def) {
       throw new NotFoundException(`Custom field with ID ${id} not found`);
@@ -288,9 +282,7 @@ export class CustomFieldsService {
 
       if (this.isEmpty(raw)) {
         if (def.required) {
-          throw new BadRequestException(
-            `Custom field "${def.label}" (${def.key}) is required`,
-          );
+          throw new BadRequestException(`Custom field "${def.label}" (${def.key}) is required`);
         }
         // Optional + empty -> cleared (omit from result).
         continue;
@@ -448,7 +440,9 @@ export class CustomFieldsService {
       }
       const trimmed = opt.trim();
       if (trimmed.length > MAX_OPTION_LENGTH) {
-        throw new BadRequestException(`each option must be at most ${MAX_OPTION_LENGTH} characters`);
+        throw new BadRequestException(
+          `each option must be at most ${MAX_OPTION_LENGTH} characters`,
+        );
       }
       if (!cleaned.includes(trimmed)) cleaned.push(trimmed);
     }

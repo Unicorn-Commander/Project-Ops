@@ -61,13 +61,19 @@ describe('config helpers', () => {
     expect(entitlementsEnabled(env({ PROJECT_OPS_ENTITLEMENTS_ENABLED: 'true' }))).toBe(false); // no URL
     expect(entitlementsEnabled(env({ UC_ENTITLEMENTS_URL: ARMED_URL }))).toBe(false); // flag off
     expect(
-      entitlementsEnabled(env({ PROJECT_OPS_ENTITLEMENTS_ENABLED: 'true', UC_ENTITLEMENTS_URL: ARMED_URL })),
+      entitlementsEnabled(
+        env({ PROJECT_OPS_ENTITLEMENTS_ENABLED: 'true', UC_ENTITLEMENTS_URL: ARMED_URL }),
+      ),
     ).toBe(true);
     expect(
-      entitlementsEnabled(env({ PROJECT_OPS_ENTITLEMENTS_ENABLED: '1', UC_ENTITLEMENTS_URL: ARMED_URL })),
+      entitlementsEnabled(
+        env({ PROJECT_OPS_ENTITLEMENTS_ENABLED: '1', UC_ENTITLEMENTS_URL: ARMED_URL }),
+      ),
     ).toBe(true);
     expect(
-      entitlementsEnabled(env({ PROJECT_OPS_ENTITLEMENTS_ENABLED: 'no', UC_ENTITLEMENTS_URL: ARMED_URL })),
+      entitlementsEnabled(
+        env({ PROJECT_OPS_ENTITLEMENTS_ENABLED: 'no', UC_ENTITLEMENTS_URL: ARMED_URL }),
+      ),
     ).toBe(false);
   });
 
@@ -78,8 +84,12 @@ describe('config helpers', () => {
 
   it('entitlementsAllowlistFallback defaults to false (pure enforce)', () => {
     expect(entitlementsAllowlistFallback(env({}))).toBe(false);
-    expect(entitlementsAllowlistFallback(env({ PROJECT_OPS_ENTITLEMENTS_ALLOWLIST_FALLBACK: 'true' }))).toBe(true);
-    expect(entitlementsAllowlistFallback(env({ PROJECT_OPS_ENTITLEMENTS_ALLOWLIST_FALLBACK: 'on' }))).toBe(true);
+    expect(
+      entitlementsAllowlistFallback(env({ PROJECT_OPS_ENTITLEMENTS_ALLOWLIST_FALLBACK: 'true' })),
+    ).toBe(true);
+    expect(
+      entitlementsAllowlistFallback(env({ PROJECT_OPS_ENTITLEMENTS_ALLOWLIST_FALLBACK: 'on' })),
+    ).toBe(true);
   });
 });
 
@@ -107,7 +117,11 @@ describe('resolveEntitlement', () => {
         entitlements: ['project_ops_access', 'contact_ops_access'],
       }),
     );
-    const r = await resolveEntitlement('uchub-bearer', { getEnv: armed, logger: silent, fetchImpl });
+    const r = await resolveEntitlement('uchub-bearer', {
+      getEnv: armed,
+      logger: silent,
+      fetchImpl,
+    });
 
     expect(r.outcome).toBe('allowed');
     expect(r.role).toBe(UserRole.ADMIN);
@@ -123,27 +137,39 @@ describe('resolveEntitlement', () => {
   });
 
   it('maps a non-owner entitled org role to STAFF', async () => {
-    const fetchImpl = jest
-      .fn()
-      .mockResolvedValue(resp(200, { org_id: 'o', tier: 'team', role: 'member', entitlements: ['project_ops_access'] }));
+    const fetchImpl = jest.fn().mockResolvedValue(
+      resp(200, {
+        org_id: 'o',
+        tier: 'team',
+        role: 'member',
+        entitlements: ['project_ops_access'],
+      }),
+    );
     const r = await resolveEntitlement('t', { getEnv: armed, logger: silent, fetchImpl });
     expect(r.outcome).toBe('allowed');
     expect(r.role).toBe(UserRole.STAFF);
   });
 
   it('ALLOWS when the list is named feature_keys instead of entitlements', async () => {
-    const fetchImpl = jest
-      .fn()
-      .mockResolvedValue(resp(200, { org_id: 'o', tier: 'managed', role: 'owner', feature_keys: ['project_ops_access'] }));
+    const fetchImpl = jest.fn().mockResolvedValue(
+      resp(200, {
+        org_id: 'o',
+        tier: 'managed',
+        role: 'owner',
+        feature_keys: ['project_ops_access'],
+      }),
+    );
     const r = await resolveEntitlement('t', { getEnv: armed, logger: silent, fetchImpl });
     expect(r.outcome).toBe('allowed');
     expect(r.role).toBe(UserRole.ADMIN);
   });
 
   it('ALLOWS when the payload is nested under data', async () => {
-    const fetchImpl = jest
-      .fn()
-      .mockResolvedValue(resp(200, { data: { org_id: 'o', tier: 'team', role: 'member', entitlements: ['project_ops_access'] } }));
+    const fetchImpl = jest.fn().mockResolvedValue(
+      resp(200, {
+        data: { org_id: 'o', tier: 'team', role: 'member', entitlements: ['project_ops_access'] },
+      }),
+    );
     const r = await resolveEntitlement('t', { getEnv: armed, logger: silent, fetchImpl });
     expect(r.outcome).toBe('allowed');
     expect(r.role).toBe(UserRole.STAFF);
@@ -160,9 +186,14 @@ describe('resolveEntitlement', () => {
   });
 
   it('DENIES a 200 whose entitlements omit the feature key', async () => {
-    const fetchImpl = jest
-      .fn()
-      .mockResolvedValue(resp(200, { org_id: 'o', tier: 'free', role: 'owner', entitlements: ['contact_ops_access'] }));
+    const fetchImpl = jest.fn().mockResolvedValue(
+      resp(200, {
+        org_id: 'o',
+        tier: 'free',
+        role: 'owner',
+        entitlements: ['contact_ops_access'],
+      }),
+    );
     const r = await resolveEntitlement('t', { getEnv: armed, logger: silent, fetchImpl });
     expect(r.outcome).toBe('denied');
     expect(r.role).toBeNull();

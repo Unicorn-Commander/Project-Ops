@@ -38,9 +38,7 @@ export abstract class GitForgeProvider {
    * Lightweight auth + identity check. Must not be called without a token.
    * Implementations should hit a cheap endpoint (e.g. GET /api/v1/user).
    */
-  abstract testConnection(
-    creds: GitForgeCredentials,
-  ): Promise<GitForgeConnectionTestResult>;
+  abstract testConnection(creds: GitForgeCredentials): Promise<GitForgeConnectionTestResult>;
 
   abstract listCommits(
     creds: GitForgeCredentials,

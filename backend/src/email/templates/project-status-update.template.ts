@@ -18,7 +18,11 @@ export function getProjectStatusUpdateEmailTemplate(
     CANCELLED: { color: '#F44336', icon: '❌', label: 'Cancelled' },
   };
 
-  const newStatusData = statusConfig[newStatus] || { color: '#005AF5', icon: '📋', label: newStatus };
+  const newStatusData = statusConfig[newStatus] || {
+    color: '#005AF5',
+    icon: '📋',
+    label: newStatus,
+  };
   const oldStatusLabel = statusConfig[oldStatus]?.label || oldStatus;
 
   return `

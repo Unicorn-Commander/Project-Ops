@@ -16,24 +16,21 @@ describe('ForgejoAdapter (design stub)', () => {
   });
 
   it('refuses testConnection without token (no network)', async () => {
-    await expect(
-      adapter.testConnection({ ...validCreds, accessToken: '' }),
-    ).rejects.toBeInstanceOf(GitForgeNotConfiguredError);
+    await expect(adapter.testConnection({ ...validCreds, accessToken: '' })).rejects.toBeInstanceOf(
+      GitForgeNotConfiguredError,
+    );
   });
 
   it('refuses listCommits without baseUrl', async () => {
     await expect(
-      adapter.listCommits(
-        { ...validCreds, baseUrl: '' },
-        { owner: 'acme', repo: 'app' },
-      ),
+      adapter.listCommits({ ...validCreds, baseUrl: '' }, { owner: 'acme', repo: 'app' }),
     ).rejects.toBeInstanceOf(GitForgeNotConfiguredError);
   });
 
   it('returns empty commits when credentials present (stub, no network)', async () => {
-    await expect(
-      adapter.listCommits(validCreds, { owner: 'acme', repo: 'app' }),
-    ).resolves.toEqual([]);
+    await expect(adapter.listCommits(validCreds, { owner: 'acme', repo: 'app' })).resolves.toEqual(
+      [],
+    );
   });
 
   it('returns empty PRs when credentials present (stub, no network)', async () => {

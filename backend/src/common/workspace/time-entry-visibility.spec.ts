@@ -9,8 +9,12 @@ const user = (role: UserRole) => ({ id: 'u1', role });
 
 describe('buildTimeEntryVisibilityFilter', () => {
   it('ADMIN and MANAGER see the whole workspace', () => {
-    expect(buildTimeEntryVisibilityFilter(user(UserRole.ADMIN), 'ws')).toEqual({ workspaceId: 'ws' });
-    expect(buildTimeEntryVisibilityFilter(user(UserRole.MANAGER), 'ws')).toEqual({ workspaceId: 'ws' });
+    expect(buildTimeEntryVisibilityFilter(user(UserRole.ADMIN), 'ws')).toEqual({
+      workspaceId: 'ws',
+    });
+    expect(buildTimeEntryVisibilityFilter(user(UserRole.MANAGER), 'ws')).toEqual({
+      workspaceId: 'ws',
+    });
   });
 
   it('STAFF see their own entries or entries on their projects', () => {

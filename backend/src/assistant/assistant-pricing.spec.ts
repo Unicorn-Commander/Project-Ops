@@ -1,15 +1,9 @@
-import {
-  computeTurnCostUsd,
-  DEFAULT_TOKEN_PRICES,
-  loadTokenPrices,
-} from './assistant-pricing';
+import { computeTurnCostUsd, DEFAULT_TOKEN_PRICES, loadTokenPrices } from './assistant-pricing';
 
 describe('assistant-pricing', () => {
   describe('computeTurnCostUsd', () => {
     it('returns 0 for the local free-tier model (priced at 0)', () => {
-      expect(
-        computeTurnCostUsd('Qwen_Qwen3.6-35B-A3B-Q4_K_M', 5072, 226),
-      ).toBe(0);
+      expect(computeTurnCostUsd('Qwen_Qwen3.6-35B-A3B-Q4_K_M', 5072, 226)).toBe(0);
     });
 
     it('returns null for an unknown / unpriced model (never 0-by-accident)', () => {

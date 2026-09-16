@@ -40,10 +40,25 @@ describe('QuoteAcceptedDto — the quote.accepted wire contract', () => {
       schedule_text: '50% on acceptance, 50% per milestone; hosting monthly in advance.',
     },
     lines: [
-      { kind: 'one_time', label: 'Discovery + setup', acceptance_criteria_md: 'Setup criteria', estimated_hours: 8, position: 1 },
-      { kind: 'milestone', label: 'Milestone 1 — pilot', acceptance_criteria_md: 'M1 criteria', weeks: 2, position: 2 },
+      {
+        kind: 'one_time',
+        label: 'Discovery + setup',
+        acceptance_criteria_md: 'Setup criteria',
+        estimated_hours: 8,
+        position: 1,
+      },
+      {
+        kind: 'milestone',
+        label: 'Milestone 1 — pilot',
+        acceptance_criteria_md: 'M1 criteria',
+        weeks: 2,
+        position: 2,
+      },
     ],
-    pdf: { url: 'https://customers.example.dev/api/quotes/q-0001/versions/1/pdf', file_name: 'Q-2026-0001-v1.pdf' },
+    pdf: {
+      url: 'https://customers.example.dev/api/quotes/q-0001/versions/1/pdf',
+      file_name: 'Q-2026-0001-v1.pdf',
+    },
     schedule_ids: ['sched-hosting'],
   });
 
@@ -95,9 +110,12 @@ describe('QuoteAcceptedDto — the quote.accepted wire contract', () => {
     ['split_rule', { split_rule: { kind: 'percent_net', percent: 50 } }],
     ['costs', { costs: [{ label: 'hosting', amount_cents: 35000 }] }],
     ['accepted_by', { accepted_by: { name: 'A. Person', email: 'a@example.test' } }],
-  ])('rejects the payload when %s rides along (§2.6, A3 — it can never reach Project-Ops)', async (_name, extra) => {
-    await expect(run({ ...base(), ...extra })).rejects.toThrow();
-  });
+  ])(
+    'rejects the payload when %s rides along (§2.6, A3 — it can never reach Project-Ops)',
+    async (_name, extra) => {
+      await expect(run({ ...base(), ...extra })).rejects.toThrow();
+    },
+  );
 
   it('rejects an unknown key inside the billing block too', async () => {
     const body: any = base();
@@ -136,7 +154,11 @@ describe('QuoteAcceptedDto — the quote.accepted wire contract', () => {
 
   it('pdf requires exactly one of url | base64 (L8)', async () => {
     const both: any = base();
-    both.pdf = { url: 'https://customers.example.dev/q.pdf', base64: 'JVBERi0=', file_name: 'q.pdf' };
+    both.pdf = {
+      url: 'https://customers.example.dev/q.pdf',
+      base64: 'JVBERi0=',
+      file_name: 'q.pdf',
+    };
     await expect(run(both)).rejects.toThrow();
 
     const neither: any = base();
@@ -153,7 +175,17 @@ describe('QuoteAcceptedDto — the quote.accepted wire contract', () => {
   });
 
   it('requires the fields the adapter cannot work without', async () => {
-    for (const key of ['customer_ops_quote_id', 'number', 'version', 'title', 'share_url', 'client_name', 'currency', 'billing', 'lines']) {
+    for (const key of [
+      'customer_ops_quote_id',
+      'number',
+      'version',
+      'title',
+      'share_url',
+      'client_name',
+      'currency',
+      'billing',
+      'lines',
+    ]) {
       const body: any = base();
       delete body[key];
       await expect(run(body)).rejects.toThrow();

@@ -57,7 +57,9 @@ export class BillingRateService {
       },
       workspaceId,
     );
-    this.logger.log(`create_billing_rate: user=${user.email} scope=${rate.scopeType} rate=${rate.id}`);
+    this.logger.log(
+      `create_billing_rate: user=${user.email} scope=${rate.scopeType} rate=${rate.id}`,
+    );
     return this.serialize(rate);
   }
 
@@ -98,7 +100,11 @@ export class BillingRateService {
             currency: dto.currency ?? undefined,
             effectiveFrom: dto.effectiveFrom ? new Date(dto.effectiveFrom) : undefined,
             effectiveTo:
-              dto.effectiveTo !== undefined ? (dto.effectiveTo ? new Date(dto.effectiveTo) : null) : undefined,
+              dto.effectiveTo !== undefined
+                ? dto.effectiveTo
+                  ? new Date(dto.effectiveTo)
+                  : null
+                : undefined,
           },
         });
         await this.audit.log({

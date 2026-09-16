@@ -29,14 +29,7 @@ describe('AuthService federation-actor resolution', () => {
   beforeEach(() => {
     // The federation branch returns before touching any injected dep, so empty
     // stubs suffice; the human-routing test spies on validateKeycloakUser.
-    svc = new AuthService(
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-    );
+    svc = new AuthService({} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
   });
 
   it('buildFederationPrincipal makes a synthetic, role-less, non-DB actor', () => {
@@ -68,9 +61,7 @@ describe('AuthService federation-actor resolution', () => {
 
   it('routes a Brigade token that carries a HUMAN identity to the human path (on-behalf-of-user), even with act.client_id', async () => {
     const human = { id: 'u-human', role: 'STAFF' };
-    const spy = jest
-      .spyOn(svc, 'validateKeycloakUser' as any)
-      .mockResolvedValue(human as any);
+    const spy = jest.spyOn(svc, 'validateKeycloakUser' as any).mockResolvedValue(human as any);
 
     const user = (await svc.validateJwtPayload({
       iss: ISSUER,

@@ -57,7 +57,7 @@ describe('ClientPortalService.createProjectComment', () => {
     );
   });
 
-  it("403s when the project belongs to a different contact", async () => {
+  it('403s when the project belongs to a different contact', async () => {
     const create = jest.fn();
     const tx = {
       contact: { findUnique: jest.fn(async () => ({ id: 'contact-A' })) },
@@ -153,30 +153,48 @@ describe('ClientPortalService.getInvoices — payUrl deep-link stub', () => {
 
 describe('ClientPortalService.getProjectQuote — Quote panel (QUOTES-CONTRACT-v1 §3)', () => {
   const META = {
-    quote: { customer_ops_quote_id: 'q-0001', number: 'Q-2026-0001', version: 1, share_url: 'https://x.test/q/t', schedule_ids: [] },
+    quote: {
+      customer_ops_quote_id: 'q-0001',
+      number: 'Q-2026-0001',
+      version: 1,
+      share_url: 'https://x.test/q/t',
+      schedule_ids: [],
+    },
   };
 
   it('builds the CLIENT-masked panel for a project the contact owns', async () => {
     const tx = {
       contact: { findUnique: jest.fn(async () => ({ id: 'contact-A' })) },
-      project: { findUnique: jest.fn(async () => ({ id: 'proj-A', contactId: 'contact-A', metadata: META })) },
+      project: {
+        findUnique: jest.fn(async () => ({ id: 'proj-A', contactId: 'contact-A', metadata: META })),
+      },
     };
     const { svc, quotePanel } = makeService(tx);
-    quotePanel.buildPanel.mockResolvedValueOnce({ linked: true, source: 'cached', quote: { number: 'Q-2026-0001' } } as any);
+    quotePanel.buildPanel.mockResolvedValueOnce({
+      linked: true,
+      source: 'cached',
+      quote: { number: 'Q-2026-0001' },
+    } as any);
 
     const out = await svc.getProjectQuote('ws1', clientUser, 'proj-A');
 
-    expect(quotePanel.buildPanel).toHaveBeenCalledWith({ id: 'proj-A', metadata: META }, 'client', { workspaceId: 'ws1' });
+    expect(quotePanel.buildPanel).toHaveBeenCalledWith({ id: 'proj-A', metadata: META }, 'client', {
+      workspaceId: 'ws1',
+    });
     expect(out).toEqual({ linked: true, source: 'cached', quote: { number: 'Q-2026-0001' } });
   });
 
-  it("403s (and never reads through) when the project belongs to a different contact", async () => {
+  it('403s (and never reads through) when the project belongs to a different contact', async () => {
     const tx = {
       contact: { findUnique: jest.fn(async () => ({ id: 'contact-A' })) },
-      project: { findUnique: jest.fn(async () => ({ id: 'proj-B', contactId: 'contact-B', metadata: META })) },
+      project: {
+        findUnique: jest.fn(async () => ({ id: 'proj-B', contactId: 'contact-B', metadata: META })),
+      },
     };
     const { svc, quotePanel } = makeService(tx);
-    await expect(svc.getProjectQuote('ws1', clientUser, 'proj-B')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.getProjectQuote('ws1', clientUser, 'proj-B')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
     expect(quotePanel.buildPanel).not.toHaveBeenCalled();
   });
 
@@ -186,7 +204,9 @@ describe('ClientPortalService.getProjectQuote — Quote panel (QUOTES-CONTRACT-v
       project: { findUnique: jest.fn(async () => null) },
     };
     const { svc, quotePanel } = makeService(tx);
-    await expect(svc.getProjectQuote('ws1', clientUser, 'ghost')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.getProjectQuote('ws1', clientUser, 'ghost')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
     expect(quotePanel.buildPanel).not.toHaveBeenCalled();
   });
 });

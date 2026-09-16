@@ -56,7 +56,13 @@ describe('maskQuoteSummaryForClient', () => {
     const masked = maskQuoteSummaryForClient(POISONED);
     expect(Object.keys(masked).sort()).toEqual([...CLIENT_QUOTE_SUMMARY_KEYS].sort());
     expect(Object.keys(masked.totals).sort()).toEqual(
-      ['currency', 'milestone_total_cents', 'one_time_plus_milestones_cents', 'one_time_total_cents', 'recurring_monthly_cents'].sort(),
+      [
+        'currency',
+        'milestone_total_cents',
+        'one_time_plus_milestones_cents',
+        'one_time_total_cents',
+        'recurring_monthly_cents',
+      ].sort(),
     );
     expect(masked).toEqual({
       number: 'Q-2026-0001',
@@ -99,7 +105,14 @@ describe('maskQuoteSummaryForClient', () => {
   });
 
   it('the whitelist constant itself is the six agreed keys (a widening here is a review event)', () => {
-    expect([...CLIENT_QUOTE_SUMMARY_KEYS].sort()).toEqual(['number', 'share_url', 'status', 'title', 'totals', 'version']);
+    expect([...CLIENT_QUOTE_SUMMARY_KEYS].sort()).toEqual([
+      'number',
+      'share_url',
+      'status',
+      'title',
+      'totals',
+      'version',
+    ]);
   });
 });
 
@@ -122,7 +135,10 @@ describe('readProjectQuoteRef / readCachedQuoteSummary / summaryFromCache', () =
   });
 
   it('reads the ids and tolerates a malformed schedule_ids', () => {
-    expect(readProjectQuoteRef({ quote: { ...REF, schedule_ids: 'nope' } })).toEqual({ ...REF, schedule_ids: [] });
+    expect(readProjectQuoteRef({ quote: { ...REF, schedule_ids: 'nope' } })).toEqual({
+      ...REF,
+      schedule_ids: [],
+    });
     expect(readProjectQuoteRef({ quote: { ...REF, version: '2' } })!.version).toBe(2);
   });
 
@@ -132,7 +148,11 @@ describe('readProjectQuoteRef / readCachedQuoteSummary / summaryFromCache', () =
         title: 'Order Pad for the apparel client',
         currency: 'USD',
         status: 'accepted',
-        totals: { one_time_total_cents: '140000', milestone_total_cents: 290000, recurring_monthly_cents: 35000 },
+        totals: {
+          one_time_total_cents: '140000',
+          milestone_total_cents: 290000,
+          recurring_monthly_cents: 35000,
+        },
       },
     });
     const view = summaryFromCache(REF, cached);
@@ -168,7 +188,12 @@ describe('normalizeQuoteSummary (tolerant reader of GET /api/quotes/:id/summary)
           title: 'T',
           status: 'accepted',
           currency: 'USD',
-          totals: { one_time_total_cents: 100, milestone_total_cents: 200, recurring_monthly_cents: 30, year_one_illustration_cents: 660 },
+          totals: {
+            one_time_total_cents: 100,
+            milestone_total_cents: 200,
+            recurring_monthly_cents: 30,
+            year_one_illustration_cents: 660,
+          },
           share_url: 'https://x.test/q/t',
           accepted_at: '2026-09-12T18:04:00Z',
           federated: { project_ops_project_id: 'p1' },
@@ -198,8 +223,18 @@ describe('normalizeQuoteSummary (tolerant reader of GET /api/quotes/:id/summary)
             currency: 'USD',
             one_time_cents: 140000,
             milestone_cents: 290000,
-            recurring: { month_cents: 35000, quarter_cents: 30000, year_cents: 12000, monthly_equivalent_cents: 46000 },
-            hourly_primary: { line_id: 'l9', label: 'Change work', rate_cents: 15000, minimum_hours: 2 },
+            recurring: {
+              month_cents: 35000,
+              quarter_cents: 30000,
+              year_cents: 12000,
+              monthly_equivalent_cents: 46000,
+            },
+            hourly_primary: {
+              line_id: 'l9',
+              label: 'Change work',
+              rate_cents: 15000,
+              minimum_hours: 2,
+            },
             deposit_cents: 215000,
             year_one_cents: 850000,
           },
@@ -241,7 +276,13 @@ describe('normalizeQuoteSummary (tolerant reader of GET /api/quotes/:id/summary)
 
   it('accepts a flat shape with numeric strings and falls back to the stored ref for missing ids', () => {
     const s = normalizeQuoteSummary(
-      { title: 'T', status: 'sent', one_time_total_cents: '100', milestone_total_cents: '0', recurring_monthly_cents: 0 },
+      {
+        title: 'T',
+        status: 'sent',
+        one_time_total_cents: '100',
+        milestone_total_cents: '0',
+        recurring_monthly_cents: 0,
+      },
       REF,
     );
     expect(s.customer_ops_quote_id).toBe('q-0001');

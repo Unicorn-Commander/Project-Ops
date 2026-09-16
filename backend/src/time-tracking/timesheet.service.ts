@@ -135,7 +135,12 @@ export class TimesheetService {
 
         const result = await tx.timeEntry.updateMany({
           where: { id: { in: entryIds }, workspaceId, approvalStatus: 'SUBMITTED' },
-          data: { approvalStatus: 'APPROVED', approvedById: approver.id, approvedAt: now, lockedAt: now },
+          data: {
+            approvalStatus: 'APPROVED',
+            approvedById: approver.id,
+            approvedAt: now,
+            lockedAt: now,
+          },
         });
 
         if (dto.timesheetPeriodId) {
@@ -191,7 +196,12 @@ export class TimesheetService {
 
         const result = await tx.timeEntry.updateMany({
           where: { id: { in: entryIds }, workspaceId, approvalStatus: 'SUBMITTED' },
-          data: { approvalStatus: 'DRAFT', rejectionReason: dto.reason, approvedById: null, approvedAt: null },
+          data: {
+            approvalStatus: 'DRAFT',
+            rejectionReason: dto.reason,
+            approvedById: null,
+            approvedAt: null,
+          },
         });
 
         if (dto.timesheetPeriodId) {

@@ -62,18 +62,21 @@ describe('BillingRateService.assertScopeColumns — ORG scope', () => {
 
   it('REJECTS an ORG rate with no organizationId but a stray scope column (silent-mischarge guard)', async () => {
     const { svc } = makeService();
-    await expect(
-      svc.create('ws', admin, orgRate({ userId: 'u9' })),
-    ).rejects.toBeInstanceOf(BadRequestException);
-    await expect(
-      svc.create('ws', admin, orgRate({ projectId: 'p9' })),
-    ).rejects.toThrow(/workspace-wide default/i);
+    await expect(svc.create('ws', admin, orgRate({ userId: 'u9' }))).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(svc.create('ws', admin, orgRate({ projectId: 'p9' }))).rejects.toThrow(
+      /workspace-wide default/i,
+    );
   });
 
   it('still enforces the required column for a non-ORG scope (PROJECT requires projectId)', async () => {
     const { svc } = makeService();
     await expect(
-      svc.create('ws', admin, { scopeType: 'PROJECT' as any, billRate: 100 } as CreateBillingRateDto),
+      svc.create('ws', admin, {
+        scopeType: 'PROJECT' as any,
+        billRate: 100,
+      } as CreateBillingRateDto),
     ).rejects.toThrow(/PROJECT rate requires projectId/);
   });
 

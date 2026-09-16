@@ -1,9 +1,4 @@
-import {
-  clampLimit,
-  clampOffset,
-  DEFAULT_PAGE_SIZE,
-  MAX_PAGE_SIZE,
-} from './clamp';
+import { clampLimit, clampOffset, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from './clamp';
 
 describe('clampLimit', () => {
   it('defaults when limit is absent', () => {

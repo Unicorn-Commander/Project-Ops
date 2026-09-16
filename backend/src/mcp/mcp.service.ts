@@ -122,6 +122,8 @@ export class McpService {
     // the prior behavior (claim → default membership).
     requestWorkspaceId?: string | null,
   ) {
+    // Preserve the SDK's deliberate CommonJS interop at request setup.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 
     const server = new McpServer(
@@ -477,8 +479,7 @@ export class McpService {
           commentId: z.string().min(1),
         },
       },
-      async (args: { commentId: string }) =>
-        wrap(await tools.deleteTaskComment(user, args)),
+      async (args: { commentId: string }) => wrap(await tools.deleteTaskComment(user, args)),
     );
 
     // ─── Write tools ────────────────────────────────────────────────
@@ -890,8 +891,7 @@ export class McpService {
           documentId: z.string().min(1),
         },
       },
-      async (args: { documentId: string }) =>
-        wrap(await tools.deleteDocument(user, args)),
+      async (args: { documentId: string }) => wrap(await tools.deleteDocument(user, args)),
     );
 
     server.registerTool(

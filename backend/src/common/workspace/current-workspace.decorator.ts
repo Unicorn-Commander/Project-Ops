@@ -16,9 +16,6 @@ import { defaultWorkspaceId, resolveWorkspaceId } from './workspace.util';
 export const CurrentWorkspace = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): string => {
     const request = ctx.switchToHttp().getRequest();
-    return (
-      request?.workspaceId ??
-      resolveWorkspaceId(request?.user, defaultWorkspaceId())
-    );
+    return request?.workspaceId ?? resolveWorkspaceId(request?.user, defaultWorkspaceId());
   },
 );

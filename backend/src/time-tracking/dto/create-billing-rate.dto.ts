@@ -49,7 +49,11 @@ export class CreateBillingRateDto {
   @Type(() => Number)
   billRate: number;
 
-  @ApiProperty({ required: false, example: 65.0, description: 'Internal cost rate — never shown to CLIENT.' })
+  @ApiProperty({
+    required: false,
+    example: 65.0,
+    description: 'Internal cost rate — never shown to CLIENT.',
+  })
   @IsNumber()
   @Min(0)
   @Type(() => Number)
