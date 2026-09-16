@@ -109,7 +109,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     workspaceId: string,
     ucUid: string | null | undefined,
     fn: (tx: WorkspaceTxClient) => Promise<T>,
-    options?: { maxWait?: number; timeout?: number; isolationLevel?: Prisma.TransactionIsolationLevel },
+    options?: {
+      maxWait?: number;
+      timeout?: number;
+      isolationLevel?: Prisma.TransactionIsolationLevel;
+    },
   ): Promise<T> {
     if (!workspaceId || !workspaceId.trim()) {
       // Fail closed: an empty workspace id would set the GUC to '' (==NULL via
@@ -133,9 +137,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       throw new Error('Cannot clean database in production!');
     }
 
-    const models = Reflect.ownKeys(this).filter(
-      (key) => key[0] !== '_' && typeof key === 'string',
-    );
+    const models = Reflect.ownKeys(this).filter((key) => key[0] !== '_' && typeof key === 'string');
 
     return Promise.all(
       models.map((modelKey) => {

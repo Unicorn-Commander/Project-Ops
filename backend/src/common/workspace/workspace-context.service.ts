@@ -30,10 +30,7 @@ export class WorkspaceContextService {
   ) {}
 
   get defaultWorkspaceId(): string {
-    return this.config.get<string>(
-      'DEFAULT_WORKSPACE_ID',
-      DEFAULT_WORKSPACE_FALLBACK,
-    );
+    return this.config.get<string>('DEFAULT_WORKSPACE_ID', DEFAULT_WORKSPACE_FALLBACK);
   }
 
   /** Resolve the active workspace id for the given (claim-augmented) user. */
@@ -62,9 +59,7 @@ export class WorkspaceContextService {
     // resolveAndAuthorize still falls back to the configured default, preserving
     // today's single-tenant behavior.
     const claim =
-      requestedWorkspaceId?.trim() ||
-      (user as WithWorkspaceClaim).__workspaceClaim?.trim() ||
-      null;
+      requestedWorkspaceId?.trim() || (user as WithWorkspaceClaim).__workspaceClaim?.trim() || null;
     return this.membership.resolveAndAuthorize(user, claim);
   }
 

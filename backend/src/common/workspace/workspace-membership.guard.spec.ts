@@ -35,9 +35,7 @@ describe('WorkspaceMembershipGuard', () => {
   });
 
   it('throws (not 401-masking) when there is no authenticated user', async () => {
-    await expect(guard.canActivate(ctxFor({}))).rejects.toThrow(
-      ForbiddenException,
-    );
+    await expect(guard.canActivate(ctxFor({}))).rejects.toThrow(ForbiddenException);
     expect(resolveAndAuthorize).not.toHaveBeenCalled();
   });
 

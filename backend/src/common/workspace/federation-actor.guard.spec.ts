@@ -81,9 +81,7 @@ describe('FederationActorGuard', () => {
 
   it('honors a multi-actor allow-list', () => {
     const req: any = { user: fedUser('meeting-ops', WS) };
-    expect(
-      guardWith('contact-ops, meeting-ops').canActivate(ctx(req, 'ingest')),
-    ).toBe(true);
+    expect(guardWith('contact-ops, meeting-ops').canActivate(ctx(req, 'ingest'))).toBe(true);
     expect(req.federationActor).toBe('meeting-ops');
   });
 });
@@ -100,7 +98,9 @@ describe('FederationActorGuard — quotes seam route scope (quoteAccepted)', () 
   const OTHER_WS = '01924a3c-0000-7f1a-beef-67f1ab5c0002';
 
   const guardWith = (allow: string) =>
-    new FederationActorGuard({ get: (_k: string, def?: string) => allow ?? def ?? '' } as unknown as ConfigService);
+    new FederationActorGuard({
+      get: (_k: string, def?: string) => allow ?? def ?? '',
+    } as unknown as ConfigService);
 
   const ctx = (req: any, handlerName: string): ExecutionContext =>
     ({
@@ -124,7 +124,9 @@ describe('FederationActorGuard — quotes seam route scope (quoteAccepted)', () 
 
   it('does NOT elevate meeting-ops on quoteAccepted even when it is allow-listed (route scope)', () => {
     const req: any = { user: fedUser('meeting-ops', WS) };
-    expect(guardWith('meeting-ops, customer-ops').canActivate(ctx(req, 'quoteAccepted'))).toBe(true);
+    expect(guardWith('meeting-ops, customer-ops').canActivate(ctx(req, 'quoteAccepted'))).toBe(
+      true,
+    );
     expect(req.federationActor).toBeUndefined();
     expect(req.workspaceId).toBeUndefined();
   });

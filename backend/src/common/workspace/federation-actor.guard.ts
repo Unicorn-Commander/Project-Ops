@@ -1,9 +1,4 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { WithWorkspaceClaim } from './workspace.util';
 
@@ -78,8 +73,7 @@ export class FederationActorGuard implements CanActivate {
     if (!user) return true;
 
     const handler = context.getHandler()?.name;
-    const isFederationRoute =
-      !!handler && FederationActorGuard.FEDERATION_ROUTES.has(handler);
+    const isFederationRoute = !!handler && FederationActorGuard.FEDERATION_ROUTES.has(handler);
 
     if (
       isFederationRoute &&

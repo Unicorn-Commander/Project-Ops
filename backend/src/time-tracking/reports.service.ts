@@ -74,7 +74,8 @@ export class ReportsService {
         email: u?.email,
         totalHours: hours(totalSeconds),
         billableHours: hours(billableSeconds),
-        utilization: totalSeconds > 0 ? Math.round((billableSeconds / totalSeconds) * 1000) / 10 : 0,
+        utilization:
+          totalSeconds > 0 ? Math.round((billableSeconds / totalSeconds) * 1000) / 10 : 0,
       };
     });
 

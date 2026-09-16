@@ -68,11 +68,7 @@ function ensure(tool: string): InternalStats {
  * Record one MCP tool invocation. Call after the handler settles (ok result,
  * isError envelope, or thrown exception mapped to error).
  */
-export function recordMcpToolCall(
-  tool: string,
-  status: McpMetricStatus,
-  durationMs: number,
-): void {
+export function recordMcpToolCall(tool: string, status: McpMetricStatus, durationMs: number): void {
   const s = ensure(tool);
   const ms = Number.isFinite(durationMs) && durationMs >= 0 ? durationMs : 0;
   if (status === 'ok') {
@@ -130,7 +126,9 @@ export function getMcpMetricsSnapshot(): {
 export function renderPrometheus(): string {
   const snap = getMcpMetricsSnapshot();
   const lines: string[] = [];
-  lines.push('# HELP project_ops_mcp_tool_calls_total Total MCP tool invocations by tool and status');
+  lines.push(
+    '# HELP project_ops_mcp_tool_calls_total Total MCP tool invocations by tool and status',
+  );
   lines.push('# TYPE project_ops_mcp_tool_calls_total counter');
   for (const t of snap.tools) {
     lines.push(
@@ -161,9 +159,7 @@ export function renderPrometheus(): string {
     lines.push(`project_ops_mcp_tool_duration_ms_sum{tool="${tool}"} ${t.durationMsSum}`);
     lines.push(`project_ops_mcp_tool_duration_ms_count{tool="${tool}"} ${t.durationMsCount}`);
     for (const [le, count] of Object.entries(t.buckets)) {
-      lines.push(
-        `project_ops_mcp_tool_duration_ms_bucket{tool="${tool}",le="${le}"} ${count}`,
-      );
+      lines.push(`project_ops_mcp_tool_duration_ms_bucket{tool="${tool}",le="${le}"} ${count}`);
     }
     lines.push(
       `project_ops_mcp_tool_duration_ms_bucket{tool="${tool}",le="+Inf"} ${t.durationMsCount}`,

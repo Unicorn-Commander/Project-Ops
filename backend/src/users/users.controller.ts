@@ -8,7 +8,6 @@ import {
   Delete,
   Query,
   UseGuards,
-  ParseIntPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -46,7 +45,12 @@ export class UsersController {
   @ApiOperation({ summary: 'Get all users with pagination' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'role', required: false, type: String, description: 'Single role or comma-separated roles (e.g., ADMIN,MANAGER,STAFF)' })
+  @ApiQuery({
+    name: 'role',
+    required: false,
+    type: String,
+    description: 'Single role or comma-separated roles (e.g., ADMIN,MANAGER,STAFF)',
+  })
   @ApiResponse({ status: 200, description: 'Returns list of users' })
   async findAll(
     @Query('page') page?: string,
@@ -61,7 +65,10 @@ export class UsersController {
     // Parse role parameter - support both single role and comma-separated roles
     let where: any = undefined;
     if (role) {
-      const roles = role.split(',').map(r => r.trim()).filter(r => r);
+      const roles = role
+        .split(',')
+        .map((r) => r.trim())
+        .filter((r) => r);
       if (roles.length === 1) {
         where = { role: roles[0] as UserRole };
       } else if (roles.length > 1) {

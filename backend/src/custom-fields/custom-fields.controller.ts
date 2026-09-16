@@ -36,7 +36,9 @@ export class CustomFieldsController {
   constructor(private readonly customFieldsService: CustomFieldsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List custom-field definitions for an entity (ordered by position, label)' })
+  @ApiOperation({
+    summary: 'List custom-field definitions for an entity (ordered by position, label)',
+  })
   @ApiQuery({ name: 'entity', required: true, enum: CustomFieldEntity })
   @ApiResponse({ status: 200, description: 'Returns the entity’s custom-field definitions' })
   findAll(

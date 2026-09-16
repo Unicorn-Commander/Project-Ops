@@ -78,11 +78,7 @@ export class ContactsService {
     return contact;
   }
 
-  async create(
-    workspaceId: string,
-    user: User,
-    createContactDto: CreateContactDto,
-  ) {
+  async create(workspaceId: string, user: User, createContactDto: CreateContactDto) {
     return this.workspaceContext.runForUser(
       user,
       async (tx) => {
@@ -94,9 +90,7 @@ export class ContactsService {
         });
 
         if (existingContact) {
-          throw new ConflictException(
-            'Contact with this email already exists',
-          );
+          throw new ConflictException('Contact with this email already exists');
         }
 
         const contact = await tx.contact.create({
@@ -225,19 +219,10 @@ export class ContactsService {
   }
 
   async findOne(workspaceId: string, user: User, id: string) {
-    return this.workspaceContext.runForUser(
-      user,
-      (tx) => this.findOneInTx(tx, id),
-      workspaceId,
-    );
+    return this.workspaceContext.runForUser(user, (tx) => this.findOneInTx(tx, id), workspaceId);
   }
 
-  async update(
-    workspaceId: string,
-    user: User,
-    id: string,
-    updateContactDto: UpdateContactDto,
-  ) {
+  async update(workspaceId: string, user: User, id: string, updateContactDto: UpdateContactDto) {
     return this.workspaceContext.runForUser(
       user,
       async (tx) => {
@@ -253,9 +238,7 @@ export class ContactsService {
           });
 
           if (existingContact && existingContact.id !== id) {
-            throw new ConflictException(
-              'Contact with this email already exists',
-            );
+            throw new ConflictException('Contact with this email already exists');
           }
         }
 
@@ -431,14 +414,10 @@ export class ContactsService {
 
         projects.forEach((project) => {
           if (project.billingAmount) {
-            totalBilled = totalBilled.add(
-              new Decimal(project.billingAmount.toString()),
-            );
+            totalBilled = totalBilled.add(new Decimal(project.billingAmount.toString()));
           }
           if (project.amountPaid) {
-            totalPaid = totalPaid.add(
-              new Decimal(project.amountPaid.toString()),
-            );
+            totalPaid = totalPaid.add(new Decimal(project.amountPaid.toString()));
           }
         });
 
@@ -454,9 +433,7 @@ export class ContactsService {
             billingAmount: project.billingAmount
               ? parseFloat(project.billingAmount.toString())
               : null,
-            amountPaid: project.amountPaid
-              ? parseFloat(project.amountPaid.toString())
-              : null,
+            amountPaid: project.amountPaid ? parseFloat(project.amountPaid.toString()) : null,
           })),
         };
       },
@@ -486,18 +463,14 @@ export class ContactsService {
         const contactsWithStats = allContacts.map((contact) => {
           let totalBilled = new Decimal(0);
           let totalPaid = new Decimal(0);
-          let projectsCount = contact.projects.length;
+          const projectsCount = contact.projects.length;
 
           contact.projects.forEach((project) => {
             if (project.billingAmount) {
-              totalBilled = totalBilled.add(
-                new Decimal(project.billingAmount.toString()),
-              );
+              totalBilled = totalBilled.add(new Decimal(project.billingAmount.toString()));
             }
             if (project.amountPaid) {
-              totalPaid = totalPaid.add(
-                new Decimal(project.amountPaid.toString()),
-              );
+              totalPaid = totalPaid.add(new Decimal(project.amountPaid.toString()));
             }
           });
 
@@ -550,9 +523,7 @@ export class ContactsService {
         });
 
         if (!found) {
-          throw new NotFoundException(
-            `Contact with ID ${contactId} not found`,
-          );
+          throw new NotFoundException(`Contact with ID ${contactId} not found`);
         }
 
         // Check if contact already has a user account
@@ -561,6 +532,8 @@ export class ContactsService {
         }
 
         // Generate random 32-character token
+        // Keep this optional path's existing lazy module loading.
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const crypto = require('crypto');
         const token = crypto.randomBytes(16).toString('hex');
 
@@ -601,8 +574,7 @@ export class ContactsService {
     );
 
     // Generate invitation URL
-    const frontendUrl =
-      process.env.FRONTEND_URL || 'https://projectops.unicorncommander.ai';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://projectops.unicorncommander.ai';
     const invitationUrl = `${frontendUrl}/auth/contact-signup/${invitationToken}`;
 
     // Try to send invitation email (external I/O, outside the workspace tx)
@@ -626,21 +598,14 @@ export class ContactsService {
         if (emailSent) {
           this.logger.log(`Invitation email sent to ${contact.email}`);
         } else {
-          this.logger.warn(
-            `Failed to send invitation email to ${contact.email}: ${emailMessage}`,
-          );
+          this.logger.warn(`Failed to send invitation email to ${contact.email}: ${emailMessage}`);
         }
       } else {
-        this.logger.warn(
-          'Email service not configured. Invitation created but email not sent.',
-        );
+        this.logger.warn('Email service not configured. Invitation created but email not sent.');
         emailMessage = 'Email service not configured';
       }
     } catch (error) {
-      this.logger.error(
-        `Error sending invitation email to ${contact.email}`,
-        error,
-      );
+      this.logger.error(`Error sending invitation email to ${contact.email}`, error);
       emailMessage = 'Failed to send email';
     }
 

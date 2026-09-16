@@ -47,9 +47,7 @@ export class SentryFilter extends BaseExceptionFilter implements ExceptionFilter
     const req = ctx.getRequest<Request>();
 
     const status =
-      exception instanceof HttpException
-        ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
+      exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
 
     if (status >= 500) {
       Sentry.withScope((scope) => {

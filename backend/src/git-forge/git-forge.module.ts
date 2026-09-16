@@ -18,10 +18,7 @@ import { ForgejoAdapter } from './providers/forgejo.adapter';
  * Spec: docs/designs/GIT-FORGE-INTEGRATION.md
  */
 @Module({
-  providers: [
-    ForgejoAdapter,
-    { provide: GIT_FORGE_PROVIDER, useExisting: ForgejoAdapter },
-  ],
+  providers: [ForgejoAdapter, { provide: GIT_FORGE_PROVIDER, useExisting: ForgejoAdapter }],
   exports: [GIT_FORGE_PROVIDER, ForgejoAdapter],
 })
 export class GitForgeModule {}

@@ -145,8 +145,20 @@ describe('MembershipService', () => {
     it('joins memberships to workspace identity in the canonical shape, default-first', async () => {
       // listActiveMemberships already orders isDefault desc, createdAt asc.
       const memberships = [
-        { userKey: 'kc-aaron-sub', workspaceId: 'ws-mu', role: WorkspaceRole.OWNER, status: MembershipStatus.ACTIVE, isDefault: true },
-        { userKey: 'kc-aaron-sub', workspaceId: 'ws-gfl', role: WorkspaceRole.MANAGER, status: MembershipStatus.ACTIVE, isDefault: false },
+        {
+          userKey: 'kc-aaron-sub',
+          workspaceId: 'ws-mu',
+          role: WorkspaceRole.OWNER,
+          status: MembershipStatus.ACTIVE,
+          isDefault: true,
+        },
+        {
+          userKey: 'kc-aaron-sub',
+          workspaceId: 'ws-gfl',
+          role: WorkspaceRole.MANAGER,
+          status: MembershipStatus.ACTIVE,
+          isDefault: false,
+        },
       ];
       const findMany = jest.fn().mockImplementation((args: any) =>
         args?.where?.id // workspace.findMany batch lookup
@@ -163,8 +175,20 @@ describe('MembershipService', () => {
       const svc = make({ DEFAULT_WORKSPACE_ID: BOOTSTRAP }, prisma);
       const result = await svc.listActiveWorkspaces(aaron);
       expect(result).toEqual([
-        { workspaceId: 'ws-mu', slug: 'magic-unicorn', displayName: 'Magic Unicorn', role: WorkspaceRole.OWNER, isDefault: true },
-        { workspaceId: 'ws-gfl', slug: 'brightwater-labs', displayName: 'Brightwater Labs', role: WorkspaceRole.MANAGER, isDefault: false },
+        {
+          workspaceId: 'ws-mu',
+          slug: 'magic-unicorn',
+          displayName: 'Magic Unicorn',
+          role: WorkspaceRole.OWNER,
+          isDefault: true,
+        },
+        {
+          workspaceId: 'ws-gfl',
+          slug: 'brightwater-labs',
+          displayName: 'Brightwater Labs',
+          role: WorkspaceRole.MANAGER,
+          isDefault: false,
+        },
       ]);
     });
 
@@ -179,12 +203,24 @@ describe('MembershipService', () => {
 
     it('drops a membership whose workspace row is not present locally (cannot render a switcher entry)', async () => {
       const membershipFindMany = jest.fn().mockResolvedValue([
-        { userKey: 'kc-aaron-sub', workspaceId: 'ws-present', role: WorkspaceRole.MEMBER, status: MembershipStatus.ACTIVE, isDefault: false },
-        { userKey: 'kc-aaron-sub', workspaceId: 'ws-orphan', role: WorkspaceRole.MEMBER, status: MembershipStatus.ACTIVE, isDefault: false },
+        {
+          userKey: 'kc-aaron-sub',
+          workspaceId: 'ws-present',
+          role: WorkspaceRole.MEMBER,
+          status: MembershipStatus.ACTIVE,
+          isDefault: false,
+        },
+        {
+          userKey: 'kc-aaron-sub',
+          workspaceId: 'ws-orphan',
+          role: WorkspaceRole.MEMBER,
+          status: MembershipStatus.ACTIVE,
+          isDefault: false,
+        },
       ]);
-      const workspaceFindMany = jest.fn().mockResolvedValue([
-        { id: 'ws-present', slug: 'present', displayName: 'Present WS' },
-      ]);
+      const workspaceFindMany = jest
+        .fn()
+        .mockResolvedValue([{ id: 'ws-present', slug: 'present', displayName: 'Present WS' }]);
       const prisma = {
         membership: { findMany: membershipFindMany },
         workspace: { findMany: workspaceFindMany },
@@ -192,7 +228,13 @@ describe('MembershipService', () => {
       const svc = make({ DEFAULT_WORKSPACE_ID: BOOTSTRAP }, prisma);
       const result = await svc.listActiveWorkspaces(aaron);
       expect(result).toEqual([
-        { workspaceId: 'ws-present', slug: 'present', displayName: 'Present WS', role: WorkspaceRole.MEMBER, isDefault: false },
+        {
+          workspaceId: 'ws-present',
+          slug: 'present',
+          displayName: 'Present WS',
+          role: WorkspaceRole.MEMBER,
+          isDefault: false,
+        },
       ]);
     });
   });

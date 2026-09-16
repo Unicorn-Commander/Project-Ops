@@ -91,10 +91,7 @@ export class PatService {
     // requested id (or the configured default) and never throws; with tenancy
     // on it 403s unless `user` is an active member of the target workspace, and
     // picks their default membership when no explicit target was given.
-    const workspaceId = await this.membership.resolveAndAuthorize(
-      user,
-      input.workspaceId ?? null,
-    );
+    const workspaceId = await this.membership.resolveAndAuthorize(user, input.workspaceId ?? null);
 
     const { plaintext, hash: hashPromise } = generatePat();
     const tokenHash = await hashPromise;

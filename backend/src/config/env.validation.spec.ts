@@ -38,9 +38,7 @@ describe('validateEnv', () => {
   });
 
   it('throws in production when JWT_SECRET is too weak', () => {
-    expect(() => validateEnv({ ...baseProd, JWT_SECRET: 'short' })).toThrow(
-      /JWT_SECRET/,
-    );
+    expect(() => validateEnv({ ...baseProd, JWT_SECRET: 'short' })).toThrow(/JWT_SECRET/);
   });
 
   it('throws in production when EMAIL_ENCRYPTION_KEY is unset', () => {
@@ -50,9 +48,9 @@ describe('validateEnv', () => {
   });
 
   it('throws in production when EMAIL_ENCRYPTION_KEY is the wrong length', () => {
-    expect(() =>
-      validateEnv({ ...baseProd, EMAIL_ENCRYPTION_KEY: 'abc123' }),
-    ).toThrow(/EMAIL_ENCRYPTION_KEY/);
+    expect(() => validateEnv({ ...baseProd, EMAIL_ENCRYPTION_KEY: 'abc123' })).toThrow(
+      /EMAIL_ENCRYPTION_KEY/,
+    );
   });
 
   it('does NOT require JWT_SECRET / EMAIL_ENCRYPTION_KEY outside production', () => {
@@ -65,15 +63,13 @@ describe('validateEnv', () => {
   });
 
   it('rejects a non-numeric PORT', () => {
-    expect(() => validateEnv({ ...baseProd, PORT: 'not-a-port' })).toThrow(
-      /PORT/,
-    );
+    expect(() => validateEnv({ ...baseProd, PORT: 'not-a-port' })).toThrow(/PORT/);
   });
 
   it('rejects a non-boolean KEYCLOAK_ENFORCE_AUDIENCE', () => {
-    expect(() =>
-      validateEnv({ ...baseProd, KEYCLOAK_ENFORCE_AUDIENCE: 'maybe' }),
-    ).toThrow(/KEYCLOAK_ENFORCE_AUDIENCE/);
+    expect(() => validateEnv({ ...baseProd, KEYCLOAK_ENFORCE_AUDIENCE: 'maybe' })).toThrow(
+      /KEYCLOAK_ENFORCE_AUDIENCE/,
+    );
   });
 
   it('accepts string boolean forms for flags', () => {
@@ -95,8 +91,8 @@ describe('validateEnv', () => {
   });
 
   it('rejects a non-numeric UC_REGISTRY_TIMEOUT_MS', () => {
-    expect(() =>
-      validateEnv({ ...baseProd, UC_REGISTRY_TIMEOUT_MS: 'soon' }),
-    ).toThrow(/UC_REGISTRY_TIMEOUT_MS/);
+    expect(() => validateEnv({ ...baseProd, UC_REGISTRY_TIMEOUT_MS: 'soon' })).toThrow(
+      /UC_REGISTRY_TIMEOUT_MS/,
+    );
   });
 });

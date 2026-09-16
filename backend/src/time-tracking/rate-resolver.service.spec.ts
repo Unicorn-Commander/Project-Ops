@@ -63,13 +63,17 @@ describe('RateResolverService precedence', () => {
   });
 
   it('carries the currency of the chosen rate row', async () => {
-    const { svc, tx } = resolverWith([rateRow({ scopeType: 'PROJECT', billRate: 150, currency: 'EUR' })]);
+    const { svc, tx } = resolverWith([
+      rateRow({ scopeType: 'PROJECT', billRate: 150, currency: 'EUR' }),
+    ]);
     const r = await svc.resolve(tx, base);
     expect(r.currency).toBe('EUR');
   });
 
   it('falls back to ORG global (organizationId null) at lowest precedence', async () => {
-    const { svc, tx } = resolverWith([rateRow({ scopeType: 'ORG', organizationId: null, billRate: 90 })]);
+    const { svc, tx } = resolverWith([
+      rateRow({ scopeType: 'ORG', organizationId: null, billRate: 90 }),
+    ]);
     const r = await svc.resolve(tx, base);
     expect(r.billRate?.toNumber()).toBe(90);
     expect(r.source).toBe('RATE_ORG');

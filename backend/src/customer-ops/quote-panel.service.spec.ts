@@ -18,7 +18,11 @@ const META = {
     title: 'Order Pad for the apparel client',
     currency: 'USD',
     status: 'accepted',
-    totals: { one_time_total_cents: 140000, milestone_total_cents: 290000, recurring_monthly_cents: 35000 },
+    totals: {
+      one_time_total_cents: 140000,
+      milestone_total_cents: 290000,
+      recurring_monthly_cents: 35000,
+    },
   },
   customFields: { tier: 'gold' },
 };
@@ -54,7 +58,11 @@ function make(port: { configured: boolean; result: any }) {
 describe('QuotePanelService.buildPanel', () => {
   it('is not linked when the project did not come from a quote (and never calls Customer-Ops)', async () => {
     const { svc, customerOps } = make({ configured: true, result: { ok: true, summary: LIVE } });
-    expect(await svc.buildPanel({ id: 'p1', metadata: { customFields: {} } }, 'staff', { workspaceId: 'ws-1' })).toEqual({ linked: false });
+    expect(
+      await svc.buildPanel({ id: 'p1', metadata: { customFields: {} } }, 'staff', {
+        workspaceId: 'ws-1',
+      }),
+    ).toEqual({ linked: false });
     expect(customerOps.getQuoteSummary).not.toHaveBeenCalled();
   });
 
@@ -70,7 +78,9 @@ describe('QuotePanelService.buildPanel', () => {
 
   it('staff: live summary, source customer-ops, schedule ids, tax note', async () => {
     const { svc } = make({ configured: true, result: { ok: true, summary: LIVE } });
-    const panel = await svc.buildPanel({ id: 'p1', metadata: META }, 'staff', { workspaceId: 'ws-1' });
+    const panel = await svc.buildPanel({ id: 'p1', metadata: META }, 'staff', {
+      workspaceId: 'ws-1',
+    });
     expect(panel).toEqual({
       linked: true,
       source: 'customer-ops',
@@ -86,13 +96,23 @@ describe('QuotePanelService.buildPanel', () => {
   it('staff, unconfigured: degrades clean to the cached summary with a "connect Customer-Ops" note naming the env vars', async () => {
     const { svc } = make({
       configured: false,
-      result: { ok: false, reason: 'UNCONFIGURED', message: 'Connect Customer-Ops: set CUSTOMER_OPS_BASE_URL and CUSTOMER_OPS_SERVICE_TOKEN to read live quote status.' },
+      result: {
+        ok: false,
+        reason: 'UNCONFIGURED',
+        message:
+          'Connect Customer-Ops: set CUSTOMER_OPS_BASE_URL and CUSTOMER_OPS_SERVICE_TOKEN to read live quote status.',
+      },
     });
-    const panel = await svc.buildPanel({ id: 'p1', metadata: META }, 'staff', { workspaceId: 'ws-1' });
+    const panel = await svc.buildPanel({ id: 'p1', metadata: META }, 'staff', {
+      workspaceId: 'ws-1',
+    });
     expect(panel.linked).toBe(true);
     expect(panel.source).toBe('cached');
     expect(panel.configured).toBe(false);
-    expect(panel.degraded).toEqual({ reason: 'UNCONFIGURED', message: expect.stringContaining('CUSTOMER_OPS_BASE_URL') });
+    expect(panel.degraded).toEqual({
+      reason: 'UNCONFIGURED',
+      message: expect.stringContaining('CUSTOMER_OPS_BASE_URL'),
+    });
     expect(panel.quote).toMatchObject({
       number: 'Q-2026-0001',
       version: 1,
@@ -104,15 +124,35 @@ describe('QuotePanelService.buildPanel', () => {
   });
 
   it('staff, configured but unreachable: cached summary + the failure reason', async () => {
-    const { svc } = make({ configured: true, result: { ok: false, reason: 'UNREACHABLE', message: 'Customer-Ops is unreachable right now.' } });
-    const panel = await svc.buildPanel({ id: 'p1', metadata: META }, 'staff', { workspaceId: 'ws-1' });
+    const { svc } = make({
+      configured: true,
+      result: {
+        ok: false,
+        reason: 'UNREACHABLE',
+        message: 'Customer-Ops is unreachable right now.',
+      },
+    });
+    const panel = await svc.buildPanel({ id: 'p1', metadata: META }, 'staff', {
+      workspaceId: 'ws-1',
+    });
     expect(panel.source).toBe('cached');
-    expect(panel.degraded).toEqual({ reason: 'UNREACHABLE', message: 'Customer-Ops is unreachable right now.' });
+    expect(panel.degraded).toEqual({
+      reason: 'UNREACHABLE',
+      message: 'Customer-Ops is unreachable right now.',
+    });
   });
 
   it('client: the live summary is masked to number/title/totals/status/share link; no schedule ids, no configured flag', async () => {
-    const { svc } = make({ configured: true, result: { ok: true, summary: { ...LIVE, internal_notes_md: 'never', accepted_by: { email: 'x@y' } } } });
-    const panel = await svc.buildPanel({ id: 'p1', metadata: META }, 'client', { workspaceId: 'ws-1' });
+    const { svc } = make({
+      configured: true,
+      result: {
+        ok: true,
+        summary: { ...LIVE, internal_notes_md: 'never', accepted_by: { email: 'x@y' } },
+      },
+    });
+    const panel = await svc.buildPanel({ id: 'p1', metadata: META }, 'client', {
+      workspaceId: 'ws-1',
+    });
     expect(panel).toEqual({
       linked: true,
       source: 'customer-ops',
@@ -134,7 +174,16 @@ describe('QuotePanelService.buildPanel', () => {
       },
     });
     const json = JSON.stringify(panel);
-    for (const needle of ['hourly', 'deposit', 'accepted_by', 'internal', 'federated', 'schedule', 'customer_ops_quote_id', 'x@y']) {
+    for (const needle of [
+      'hourly',
+      'deposit',
+      'accepted_by',
+      'internal',
+      'federated',
+      'schedule',
+      'customer_ops_quote_id',
+      'x@y',
+    ]) {
       expect(json).not.toContain(needle);
     }
   });
@@ -142,12 +191,25 @@ describe('QuotePanelService.buildPanel', () => {
   it('client, degraded: masked cached summary and a generic message that never names env vars', async () => {
     const { svc } = make({
       configured: false,
-      result: { ok: false, reason: 'UNCONFIGURED', message: 'Connect Customer-Ops: set CUSTOMER_OPS_BASE_URL …' },
+      result: {
+        ok: false,
+        reason: 'UNCONFIGURED',
+        message: 'Connect Customer-Ops: set CUSTOMER_OPS_BASE_URL …',
+      },
     });
-    const panel = await svc.buildPanel({ id: 'p1', metadata: META }, 'client', { workspaceId: 'ws-1' });
+    const panel = await svc.buildPanel({ id: 'p1', metadata: META }, 'client', {
+      workspaceId: 'ws-1',
+    });
     expect(panel.source).toBe('cached');
     expect(panel.degraded!.message).not.toMatch(/CUSTOMER_OPS|env/);
-    expect(Object.keys(panel.quote as object).sort()).toEqual(['number', 'share_url', 'status', 'title', 'totals', 'version']);
+    expect(Object.keys(panel.quote as object).sort()).toEqual([
+      'number',
+      'share_url',
+      'status',
+      'title',
+      'totals',
+      'version',
+    ]);
     expect((panel as any).schedule_ids).toBeUndefined();
     expect((panel as any).configured).toBeUndefined();
   });

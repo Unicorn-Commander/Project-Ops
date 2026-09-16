@@ -111,7 +111,12 @@ export class IntegrationsHealthService {
     const url = this.config.get<string>('BRIGADE_URL');
     const apiKey = this.config.get<string>('BRIGADE_API_KEY');
     if (!url) {
-      return { name: 'brigade', configured: false, status: 'not_configured', detail: 'BRIGADE_URL unset' };
+      return {
+        name: 'brigade',
+        configured: false,
+        status: 'not_configured',
+        detail: 'BRIGADE_URL unset',
+      };
     }
     if (!apiKey) {
       return {

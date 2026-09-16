@@ -51,10 +51,7 @@ export class MembershipService {
 
   /** The single bootstrap/dogfood workspace id seeded by the RLS migration. */
   get bootstrapWorkspaceId(): string {
-    return this.config.get<string>(
-      'DEFAULT_WORKSPACE_ID',
-      DEFAULT_WORKSPACE_FALLBACK,
-    );
+    return this.config.get<string>('DEFAULT_WORKSPACE_ID', DEFAULT_WORKSPACE_FALLBACK);
   }
 
   /**
@@ -144,10 +141,7 @@ export class MembershipService {
    *
    * @param requestedWorkspaceId optional explicit target (from path/header/claim).
    */
-  async resolveAndAuthorize(
-    user: User,
-    requestedWorkspaceId?: string | null,
-  ): Promise<string> {
+  async resolveAndAuthorize(user: User, requestedWorkspaceId?: string | null): Promise<string> {
     const fallback = this.bootstrapWorkspaceId;
 
     if (!this.enabled) {
@@ -169,9 +163,7 @@ export class MembershipService {
     if (requestedWorkspaceId?.trim()) {
       const target = requestedWorkspaceId.trim();
       if (!memberships.some((m) => m.workspaceId === target)) {
-        this.logger.warn(
-          `403 workspace access for ${user.email}: not a member of ${target}`,
-        );
+        this.logger.warn(`403 workspace access for ${user.email}: not a member of ${target}`);
         throw new ForbiddenException('Not a member of the requested workspace.');
       }
       return target;

@@ -16,12 +16,7 @@ import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membersh
  */
 @Module({
   controllers: [AuditController],
-  providers: [
-    AuditService,
-    WorkspaceContextService,
-    MembershipService,
-    WorkspaceMembershipGuard,
-  ],
+  providers: [AuditService, WorkspaceContextService, MembershipService, WorkspaceMembershipGuard],
   exports: [AuditService],
 })
 export class AuditModule {}

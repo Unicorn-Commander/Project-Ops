@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { KeycloakStrategy } from './strategies/keycloak.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { PatManagementGuard } from './guards/pat-management.guard';
 import { PatController } from './pat/pat.controller';
 import { PatService } from './pat/pat.service';
 import { MembershipService } from '../common/workspace/membership.service';
@@ -35,6 +36,7 @@ import { EmailModule } from '../email/email.module';
     JwtStrategy,
     KeycloakStrategy,
     JwtAuthGuard,
+    PatManagementGuard,
     PatService,
     MembershipService,
   ],

@@ -35,9 +35,7 @@ export class ForgejoAdapter extends GitForgeProvider {
   readonly kind: GitForgeProviderKind = 'FORGEJO';
   private readonly logger = new Logger(ForgejoAdapter.name);
 
-  async testConnection(
-    creds: GitForgeCredentials,
-  ): Promise<GitForgeConnectionTestResult> {
+  async testConnection(creds: GitForgeCredentials): Promise<GitForgeConnectionTestResult> {
     this.assertCallable(creds);
     // Phase 1: GET {baseUrl}/api/v1/user with Authorization: token <pat>
     this.logger.debug(
@@ -58,9 +56,7 @@ export class ForgejoAdapter extends GitForgeProvider {
   ): Promise<GitCommit[]> {
     this.assertCallable(creds);
     this.assertRepo(repo);
-    this.logger.debug(
-      `Forgejo listCommits stub ${repo.owner}/${repo.repo} — no network`,
-    );
+    this.logger.debug(`Forgejo listCommits stub ${repo.owner}/${repo.repo} — no network`);
     return [];
   }
 
@@ -71,9 +67,7 @@ export class ForgejoAdapter extends GitForgeProvider {
   ): Promise<GitPullRequest[]> {
     this.assertCallable(creds);
     this.assertRepo(repo);
-    this.logger.debug(
-      `Forgejo listPullRequests stub ${repo.owner}/${repo.repo} — no network`,
-    );
+    this.logger.debug(`Forgejo listPullRequests stub ${repo.owner}/${repo.repo} — no network`);
     return [];
   }
 
@@ -92,14 +86,10 @@ export class ForgejoAdapter extends GitForgeProvider {
 
   private assertCallable(creds: GitForgeCredentials): void {
     if (!creds?.accessToken?.trim()) {
-      throw new GitForgeNotConfiguredError(
-        'Forgejo adapter refused call: accessToken is empty',
-      );
+      throw new GitForgeNotConfiguredError('Forgejo adapter refused call: accessToken is empty');
     }
     if (!creds?.baseUrl?.trim()) {
-      throw new GitForgeNotConfiguredError(
-        'Forgejo adapter refused call: baseUrl is empty',
-      );
+      throw new GitForgeNotConfiguredError('Forgejo adapter refused call: baseUrl is empty');
     }
     if (creds.provider !== 'FORGEJO' && creds.provider !== 'GITEA') {
       // Gitea is API-compatible enough that Phase 3 may share this class;
@@ -112,9 +102,7 @@ export class ForgejoAdapter extends GitForgeProvider {
 
   private assertRepo(repo: GitRepoRef): void {
     if (!repo?.owner?.trim() || !repo?.repo?.trim()) {
-      throw new GitForgeNotConfiguredError(
-        'Forgejo adapter refused call: owner/repo required',
-      );
+      throw new GitForgeNotConfiguredError('Forgejo adapter refused call: owner/repo required');
     }
   }
 

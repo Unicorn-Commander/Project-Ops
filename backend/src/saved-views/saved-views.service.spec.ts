@@ -1,9 +1,5 @@
 import { SavedViewsService } from './saved-views.service';
-import {
-  ForbiddenException,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { MAX_SAVED_VIEW_CONFIG_BYTES } from './saved-views.constants';
 
 /**
@@ -148,9 +144,9 @@ describe('SavedViewsService.update', () => {
     const update = jest.fn();
     const { svc } = makeService({ savedView: { findUnique, update } });
 
-    await expect(
-      svc.update('ws1', user, 'v1', { name: 'X' } as any),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.update('ws1', user, 'v1', { name: 'X' } as any)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
     expect(update).not.toHaveBeenCalled();
   });
 
@@ -159,9 +155,9 @@ describe('SavedViewsService.update', () => {
     const update = jest.fn();
     const { svc } = makeService({ savedView: { findUnique, update } });
 
-    await expect(
-      svc.update('ws1', user, 'missing', { name: 'X' } as any),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.update('ws1', user, 'missing', { name: 'X' } as any)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
     expect(update).not.toHaveBeenCalled();
   });
 
@@ -196,9 +192,7 @@ describe('SavedViewsService.remove', () => {
     const del = jest.fn();
     const { svc } = makeService({ savedView: { findUnique, delete: del } });
 
-    await expect(svc.remove('ws1', user, 'v1')).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(svc.remove('ws1', user, 'v1')).rejects.toBeInstanceOf(ForbiddenException);
     expect(del).not.toHaveBeenCalled();
   });
 });

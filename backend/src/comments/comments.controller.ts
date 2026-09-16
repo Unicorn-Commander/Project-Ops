@@ -66,16 +66,12 @@ export class CommentsController {
     const skip = (safePage - 1) * safeLimit;
     const where = projectId ? { projectId } : undefined;
 
-    const { comments, total } = await this.commentsService.findAll(
-      workspaceId,
-      user,
-      {
-        skip,
-        take: safeLimit,
-        where,
-        orderBy: { createdAt: 'desc' },
-      },
-    );
+    const { comments, total } = await this.commentsService.findAll(workspaceId, user, {
+      skip,
+      take: safeLimit,
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
 
     return {
       data: comments,
@@ -90,8 +86,18 @@ export class CommentsController {
 
   @Get('project/:projectId')
   @ApiOperation({ summary: 'Get comments for a project (paginated)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Page size (default 50, max 100)' })
-  @ApiQuery({ name: 'offset', required: false, type: Number, description: 'Rows to skip (default 0)' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Page size (default 50, max 100)',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Rows to skip (default 0)',
+  })
   @ApiResponse({ status: 200, description: 'Returns project comments' })
   findByProjectId(
     @CurrentWorkspace() workspaceId: string,

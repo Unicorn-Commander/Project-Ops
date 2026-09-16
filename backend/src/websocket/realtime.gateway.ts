@@ -8,7 +8,7 @@ import {
   MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger, UseGuards } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
 
@@ -31,7 +31,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   async handleConnection(client: Socket) {
     try {
       // Extract token from handshake
-      const token = client.handshake.auth.token || client.handshake.headers.authorization?.split(' ')[1];
+      const token =
+        client.handshake.auth.token || client.handshake.headers.authorization?.split(' ')[1];
 
       if (!token) {
         this.logger.warn(`Client ${client.id} disconnected: No token provided`);
@@ -69,10 +70,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage('join-project')
-  handleJoinProject(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { projectId: string },
-  ) {
+  handleJoinProject(@ConnectedSocket() client: Socket, @MessageBody() data: { projectId: string }) {
     const room = `project:${data.projectId}`;
     client.join(room);
     this.logger.log(`Client ${client.id} joined ${room}`);
@@ -91,10 +89,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage('project-update')
-  handleProjectUpdate(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: any,
-  ) {
+  handleProjectUpdate(@ConnectedSocket() client: Socket, @MessageBody() data: any) {
     const room = `project:${data.projectId}`;
     client.to(room).emit('project-updated', data);
     this.logger.log(`Project update broadcasted to ${room}`);
@@ -161,7 +156,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   @OnEvent('timesheet.submitted')
   handleTimesheetSubmitted(payload: any) {
-    if (payload.userId) this.server.to(`user:${payload.userId}`).emit('timesheet-submitted', payload);
+    if (payload.userId)
+      this.server.to(`user:${payload.userId}`).emit('timesheet-submitted', payload);
     // Notify approvers' queues (low-volume metadata).
     this.server.emit('timesheet-pending', payload);
   }

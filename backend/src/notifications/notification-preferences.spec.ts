@@ -129,7 +129,12 @@ describe('shouldEmail (the send gate)', () => {
   it('does NOT send when the master email toggle is off', () => {
     const off = applyPreferencePatch(prefs, { email: false });
     expect(
-      shouldEmail({ eventName: 'task.assigned', prefs: off, recipientUserId: 'u-1', actorUserId: 'u-2' }),
+      shouldEmail({
+        eventName: 'task.assigned',
+        prefs: off,
+        recipientUserId: 'u-1',
+        actorUserId: 'u-2',
+      }),
     ).toBe(false);
   });
 
@@ -160,7 +165,12 @@ describe('shouldEmail (the send gate)', () => {
 
   it('does NOT send for an unmapped event name', () => {
     expect(
-      shouldEmail({ eventName: 'something.unmapped', prefs, recipientUserId: 'u-1', actorUserId: 'u-2' }),
+      shouldEmail({
+        eventName: 'something.unmapped',
+        prefs,
+        recipientUserId: 'u-1',
+        actorUserId: 'u-2',
+      }),
     ).toBe(false);
   });
 
@@ -169,10 +179,20 @@ describe('shouldEmail (the send gate)', () => {
     expect(EVENT_TO_PREFERENCE_KEY['timesheet.submitted']).toBe(PreferenceKey.APPROVAL_REQUESTED);
     // Both default ON -> both emailable to a non-actor under defaults.
     expect(
-      shouldEmail({ eventName: 'task.comment.created', prefs, recipientUserId: 'a', actorUserId: 'b' }),
+      shouldEmail({
+        eventName: 'task.comment.created',
+        prefs,
+        recipientUserId: 'a',
+        actorUserId: 'b',
+      }),
     ).toBe(true);
     expect(
-      shouldEmail({ eventName: 'timesheet.submitted', prefs, recipientUserId: 'a', actorUserId: 'b' }),
+      shouldEmail({
+        eventName: 'timesheet.submitted',
+        prefs,
+        recipientUserId: 'a',
+        actorUserId: 'b',
+      }),
     ).toBe(true);
   });
 });

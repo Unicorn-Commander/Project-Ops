@@ -33,9 +33,7 @@ function makeService(tx: TxFns) {
 
   const workspaceContext = {
     runForUser: jest.fn(async (_u: any, fn: (t: any) => any) => fn(fullTx)),
-    runInWorkspace: jest.fn(async (_ws: any, _uid: any, fn: (t: any) => any) =>
-      fn(fullTx),
-    ),
+    runInWorkspace: jest.fn(async (_ws: any, _uid: any, fn: (t: any) => any) => fn(fullTx)),
   };
 
   const svc = new NotificationsService(
@@ -159,9 +157,7 @@ describe('NotificationsService.markRead', () => {
       },
     });
 
-    await expect(svc.markRead('ws1', user, 'nope')).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(svc.markRead('ws1', user, 'nope')).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 
@@ -198,12 +194,7 @@ describe('NotificationsService.resolveMentionedUserIds', () => {
       [{ userKey: 'kc-someone-else' }], // carol is not a member
     );
 
-    const ids = await svc.resolveMentionedUserIds(
-      t as any,
-      'ws1',
-      '@carol',
-      'u-self',
-    );
+    const ids = await svc.resolveMentionedUserIds(t as any, 'ws1', '@carol', 'u-self');
 
     expect(ids).toEqual([]);
   });
@@ -212,12 +203,7 @@ describe('NotificationsService.resolveMentionedUserIds', () => {
     const { svc } = makeService({});
     const t = tx([{ id: 'u-dave', keycloakId: null }], []); // zero memberships
 
-    const ids = await svc.resolveMentionedUserIds(
-      t as any,
-      'ws1',
-      '@dave',
-      'u-self',
-    );
+    const ids = await svc.resolveMentionedUserIds(t as any, 'ws1', '@dave', 'u-self');
 
     expect(ids).toEqual(['u-dave']);
   });
@@ -229,7 +215,7 @@ describe('NotificationsService.resolveMentionedUserIds', () => {
     const ids = await svc.resolveMentionedUserIds(t as any, 'ws1', 'plain text', null);
 
     expect(ids).toEqual([]);
-    expect((t.user.findMany as jest.Mock)).not.toHaveBeenCalled();
+    expect(t.user.findMany as jest.Mock).not.toHaveBeenCalled();
   });
 });
 
@@ -296,11 +282,7 @@ describe('NotificationsService email preferences', () => {
       findUnique: jest.fn(async () => userRow),
       update: jest.fn(async ({ data }: any) => ({ ...userRow, ...data })),
     };
-    const svc = new NotificationsService(
-      { user: prismaUser } as any,
-      {} as any,
-      {} as any,
-    );
+    const svc = new NotificationsService({ user: prismaUser } as any, {} as any, {} as any);
     return { svc, prismaUser };
   }
 

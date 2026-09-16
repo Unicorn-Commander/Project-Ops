@@ -1,10 +1,7 @@
 import { AutomationTrigger } from '@prisma/client';
 import { AutomationsService } from './automations.service';
 import { AutomationContext } from './automation-context';
-import {
-  TaskCreatedEvent,
-  TaskStatusChangedEvent,
-} from './automation.types';
+import { TaskCreatedEvent, TaskStatusChangedEvent } from './automation.types';
 
 /**
  * Unit tests for the rules engine: condition gating, action dispatch to the
@@ -17,13 +14,15 @@ import {
 
 const ACTOR = { id: 'creator-1', role: 'ADMIN', email: 'a@x.co' };
 
-function makeService(opts: {
-  rules?: any[]; // rules returned by automationRule.findMany
-  maxDepth?: string;
-  actor?: any | null; // user.findUnique result (rule creator)
-  tasks?: Partial<Record<'assignTask' | 'updateStatus' | 'addComment' | 'create', jest.Mock>>;
-  notificationsCreate?: jest.Mock;
-} = {}) {
+function makeService(
+  opts: {
+    rules?: any[]; // rules returned by automationRule.findMany
+    maxDepth?: string;
+    actor?: any | null; // user.findUnique result (rule creator)
+    tasks?: Partial<Record<'assignTask' | 'updateStatus' | 'addComment' | 'create', jest.Mock>>;
+    notificationsCreate?: jest.Mock;
+  } = {},
+) {
   const ruleUpdate = jest.fn(async () => ({}));
   const tx = {
     automationRule: {
@@ -120,7 +119,12 @@ describe('runRulesForEvent — gating', () => {
     });
     const fired = await svc.runRulesForEvent(AutomationTrigger.TASK_CREATED, taskCreated());
     expect(fired).toBe(1);
-    expect(tasks.assignTask).toHaveBeenCalledWith('ws-1', expect.objectContaining({ id: 'creator-1' }), 't1', 'u-lead');
+    expect(tasks.assignTask).toHaveBeenCalledWith(
+      'ws-1',
+      expect.objectContaining({ id: 'creator-1' }),
+      't1',
+      'u-lead',
+    );
     expect(ruleUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'r1' },
@@ -131,7 +135,9 @@ describe('runRulesForEvent — gating', () => {
 
   it('ignores an event with no workspaceId', async () => {
     const { svc } = makeService({ rules: [] });
-    const fired = await svc.runRulesForEvent(AutomationTrigger.TASK_CREATED, { taskId: 't' } as any);
+    const fired = await svc.runRulesForEvent(AutomationTrigger.TASK_CREATED, {
+      taskId: 't',
+    } as any);
     expect(fired).toBe(0);
   });
 });
@@ -139,7 +145,14 @@ describe('runRulesForEvent — gating', () => {
 describe('runRulesForEvent — action dispatch', () => {
   function ruleWith(actions: any[], conditions: any[] = []) {
     return [
-      { id: 'r1', name: 'rule', workspaceId: 'ws-1', createdById: 'creator-1', actions, conditions },
+      {
+        id: 'r1',
+        name: 'rule',
+        workspaceId: 'ws-1',
+        createdById: 'creator-1',
+        actions,
+        conditions,
+      },
     ];
   }
 
@@ -148,7 +161,12 @@ describe('runRulesForEvent — action dispatch', () => {
       rules: ruleWith([{ type: 'set_status', params: { status: 'IN_PROGRESS' } }]),
     });
     await svc.runRulesForEvent(AutomationTrigger.TASK_CREATED, taskCreated());
-    expect(tasks.updateStatus).toHaveBeenCalledWith('ws-1', expect.any(Object), 't1', 'IN_PROGRESS');
+    expect(tasks.updateStatus).toHaveBeenCalledWith(
+      'ws-1',
+      expect.any(Object),
+      't1',
+      'IN_PROGRESS',
+    );
   });
 
   it('add_comment maps params.text -> { content }', async () => {

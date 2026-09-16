@@ -63,9 +63,7 @@ export function resolveWorkspaceId(
  * validated token `sub` (surfaced as `__ucUid` by JwtStrategy), then the linked
  * `keycloakId`, then the local user id. Always returns a string ('' if none).
  */
-export function ucUidOf(
-  user: Partial<WithWorkspaceClaim> | null | undefined,
-): string {
+export function ucUidOf(user: Partial<WithWorkspaceClaim> | null | undefined): string {
   const u = user as WithWorkspaceClaim | undefined;
   return (u?.__ucUid?.trim() || u?.keycloakId || u?.id || '') as string;
 }
@@ -91,9 +89,7 @@ export function explicitRequestedWorkspaceId(req: {
   headers?: Record<string, any>;
 }): string | null {
   const raw =
-    req?.params?.workspaceId ??
-    req?.params?.workspace_id ??
-    req?.headers?.['x-workspace-id'];
+    req?.params?.workspaceId ?? req?.params?.workspace_id ?? req?.headers?.['x-workspace-id'];
   if (typeof raw !== 'string') return null;
   const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : null;

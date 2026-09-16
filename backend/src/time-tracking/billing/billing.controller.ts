@@ -27,7 +27,8 @@ export class BillingController {
 
   @Post('drafts')
   @ApiOperation({
-    summary: 'Roll up approved unbilled time into a billable draft and (if live + entitled) an AO invoice',
+    summary:
+      'Roll up approved unbilled time into a billable draft and (if live + entitled) an AO invoice',
   })
   createDraft(
     @CurrentWorkspace() workspaceId: string,

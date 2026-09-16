@@ -24,20 +24,14 @@ export class DashboardController {
   @Get('overview')
   @ApiOperation({ summary: 'Get dashboard overview statistics' })
   @ApiResponse({ status: 200, description: 'Returns overview statistics' })
-  getOverview(
-    @CurrentWorkspace() workspaceId: string,
-    @CurrentUser() user: User,
-  ) {
+  getOverview(@CurrentWorkspace() workspaceId: string, @CurrentUser() user: User) {
     return this.dashboardService.getOverview(workspaceId, user);
   }
 
   @Get('project-statistics')
   @ApiOperation({ summary: 'Get project statistics' })
   @ApiResponse({ status: 200, description: 'Returns project statistics' })
-  getProjectStatistics(
-    @CurrentWorkspace() workspaceId: string,
-    @CurrentUser() user: User,
-  ) {
+  getProjectStatistics(@CurrentWorkspace() workspaceId: string, @CurrentUser() user: User) {
     return this.dashboardService.getProjectStatistics(workspaceId, user);
   }
 
@@ -47,10 +41,7 @@ export class DashboardController {
     status: 200,
     description: 'Returns { byStatus: [{ status, count }], byPriority: [{ priority, count }] }',
   })
-  getProjectBreakdown(
-    @CurrentWorkspace() workspaceId: string,
-    @CurrentUser() user: User,
-  ) {
+  getProjectBreakdown(@CurrentWorkspace() workspaceId: string, @CurrentUser() user: User) {
     return this.dashboardService.getProjectBreakdown(workspaceId, user);
   }
 
@@ -69,10 +60,7 @@ export class DashboardController {
   @Get('user-activity')
   @ApiOperation({ summary: 'Get current user activity statistics' })
   @ApiResponse({ status: 200, description: 'Returns user activity statistics' })
-  getUserActivity(
-    @CurrentWorkspace() workspaceId: string,
-    @CurrentUser() user: User,
-  ) {
+  getUserActivity(@CurrentWorkspace() workspaceId: string, @CurrentUser() user: User) {
     return this.dashboardService.getUserActivity(workspaceId, user);
   }
 

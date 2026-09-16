@@ -161,7 +161,7 @@ describe('ApprovalsService.decide — cross-org / ownership scoping', () => {
 });
 
 describe('ApprovalsService.listForContact — owned-approvals filter', () => {
-  it("builds an OR over (addressed-to-me) + (unaddressed on my projects) and never leaks other orgs", async () => {
+  it('builds an OR over (addressed-to-me) + (unaddressed on my projects) and never leaks other orgs', async () => {
     const findMany = jest.fn(async (_args: any) => [] as any[]);
     const count = jest.fn(async (_args?: any) => 0);
     const tx: Partial<TxShape> = {

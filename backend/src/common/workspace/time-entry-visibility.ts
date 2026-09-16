@@ -46,20 +46,14 @@ const COST_FIELDS = ['costRateApplied'] as const;
  * Strip cost/margin fields from a time entry when the viewer is a CLIENT.
  * Returns a shallow copy; non-CLIENT roles get the object unchanged.
  */
-export function redactCost<T extends Record<string, any>>(
-  entry: T,
-  role: UserRole,
-): T {
+export function redactCost<T extends Record<string, any>>(entry: T, role: UserRole): T {
   if (role !== UserRole.CLIENT || !entry) return entry;
   const copy: Record<string, any> = { ...entry };
   for (const f of COST_FIELDS) delete copy[f];
   return copy as T;
 }
 
-export function redactCostMany<T extends Record<string, any>>(
-  entries: T[],
-  role: UserRole,
-): T[] {
+export function redactCostMany<T extends Record<string, any>>(entries: T[], role: UserRole): T[] {
   if (role !== UserRole.CLIENT) return entries;
   return entries.map((e) => redactCost(e, role));
 }

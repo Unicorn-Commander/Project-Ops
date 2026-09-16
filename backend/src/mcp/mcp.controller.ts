@@ -81,6 +81,8 @@ export class McpController {
 
     const {
       StreamableHTTPServerTransport,
+      // Preserve lazy CommonJS SDK loading used by the existing runtime.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
     } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 
     const transport = new StreamableHTTPServerTransport({

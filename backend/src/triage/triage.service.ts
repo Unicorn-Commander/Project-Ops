@@ -25,12 +25,7 @@
  * inert while PROJECT_OPS_TENANCY_ENABLED is off (membership resolution is a
  * no-op and withWorkspace runs under the BYPASSRLS owner connection).
  */
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TaskPriority, User } from '@prisma/client';
 import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
@@ -83,22 +78,13 @@ export class TriageService {
 
   // ---------- config (env with LAN defaults) ----------
   private get embedUrl() {
-    return this.config.get<string>(
-      'INFINITY_EMBEDDINGS_URL',
-      'http://192.168.10.14:8082',
-    );
+    return this.config.get<string>('INFINITY_EMBEDDINGS_URL', 'http://192.168.10.14:8082');
   }
   private get rerankUrl() {
-    return this.config.get<string>(
-      'INFINITY_RERANK_URL',
-      'http://192.168.10.14:8083',
-    );
+    return this.config.get<string>('INFINITY_RERANK_URL', 'http://192.168.10.14:8083');
   }
   private get qwenUrl() {
-    return this.config.get<string>(
-      'QWEN_URL',
-      'http://192.168.10.68:8088/v1/chat/completions',
-    );
+    return this.config.get<string>('QWEN_URL', 'http://192.168.10.68:8088/v1/chat/completions');
   }
   private get qwenModel() {
     return this.config.get<string>('QWEN_MODEL', 'Qwen3.6-35B-A3B-Vision');
@@ -107,10 +93,7 @@ export class TriageService {
     return this.config.get<string>('INFINITY_EMBED_MODEL', 'BAAI/bge-m3');
   }
   private get rerankModel() {
-    return this.config.get<string>(
-      'INFINITY_RERANK_MODEL',
-      'BAAI/bge-reranker-v2-m3',
-    );
+    return this.config.get<string>('INFINITY_RERANK_MODEL', 'BAAI/bge-reranker-v2-m3');
   }
 
   // ---------- inference helpers ----------
@@ -244,9 +227,7 @@ export class TriageService {
       vec: vecs[i] ?? [],
     }));
     this.projIndexByWorkspace.set(workspaceId, { entries, at: Date.now() });
-    this.logger.log(
-      `triage: project index built (${entries.length}) ws=${workspaceId}`,
-    );
+    this.logger.log(`triage: project index built (${entries.length}) ws=${workspaceId}`);
     return entries;
   }
 
@@ -262,9 +243,7 @@ export class TriageService {
   private toPriority(p: any): TaskPriority {
     const v = String(p ?? '').toUpperCase();
     if (v === 'MED') return TaskPriority.MEDIUM;
-    return (['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(v)
-      ? v
-      : 'MEDIUM') as TaskPriority;
+    return (['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(v) ? v : 'MEDIUM') as TaskPriority;
   }
 
   /**
@@ -282,101 +261,93 @@ export class TriageService {
     if (!items?.length) return { created: 0, skipped: 0, proposals: [] as any[] };
 
     const ingest = async (tx: WorkspaceTxClient) => {
-        const index = await this.getProjectIndex(tx, workspaceId);
-        const itemVecs = await this.embed(items.map((it) => it.text));
-        const created: any[] = [];
-        let skipped = 0;
+      const index = await this.getProjectIndex(tx, workspaceId);
+      const itemVecs = await this.embed(items.map((it) => it.text));
+      const created: any[] = [];
+      let skipped = 0;
 
-        for (let i = 0; i < items.length; i++) {
-          const it = items[i];
-          if (it.sourceActionItemId) {
-            const existing = await tx.triageProposal.findFirst({
-              where: {
-                sourceType: it.sourceType ?? 'MANUAL',
-                sourceActionItemId: it.sourceActionItemId,
-              },
-              select: { id: true },
-            });
-            if (existing) {
-              skipped++;
-              continue;
-            }
-          }
-
-          const vec = itemVecs[i] ?? [];
-          const scored = index
-            .map((p) => ({ p, c: this.cosine(vec, p.vec) }))
-            .sort((a, b) => b.c - a.c)
-            .slice(0, 8);
-          let order = scored.map((s) => s.p);
-          try {
-            const rr = await this.rerank(
-              it.text,
-              scored.map((s) => `${s.p.number}: ${s.p.title}`),
-              Math.min(4, scored.length),
-            );
-            order = rr.map((r) => scored[r.index].p);
-          } catch {
-            order = scored.slice(0, 4).map((s) => s.p);
-          }
-
-          const userMsg = JSON.stringify({
-            action_item: it.text.slice(0, 300),
-            candidate_projects: order.map((p) => `${p.number}: ${p.title}`),
-            similar_existing_tasks: [] as string[], // existing-task dedup wired in a follow-up
-          });
-
-          let decision: any = null;
-          try {
-            decision = await this.qwenDecide(userMsg);
-          } catch (e) {
-            this.logger.warn(
-              `triage qwen failed for item ${i}: ${(e as Error).message}`,
-            );
-          }
-
-          const keep = decision ? decision.keep !== false : true;
-          const projNumber: string | null =
-            decision?.project && decision.project !== 'NONE'
-              ? decision.project
-              : null;
-          const proj = projNumber
-            ? index.find((p) => p.number === projNumber)
-            : null;
-          const top = order[0];
-
-          const proposal = await tx.triageProposal.create({
-            data: {
-              workspaceId,
-              rawText: it.text,
-              owner: it.owner ?? null,
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.sourceActionItemId) {
+          const existing = await tx.triageProposal.findFirst({
+            where: {
               sourceType: it.sourceType ?? 'MANUAL',
-              sourceActionItemId: it.sourceActionItemId ?? null,
-              sourceRef: (it.sourceRef ?? null) as any,
-              agentKeep: keep,
-              proposedProjectId: proj?.id ?? null,
-              proposedTitle: decision?.title ?? it.text.slice(0, 120),
-              proposedPriority: this.toPriority(decision?.pri),
-              dedupeNote: decision?.dup_of_existing ?? null,
-              matchScore: top
-                ? Number(this.cosine(vec, top.vec).toFixed(4))
-                : null,
-              alternatives: order.map((p) => ({
-                number: p.number,
-                title: p.title,
-              })) as any,
-              reasoning: decision?.reason ?? null,
-              status: 'PENDING_REVIEW',
-              createdById: user.id,
+              sourceActionItemId: it.sourceActionItemId,
             },
+            select: { id: true },
           });
-          created.push(proposal);
+          if (existing) {
+            skipped++;
+            continue;
+          }
         }
 
-        this.logger.log(
-          `triage: ${created.length} proposals (${skipped} skipped) user=${user.id} ws=${workspaceId}`,
-        );
-        return { created: created.length, skipped, proposals: created };
+        const vec = itemVecs[i] ?? [];
+        const scored = index
+          .map((p) => ({ p, c: this.cosine(vec, p.vec) }))
+          .sort((a, b) => b.c - a.c)
+          .slice(0, 8);
+        let order = scored.map((s) => s.p);
+        try {
+          const rr = await this.rerank(
+            it.text,
+            scored.map((s) => `${s.p.number}: ${s.p.title}`),
+            Math.min(4, scored.length),
+          );
+          order = rr.map((r) => scored[r.index].p);
+        } catch {
+          order = scored.slice(0, 4).map((s) => s.p);
+        }
+
+        const userMsg = JSON.stringify({
+          action_item: it.text.slice(0, 300),
+          candidate_projects: order.map((p) => `${p.number}: ${p.title}`),
+          similar_existing_tasks: [] as string[], // existing-task dedup wired in a follow-up
+        });
+
+        let decision: any = null;
+        try {
+          decision = await this.qwenDecide(userMsg);
+        } catch (e) {
+          this.logger.warn(`triage qwen failed for item ${i}: ${(e as Error).message}`);
+        }
+
+        const keep = decision ? decision.keep !== false : true;
+        const projNumber: string | null =
+          decision?.project && decision.project !== 'NONE' ? decision.project : null;
+        const proj = projNumber ? index.find((p) => p.number === projNumber) : null;
+        const top = order[0];
+
+        const proposal = await tx.triageProposal.create({
+          data: {
+            workspaceId,
+            rawText: it.text,
+            owner: it.owner ?? null,
+            sourceType: it.sourceType ?? 'MANUAL',
+            sourceActionItemId: it.sourceActionItemId ?? null,
+            sourceRef: (it.sourceRef ?? null) as any,
+            agentKeep: keep,
+            proposedProjectId: proj?.id ?? null,
+            proposedTitle: decision?.title ?? it.text.slice(0, 120),
+            proposedPriority: this.toPriority(decision?.pri),
+            dedupeNote: decision?.dup_of_existing ?? null,
+            matchScore: top ? Number(this.cosine(vec, top.vec).toFixed(4)) : null,
+            alternatives: order.map((p) => ({
+              number: p.number,
+              title: p.title,
+            })) as any,
+            reasoning: decision?.reason ?? null,
+            status: 'PENDING_REVIEW',
+            createdById: user.id,
+          },
+        });
+        created.push(proposal);
+      }
+
+      this.logger.log(
+        `triage: ${created.length} proposals (${skipped} skipped) user=${user.id} ws=${workspaceId}`,
+      );
+      return { created: created.length, skipped, proposals: created };
     };
 
     // A trusted federation actor (e.g. Meeting-Ops via a Brigade exchange) is
@@ -430,12 +401,7 @@ export class TriageService {
     );
   }
 
-  async approve(
-    workspaceId: string,
-    user: User,
-    proposalId: string,
-    overrideProjectId?: string,
-  ) {
+  async approve(workspaceId: string, user: User, proposalId: string, overrideProjectId?: string) {
     return this.workspaceContext.runForUser(
       user,
       (tx) => this.approveInTx(tx, workspaceId, user, proposalId, overrideProjectId),
@@ -464,8 +430,7 @@ export class TriageService {
       where: { id: proposalId },
     });
     if (!p) throw new NotFoundException('proposal not found');
-    if (p.status !== 'PENDING_REVIEW')
-      throw new BadRequestException(`proposal is ${p.status}`);
+    if (p.status !== 'PENDING_REVIEW') throw new BadRequestException(`proposal is ${p.status}`);
     const projectId = overrideProjectId ?? p.proposedProjectId;
     if (!projectId)
       throw new BadRequestException(
@@ -489,12 +454,7 @@ export class TriageService {
     });
   }
 
-  async reject(
-    workspaceId: string,
-    user: User,
-    proposalId: string,
-    reason?: string,
-  ) {
+  async reject(workspaceId: string, user: User, proposalId: string, reason?: string) {
     return this.workspaceContext.runForUser(
       user,
       (tx) =>
@@ -529,21 +489,14 @@ export class TriageService {
         // tx-accepting variant, so the new Project (and its project-number
         // sequence) is scoped to the active workspace and shares the single
         // runForUser/membership authorization with the proposals applied below.
-        const project = await this.projects.createInTx(
-          tx,
-          workspaceId,
-          user,
-          projectInput as any,
-        );
+        const project = await this.projects.createInTx(tx, workspaceId, user, projectInput as any);
         const applied: string[] = [];
         for (const id of proposalIds) {
           try {
             await this.approveInTx(tx, workspaceId, user, id, project.id);
             applied.push(id);
           } catch (e) {
-            this.logger.warn(
-              `apply ${id} -> new project failed: ${(e as Error).message}`,
-            );
+            this.logger.warn(`apply ${id} -> new project failed: ${(e as Error).message}`);
           }
         }
         return {

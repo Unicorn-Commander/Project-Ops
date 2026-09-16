@@ -28,19 +28,12 @@ describe('parseMentions', () => {
   });
 
   it('supports dot/underscore/hyphen usernames', () => {
-    expect(parseMentions('@a.b @c_d @e-f').usernames.sort()).toEqual([
-      'a.b',
-      'c_d',
-      'e-f',
-    ]);
+    expect(parseMentions('@a.b @c_d @e-f').usernames.sort()).toEqual(['a.b', 'c_d', 'e-f']);
   });
 
   it('strips trailing sentence punctuation', () => {
     expect(parseMentions('thanks @aaron!').usernames).toEqual(['aaron']);
-    expect(parseMentions('cc @bob, @carol.').usernames.sort()).toEqual([
-      'bob',
-      'carol',
-    ]);
+    expect(parseMentions('cc @bob, @carol.').usernames.sort()).toEqual(['bob', 'carol']);
   });
 
   it('does NOT match an @ in the middle of a word (an inline email host)', () => {
@@ -55,9 +48,6 @@ describe('parseMentions', () => {
   });
 
   it('matches mentions after punctuation boundaries', () => {
-    expect(parseMentions('(@bob) and [@carol]').usernames.sort()).toEqual([
-      'bob',
-      'carol',
-    ]);
+    expect(parseMentions('(@bob) and [@carol]').usernames.sort()).toEqual(['bob', 'carol']);
   });
 });

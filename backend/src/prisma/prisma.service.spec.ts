@@ -32,9 +32,7 @@ describe('PrismaService.withWorkspace', () => {
   it('opens a transaction, sets both GUCs (SET LOCAL), and runs fn on the tx', async () => {
     const { svc, tx, executed } = makeService();
 
-    const result = await svc.withWorkspace('W-123', 'uc-uid-abc', (t: any) =>
-      t.project.findMany(),
-    );
+    const result = await svc.withWorkspace('W-123', 'uc-uid-abc', (t: any) => t.project.findMany());
 
     expect((svc as any).$transaction).toHaveBeenCalledTimes(1);
     expect(result).toEqual([{ id: 'p1' }]);
