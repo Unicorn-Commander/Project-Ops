@@ -13,8 +13,9 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: ['main']
   pull_request:
+  workflow_dispatch:
 
 # A newer push to the same branch/PR cancels the older in-flight run.
 concurrency:
