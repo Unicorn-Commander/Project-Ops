@@ -58,18 +58,17 @@ jobs:
           --health-timeout 5s
           --health-retries 20
 
-    env:
-      # Owner/admin URL (superuser) — db push, migrations, and seeds run here,
-      # exactly as run.sh uses DATABASE_URL.
-      PGPORT: ${{ job.services.postgres.ports[5432] }}
-      DATABASE_URL: postgresql://postgres:REMOVED@localhost:${{ job.services.postgres.ports[5432] }}/project_ops?schema=public
-      # Non-bypass runtime URL the RLS test connects as. The password
-      # 'verify_app' is set idempotently by the rls_roles migration's
-      # CREATE/ALTER ROLE project_ops_app ... PASSWORD 'verify_app'.
-      PROJECT_OPS_APP_DATABASE_URL: postgresql://project_ops_app:REMOVED@localhost:${{ job.services.postgres.ports[5432] }}/project_ops?schema=public
-
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve isolated PostgreSQL port
+        env:
+          PGPORT: ${{ job.services.postgres.ports[5432] }}
+        run: |
+          test -n "$PGPORT"
+          echo "PGPORT=$PGPORT" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgresql://postgres:REMOVED@localhost:$PGPORT/project_ops?schema=public" >> "$GITHUB_ENV"
+          echo "PROJECT_OPS_APP_DATABASE_URL=postgresql://project_ops_app:REMOVED@localhost:$PGPORT/project_ops?schema=public" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
