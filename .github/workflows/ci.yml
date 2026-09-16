@@ -35,6 +35,9 @@ jobs:
   backend:
     name: backend (build, unit, RLS-as-project_ops_app)
     runs-on: ubuntu-latest
+    # Job and PostgreSQL share an isolated service network; no host port or
+    # runner-specific dynamic-port metadata is needed.
+    container: node:20-bookworm
     defaults:
       run:
         working-directory: backend
@@ -49,26 +52,18 @@ jobs:
         env:
           POSTGRES_PASSWORD: pw
           POSTGRES_DB: project_ops
-        ports:
-          # Each push/PR job receives its own host port; concurrent runs must not collide.
-          - "5432"
         options: >-
           --health-cmd "pg_isready -U postgres -d project_ops"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
 
+    env:
+      DATABASE_URL: postgresql://postgres:REMOVED@postgres:5432/project_ops?schema=public
+      PROJECT_OPS_APP_DATABASE_URL: postgresql://project_ops_app:REMOVED@postgres:5432/project_ops?schema=public
+
     steps:
       - uses: actions/checkout@v4
-
-      - name: Resolve isolated PostgreSQL port
-        env:
-          PGPORT: ${{ job.services.postgres.ports[5432] }}
-        run: |
-          test -n "$PGPORT"
-          echo "PGPORT=$PGPORT" >> "$GITHUB_ENV"
-          echo "DATABASE_URL=postgresql://postgres:REMOVED@localhost:$PGPORT/project_ops?schema=public" >> "$GITHUB_ENV"
-          echo "PROJECT_OPS_APP_DATABASE_URL=postgresql://project_ops_app:REMOVED@localhost:$PGPORT/project_ops?schema=public" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
@@ -111,7 +106,7 @@ jobs:
         run: npx prisma db push --skip-generate
 
       - name: Install psql client
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+        run: apt-get update && apt-get install -y --no-install-recommends postgresql-client
 
       - name: Apply tenancy migrations (roles, GUC, RLS, seeds) by hand
         env:
@@ -127,7 +122,7 @@ jobs:
           for m in "${MIGRATIONS[@]}"; do
             file="prisma/migrations/${m}/migration.sql"
             echo "Applying migration: ${m}"
-            psql -v ON_ERROR_STOP=1 -h localhost -U postgres -d project_ops -f "${file}"
+            psql -v ON_ERROR_STOP=1 -h postgres -U postgres -d project_ops -f "${file}"
           done
 
       - name: Verify project_ops_app is genuinely NOBYPASSRLS
@@ -137,7 +132,7 @@ jobs:
         env:
           PGPASSWORD: pw
         run: |
-          psql -v ON_ERROR_STOP=1 -h localhost -U postgres -d project_ops -t -c \
+          psql -v ON_ERROR_STOP=1 -h postgres -U postgres -d project_ops -t -c \
             "SELECT CASE WHEN rolbypassrls OR rolsuper THEN
                (SELECT 1/0) ELSE 1 END
              FROM pg_roles WHERE rolname='project_ops_app';" \
