@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
 import { iconWellClass } from "@/lib/badge-styles";
 import api from "@/lib/api";
+import { useWorkspace } from "@/components/workspace-provider";
 import {
   Check,
   Copy,
@@ -48,6 +49,7 @@ const FALLBACK_SCOPES = [
 ];
 
 const EXPIRY_OPTIONS = [
+  { label: "1 day", days: 1 },
   { label: "30 days", days: 30 },
   { label: "60 days", days: 60 },
   { label: "90 days", days: 90 },
@@ -275,6 +277,8 @@ function CreateTokenModal({
   onCreated: (created: CreatePatResult) => void;
 }) {
   const { toast } = useToast();
+  const { workspaces, activeWorkspaceId, isLoading } = useWorkspace();
+  const [workspaceId, setWorkspaceId] = useState(activeWorkspaceId ?? "");
   const [name, setName] = useState("");
   const [selectedScopes, setSelectedScopes] = useState<string[]>([
     "read:projects",
@@ -300,11 +304,16 @@ function CreateTokenModal({
       });
       return;
     }
+    if (isLoading || !workspaces.some((w) => w.workspaceId === workspaceId)) {
+      toast({ title: "Choose a workspace", description: "Select a workspace you belong to before creating this token.", variant: "destructive" });
+      return;
+    }
     setSubmitting(true);
     try {
       const body: Record<string, unknown> = {
         name: name.trim(),
         scopes: selectedScopes,
+        workspaceId,
       };
       if (expiryDays !== null) {
         const expiresAt = new Date(Date.now() + expiryDays * 86_400_000);
@@ -354,6 +363,15 @@ function CreateTokenModal({
             disabled={submitting}
             maxLength={100}
           />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="pat-workspace">Workspace</Label>
+          <select id="pat-workspace" className="w-full rounded-md border bg-background px-3 py-2 text-sm" value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)} disabled={isLoading || submitting}>
+            <option value="">Choose a workspace</option>
+            {workspaces.map((workspace) => <option key={workspace.workspaceId} value={workspace.workspaceId}>{workspace.displayName}</option>)}
+          </select>
+          <p className="text-xs text-muted-foreground">This token can access only the selected workspace.</p>
         </div>
 
         <div className="space-y-2">
