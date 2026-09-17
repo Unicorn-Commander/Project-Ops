@@ -85,7 +85,14 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
     pat = new PatService(prisma, membership);
     workspace = new WorkspaceContextService(config, prisma, membership);
     const events = { emit: jest.fn() } as any;
-    const projects = new ProjectsService(prisma, { log: jest.fn() } as any, workspace, events);
+    const projects = new ProjectsService(
+      prisma,
+      { log: jest.fn() } as any,
+      workspace,
+      events,
+      undefined,
+      membership,
+    );
     const tasks = new TasksService(prisma, workspace, { sendEmail: mail } as any, config, events);
     const unused = {} as any;
     mcp = new McpService(
@@ -231,6 +238,87 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
   async function login(e: string) {
     return auth.validateKeycloakUser(randomUUID(), { email: e, email_verified: true });
   }
+  it('workspace managers list and count their workspace without an app-wide role promotion', async () => {
+    const f = await fixture();
+    const other = await fixture();
+    await admin.membership.update({
+      where: { userKey_workspaceId: { userKey: f.owner.keycloakId!, workspaceId: f.ws.id } },
+      data: { role: 'MANAGER' },
+    });
+    await admin.membership.create({
+      data: {
+        userKey: f.owner.keycloakId!,
+        workspaceId: other.ws.id,
+        role: 'VIEWER',
+        status: 'ACTIVE',
+      },
+    });
+    await admin.project.createMany({
+      data: [
+        {
+          title: 'Managed unassigned', clientName: 'Synthetic fixture',
+          projectNumber: randomUUID(),
+          workspaceId: f.ws.id,
+          createdById: other.owner.id,
+        },
+        {
+          title: 'Other unassigned', clientName: 'Synthetic fixture',
+          projectNumber: randomUUID(),
+          workspaceId: other.ws.id,
+          createdById: other.owner.id,
+        },
+        {
+          title: 'Other assigned', clientName: 'Synthetic fixture',
+          projectNumber: randomUUID(),
+          workspaceId: other.ws.id,
+          createdById: other.owner.id,
+          assignedToId: f.owner.id,
+        },
+      ],
+    });
+    const get = (path: string, ws: string) =>
+      request(app.getHttpServer())
+        .get(path)
+        .set('Authorization', 'Bearer ' + token(f.owner))
+        .set('X-Workspace-Id', ws);
+    const managed = await get('/projects', f.ws.id);
+    expect(managed.status).toBe(200);
+    expect(managed.body.data.map((p: any) => p.title)).toEqual(['Managed unassigned']);
+    const foreign = await get('/projects', other.ws.id);
+    expect(foreign.body.data.map((p: any) => p.title)).toEqual(['Other assigned']);
+    expect((await get('/projects/stats/status', f.ws.id)).body).toEqual({ NEW: 1 });
+    expect((await get('/projects/stats/priority', f.ws.id)).body).toEqual({ MEDIUM: 1 });
+    await admin.membership.update({
+      where: { userKey_workspaceId: { userKey: f.owner.keycloakId!, workspaceId: f.ws.id } },
+      data: { role: 'VIEWER' },
+    });
+    expect((await get('/projects', f.ws.id)).body.data).toEqual([]);
+    expect((await get('/projects/stats/status', f.ws.id)).body).toEqual({});
+    await admin.membership.update({
+      where: { userKey_workspaceId: { userKey: f.owner.keycloakId!, workspaceId: f.ws.id } },
+      data: { role: 'MANAGER', status: 'SUSPENDED' },
+    });
+    expect((await get('/projects', f.ws.id)).status).toBe(403);
+    expect(await membership.hasManagementRole(f.owner, f.ws.id)).toBe(false);
+    await admin.membership.update({
+      where: { userKey_workspaceId: { userKey: f.owner.keycloakId!, workspaceId: f.ws.id } },
+      data: { status: 'ACTIVE' },
+    });
+    await admin.workspace.update({ where: { id: f.ws.id }, data: { status: 'suspended' } });
+    expect(await membership.hasManagementRole(f.owner, f.ws.id)).toBe(false);
+    await admin.workspace.update({ where: { id: f.ws.id }, data: { status: 'active' } });
+    await admin.user.update({ where: { id: f.owner.id }, data: { role: 'CLIENT' } });
+    expect((await get('/projects', f.ws.id)).body.data).toEqual([]);
+    expect((await get('/projects', other.ws.id)).body.data).toEqual([]);
+    await admin.user.update({ where: { id: f.owner.id }, data: { role: 'STAFF' } });
+    const disabled = new MembershipService(
+      prisma,
+      new ConfigService({ PROJECT_OPS_TENANCY_ENABLED: 'false' }),
+    );
+    expect(await disabled.hasManagementRole(f.owner, f.ws.id)).toBe(false);
+    expect((await admin.user.findUniqueOrThrow({ where: { id: f.owner.id } })).role).toBe('STAFF');
+  });
+
   it('owner creates a hash-only capability; verified JIT has zero memberships and explicit accept joins exactly one workspace', async () => {
     const f = await proposal();
     const stored = await admin.workspaceInvitation.findUniqueOrThrow({

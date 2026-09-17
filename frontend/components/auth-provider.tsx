@@ -8,7 +8,7 @@ import { logger } from "@/lib/logger";
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { setUser } = useAuthStore();
+  const { setUser, logout } = useAuthStore();
 
   useEffect(() => {
     // Small delay to ensure localStorage is fully available after navigation
@@ -45,10 +45,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         } catch (error) {
           logger.error("❌ Failed to parse user from localStorage:", error);
-          localStorage.removeItem("access_token");
-          localStorage.removeItem("user");
+          logout();
         }
       } else {
+        logout();
         logger.log("⚠️ No token/user found in localStorage");
         // Redirect to login if not authenticated and trying to access protected route
         if (pathname?.startsWith("/dashboard")) {
@@ -59,7 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, 50); // Small delay to ensure localStorage is available
 
     return () => clearTimeout(timeoutId);
-  }, [pathname, router, setUser]);
+  }, [pathname, router, setUser, logout]);
 
   return <>{children}</>;
 }
