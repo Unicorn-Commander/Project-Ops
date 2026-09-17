@@ -138,9 +138,7 @@ describe('AuthService federation-actor resolution', () => {
 
   it('does NOT treat a Keycloak HUMAN session (email + sid, azp=project-ops) as a federation actor', async () => {
     const human = { id: 'u-human', role: 'ADMIN' };
-    const spy = jest
-      .spyOn(svc, 'validateKeycloakUser' as any)
-      .mockResolvedValue(human as any);
+    const spy = jest.spyOn(svc, 'validateKeycloakUser' as any).mockResolvedValue(human as any);
 
     const user = (await svc.validateJwtPayload({
       iss: 'https://auth.unicorncommander.ai/realms/uchub',

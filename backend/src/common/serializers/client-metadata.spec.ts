@@ -35,9 +35,12 @@ const TASK_META = {
 
 describe('withProjectQuote — per-role', () => {
   it('staff: quote mirrors metadata.quote including foreign ids', () => {
-    const out = withProjectQuote({ metadata: PROJECT_META, defaultBillRate: '150' }, {
-      role: UserRole.STAFF,
-    });
+    const out = withProjectQuote(
+      { metadata: PROJECT_META, defaultBillRate: '150' },
+      {
+        role: UserRole.STAFF,
+      },
+    );
     expect(out.quote).toEqual(PROJECT_META.quote);
     expect(out.metadata).toEqual(PROJECT_META);
     expect(out.defaultBillRate).toBe('150');
@@ -73,7 +76,10 @@ describe('withProjectQuote — per-role', () => {
 
 describe('withTaskMetadataForRole — per-role', () => {
   it('staff keep quote line ids', () => {
-    const out = withTaskMetadataForRole({ id: 't1', metadata: TASK_META }, { role: UserRole.ADMIN });
+    const out = withTaskMetadataForRole(
+      { id: 't1', metadata: TASK_META },
+      { role: UserRole.ADMIN },
+    );
     expect(out.metadata).toEqual(TASK_META);
   });
 

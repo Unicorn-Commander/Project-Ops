@@ -175,9 +175,12 @@ describe('isHumanSessionPayload — uchub service-account tokens carry email (L2
 describe('conflicting human and machine claims fail closed', () => {
   it.each(['sid', 'session_state'])('does not elevate a session-bearing token (%s)', (claim) => {
     const payload = {
-      sub: 'synthetic-human', azp: 'customer-ops',
-      preferred_username: 'service-account-synthetic', clientHost: '127.0.0.1',
-      client_id: 'customer-ops', [claim]: 'synthetic-session',
+      sub: 'synthetic-human',
+      azp: 'customer-ops',
+      preferred_username: 'service-account-synthetic',
+      clientHost: '127.0.0.1',
+      client_id: 'customer-ops',
+      [claim]: 'synthetic-session',
     };
     expect(isKeycloakServiceAccountPayload(payload)).toBe(false);
     expect(isHumanSessionPayload(payload)).toBe(true);

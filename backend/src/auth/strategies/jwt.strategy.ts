@@ -329,9 +329,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         );
         const actorId = readActorClientId(payload);
         const machineFederationActor =
-          !isHumanSessionPayload(payload) &&
-          !!actorId &&
-          this.federationActors.has(actorId);
+          !isHumanSessionPayload(payload) && !!actorId && this.federationActors.has(actorId);
         if (!matchesPo && !machineFederationActor) {
           this.logger.warn(
             `Rejected Keycloak realm token: azp=${JSON.stringify(payload?.azp)} aud=${JSON.stringify(payload?.aud)} matches none of [${[...this.keycloakExpectedAudiences].join(', ')}] and is not an allow-listed machine actor`,

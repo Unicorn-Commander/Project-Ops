@@ -47,13 +47,12 @@ import type { ApprovalsService } from '../client-portal/approvals/approvals.serv
 // compile time, so no runtime cycle. Control-plane (non-RLS) service.
 import type { WorkspacesService } from '../workspaces/workspaces.service';
 import { clampLimit, clampOffset } from '../common/pagination/clamp';
-import {
+import { withProjectQuote, withTaskMetadataForRole } from '../common/serializers/client-metadata';
+
+export {
   CLIENT_MASKED_PROJECT_FIELDS,
   withProjectQuote,
-  withTaskMetadataForRole,
 } from '../common/serializers/client-metadata';
-
-export { CLIENT_MASKED_PROJECT_FIELDS, withProjectQuote } from '../common/serializers/client-metadata';
 
 type Logger = { log: (msg: string) => void; warn: (msg: string) => void };
 

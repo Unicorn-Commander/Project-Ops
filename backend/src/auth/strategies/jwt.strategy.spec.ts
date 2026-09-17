@@ -297,25 +297,34 @@ describe('JwtStrategy Keycloak realm audience binding', () => {
       PROJECT_OPS_FEDERATION_ACTORS: 'meeting-ops,customer-ops',
     });
     await expect(
-      strategy.validate(
-        kcPayload({ azp: 'meeting-ops', aud: 'account' }),
-      ),
+      strategy.validate(kcPayload({ azp: 'meeting-ops', aud: 'account' })),
     ).rejects.toThrow(UnauthorizedException);
     expect(validate).not.toHaveBeenCalled();
   });
 
-  it.each(['sid', 'session_state'])('rejects conflicting session/actor claims at the audience gate (%s)', async (claim) => {
-    const validate = jest.fn(async () => fakeUser);
-    const strategy = makeStrategy(validate, {
-      ...kcConfig(), PROJECT_OPS_FEDERATION_ACTORS: 'meeting-ops,customer-ops',
-    });
-    await expect(strategy.validate({
-      sub: 'synthetic-person', iss: REALM_ISS, azp: 'meeting-ops', aud: 'account',
-      preferred_username: 'service-account-synthetic', clientHost: '127.0.0.1',
-      client_id: 'meeting-ops', [claim]: 'synthetic-session',
-    } as any)).rejects.toThrow(UnauthorizedException);
-    expect(validate).not.toHaveBeenCalled();
-  });
+  it.each(['sid', 'session_state'])(
+    'rejects conflicting session/actor claims at the audience gate (%s)',
+    async (claim) => {
+      const validate = jest.fn(async () => fakeUser);
+      const strategy = makeStrategy(validate, {
+        ...kcConfig(),
+        PROJECT_OPS_FEDERATION_ACTORS: 'meeting-ops,customer-ops',
+      });
+      await expect(
+        strategy.validate({
+          sub: 'synthetic-person',
+          iss: REALM_ISS,
+          azp: 'meeting-ops',
+          aud: 'account',
+          preferred_username: 'service-account-synthetic',
+          clientHost: '127.0.0.1',
+          client_id: 'meeting-ops',
+          [claim]: 'synthetic-session',
+        } as any),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(validate).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects an unknown-actor machine token (azp not on the allow-list)', async () => {
     const validate = jest.fn(async () => fakeUser);

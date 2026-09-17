@@ -40,11 +40,7 @@ export const CLIENT_TASK_QUOTE_KEYS = [
   'weeks',
 ] as const;
 
-const FOREIGN_ID_KEYS = new Set([
-  'customer_ops_quote_id',
-  'customer_ops_line_id',
-  'schedule_ids',
-]);
+const FOREIGN_ID_KEYS = new Set(['customer_ops_quote_id', 'customer_ops_line_id', 'schedule_ids']);
 
 /**
  * Quotes & Proposals seam: surface `metadata.quote` as top-level `quote` too.

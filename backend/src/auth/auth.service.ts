@@ -26,10 +26,7 @@ import {
   MembershipService,
   ActiveWorkspaceMembership,
 } from '../common/workspace/membership.service';
-import {
-  isHumanSessionPayload,
-  readActorClientId,
-} from '../common/workspace/federation-token';
+import { isHumanSessionPayload, readActorClientId } from '../common/workspace/federation-token';
 
 export interface JwtPayload {
   sub: string;
@@ -406,7 +403,6 @@ export class AuthService {
         );
         throw new UnauthorizedException('Token audience does not match this app');
       }
-
     }
 
     // Federation ACTOR detection (Brigade token-exchange AND Keycloak
