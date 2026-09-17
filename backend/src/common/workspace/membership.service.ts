@@ -174,6 +174,24 @@ export class MembershipService {
     return def.workspaceId;
   }
 
+  /** Fresh workspace management authority; never promotes the app-wide user role. */
+  async hasManagementRole(user: User, workspaceId: string): Promise<boolean> {
+    if (!this.enabled) return false;
+    const member = await this.prisma.membership.findUnique({
+      where: {
+        userKey_workspaceId: { userKey: MembershipService.membershipKey(user), workspaceId },
+      },
+      include: { workspace: { select: { status: true } } },
+    });
+    return (
+      member?.status === MembershipStatus.ACTIVE &&
+      member.workspace.status === 'active' &&
+      (
+        [WorkspaceRole.OWNER, WorkspaceRole.ADMIN, WorkspaceRole.MANAGER] as WorkspaceRole[]
+      ).includes(member.role)
+    );
+  }
+
   /** Re-read authority for every write, including calls on an existing MCP server. */
   async assertCanWrite(user: User, workspaceId: string): Promise<void> {
     if (!this.enabled) return;
