@@ -82,7 +82,7 @@ Headers:
 |---|---|---|
 | `X-ProjectOps-Signature` | `sha256=<hex>` | HMAC-SHA256 of the **raw body bytes** under the endpoint secret |
 | `X-ProjectOps-Event` | the event name | route without parsing the body |
-| `X-ProjectOps-Delivery` | a delivery id | dedupe retries |
+| `X-ProjectOps-Delivery` | a delivery id | audit metadata (header is not signed) |
 
 **Signature:** `HMAC_SHA256(secret, raw_body)` → hex, prefixed `sha256=`. The
 secret is the per-endpoint signing secret generated when the workspace
@@ -96,7 +96,7 @@ skew into the future — this replays-proofs the push.
 **Retries:** Project-Ops retries transient failures (network error, non-2xx)
 with exponential backoff, up to 3 attempts, and records the outcome in
 `webhook_deliveries`. A receiver must be idempotent; use the
-`X-ProjectOps-Delivery` id (or the envelope) to dedupe.
+signed envelope to dedupe; changing an unsigned delivery header must not bypass it.
 
 ### Wiring a workspace
 
@@ -113,10 +113,10 @@ endpoint-subscription gated.
 
 Stable exposes `POST /api/v1/webhooks/project-ops`. It:
 
-1. returns `503` when `PROJECTOPS_WEBHOOK_SECRET` is unset (**flag off = inert**);
+1. returns `503` when `PROJECTOPS_WEBHOOK_SECRET` or `PROJECTOPS_WORKSPACE_ID` is unset (**flag off = inert**);
 2. verifies the HMAC signature over the raw body;
 3. rejects a stale/future `timestamp` (window check);
-4. reads `data.assignedToId` (Project-Ops user id) and looks it up in the mapping;
+4. requires the signed `workspaceId` to equal `PROJECTOPS_WORKSPACE_ID` (otherwise 403), then reads `data.assignedToId` and looks it up in the mapping;
 5. posts a short message with a task link into the mapped room.
 
 Mapping config (`PROJECTOPS_ROOM_MAPPING`) is a JSON object keyed by
@@ -130,7 +130,15 @@ If the assignee id is absent from the mapping, the event is acknowledged and
 dropped (logged) — an unmapped assignee never fails the webhook. The task link is
 built from Stable's `PROJECTOPS_DASHBOARD_URL` + `data.projectId` (falling back
 to `?task=<data.taskId>`). The receiver also de-duplicates on the
-`X-ProjectOps-Delivery` header so Project-Ops' retries never double-post.
+signed raw body: a deterministic message UUID uses the existing database primary
+key to reject concurrent inserts atomically. No Redis pre-reservation can consume
+an event before a rate-limit or database failure. Retrying a committed message
+with a changed/missing delivery header still returns duplicate. Distinct signed
+bodies have distinct identities; byte-identical envelopes intentionally collapse.
+The durable room history is idempotent; LiveKit broadcasts remain best effort,
+as in the existing message service (no durable broadcast outbox is introduced).
+This endpoint binds one secret and assignee mapping to one workspace. Do not use
+it to route multiple workspaces through a shared global mapping.
 Until the agent-seat users from §1 exist and appear in this mapping, the
 receiver is inert by construction.
 
