@@ -1,4 +1,11 @@
-import { Injectable, UnauthorizedException, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { tenancyEnabled } from '../common/workspace/feature-flags';
+import {
+  Injectable,
+  UnauthorizedException,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users/users.service';
@@ -29,6 +36,7 @@ export interface JwtPayload {
   email: string;
   role: string;
   username: string;
+  email_verified?: boolean;
 }
 
 @Injectable()
@@ -70,9 +78,7 @@ export class AuthService {
    * behavior. Once tenancy is on (and memberships are seeded), each entry is
    * `{ workspaceId, slug, displayName, role, isDefault }`, default-first.
    */
-  private async workspacesForUser(
-    user: User,
-  ): Promise<ActiveWorkspaceMembership[]> {
+  private async workspacesForUser(user: User): Promise<ActiveWorkspaceMembership[]> {
     return this.membershipService.listActiveWorkspaces(user);
   }
 
@@ -172,10 +178,28 @@ export class AuthService {
 
     if (!user && email) {
       // Check if a local user exists with this email (link accounts)
-      user = await this.usersService.findByEmail(email);
+      const matches = await this.prisma.user.findMany({
+        where: { email: { equals: email.trim().toLowerCase(), mode: 'insensitive' } },
+        take: 2,
+      });
+      if (matches.length > 1) throw new UnauthorizedException('Ambiguous email identity.');
+      user = matches[0] ?? null;
       if (user) {
-        // Link existing local account to Keycloak
-        await this.usersService.update(user.id, { keycloakId });
+        if (user.keycloakId && user.keycloakId !== keycloakId) {
+          throw new UnauthorizedException('This email is linked to a different identity.');
+        }
+        // Only link an unbound existing account; never replace a known subject.
+        if (!user.keycloakId && profile.email_verified !== true) {
+          throw new UnauthorizedException('Verified email required to link an identity.');
+        }
+        await this.prisma.user.updateMany({
+          where: { id: user.id, keycloakId: null },
+          data: { keycloakId },
+        });
+        user = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+        if (user.keycloakId !== keycloakId) {
+          throw new UnauthorizedException('This email is linked to a different identity.');
+        }
         this.logger.log(`Linked existing user ${email} to Keycloak ID ${keycloakId}`);
       }
     }
@@ -188,10 +212,23 @@ export class AuthService {
       // JIT-provision and at what role. See `auth/access-list.ts` +
       // `auth/entitlements.client.ts`.
       const access = resolvedAccess ?? (await this.resolveSsoAccess(email, accessToken));
-      if (!access.allowed) {
-        this.logger.warn(
-          `Rejected SSO JIT for ${email || '(no email)'} — ${access.reason}`,
-        );
+      const invited =
+        tenancyEnabled(getEnv) &&
+        !entitlementsEnabled(getEnv) &&
+        !access.allowed &&
+        profile.email_verified === true &&
+        typeof email === 'string' &&
+        !!(await this.prisma.workspaceInvitation.findFirst({
+          where: {
+            email: email.trim().toLowerCase(),
+            status: 'pending',
+            expiresAt: { gt: new Date() },
+            workspace: { status: 'active' },
+          },
+          select: { id: true },
+        }));
+      if (!access.allowed && !invited) {
+        this.logger.warn(`Rejected SSO JIT for ${email || '(no email)'} — ${access.reason}`);
         throw new UnauthorizedException(
           'You are not authorized for Project-Ops. Contact your administrator.',
         );
@@ -207,7 +244,7 @@ export class AuthService {
         firstName: profile.given_name || profile.firstName || '',
         lastName: profile.family_name || profile.lastName || '',
         keycloakId,
-        role: access.role,
+        role: invited ? UserRole.STAFF : access.role,
       });
 
       this.logger.log(
@@ -219,7 +256,12 @@ export class AuthService {
       throw new UnauthorizedException('User account is inactive');
     }
 
-    return user;
+    return Object.assign(user, {
+      __verifiedEmail:
+        profile.email_verified === true &&
+        typeof email === 'string' &&
+        email.trim().toLowerCase() === user.email.trim().toLowerCase(),
+    });
   }
 
   /**
@@ -311,6 +353,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       username: user.username,
+      email_verified: (user as any).__verifiedEmail === true,
     };
 
     return {
@@ -343,8 +386,7 @@ export class AuthService {
     //   3. Locally-signed (browser session token, HS256):
     //      no `iss`, `sub` = project-ops user id.
     const issuer: string | undefined = payload?.iss;
-    const isKeycloakRealmToken =
-      typeof issuer === 'string' && issuer.includes('/realms/');
+    const isKeycloakRealmToken = typeof issuer === 'string' && issuer.includes('/realms/');
     const isBrigadeFederationToken =
       typeof issuer === 'string' && AuthService.brigadeTrustedIssuers().includes(issuer);
 
@@ -354,19 +396,15 @@ export class AuthService {
       // token (or any other audience) could be replayed against PO.
       // This is the single most important security property of the
       // federation broker and is non-negotiable.
-      const expectedAudience =
-        process.env.BRIGADE_EXPECTED_AUDIENCE || 'project-ops';
+      const expectedAudience = process.env.BRIGADE_EXPECTED_AUDIENCE || 'project-ops';
       const aud = payload?.aud;
       const audMatches =
-        aud === expectedAudience ||
-        (Array.isArray(aud) && aud.includes(expectedAudience));
+        aud === expectedAudience || (Array.isArray(aud) && aud.includes(expectedAudience));
       if (!audMatches) {
         this.logger.warn(
           `Brigade JWT audience mismatch: token aud=${JSON.stringify(aud)}, expected '${expectedAudience}'`,
         );
-        throw new UnauthorizedException(
-          'Token audience does not match this app',
-        );
+        throw new UnauthorizedException('Token audience does not match this app');
       }
 
     }
@@ -406,11 +444,15 @@ export class AuthService {
       // resolves. This is harmless for Keycloak realm tokens (which DO
       // emit email) and harmless for the long-term opaque-sub Brigade
       // model (Brigade will emit email separately in that case).
-      const subLooksLikeEmail =
-        typeof payload.sub === 'string' && payload.sub.includes('@');
+      const subLooksLikeEmail = typeof payload.sub === 'string' && payload.sub.includes('@');
       const profile = {
-        email:
-          payload.email ?? (subLooksLikeEmail ? payload.sub : undefined),
+        email: payload.email ?? (subLooksLikeEmail ? payload.sub : undefined),
+        email_verified:
+          isKeycloakRealmToken &&
+          !payload.act &&
+          !payload.client_id &&
+          !payload.clientId &&
+          payload.email_verified === true,
         preferred_username: payload.preferred_username,
         given_name: payload.given_name,
         family_name: payload.family_name,
@@ -423,7 +465,12 @@ export class AuthService {
     if (!user || !user.isActive) {
       throw new UnauthorizedException('User not found or inactive');
     }
-    return user;
+    return Object.assign(user, {
+      __verifiedEmail:
+        payload.email_verified === true &&
+        typeof payload.email === 'string' &&
+        payload.email.trim().toLowerCase() === user.email.trim().toLowerCase(),
+    });
   }
 
   /**
@@ -499,18 +546,25 @@ export class AuthService {
 
     // Send password change confirmation email (non-blocking)
     const userName = `${user.firstName} ${user.lastName}`.trim() || user.username;
-    this.emailService.sendPasswordResetEmail(
-      user.email,
-      userName,
-      '#', // No reset link needed for successful change
-    ).catch(err => {
-      this.logger.warn(`Failed to send password change confirmation email: ${err.message}`);
-    });
+    this.emailService
+      .sendPasswordResetEmail(
+        user.email,
+        userName,
+        '#', // No reset link needed for successful change
+      )
+      .catch((err) => {
+        this.logger.warn(`Failed to send password change confirmation email: ${err.message}`);
+      });
 
     return { message: 'Password changed successfully' };
   }
 
-  async resetUserPassword(adminUserId: string, targetUserId: string, newPassword: string, forceChange: boolean = true) {
+  async resetUserPassword(
+    adminUserId: string,
+    targetUserId: string,
+    newPassword: string,
+    forceChange: boolean = true,
+  ) {
     const admin = await this.usersService.findOne(adminUserId);
     if (!admin || admin.role !== 'ADMIN') {
       throw new UnauthorizedException('Only admins can reset passwords');
@@ -532,14 +586,19 @@ export class AuthService {
 
     // Send password reset notification email (non-blocking)
     const userName = `${targetUser.firstName} ${targetUser.lastName}`.trim() || targetUser.username;
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'https://projectops.unicorncommander.ai');
-    this.emailService.sendPasswordResetEmail(
-      targetUser.email,
-      userName,
-      `${frontendUrl}/auth/login`, // Direct to login page after admin reset
-    ).catch(err => {
-      this.logger.warn(`Failed to send password reset notification email: ${err.message}`);
-    });
+    const frontendUrl = this.configService.get<string>(
+      'FRONTEND_URL',
+      'https://projectops.unicorncommander.ai',
+    );
+    this.emailService
+      .sendPasswordResetEmail(
+        targetUser.email,
+        userName,
+        `${frontendUrl}/auth/login`, // Direct to login page after admin reset
+      )
+      .catch((err) => {
+        this.logger.warn(`Failed to send password reset notification email: ${err.message}`);
+      });
 
     return { message: 'Password reset successfully', forcePasswordChange: forceChange };
   }
@@ -554,9 +613,14 @@ export class AuthService {
       forcePasswordChange: force,
     });
 
-    this.logger.log(`Admin ${admin.email} set forcePasswordChange=${force} for user ID ${targetUserId}`);
+    this.logger.log(
+      `Admin ${admin.email} set forcePasswordChange=${force} for user ID ${targetUserId}`,
+    );
 
-    return { message: `Force password change ${force ? 'enabled' : 'disabled'}`, forcePasswordChange: force };
+    return {
+      message: `Force password change ${force ? 'enabled' : 'disabled'}`,
+      forcePasswordChange: force,
+    };
   }
 
   async clientSignup(token: string, dto: ClientSignupDto) {
@@ -583,71 +647,67 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
     // Everything touching contacts (FORCE-RLS) runs inside the workspace GUC.
-    const user = await this.prisma.withWorkspace(
-      workspaceId,
-      null,
-      async (tx) => {
-        const contact = await tx.contact.findUnique({
-          where: { invitationToken: token },
-        });
-        if (!contact) {
-          throw new NotFoundException('Invalid invitation token');
-        }
-        if (contact.userId) {
-          throw new BadRequestException('Contact already signed up');
-        }
+    const user = await this.prisma.withWorkspace(workspaceId, null, async (tx) => {
+      const contact = await tx.contact.findUnique({
+        where: { invitationToken: token },
+      });
+      if (!contact) {
+        throw new NotFoundException('Invalid invitation token');
+      }
+      if (contact.userId) {
+        throw new BadRequestException('Contact already signed up');
+      }
 
-        // Create user account (users is RLS-OFF; on tx for atomicity).
-        const created = await tx.user.create({
-          data: {
-            email: contact.email,
-            username: contact.email,
-            password: hashedPassword,
-            firstName: contact.firstName,
-            lastName: contact.lastName,
-            role: 'CLIENT',
-            isActive: true,
-          },
-        });
+      // Create user account (users is RLS-OFF; on tx for atomicity).
+      const created = await tx.user.create({
+        data: {
+          email: contact.email,
+          username: contact.email,
+          password: hashedPassword,
+          firstName: contact.firstName,
+          lastName: contact.lastName,
+          role: 'CLIENT',
+          isActive: true,
+        },
+      });
 
-        // Link contact to user and clear invitation token.
-        await tx.contact.update({
-          where: { id: contact.id },
-          data: {
-            userId: created.id,
-            invitationToken: null, // Clear token after use
-            portalAccessEnabled: true,
-          },
-        });
+      // Link contact to user and clear invitation token.
+      await tx.contact.update({
+        where: { id: contact.id },
+        data: {
+          userId: created.id,
+          invitationToken: null, // Clear token after use
+          portalAccessEnabled: true,
+        },
+      });
 
-        // Reconcile the provisional invite membership onto the real user key.
-        // A CLIENT has no keycloakId, so membershipKey() == created.id.
-        const finalUserKey = MembershipService.membershipKey(created);
-        await tx.membership.upsert({
-          where: {
-            userKey_workspaceId: { userKey: finalUserKey, workspaceId },
-          },
-          update: {
-            status: MembershipStatus.ACTIVE,
-            role: WorkspaceRole.VIEWER,
-            isDefault: true,
-          },
-          create: {
-            userKey: finalUserKey,
-            workspaceId,
-            role: WorkspaceRole.VIEWER, // CLIENT → VIEWER (suite role map)
-            status: MembershipStatus.ACTIVE,
-            isDefault: true,
-          },
-        });
-        // Consume the provisional row so the token can't be replayed.
-        await tx.membership.deleteMany({
-          where: { userKey: `invite:${token}` },
-        });
+      // Reconcile the provisional invite membership onto the real user key.
+      // A CLIENT has no keycloakId, so membershipKey() == created.id.
+      const finalUserKey = MembershipService.membershipKey(created);
+      await tx.membership.upsert({
+        where: {
+          userKey_workspaceId: { userKey: finalUserKey, workspaceId },
+        },
+        update: {
+          status: MembershipStatus.ACTIVE,
+          role: WorkspaceRole.VIEWER,
+          isDefault: true,
+        },
+        create: {
+          userKey: finalUserKey,
+          workspaceId,
+          role: WorkspaceRole.VIEWER, // CLIENT → VIEWER (suite role map)
+          status: MembershipStatus.ACTIVE,
+          isDefault: true,
+        },
+      });
+      // Consume the provisional row so the token can't be replayed.
+      await tx.membership.deleteMany({
+        where: { userKey: `invite:${token}` },
+      });
 
-        return created;
-      },
-    );
+      return created;
+    });
 
     this.logger.log(`Client ${user.email} signed up successfully with invitation token`);
 

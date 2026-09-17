@@ -41,7 +41,11 @@ export class CreateTimeEntryDto {
   @IsOptional()
   endedAt?: string;
 
-  @ApiProperty({ required: false, example: 90, description: 'Duration in minutes (alternative to endedAt).' })
+  @ApiProperty({
+    required: false,
+    example: 90,
+    description: 'Duration in minutes (alternative to endedAt).',
+  })
   @IsNumber()
   @Min(0)
   @Type(() => Number)

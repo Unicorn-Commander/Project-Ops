@@ -29,10 +29,7 @@ export class AssistantService {
   ) {}
 
   private get brigadeBaseUrl(): string {
-    return this.config.get<string>(
-      'BRIGADE_URL',
-      'https://brigade.magicunicorn.dev',
-    );
+    return this.config.get<string>('BRIGADE_URL', 'https://brigade.magicunicorn.dev');
   }
 
   private get brigadeApiKey(): string | undefined {
@@ -40,10 +37,7 @@ export class AssistantService {
   }
 
   private get agentId(): string {
-    return this.config.get<string>(
-      'BRIGADE_AGENT_ID',
-      'project-ops-assistant',
-    );
+    return this.config.get<string>('BRIGADE_AGENT_ID', 'project-ops-assistant');
   }
 
   /**
@@ -92,19 +86,13 @@ export class AssistantService {
         body: JSON.stringify(payload),
       });
     } catch (err) {
-      this.logger.error(
-        `Brigade unreachable at ${url}: ${(err as Error).message}`,
-      );
-      throw new Error(
-        'The assistant is unreachable right now. Try again in a moment.',
-      );
+      this.logger.error(`Brigade unreachable at ${url}: ${(err as Error).message}`);
+      throw new Error('The assistant is unreachable right now. Try again in a moment.');
     }
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      this.logger.warn(
-        `Brigade chat failed ${res.status}: ${text.slice(0, 300)}`,
-      );
+      this.logger.warn(`Brigade chat failed ${res.status}: ${text.slice(0, 300)}`);
       if (res.status === 401 || res.status === 403) {
         throw new Error('Assistant authentication failed.');
       }
@@ -125,9 +113,7 @@ export class AssistantService {
             : '';
 
     if (!content) {
-      this.logger.warn(
-        `Brigade chat returned empty content for user=${user.email}`,
-      );
+      this.logger.warn(`Brigade chat returned empty content for user=${user.email}`);
       throw new Error('Assistant returned an empty reply.');
     }
 

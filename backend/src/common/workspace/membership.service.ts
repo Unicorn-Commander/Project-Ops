@@ -51,10 +51,7 @@ export class MembershipService {
 
   /** The single bootstrap/dogfood workspace id seeded by the RLS migration. */
   get bootstrapWorkspaceId(): string {
-    return this.config.get<string>(
-      'DEFAULT_WORKSPACE_ID',
-      DEFAULT_WORKSPACE_FALLBACK,
-    );
+    return this.config.get<string>('DEFAULT_WORKSPACE_ID', DEFAULT_WORKSPACE_FALLBACK);
   }
 
   /**
@@ -144,10 +141,7 @@ export class MembershipService {
    *
    * @param requestedWorkspaceId optional explicit target (from path/header/claim).
    */
-  async resolveAndAuthorize(
-    user: User,
-    requestedWorkspaceId?: string | null,
-  ): Promise<string> {
+  async resolveAndAuthorize(user: User, requestedWorkspaceId?: string | null): Promise<string> {
     const fallback = this.bootstrapWorkspaceId;
 
     if (!this.enabled) {
@@ -169,9 +163,7 @@ export class MembershipService {
     if (requestedWorkspaceId?.trim()) {
       const target = requestedWorkspaceId.trim();
       if (!memberships.some((m) => m.workspaceId === target)) {
-        this.logger.warn(
-          `403 workspace access for ${user.email}: not a member of ${target}`,
-        );
+        this.logger.warn(`403 workspace access for ${user.email}: not a member of ${target}`);
         throw new ForbiddenException('Not a member of the requested workspace.');
       }
       return target;
@@ -180,6 +172,50 @@ export class MembershipService {
     // No explicit target: the default membership, else the first.
     const def = memberships.find((m) => m.isDefault) ?? memberships[0];
     return def.workspaceId;
+  }
+
+  /** Fresh workspace management authority; never promotes the app-wide user role. */
+  async hasManagementRole(user: User, workspaceId: string): Promise<boolean> {
+    if (!this.enabled) return false;
+    const member = await this.prisma.membership.findUnique({
+      where: {
+        userKey_workspaceId: { userKey: MembershipService.membershipKey(user), workspaceId },
+      },
+      include: { workspace: { select: { status: true } } },
+    });
+    return (
+      member?.status === MembershipStatus.ACTIVE &&
+      member.workspace.status === 'active' &&
+      (
+        [WorkspaceRole.OWNER, WorkspaceRole.ADMIN, WorkspaceRole.MANAGER] as WorkspaceRole[]
+      ).includes(member.role)
+    );
+  }
+
+  /** Re-read authority for every write, including calls on an existing MCP server. */
+  async assertCanWrite(user: User, workspaceId: string): Promise<void> {
+    if (!this.enabled) return;
+    const member = await this.prisma.membership.findUnique({
+      where: {
+        userKey_workspaceId: { userKey: MembershipService.membershipKey(user), workspaceId },
+      },
+      include: { workspace: { select: { status: true } } },
+    });
+    if (
+      !member ||
+      member.status !== MembershipStatus.ACTIVE ||
+      member.workspace.status !== 'active' ||
+      ![
+        WorkspaceRole.MEMBER,
+        WorkspaceRole.MANAGER,
+        WorkspaceRole.ADMIN,
+        WorkspaceRole.OWNER,
+      ].includes(member.role as any)
+    ) {
+      throw new ForbiddenException(
+        'An active MEMBER or higher workspace role is required for this operation.',
+      );
+    }
   }
 
   /**

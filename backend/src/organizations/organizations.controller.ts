@@ -151,7 +151,12 @@ export class OrganizationsController {
 
   @Get(':id/projects')
   @ApiOperation({ summary: 'Get all projects for organization' })
-  @ApiQuery({ name: 'includeChildren', required: false, type: Boolean, description: 'Include projects from child organizations' })
+  @ApiQuery({
+    name: 'includeChildren',
+    required: false,
+    type: Boolean,
+    description: 'Include projects from child organizations',
+  })
   @ApiResponse({ status: 200, description: 'Returns list of projects' })
   @ApiResponse({ status: 404, description: 'Organization not found' })
   getProjects(

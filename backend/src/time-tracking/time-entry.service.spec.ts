@@ -109,9 +109,9 @@ describe('TimeEntryService immutability + access', () => {
 
   it('blocks CLIENT from logging time', async () => {
     const { svc } = makeService({});
-    await expect(svc.logTime('ws', client, { projectId: 'p1', durationMinutes: 30 })).rejects.toThrow(
-      ForbiddenException,
-    );
+    await expect(
+      svc.logTime('ws', client, { projectId: 'p1', durationMinutes: 30 }),
+    ).rejects.toThrow(ForbiddenException);
   });
 
   it('rejects an overlapping manual entry when overlaps are not allowed', async () => {
@@ -145,13 +145,14 @@ describe('TimeEntryService.remove — DRAFT/unlocked/unbilled only', () => {
     expect(out).toEqual({ message: 'Time entry deleted' });
     expect(deletedIds).toEqual(['e1']);
     expect(events.emit).toHaveBeenCalledWith('timeEntry.deleted', {
+      workspaceId: 'ws',
       projectId: 'p1',
       userId: 'u1',
       id: 'e1',
     });
   });
 
-  it('allows ADMIN/MANAGER to delete another user\'s DRAFT entry', async () => {
+  it("allows ADMIN/MANAGER to delete another user's DRAFT entry", async () => {
     const { svc, deletedIds } = makeService({
       entryFindFirst: () => ({ ...draftEntry, userId: 'someone-else' }),
     });

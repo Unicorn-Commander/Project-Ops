@@ -61,7 +61,14 @@ describe('OrganizationsService — hierarchy (N+1 fix)', () => {
       // Root (id=root) is loaded via findUnique; the subtree CTE returns its
       // descendants flat: root has child A; A has grandchild B.
       const rows: RawRow[] = [
-        orgRow({ id: 'A', parentOrgId: 'root', name: 'A', depth: 1, childOrgsCount: 1, contactsCount: 2 }),
+        orgRow({
+          id: 'A',
+          parentOrgId: 'root',
+          name: 'A',
+          depth: 1,
+          childOrgsCount: 1,
+          contactsCount: 2,
+        }),
         orgRow({ id: 'B', parentOrgId: 'A', name: 'B', depth: 2, projectsCount: 5 }),
       ];
 

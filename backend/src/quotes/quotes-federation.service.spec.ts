@@ -46,12 +46,43 @@ function payload(overrides: Partial<QuoteAcceptedDto> = {}): QuoteAcceptedDto {
       version_no: 1,
     },
     lines: [
-      { kind: 'milestone', label: 'Milestone 2 — order pad on the floor', acceptance_criteria_md: 'M2 criteria', estimated_hours: 24, weeks: 2, position: 3 },
-      { kind: 'one_time', label: 'Discovery + setup', acceptance_criteria_md: 'Setup criteria', estimated_hours: 8, position: 1 },
-      { kind: 'option', label: 'Package: Pro', position: 2, option_group: 'package', selected: false },
-      { kind: 'option', label: 'Package: Starter', position: 2, option_group: 'package', selected: true },
+      {
+        kind: 'milestone',
+        label: 'Milestone 2 — order pad on the floor',
+        acceptance_criteria_md: 'M2 criteria',
+        estimated_hours: 24,
+        weeks: 2,
+        position: 3,
+      },
+      {
+        kind: 'one_time',
+        label: 'Discovery + setup',
+        acceptance_criteria_md: 'Setup criteria',
+        estimated_hours: 8,
+        position: 1,
+      },
+      {
+        kind: 'option',
+        label: 'Package: Pro',
+        position: 2,
+        option_group: 'package',
+        selected: false,
+      },
+      {
+        kind: 'option',
+        label: 'Package: Starter',
+        position: 2,
+        option_group: 'package',
+        selected: true,
+      },
       { kind: 'recurring', label: 'Hosting', position: 5 },
-      { kind: 'milestone', label: 'Milestone 1 — pilot', acceptance_criteria_md: 'M1 criteria', position: 2, customer_ops_line_id: 'line-m1' },
+      {
+        kind: 'milestone',
+        label: 'Milestone 1 — pilot',
+        acceptance_criteria_md: 'M1 criteria',
+        position: 2,
+        customer_ops_line_id: 'line-m1',
+      },
       { kind: 'excluded', label: 'Custom hardware', position: 6 },
     ],
     pdf: { base64: PDF_B64, file_name: 'Q-2026-0001-v1.pdf' },
@@ -99,11 +130,17 @@ function makeTx() {
     task: {
       findMany: jest.fn(async ({ where }: any) =>
         state.tasks.filter(
-          (t) => t.projectId === where.projectId && t.metadata?.quote?.customer_ops_quote_id === where.metadata.equals,
+          (t) =>
+            t.projectId === where.projectId &&
+            t.metadata?.quote?.customer_ops_quote_id === where.metadata.equals,
         ),
       ),
       create: jest.fn(async ({ data }: any) => {
-        const row = { id: `t${state.tasks.length + 1}`, createdAt: new Date(1_000 + state.tasks.length), ...data };
+        const row = {
+          id: `t${state.tasks.length + 1}`,
+          createdAt: new Date(1_000 + state.tasks.length),
+          ...data,
+        };
         state.tasks.push(row);
         return row;
       }),
@@ -112,7 +149,9 @@ function makeTx() {
       findFirst: jest.fn(
         async ({ where }: any) =>
           state.documents.find(
-            (d) => d.projectId === where.projectId && d.metadata?.quote?.customer_ops_quote_id === where.metadata.equals,
+            (d) =>
+              d.projectId === where.projectId &&
+              d.metadata?.quote?.customer_ops_quote_id === where.metadata.equals,
           ) ?? null,
       ),
       create: jest.fn(async ({ data }: any) => {
@@ -197,7 +236,10 @@ function makeService(opts: { fetchImpl?: any; config?: Record<string, string>; l
     runForUser: jest.fn(async (_u: any, fn: (t: any) => any) => fn(tx)),
   };
   const config = {
-    get: jest.fn((key: string) => (opts.config ?? { CUSTOMER_OPS_BASE_URL: 'https://customers.example.dev' })[key]),
+    get: jest.fn(
+      (key: string) =>
+        (opts.config ?? { CUSTOMER_OPS_BASE_URL: 'https://customers.example.dev' })[key],
+    ),
   };
   let n = 0;
   const projectsService = {
@@ -218,7 +260,18 @@ function makeService(opts: { fetchImpl?: any; config?: Record<string, string>; l
     config as any,
   );
   if (opts.fetchImpl) svc.useFetch(opts.fetchImpl);
-  return { svc, tx, state, workspaceContext, projectsService, minio, audit, emitter, config, lockKeys };
+  return {
+    svc,
+    tx,
+    state,
+    workspaceContext,
+    projectsService,
+    minio,
+    audit,
+    emitter,
+    config,
+    lockKeys,
+  };
 }
 
 /** Assert a classified A7 failure: the right code, the right HTTP status. */
@@ -238,7 +291,9 @@ describe('QuotesFederationService.acceptQuote — first acceptance', () => {
   it('creates the project with the contract billing fields + metadata, tasks in order, and the PDF document', async () => {
     const { svc, state, tx, minio, audit, emitter } = makeService();
 
-    const result = await svc.acceptQuote(WS, federationActor, payload(), { federationActor: 'customer-ops' });
+    const result = await svc.acceptQuote(WS, federationActor, payload(), {
+      federationActor: 'customer-ops',
+    });
 
     // Response contract (A7): done + created + the ids.
     expect(result).toEqual({
@@ -278,7 +333,11 @@ describe('QuotesFederationService.acceptQuote — first acceptance', () => {
       currency: 'USD',
       status: 'accepted',
       // 35000/mo + 12000/yr → 35000 + round(12000/12) = 36000 (A4/A8 blend).
-      totals: { one_time_total_cents: 140000, milestone_total_cents: 290000, recurring_monthly_cents: 36000 },
+      totals: {
+        one_time_total_cents: 140000,
+        milestone_total_cents: 290000,
+        recurring_monthly_cents: 36000,
+      },
     });
     // Nothing internal ever lands on the project (§2.6, A3).
     expect(JSON.stringify(project.metadata)).not.toMatch(/internal|split|cost/i);
@@ -329,7 +388,13 @@ describe('QuotesFederationService.acceptQuote — first acceptance', () => {
 
     // Audit + domain events (after commit), like the interactive create paths.
     expect(audit.log).toHaveBeenCalledWith(
-      expect.objectContaining({ workspaceId: WS, userId: 'svc-user', action: 'CREATE', resource: 'Project', resourceId: 'p1' }),
+      expect.objectContaining({
+        workspaceId: WS,
+        userId: 'svc-user',
+        action: 'CREATE',
+        resource: 'Project',
+        resourceId: 'p1',
+      }),
     );
     expect(emitter.emit).toHaveBeenCalledWith(
       PROJECT_CREATED_EVENT,
@@ -363,9 +428,14 @@ describe('QuotesFederationService.acceptQuote — first acceptance', () => {
 
   it('leaves the contact unlinked (not an error) when contact_id does not resolve in the workspace', async () => {
     const { svc, state } = makeService();
-    const result = await svc.acceptQuote(WS, federationActor, payload({ contact_id: 'contact-from-elsewhere' }), {
-      federationActor: 'customer-ops',
-    });
+    const result = await svc.acceptQuote(
+      WS,
+      federationActor,
+      payload({ contact_id: 'contact-from-elsewhere' }),
+      {
+        federationActor: 'customer-ops',
+      },
+    );
     expect(result.contact_linked).toBe(false);
     expect(state.projects[0].contactId).toBeNull();
     expect(JSON.stringify(state.projects[0].metadata)).not.toContain('contact-from-elsewhere');
@@ -393,10 +463,14 @@ describe('QuotesFederationService.acceptQuote — first acceptance', () => {
 describe('QuotesFederationService.acceptQuote — idempotency by (quote id, version)', () => {
   it('a second call returns the SAME ids, creates nothing, uploads nothing, emits nothing', async () => {
     const { svc, state, minio, emitter, tx } = makeService();
-    const first = await svc.acceptQuote(WS, federationActor, payload(), { federationActor: 'customer-ops' });
+    const first = await svc.acceptQuote(WS, federationActor, payload(), {
+      federationActor: 'customer-ops',
+    });
     emitter.emit.mockClear();
 
-    const second = await svc.acceptQuote(WS, federationActor, payload(), { federationActor: 'customer-ops' });
+    const second = await svc.acceptQuote(WS, federationActor, payload(), {
+      federationActor: 'customer-ops',
+    });
 
     expect(second).toEqual({ ...first, created: false });
     expect(state.projects).toHaveLength(1);
@@ -426,7 +500,9 @@ describe('QuotesFederationService.acceptQuote — idempotency by (quote id, vers
     const { svc, state, tx } = makeService();
     state.workspaces['ws-2'] = { id: 'ws-2', status: 'active' };
     await svc.acceptQuote(WS, federationActor, payload(), { federationActor: 'customer-ops' });
-    const other = await svc.acceptQuote('ws-2', federationActor, payload(), { federationActor: 'customer-ops' });
+    const other = await svc.acceptQuote('ws-2', federationActor, payload(), {
+      federationActor: 'customer-ops',
+    });
     expect(other.created).toBe(true);
     expect(state.projects).toHaveLength(2);
     const where = (tx.project.findFirst as jest.Mock).mock.calls[0][0].where;
@@ -439,9 +515,14 @@ describe('QuotesFederationService.acceptQuote — idempotency by (quote id, vers
 
   it('merges schedule_ids idempotently on later calls (A14) and only writes when they change', async () => {
     const { svc, state, tx } = makeService();
-    const r1 = await svc.acceptQuote(WS, federationActor, payload({ schedule_ids: ['sched-deposit'] }), {
-      federationActor: 'customer-ops',
-    });
+    const r1 = await svc.acceptQuote(
+      WS,
+      federationActor,
+      payload({ schedule_ids: ['sched-deposit'] }),
+      {
+        federationActor: 'customer-ops',
+      },
+    );
     expect(r1.schedule_ids).toEqual(['sched-deposit']);
 
     const r2 = await svc.acceptQuote(
@@ -454,7 +535,11 @@ describe('QuotesFederationService.acceptQuote — idempotency by (quote id, vers
     expect(r2.project_id).toBe(r1.project_id);
     expect(r2.schedule_ids).toEqual(['sched-deposit', 'sched-m1', 'sched-m2']);
     expect(tx.project.update).toHaveBeenCalledTimes(1);
-    expect(state.projects[0].metadata.quote.schedule_ids).toEqual(['sched-deposit', 'sched-m1', 'sched-m2']);
+    expect(state.projects[0].metadata.quote.schedule_ids).toEqual([
+      'sched-deposit',
+      'sched-m1',
+      'sched-m2',
+    ]);
     // Other metadata keys survive the merge.
     expect(state.projects[0].metadata.quoteSummary.title).toBe('Order Pad for the apparel client');
 
@@ -470,17 +555,23 @@ describe('QuotesFederationService.acceptQuote — idempotency by (quote id, vers
 
   it('a replay that carries the PDF attaches it once when the first call had none', async () => {
     const { svc, state, minio } = makeService();
-    const r1 = await svc.acceptQuote(WS, federationActor, payload({ pdf: undefined }), { federationActor: 'customer-ops' });
+    const r1 = await svc.acceptQuote(WS, federationActor, payload({ pdf: undefined }), {
+      federationActor: 'customer-ops',
+    });
     expect(r1.document_id).toBeNull();
 
-    const r2 = await svc.acceptQuote(WS, federationActor, payload(), { federationActor: 'customer-ops' });
+    const r2 = await svc.acceptQuote(WS, federationActor, payload(), {
+      federationActor: 'customer-ops',
+    });
     expect(r2.created).toBe(false);
     expect(r2.project_id).toBe(r1.project_id);
     expect(r2.document_id).toBe('d1');
     expect(state.documents).toHaveLength(1);
     expect(state.documents[0].uploadedById).toBe('svc-user');
 
-    const r3 = await svc.acceptQuote(WS, federationActor, payload(), { federationActor: 'customer-ops' });
+    const r3 = await svc.acceptQuote(WS, federationActor, payload(), {
+      federationActor: 'customer-ops',
+    });
     expect(r3.document_id).toBe('d1');
     expect(state.documents).toHaveLength(1);
     expect(minio.uploadObject).toHaveBeenCalledTimes(1);
@@ -491,7 +582,10 @@ describe('QuotesFederationService.acceptQuote — failures are classified and cr
   it('rejects a non-2-decimal currency (A17) before touching the DB', async () => {
     const { svc, tx, state } = makeService();
     await expectFailure(
-      () => svc.acceptQuote(WS, federationActor, payload({ currency: 'JPY' }), { federationActor: 'customer-ops' }),
+      () =>
+        svc.acceptQuote(WS, federationActor, payload({ currency: 'JPY' }), {
+          federationActor: 'customer-ops',
+        }),
       'UNSUPPORTED_CURRENCY',
       400,
     );
@@ -503,9 +597,14 @@ describe('QuotesFederationService.acceptQuote — failures are classified and cr
     const { svc, state } = makeService();
     await expectFailure(
       () =>
-        svc.acceptQuote(WS, federationActor, payload({ billing: { ...payload().billing, version_no: 2 } }), {
-          federationActor: 'customer-ops',
-        }),
+        svc.acceptQuote(
+          WS,
+          federationActor,
+          payload({ billing: { ...payload().billing, version_no: 2 } }),
+          {
+            federationActor: 'customer-ops',
+          },
+        ),
       'VERSION_MISMATCH',
       400,
     );
@@ -519,7 +618,12 @@ describe('QuotesFederationService.acceptQuote — failures are classified and cr
         svc.acceptQuote(
           WS,
           federationActor,
-          payload({ pdf: { base64: Buffer.from('<html>not a pdf</html>').toString('base64'), file_name: 'x.pdf' } }),
+          payload({
+            pdf: {
+              base64: Buffer.from('<html>not a pdf</html>').toString('base64'),
+              file_name: 'x.pdf',
+            },
+          }),
           { federationActor: 'customer-ops' },
         ),
       'PDF_INVALID',
@@ -534,13 +638,19 @@ describe('QuotesFederationService.acceptQuote — failures are classified and cr
       ok: true,
       status: 200,
       headers: { get: () => String(PDF_BYTES.length) },
-      arrayBuffer: async () => PDF_BYTES.buffer.slice(PDF_BYTES.byteOffset, PDF_BYTES.byteOffset + PDF_BYTES.length),
+      arrayBuffer: async () =>
+        PDF_BYTES.buffer.slice(PDF_BYTES.byteOffset, PDF_BYTES.byteOffset + PDF_BYTES.length),
     }));
     const { svc, state, minio } = makeService({ fetchImpl: okFetch });
     const r = await svc.acceptQuote(
       WS,
       federationActor,
-      payload({ pdf: { url: 'https://customers.example.dev/api/quotes/q-0001/versions/1/pdf', file_name: 'q.pdf' } }),
+      payload({
+        pdf: {
+          url: 'https://customers.example.dev/api/quotes/q-0001/versions/1/pdf',
+          file_name: 'q.pdf',
+        },
+      }),
       { federationActor: 'customer-ops' },
     );
     expect(okFetch).toHaveBeenCalledWith(
@@ -703,7 +813,8 @@ describe('QuotesFederationService.acceptQuote — the vouched workspace must be 
   it('an unknown workspace is FEDERATION_WORKSPACE_UNKNOWN (404) and creates nothing', async () => {
     const { svc, state } = makeService();
     await expectFailure(
-      () => svc.acceptQuote('ws-typo', federationActor, payload(), { federationActor: 'customer-ops' }),
+      () =>
+        svc.acceptQuote('ws-typo', federationActor, payload(), { federationActor: 'customer-ops' }),
       'FEDERATION_WORKSPACE_UNKNOWN',
       404,
     );
@@ -766,9 +877,14 @@ describe('QuotesFederationService.acceptQuote — concurrency (L6)', () => {
     const { svc, state, lockKeys } = makeService({ locks });
     await Promise.all([
       svc.acceptQuote(WS, federationActor, payload(), { federationActor: 'customer-ops' }),
-      svc.acceptQuote(WS, federationActor, payload({ version: 2, billing: { ...payload().billing, version_no: 2 } }), {
-        federationActor: 'customer-ops',
-      }),
+      svc.acceptQuote(
+        WS,
+        federationActor,
+        payload({ version: 2, billing: { ...payload().billing, version_no: 2 } }),
+        {
+          federationActor: 'customer-ops',
+        },
+      ),
     ]);
     expect(state.projects).toHaveLength(2);
     expect(new Set(lockKeys).size).toBe(2);

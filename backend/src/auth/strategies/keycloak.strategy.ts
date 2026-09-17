@@ -32,11 +32,7 @@ export class KeycloakStrategy extends PassportStrategy(Strategy, 'keycloak') {
     this.userinfoURL = `${keycloakUrl}/realms/${realm}/protocol/openid-connect/userinfo`;
   }
 
-  async validate(
-    accessToken: string,
-    refreshToken: string,
-    profile: any,
-  ): Promise<any> {
+  async validate(accessToken: string, refreshToken: string, profile: any): Promise<any> {
     // passport-oauth2 does not fetch userinfo automatically,
     // so we call the Keycloak userinfo endpoint to get the full profile.
     let userProfile = profile;
@@ -62,11 +58,7 @@ export class KeycloakStrategy extends PassportStrategy(Strategy, 'keycloak') {
     // entitlements gate can verify the org's Project-Ops entitlement. This is
     // the interactive SSO login, so the token is a real uchub Bearer; the gate
     // is re-checked here on every login. Harmless when the gate is unarmed.
-    const user = await this.authService.validateKeycloakUser(
-      keycloakId,
-      userProfile,
-      accessToken,
-    );
+    const user = await this.authService.validateKeycloakUser(keycloakId, userProfile, accessToken);
 
     return user;
   }

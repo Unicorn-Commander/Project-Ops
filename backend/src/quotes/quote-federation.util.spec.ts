@@ -28,18 +28,21 @@ describe('quote-federation.util', () => {
       expect(normalizeCurrency('usd')).toBe('USD');
       expect(normalizeCurrency('EUR')).toBe('EUR');
     });
-    it.each(['JPY', 'KRW', 'CLP', 'BHD', 'KWD', 'TND', 'CLF'])('rejects %s with UNSUPPORTED_CURRENCY', (code) => {
-      let err: HttpException | undefined;
-      try {
-        normalizeCurrency(code);
-      } catch (e) {
-        err = e as HttpException;
-      }
-      expect(err).toBeInstanceOf(HttpException);
-      expect(err!.getStatus()).toBe(HttpStatus.BAD_REQUEST);
-      expect((err!.getResponse() as any).code).toBe('UNSUPPORTED_CURRENCY');
-      expect((err!.getResponse() as any).status).toBe('failed');
-    });
+    it.each(['JPY', 'KRW', 'CLP', 'BHD', 'KWD', 'TND', 'CLF'])(
+      'rejects %s with UNSUPPORTED_CURRENCY',
+      (code) => {
+        let err: HttpException | undefined;
+        try {
+          normalizeCurrency(code);
+        } catch (e) {
+          err = e as HttpException;
+        }
+        expect(err).toBeInstanceOf(HttpException);
+        expect(err!.getStatus()).toBe(HttpStatus.BAD_REQUEST);
+        expect((err!.getResponse() as any).code).toBe('UNSUPPORTED_CURRENCY');
+        expect((err!.getResponse() as any).status).toBe('failed');
+      },
+    );
     it('rejects a non-ISO string', () => {
       expect(() => normalizeCurrency('dollars')).toThrow(HttpException);
       expect(() => normalizeCurrency('')).toThrow(HttpException);
@@ -75,21 +78,50 @@ describe('quote-federation.util', () => {
         line({ kind: 'milestone', label: 'M2', position: 3 }),
         line({ kind: 'recurring', label: 'Hosting', position: 5 }),
         line({ kind: 'one_time', label: 'Setup', position: 1 }),
-        line({ kind: 'option', label: 'Package: Pro', position: 2, option_group: 'package', selected: false }),
-        line({ kind: 'option', label: 'Package: Starter', position: 2, option_group: 'package', selected: true }),
+        line({
+          kind: 'option',
+          label: 'Package: Pro',
+          position: 2,
+          option_group: 'package',
+          selected: false,
+        }),
+        line({
+          kind: 'option',
+          label: 'Package: Starter',
+          position: 2,
+          option_group: 'package',
+          selected: true,
+        }),
         line({ kind: 'milestone', label: 'M1', position: 2 }),
         line({ kind: 'milestone', label: 'M1b (same position, later in input)', position: 2 }),
         line({ kind: 'hourly', label: 'Change work', position: 4 }),
         line({ kind: 'included', label: 'Training', position: 6 }),
         line({ kind: 'excluded', label: 'Hardware', position: 7 }),
       ]);
-      expect(out.map((l) => l.label)).toEqual(['Setup', 'M1', 'M1b (same position, later in input)', 'M2']);
+      expect(out.map((l) => l.label)).toEqual([
+        'Setup',
+        'M1',
+        'M1b (same position, later in input)',
+        'M2',
+      ]);
     });
 
     it('never creates a task for an unselected option-group line, even when its kind is milestone', () => {
       const out = selectTaskLines([
-        line({ kind: 'milestone', label: 'Pro milestone', position: 1, option_group: 'package', selected: false }),
-        line({ kind: 'milestone', label: 'Starter milestone', position: 2, option_group: 'package', selected: true }),
+        line({
+          kind: 'milestone',
+          label: 'Pro milestone',
+          position: 1,
+          option_group: 'package',
+          selected: false,
+        }),
+        line({
+          kind: 'milestone',
+          label: 'Starter milestone',
+          position: 2,
+          option_group: 'package',
+          selected: true,
+        }),
       ]);
       expect(out.map((l) => l.label)).toEqual(['Starter milestone']);
     });
@@ -110,7 +142,8 @@ describe('quote-federation.util', () => {
   });
 
   describe('recurringMonthlyCents (A4/A8 — month + quarter/3 + year/12, rounded)', () => {
-    const b = (over: any) => ({ one_time_total_cents: 0, milestone_total_cents: 0, schedule_text: '', ...over }) as any;
+    const b = (over: any) =>
+      ({ one_time_total_cents: 0, milestone_total_cents: 0, schedule_text: '', ...over }) as any;
 
     it('blends the accepted recurring lines the way computeQuote does', () => {
       expect(
@@ -127,20 +160,33 @@ describe('quote-federation.util', () => {
     });
 
     it('rounds the blend once, half up', () => {
-      expect(recurringMonthlyCents(b({ recurring: [{ interval: 'year', amount_cents: 100 }] }))).toBe(8); // 8.33
-      expect(recurringMonthlyCents(b({ recurring: [{ interval: 'quarter', amount_cents: 100 }] }))).toBe(33); // 33.33
-      expect(recurringMonthlyCents(b({ recurring: [{ interval: 'quarter', amount_cents: 50 }] }))).toBe(17); // 16.67
+      expect(
+        recurringMonthlyCents(b({ recurring: [{ interval: 'year', amount_cents: 100 }] })),
+      ).toBe(8); // 8.33
+      expect(
+        recurringMonthlyCents(b({ recurring: [{ interval: 'quarter', amount_cents: 100 }] })),
+      ).toBe(33); // 33.33
+      expect(
+        recurringMonthlyCents(b({ recurring: [{ interval: 'quarter', amount_cents: 50 }] })),
+      ).toBe(17); // 16.67
     });
 
     it('the array wins over a pre-blended scalar (one compute path)', () => {
       expect(
-        recurringMonthlyCents(b({ recurring: [{ interval: 'month', amount_cents: 35000 }], recurring_monthly_cents: 99999 })),
+        recurringMonthlyCents(
+          b({
+            recurring: [{ interval: 'month', amount_cents: 35000 }],
+            recurring_monthly_cents: 99999,
+          }),
+        ),
       ).toBe(35000);
     });
 
     it('falls back to the scalar when no lines are sent, and to 0 when neither is', () => {
       expect(recurringMonthlyCents(b({ recurring_monthly_cents: 35000 }))).toBe(35000);
-      expect(recurringMonthlyCents(b({ recurring: [], recurring_monthly_cents: 35000 }))).toBe(35000);
+      expect(recurringMonthlyCents(b({ recurring: [], recurring_monthly_cents: 35000 }))).toBe(
+        35000,
+      );
       expect(recurringMonthlyCents(b({}))).toBe(0);
     });
   });
@@ -178,7 +224,11 @@ describe('quote-federation.util', () => {
         title: 'Order Pad for the apparel client',
         currency: 'USD',
         status: 'accepted',
-        totals: { one_time_total_cents: 140000, milestone_total_cents: 290000, recurring_monthly_cents: 35000 },
+        totals: {
+          one_time_total_cents: 140000,
+          milestone_total_cents: 290000,
+          recurring_monthly_cents: 35000,
+        },
       });
       // The deposit is Accounting-Ops' paper (§3); Project-Ops accepts it on the
       // wire and keeps no copy.
@@ -212,12 +262,14 @@ describe('quote-federation.util', () => {
       metadata: position === undefined ? {} : { quote: { position } },
       createdAt: new Date(ms),
     });
-    expect(sortTasksByQuotePosition([t('c', 3, 1), t('a', 1, 3), t('z', undefined, 0), t('b', 2, 2)]).map((x) => x.id)).toEqual([
-      'a',
-      'b',
-      'c',
-      'z',
-    ]);
+    expect(
+      sortTasksByQuotePosition([
+        t('c', 3, 1),
+        t('a', 1, 3),
+        t('z', undefined, 0),
+        t('b', 2, 2),
+      ]).map((x) => x.id),
+    ).toEqual(['a', 'b', 'c', 'z']);
   });
 
   it('looksLikePdf checks the %PDF- magic', () => {
@@ -229,6 +281,10 @@ describe('quote-federation.util', () => {
   it('federationError carries the A7 envelope', () => {
     const err = federationError(HttpStatus.BAD_GATEWAY, 'PDF_FETCH_FAILED', 'nope');
     expect(err.getStatus()).toBe(502);
-    expect(err.getResponse()).toEqual({ status: 'failed', code: 'PDF_FETCH_FAILED', reason: 'nope' });
+    expect(err.getResponse()).toEqual({
+      status: 'failed',
+      code: 'PDF_FETCH_FAILED',
+      reason: 'nope',
+    });
   });
 });

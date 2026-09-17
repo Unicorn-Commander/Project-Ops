@@ -98,9 +98,7 @@ describe('FederationActorGuard', () => {
 
   it('honors a multi-actor allow-list', () => {
     const req: any = { user: fedUser('meeting-ops', WS) };
-    expect(
-      guardWith('contact-ops, meeting-ops').canActivate(ctx(req, 'ingest')),
-    ).toBe(true);
+    expect(guardWith('contact-ops, meeting-ops').canActivate(ctx(req, 'ingest'))).toBe(true);
     expect(req.federationActor).toBe('meeting-ops');
   });
 });
@@ -115,7 +113,9 @@ describe('FederationActorGuard — quotes seam route scope (quoteAccepted)', () 
   const OTHER_WS = '01924a3c-0000-7f1a-beef-67f1ab5c0002';
 
   const guardWith = (allow: string) =>
-    new FederationActorGuard({ get: (_k: string, def?: string) => allow ?? def ?? '' } as unknown as ConfigService);
+    new FederationActorGuard({
+      get: (_k: string, def?: string) => allow ?? def ?? '',
+    } as unknown as ConfigService);
 
   const ctx = (req: any, handlerName: string): ExecutionContext =>
     ({

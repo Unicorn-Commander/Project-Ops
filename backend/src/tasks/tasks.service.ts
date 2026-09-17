@@ -906,12 +906,7 @@ export class TasksService {
    * author or ADMIN may edit. Content-only (no re-mention fan-out — REST
    * project-comment update also does not re-emit mentions).
    */
-  async updateComment(
-    workspaceId: string,
-    user: User,
-    commentId: string,
-    content: string,
-  ) {
+  async updateComment(workspaceId: string, user: User, commentId: string, content: string) {
     const trimmed = (content ?? '').trim();
     if (!trimmed) {
       throw new BadRequestException('content is required');
@@ -929,12 +924,9 @@ export class TasksService {
           throw new NotFoundException(`Comment with ID ${commentId} not found`);
         }
 
-        const canEdit =
-          comment.authorId === user.id || user.role === UserRole.ADMIN;
+        const canEdit = comment.authorId === user.id || user.role === UserRole.ADMIN;
         if (!canEdit) {
-          throw new ForbiddenException(
-            'Only the author or an ADMIN can update this comment',
-          );
+          throw new ForbiddenException('Only the author or an ADMIN can update this comment');
         }
 
         const updated = await tx.taskComment.update({
@@ -953,9 +945,7 @@ export class TasksService {
           },
         });
 
-        this.logger.log(
-          `Comment ${commentId} updated by user ${user.id} ws=${workspaceId}`,
-        );
+        this.logger.log(`Comment ${commentId} updated by user ${user.id} ws=${workspaceId}`);
         return updated;
       },
       workspaceId,
@@ -991,9 +981,7 @@ export class TasksService {
 
         await tx.taskComment.delete({ where: { id: comment.id } });
 
-        this.logger.log(
-          `Comment ${commentId} deleted by user ${user.id} ws=${workspaceId}`,
-        );
+        this.logger.log(`Comment ${commentId} deleted by user ${user.id} ws=${workspaceId}`);
         return { deleted: true, commentId: comment.id, taskId: comment.taskId };
       },
       workspaceId,

@@ -35,7 +35,8 @@ export class UpdateCustomFieldDto {
     required: false,
     type: [String],
     example: ['Low', 'Medium', 'High'],
-    description: 'Allowed option values. Required + non-empty when the (resulting) type is SELECT / MULTISELECT.',
+    description:
+      'Allowed option values. Required + non-empty when the (resulting) type is SELECT / MULTISELECT.',
   })
   @IsArray()
   @IsString({ each: true })

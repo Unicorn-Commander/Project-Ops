@@ -8,6 +8,7 @@ import {
   Delete,
   Query,
   UseGuards,
+  Optional,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { ProjectsService } from './projects.service';
@@ -22,6 +23,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentWorkspace } from '../common/workspace/current-workspace.decorator';
 import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
+import { MembershipService } from '../common/workspace/membership.service';
 import { clampLimit } from '../common/pagination/clamp';
 import { Prisma, UserRole, ProjectStatus, ProjectPriority, User } from '@prisma/client';
 
@@ -35,7 +37,10 @@ import { Prisma, UserRole, ProjectStatus, ProjectPriority, User } from '@prisma/
 @UseGuards(JwtAuthGuard, RolesGuard, WorkspaceMembershipGuard)
 @ApiBearerAuth('JWT-auth')
 export class ProjectsController {
-  constructor(private readonly projectsService: ProjectsService) {}
+  constructor(
+    private readonly projectsService: ProjectsService,
+    @Optional() private readonly membership?: MembershipService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new project' })
@@ -106,8 +111,11 @@ export class ProjectsController {
     if (user?.role === UserRole.CLIENT) {
       // Clients can only see projects they created
       where.createdById = user.id;
-    } else if (user?.role === UserRole.STAFF) {
-      // Staff can only see projects assigned to them
+    } else if (
+      user?.role === UserRole.STAFF &&
+      !(await this.membership?.hasManagementRole(user, workspaceId))
+    ) {
+      // Ordinary staff see assigned projects; workspace managers see their workspace.
       where.assignedToId = user.id;
     }
     // ADMIN and MANAGER can see all projects (no additional filter)

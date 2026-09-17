@@ -47,7 +47,7 @@ const VALID_ROLES = new Set<string>(Object.values(UserRole));
 
 const LEGACY_FALLBACK: AccessRule[] = [
   { pattern: 'aaron@magicunicorn.tech', isDomain: false, domain: null, role: UserRole.ADMIN },
-  { pattern: 'shafenkhan@users.noreply.github.com',  isDomain: false, domain: null, role: UserRole.ADMIN },
+  { pattern: 'shafenkhan@users.noreply.github.com', isDomain: false, domain: null, role: UserRole.ADMIN },
 ];
 
 let cachedRules: AccessRule[] | null = null;

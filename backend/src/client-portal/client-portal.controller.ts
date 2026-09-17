@@ -1,3 +1,4 @@
+import { WorkspaceWriteException } from '../common/workspace/workspace-write-policy.decorator';
 import {
   Controller,
   Get,
@@ -92,9 +93,13 @@ export class ClientPortalController {
 
   @Get('projects/:id/quote')
   @ApiOperation({
-    summary: "Quote panel for one of the client's projects (number, title, totals, status, share link only)",
+    summary:
+      "Quote panel for one of the client's projects (number, title, totals, status, share link only)",
   })
-  @ApiResponse({ status: 200, description: 'Quote panel; { linked: false } when the project did not come from a quote' })
+  @ApiResponse({
+    status: 200,
+    description: 'Quote panel; { linked: false } when the project did not come from a quote',
+  })
   @ApiResponse({ status: 403, description: 'Access denied - not a client or project owner' })
   @ApiResponse({ status: 404, description: 'Project or client profile not found' })
   getProjectQuote(
@@ -149,6 +154,7 @@ export class ClientPortalController {
   }
 
   @Post('approvals/:id/decision')
+  @WorkspaceWriteException('client-portal')
   @ApiOperation({ summary: "Record the client's decision on one of their pending approvals" })
   @ApiResponse({ status: 201, description: 'Decision recorded' })
   @ApiResponse({
@@ -232,6 +238,7 @@ export class ClientPortalController {
   }
 
   @Post('projects/:id/comments')
+  @WorkspaceWriteException('client-portal')
   @ApiOperation({ summary: "Post a comment on one of the client's projects" })
   @ApiResponse({ status: 201, description: 'Comment created' })
   @ApiResponse({ status: 403, description: 'Access denied - not a client or project owner' })

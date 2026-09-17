@@ -89,10 +89,20 @@ export class RateResolverService {
     type Candidate = { rank: number; rate: Decimal; currency: string; source: string };
     const candidates: Candidate[] = [];
     if (taskOverride) {
-      candidates.push({ rank: 0, rate: taskOverride, currency: defaultCurrency, source: 'TASK_OVERRIDE' });
+      candidates.push({
+        rank: 0,
+        rate: taskOverride,
+        currency: defaultCurrency,
+        source: 'TASK_OVERRIDE',
+      });
     }
     if (projectDefault) {
-      candidates.push({ rank: 4, rate: projectDefault, currency: defaultCurrency, source: 'PROJECT_DEFAULT' });
+      candidates.push({
+        rank: 4,
+        rate: projectDefault,
+        currency: defaultCurrency,
+        source: 'PROJECT_DEFAULT',
+      });
     }
     if (bestRateRow) {
       candidates.push({
@@ -124,11 +134,16 @@ export class RateResolverService {
     if (input.projectId) scopeMatches.push({ scopeType: 'PROJECT', projectId: input.projectId });
     if (input.contactId) scopeMatches.push({ scopeType: 'CONTACT', contactId: input.contactId });
     if (input.userId && input.projectId) {
-      scopeMatches.push({ scopeType: 'USER_PROJECT', userId: input.userId, projectId: input.projectId });
+      scopeMatches.push({
+        scopeType: 'USER_PROJECT',
+        userId: input.userId,
+        projectId: input.projectId,
+      });
     }
     if (input.userId) scopeMatches.push({ scopeType: 'USER', userId: input.userId });
     if (input.role) scopeMatches.push({ scopeType: 'ROLE', role: input.role });
-    if (input.organizationId) scopeMatches.push({ scopeType: 'ORG', organizationId: input.organizationId });
+    if (input.organizationId)
+      scopeMatches.push({ scopeType: 'ORG', organizationId: input.organizationId });
     // Workspace-wide default rate (ORG scope with no org set).
     scopeMatches.push({ scopeType: 'ORG', organizationId: null });
 

@@ -47,13 +47,14 @@ if (dsn) {
   Sentry.init({
     dsn,
     environment: process.env.NODE_ENV || 'development',
-    release: process.env.SENTRY_RELEASE || `project-ops-backend@${process.env.npm_package_version || 'dev'}`,
+    release:
+      process.env.SENTRY_RELEASE ||
+      `project-ops-backend@${process.env.npm_package_version || 'dev'}`,
     // Tracing is now off — the integrations that produce HTTP spans are
     // what break body-parser. Errors still flow via the SentryFilter +
     // process-level uncaught/unhandled handlers.
     tracesSampleRate: 0,
-    integrations: (defaults) =>
-      defaults.filter((i) => !HTTP_LAYER_INTEGRATIONS.has(i.name)),
+    integrations: (defaults) => defaults.filter((i) => !HTTP_LAYER_INTEGRATIONS.has(i.name)),
     sendDefaultPii: false,
   });
 }

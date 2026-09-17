@@ -50,11 +50,12 @@ export class InvoiceStatusPoller {
         const { synced } = await this.rollup.syncInvoiceStatuses(token, { workspaceId: ws.id });
         total += synced;
       } catch (err) {
-        this.logger.warn(
-          `Invoice status poll failed for ws=${ws.id}: ${(err as Error).message}`,
-        );
+        this.logger.warn(`Invoice status poll failed for ws=${ws.id}: ${(err as Error).message}`);
       }
     }
-    if (total) this.logger.log(`Invoice status poll mirrored ${total} invoice(s) across ${workspaces.length} workspace(s)`);
+    if (total)
+      this.logger.log(
+        `Invoice status poll mirrored ${total} invoice(s) across ${workspaces.length} workspace(s)`,
+      );
   }
 }

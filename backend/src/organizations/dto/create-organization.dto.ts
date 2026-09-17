@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsEnum, IsOptional, IsDecimal, IsInt, IsBoolean, IsUrl } from 'class-validator';
+import { IsString, IsNotEmpty, IsEnum, IsOptional, IsInt, IsBoolean, IsUrl } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { OrgType } from '@prisma/client';
 import { Type } from 'class-transformer';
@@ -18,7 +18,11 @@ export class CreateOrganizationDto {
   @IsOptional()
   parentOrgId?: string;
 
-  @ApiProperty({ example: '12-3456789', required: false, description: 'EIN, tax ID, or other organization identifier' })
+  @ApiProperty({
+    example: '12-3456789',
+    required: false,
+    description: 'EIN, tax ID, or other organization identifier',
+  })
   @IsString()
   @IsOptional()
   taxId?: string;
@@ -33,7 +37,7 @@ export class CreateOrganizationDto {
   @IsOptional()
   website?: string;
 
-  @ApiProperty({ example: 5000000.00, required: false })
+  @ApiProperty({ example: 5000000.0, required: false })
   @IsOptional()
   @Type(() => Number)
   annualRevenue?: number;

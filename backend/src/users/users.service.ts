@@ -2,7 +2,8 @@ import { Injectable, NotFoundException, ConflictException, Logger } from '@nestj
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { User, Prisma } from '@prisma/client';
+import { User, Prisma, UserRole } from '@prisma/client';
+import { MembershipService } from '../common/workspace/membership.service';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -75,6 +76,55 @@ export class UsersService {
     }
 
     return user;
+  }
+
+  /** Public lookup; internal auth lookups above deliberately retain the full record. */
+  async findPublicOne(id: string, caller: User, workspaceId: string) {
+    return this.prisma.withWorkspace(
+      workspaceId,
+      MembershipService.membershipKey(caller),
+      async (tx) => {
+        const target = await tx.user.findUnique({ where: { id } });
+        if (!target) throw new NotFoundException('User not found');
+        if (caller.role !== UserRole.ADMIN && caller.id !== id) {
+          const member = await tx.membership.findUnique({
+            where: {
+              userKey_workspaceId: {
+                userKey: MembershipService.membershipKey(target),
+                workspaceId,
+              },
+            },
+          });
+          if (!target.isActive || member?.status !== 'ACTIVE')
+            throw new NotFoundException('User not found');
+        }
+        // Counts are scoped too: the identity table is global, its related work is not.
+        return tx.user.findUnique({
+          where: { id },
+          select: {
+            id: true,
+            email: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+            isActive: true,
+            lastLoginAt: true,
+            createdAt: true,
+            updatedAt: true,
+            forcePasswordChange: true,
+            weeklyCapacityHours: true,
+            _count: {
+              select: {
+                createdProjects: { where: { workspaceId } },
+                assignedProjects: { where: { workspaceId } },
+                comments: { where: { workspaceId } },
+              },
+            },
+          },
+        });
+      },
+    );
   }
 
   async findByEmail(email: string): Promise<User | null> {

@@ -1,3 +1,4 @@
+import { WorkspaceWriteException } from '../common/workspace/workspace-write-policy.decorator';
 /**
  * Streamable HTTP transport endpoint for the Project Ops MCP server.
  *
@@ -36,6 +37,7 @@ export class McpController {
   constructor(private readonly mcp: McpService) {}
 
   @All()
+  @WorkspaceWriteException('mcp')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
     summary:
@@ -81,6 +83,8 @@ export class McpController {
 
     const {
       StreamableHTTPServerTransport,
+      // Preserve lazy CommonJS SDK loading used by the existing runtime.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
     } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 
     const transport = new StreamableHTTPServerTransport({

@@ -7,7 +7,10 @@ import { ApiProperty } from '@nestjs/swagger';
  * are grouped into a TimesheetPeriod and moved to SUBMITTED.
  */
 export class SubmitTimesheetDto {
-  @ApiProperty({ required: false, description: 'Any date inside the target week (ISO). Defaults to now.' })
+  @ApiProperty({
+    required: false,
+    description: 'Any date inside the target week (ISO). Defaults to now.',
+  })
   @IsDateString()
   @IsOptional()
   periodStart?: string;

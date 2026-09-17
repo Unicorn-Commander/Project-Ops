@@ -28,14 +28,23 @@ describe('HttpCustomerOpsClient', () => {
     const client = makeClient({}, fetchImpl);
     expect(client.isConfigured()).toBe(false);
     const r = await client.getQuoteSummary(req);
-    expect(r).toEqual({ ok: false, reason: 'UNCONFIGURED', message: expect.stringMatching(/Connect Customer-Ops/) });
+    expect(r).toEqual({
+      ok: false,
+      reason: 'UNCONFIGURED',
+      message: expect.stringMatching(/Connect Customer-Ops/),
+    });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('needs BOTH the base URL and the service token', () => {
     expect(makeClient({ CUSTOMER_OPS_BASE_URL: 'https://c.test' }).isConfigured()).toBe(false);
     expect(makeClient({ CUSTOMER_OPS_SERVICE_TOKEN: 'tok' }).isConfigured()).toBe(false);
-    expect(makeClient({ CUSTOMER_OPS_BASE_URL: 'https://c.test/', CUSTOMER_OPS_SERVICE_TOKEN: 'tok' }).isConfigured()).toBe(true);
+    expect(
+      makeClient({
+        CUSTOMER_OPS_BASE_URL: 'https://c.test/',
+        CUSTOMER_OPS_SERVICE_TOKEN: 'tok',
+      }).isConfigured(),
+    ).toBe(true);
   });
 
   it('calls GET /api/quotes/:id/summary with the Project-Ops project id, the bearer and the workspace hint', async () => {
@@ -48,13 +57,20 @@ describe('HttpCustomerOpsClient', () => {
           title: 'Order Pad for the apparel client',
           status: 'accepted',
           currency: 'USD',
-          totals: { one_time_total_cents: 140000, milestone_total_cents: 290000, recurring_monthly_cents: 35000 },
+          totals: {
+            one_time_total_cents: 140000,
+            milestone_total_cents: 290000,
+            recurring_monthly_cents: 35000,
+          },
           share_url: 'https://customers.example.dev/q/tok_synthetic',
         },
       }),
     );
     const client = makeClient(
-      { CUSTOMER_OPS_BASE_URL: 'https://customers.example.dev/', CUSTOMER_OPS_SERVICE_TOKEN: 'svc-token-value' },
+      {
+        CUSTOMER_OPS_BASE_URL: 'https://customers.example.dev/',
+        CUSTOMER_OPS_SERVICE_TOKEN: 'svc-token-value',
+      },
       fetchImpl,
     );
 
@@ -62,7 +78,9 @@ describe('HttpCustomerOpsClient', () => {
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0] as any[];
-    expect(url).toBe('https://customers.example.dev/api/quotes/q-0001/summary?project_ops_project_id=p1');
+    expect(url).toBe(
+      'https://customers.example.dev/api/quotes/q-0001/summary?project_ops_project_id=p1',
+    );
     expect(init.method).toBe('GET');
     expect(init.headers.Authorization).toBe('Bearer svc-token-value');
     expect(init.headers['X-Workspace-Id']).toBe('ws-1');
@@ -77,7 +95,10 @@ describe('HttpCustomerOpsClient', () => {
 
   it('refuses a bare quote id (no project id) without touching the network (A15)', async () => {
     const fetchImpl = jest.fn();
-    const client = makeClient({ CUSTOMER_OPS_BASE_URL: 'https://c.test', CUSTOMER_OPS_SERVICE_TOKEN: 't' }, fetchImpl);
+    const client = makeClient(
+      { CUSTOMER_OPS_BASE_URL: 'https://c.test', CUSTOMER_OPS_SERVICE_TOKEN: 't' },
+      fetchImpl,
+    );
     const r = await client.getQuoteSummary({ ...req, projectOpsProjectId: '' });
     expect(r).toMatchObject({ ok: false, reason: 'ERROR' });
     expect(fetchImpl).not.toHaveBeenCalled();
@@ -99,20 +120,35 @@ describe('HttpCustomerOpsClient', () => {
 
   it('maps a network failure / timeout to UNREACHABLE and never throws', async () => {
     const client = makeClient(
-      { CUSTOMER_OPS_BASE_URL: 'https://c.test', CUSTOMER_OPS_SERVICE_TOKEN: 't', CUSTOMER_OPS_TIMEOUT_MS: '10' },
+      {
+        CUSTOMER_OPS_BASE_URL: 'https://c.test',
+        CUSTOMER_OPS_SERVICE_TOKEN: 't',
+        CUSTOMER_OPS_TIMEOUT_MS: '10',
+      },
       jest.fn(async () => {
         throw new Error('ECONNREFUSED');
       }),
     );
-    await expect(client.getQuoteSummary(req)).resolves.toMatchObject({ ok: false, reason: 'UNREACHABLE' });
+    await expect(client.getQuoteSummary(req)).resolves.toMatchObject({
+      ok: false,
+      reason: 'UNREACHABLE',
+    });
   });
 
   it('treats an unreadable body as ERROR', async () => {
     const client = makeClient(
       { CUSTOMER_OPS_BASE_URL: 'https://c.test', CUSTOMER_OPS_SERVICE_TOKEN: 't' },
-      jest.fn(async () => ({ ok: true, status: 200, json: async () => null, text: async () => '' })),
+      jest.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => null,
+        text: async () => '',
+      })),
     );
-    await expect(client.getQuoteSummary(req)).resolves.toMatchObject({ ok: false, reason: 'ERROR' });
+    await expect(client.getQuoteSummary(req)).resolves.toMatchObject({
+      ok: false,
+      reason: 'ERROR',
+    });
   });
 });
 

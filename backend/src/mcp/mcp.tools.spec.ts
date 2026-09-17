@@ -140,9 +140,9 @@ describe('ProjectOpsTools.getProject — project-number-in-id forgiveness', () =
   it('still requires id or projectNumber', async () => {
     const findFirst = jest.fn();
     const tools = makeTools(findFirst);
-    await expect(
-      tools.getProject(baseUser({ role: UserRole.STAFF }), {}),
-    ).rejects.toThrow(/Either id or projectNumber/);
+    await expect(tools.getProject(baseUser({ role: UserRole.STAFF }), {})).rejects.toThrow(
+      /Either id or projectNumber/,
+    );
     expect(findFirst).not.toHaveBeenCalled();
   });
 });
@@ -519,7 +519,9 @@ describe('ProjectOpsTools — agent-surface gap tools', () => {
   function makeGapTools() {
     const workspace = { resolveAuthorized: jest.fn(async () => WS) } as any;
     const customFields = { create: jest.fn(async () => ({ id: 'cf-new', key: 'risk_level' })) };
-    const rollup = { createBillableDraft: jest.fn(async () => ({ status: 'SENT', invoiceId: 'inv-1' })) };
+    const rollup = {
+      createBillableDraft: jest.fn(async () => ({ status: 'SENT', invoiceId: 'inv-1' })),
+    };
     const tt = { timer: {}, timeEntry: {}, timesheet: {}, reports: {}, rollup, workspace } as any;
     const workspaceAdmin = {
       listMembers: jest.fn(async () => ({ members: [{ userKey: 'u-1' }] })),
@@ -572,7 +574,12 @@ describe('ProjectOpsTools — agent-surface gap tools', () => {
     expect(customFields.create).toHaveBeenCalledWith(
       WS,
       staff,
-      expect.objectContaining({ entity: 'PROJECT', label: 'Risk Level', type: 'SELECT', options: ['low', 'high'] }),
+      expect.objectContaining({
+        entity: 'PROJECT',
+        label: 'Risk Level',
+        type: 'SELECT',
+        options: ['low', 'high'],
+      }),
     );
   });
 
@@ -719,10 +726,7 @@ describe('normalizeTaskStatus / normalizeTaskPriority — forgiving filters', ()
 describe('ProjectOpsTools.getTask — full detail + visibility', () => {
   const WS_ID = 'ws-1';
 
-  function makeTools(overrides?: {
-    taskFindFirst?: jest.Mock;
-    depFindMany?: jest.Mock;
-  }) {
+  function makeTools(overrides?: { taskFindFirst?: jest.Mock; depFindMany?: jest.Mock }) {
     const taskFindFirst =
       overrides?.taskFindFirst ??
       jest.fn(async () => ({
@@ -791,8 +795,7 @@ describe('ProjectOpsTools.getTask — full detail + visibility', () => {
     };
     const workspace = {
       resolveAuthorized: async () => WS_ID,
-      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) =>
-        fn(tx, WS_ID),
+      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) => fn(tx, WS_ID),
     } as any;
     const tools = new ProjectOpsTools(
       {} as any,
@@ -928,8 +931,7 @@ describe('ProjectOpsTools.listProjectTasks — filters + pagination window', () 
     };
     const workspace = {
       resolveAuthorized: async () => WS_ID,
-      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) =>
-        fn(tx, WS_ID),
+      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) => fn(tx, WS_ID),
     } as any;
     const tools = new ProjectOpsTools(
       {} as any,
@@ -945,9 +947,9 @@ describe('ProjectOpsTools.listProjectTasks — filters + pagination window', () 
 
   it('requires projectId or projectNumber', async () => {
     const { tools, projectFindFirst } = makeTools();
-    await expect(
-      tools.listProjectTasks(baseUser({ role: UserRole.STAFF }), {}),
-    ).rejects.toThrow(/Either projectId or projectNumber/);
+    await expect(tools.listProjectTasks(baseUser({ role: UserRole.STAFF }), {})).rejects.toThrow(
+      /Either projectId or projectNumber/,
+    );
     expect(projectFindFirst).not.toHaveBeenCalled();
   });
 
@@ -1134,10 +1136,7 @@ describe('ProjectOpsTools.createTask — parentTaskId subtask validation', () =>
 describe('ProjectOpsTools.listTaskSubtasks', () => {
   const WS_ID = 'ws-1';
 
-  function makeTools(overrides?: {
-    parentFindFirst?: jest.Mock;
-    taskFindMany?: jest.Mock;
-  }) {
+  function makeTools(overrides?: { parentFindFirst?: jest.Mock; taskFindMany?: jest.Mock }) {
     const parentFindFirst =
       overrides?.parentFindFirst ??
       jest.fn(async () => ({
@@ -1180,8 +1179,7 @@ describe('ProjectOpsTools.listTaskSubtasks', () => {
     };
     const workspace = {
       resolveAuthorized: async () => WS_ID,
-      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) =>
-        fn(tx, WS_ID),
+      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) => fn(tx, WS_ID),
     } as any;
     const tools = new ProjectOpsTools(
       {} as any,
@@ -1331,9 +1329,9 @@ describe('ProjectOpsTools — task comment list/update/delete parity (G-05)', ()
 
   it('list_task_comments rejects missing/inaccessible task', async () => {
     const { tools } = makeCommentTools({ taskFindFirst: async () => null });
-    await expect(
-      tools.listTaskComments(author, { taskId: 'missing' }),
-    ).rejects.toThrow(/Task not found/);
+    await expect(tools.listTaskComments(author, { taskId: 'missing' })).rejects.toThrow(
+      /Task not found/,
+    );
   });
 
   it('update_task_comment allows author', async () => {
@@ -1346,7 +1344,7 @@ describe('ProjectOpsTools — task comment list/update/delete parity (G-05)', ()
     expect(out.id).toBe('c1');
   });
 
-  it('update_task_comment allows ADMIN on others\' comments', async () => {
+  it("update_task_comment allows ADMIN on others' comments", async () => {
     const { tools } = makeCommentTools({
       commentFindFirst: async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' }),
     });
@@ -1366,7 +1364,7 @@ describe('ProjectOpsTools — task comment list/update/delete parity (G-05)', ()
     ).rejects.toThrow(/Only the author or an ADMIN/);
   });
 
-  it('update_task_comment denies MANAGER on others\' comments', async () => {
+  it("update_task_comment denies MANAGER on others' comments", async () => {
     const { tools } = makeCommentTools({
       commentFindFirst: async () => ({ id: 'c1', authorId: 'u1', taskId: 'task1' }),
     });
@@ -1420,10 +1418,7 @@ describe('ProjectOpsTools.deleteTask', () => {
   // happy path + not-found exercise the runScoped mock service surface.
   const WS_ID = 'ws-delete';
 
-  function makeDeleteTools(opts?: {
-    findFirst?: jest.Mock;
-    deleteFn?: jest.Mock;
-  }) {
+  function makeDeleteTools(opts?: { findFirst?: jest.Mock; deleteFn?: jest.Mock }) {
     const findFirst = opts?.findFirst ?? jest.fn(async () => ({ id: 'task-1' }));
     const deleteFn = opts?.deleteFn ?? jest.fn(async () => ({}));
     const workspace = {
@@ -1549,9 +1544,7 @@ describe('ProjectOpsTools — document update/delete MCP parity', () => {
       runForUser: async (_user: User, fn: (t: any) => Promise<any>) => fn(tx),
     } as any;
     const minio = {
-      deleteObject: jest.fn(
-        txOverrides?.deleteObject ?? (async () => undefined),
-      ),
+      deleteObject: jest.fn(txOverrides?.deleteObject ?? (async () => undefined)),
     };
     const tools = new ProjectOpsTools(
       {} as any,
@@ -1733,9 +1726,7 @@ describe('ProjectOpsTools.deleteTimeEntry — REST parity thin wrapper', () => {
   const staff = baseUser({ role: UserRole.STAFF });
 
   function makeDeleteTools(removeImpl?: (ws: string, user: any, id: string) => Promise<any>) {
-    const remove = jest.fn(
-      removeImpl ?? (async () => ({ message: 'Time entry deleted' })),
-    );
+    const remove = jest.fn(removeImpl ?? (async () => ({ message: 'Time entry deleted' })));
     const workspace = { resolveAuthorized: jest.fn(async () => WS) } as any;
     const tt = {
       timer: {},
@@ -1868,11 +1859,8 @@ describe('ProjectOpsTools — request-addressed workspace (X-Workspace-Id) threa
   function makeWorkspaceMock(resolvedId: string) {
     const resolveAuthorized = jest.fn(async () => resolvedId);
     const runForUser = jest.fn(
-      async (
-        _u: User,
-        fn: (t: any, ws: string) => Promise<any>,
-        _requested?: string | null,
-      ) => fn({ project: { findMany: jest.fn(async () => []) } }, resolvedId),
+      async (_u: User, fn: (t: any, ws: string) => Promise<any>, _requested?: string | null) =>
+        fn({ project: { findMany: jest.fn(async () => []) } }, resolvedId),
     );
     return { workspace: { resolveAuthorized, runForUser } as any, resolveAuthorized, runForUser };
   }
@@ -1926,7 +1914,12 @@ describe('ProjectOpsTools.getProject — metadata.quote exposure (QUOTES-CONTRAC
       share_url: 'https://customers.example.dev/q/tok_synthetic',
       schedule_ids: ['sched-deposit'],
     },
-    quoteSummary: { title: 'Order Pad for the apparel client', currency: 'USD', status: 'accepted', totals: { one_time_total_cents: 140000 } },
+    quoteSummary: {
+      title: 'Order Pad for the apparel client',
+      currency: 'USD',
+      status: 'accepted',
+      totals: { one_time_total_cents: 140000 },
+    },
     customFields: { tier: 'gold' },
   };
 
@@ -1956,20 +1949,37 @@ describe('ProjectOpsTools.getProject — metadata.quote exposure (QUOTES-CONTRAC
       runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) =>
         fn({ project: { findFirst } }, WS_ID),
     } as any;
-    return new ProjectOpsTools({} as any, {} as any, { log: () => {}, warn: () => {} }, undefined, undefined, null, workspace);
+    return new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+    );
   }
 
   it('staff/admin: `quote` mirrors metadata.quote (ids, number, version, share_url, schedule_ids) and metadata is untouched', async () => {
     const findFirst = jest.fn(async () => ({ id: 'p1', projectNumber: 'PROJ-1', metadata: META }));
-    const out: any = await makeTools(findFirst).getProject(baseUser({ role: UserRole.ADMIN }), { id: 'p1' });
+    const out: any = await makeTools(findFirst).getProject(baseUser({ role: UserRole.ADMIN }), {
+      id: 'p1',
+    });
     expect(out.quote).toEqual(META.quote);
     expect(out.metadata).toEqual(META);
   });
 
   it('client: `quote` and metadata.quote are masked to number/version/share_url; other metadata keys survive', async () => {
     const findFirst = jest.fn(async () => ({ ...BILLING_ROW }));
-    const out: any = await makeTools(findFirst).getProject(baseUser({ role: UserRole.CLIENT, id: 'client-1' }), { id: 'p1' });
-    const masked = { number: 'Q-2026-0001', version: 1, share_url: 'https://customers.example.dev/q/tok_synthetic' };
+    const out: any = await makeTools(findFirst).getProject(
+      baseUser({ role: UserRole.CLIENT, id: 'client-1' }),
+      { id: 'p1' },
+    );
+    const masked = {
+      number: 'Q-2026-0001',
+      version: 1,
+      share_url: 'https://customers.example.dev/q/tok_synthetic',
+    };
     expect(out.quote).toEqual(masked);
     expect(out.metadata.quote).toEqual(masked);
     expect(out.metadata.customFields).toEqual({ tier: 'gold' });
@@ -1980,7 +1990,10 @@ describe('ProjectOpsTools.getProject — metadata.quote exposure (QUOTES-CONTRAC
 
   it('client: the studio commercial columns never reach a CLIENT — above all the A14 hourly rate', async () => {
     const findFirst = jest.fn(async () => ({ ...BILLING_ROW }));
-    const out: any = await makeTools(findFirst).getProject(baseUser({ role: UserRole.CLIENT, id: 'client-1' }), { id: 'p1' });
+    const out: any = await makeTools(findFirst).getProject(
+      baseUser({ role: UserRole.CLIENT, id: 'client-1' }),
+      { id: 'p1' },
+    );
 
     for (const field of CLIENT_MASKED_PROJECT_FIELDS) {
       expect(out).not.toHaveProperty(field);
@@ -1999,7 +2012,10 @@ describe('ProjectOpsTools.getProject — metadata.quote exposure (QUOTES-CONTRAC
 
   it('staff keep every commercial column', async () => {
     const findFirst = jest.fn(async () => ({ ...BILLING_ROW }));
-    const out: any = await makeTools(findFirst).getProject(baseUser({ role: UserRole.STAFF, id: 'staff-1' }), { id: 'p1' });
+    const out: any = await makeTools(findFirst).getProject(
+      baseUser({ role: UserRole.STAFF, id: 'staff-1' }),
+      { id: 'p1' },
+    );
     for (const field of CLIENT_MASKED_PROJECT_FIELDS) {
       expect(out).toHaveProperty(field);
     }
@@ -2020,14 +2036,24 @@ describe('ProjectOpsTools.getProject — metadata.quote exposure (QUOTES-CONTRAC
   });
 
   it('quote is null when the project did not come from a quote', async () => {
-    const findFirst = jest.fn(async () => ({ id: 'p1', projectNumber: 'PROJ-1', metadata: { customFields: {} } }));
-    const out: any = await makeTools(findFirst).getProject(baseUser({ role: UserRole.STAFF, id: 'staff-1' }), { id: 'p1' });
+    const findFirst = jest.fn(async () => ({
+      id: 'p1',
+      projectNumber: 'PROJ-1',
+      metadata: { customFields: {} },
+    }));
+    const out: any = await makeTools(findFirst).getProject(
+      baseUser({ role: UserRole.STAFF, id: 'staff-1' }),
+      { id: 'p1' },
+    );
     expect(out.quote).toBeNull();
     expect(out.metadata).toEqual({ customFields: {} });
   });
 
   it('withProjectQuote drops an unparseable metadata.quote for a CLIENT rather than passing it through', () => {
-    const out: any = withProjectQuote({ metadata: { quote: { number: 'Q-1' }, keep: true } }, { role: UserRole.CLIENT });
+    const out: any = withProjectQuote(
+      { metadata: { quote: { number: 'Q-1' }, keep: true } },
+      { role: UserRole.CLIENT },
+    );
     expect(out.quote).toBeNull();
     expect(out.metadata).toEqual({ keep: true });
   });

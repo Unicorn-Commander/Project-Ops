@@ -1,8 +1,4 @@
-import {
-  parseRecurrenceRule,
-  advanceByRecurrence,
-  nextOccurrenceAfter,
-} from './recurrence.util';
+import { parseRecurrenceRule, advanceByRecurrence, nextOccurrenceAfter } from './recurrence.util';
 
 describe('parseRecurrenceRule', () => {
   it('parses FREQ + INTERVAL (case-insensitive, RRULE: prefix tolerated)', () => {
@@ -96,11 +92,7 @@ describe('nextOccurrenceAfter', () => {
 
   it('returns the anchor itself when it is already after the cursor', () => {
     const anchor = new Date('2026-06-01T00:00:00.000Z');
-    const next = nextOccurrenceAfter(
-      'FREQ=DAILY',
-      anchor,
-      new Date('2026-05-01T00:00:00.000Z'),
-    );
+    const next = nextOccurrenceAfter('FREQ=DAILY', anchor, new Date('2026-05-01T00:00:00.000Z'));
     expect(next?.toISOString()).toBe(anchor.toISOString());
   });
 

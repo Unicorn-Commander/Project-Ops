@@ -1,3 +1,4 @@
+import { WorkspaceWriteException } from '../../common/workspace/workspace-write-policy.decorator';
 import {
   Body,
   Controller,
@@ -14,6 +15,7 @@ import { Throttle } from '@nestjs/throttler';
 import { User } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { PatManagementGuard } from '../guards/pat-management.guard';
 import { PAT_AVAILABLE_SCOPES } from './pat.constants';
 import { CreatePatDto } from './dto/create-pat.dto';
 import { PatService } from './pat.service';
@@ -27,11 +29,12 @@ import { PatService } from './pat.service';
  */
 @ApiTags('auth')
 @Controller('auth/pats')
+@UseGuards(JwtAuthGuard, PatManagementGuard)
 export class PatController {
   constructor(private readonly pats: PatService) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @WorkspaceWriteException('personal')
   @ApiBearerAuth('JWT-auth')
   @Throttle({ short: { limit: 10, ttl: 60_000 } })
   @ApiOperation({
@@ -52,7 +55,6 @@ export class PatController {
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: "List the current user's Personal Access Tokens (metadata only)" })
   @ApiResponse({ status: 200, description: 'Token metadata array. No plaintext, no hash.' })
@@ -61,7 +63,6 @@ export class PatController {
   }
 
   @Get('scopes')
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary: 'List the scopes the user can grant to a PAT',
@@ -73,7 +74,7 @@ export class PatController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard)
+  @WorkspaceWriteException('personal')
   @ApiBearerAuth('JWT-auth')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Revoke a Personal Access Token' })

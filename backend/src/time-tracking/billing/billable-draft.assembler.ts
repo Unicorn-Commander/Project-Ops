@@ -44,7 +44,10 @@ export class BillableDraftAssembler {
    * (groupKey, unitRate, currency) so every line has one consistent rate and
    * its amount always reconciles to the sum of its sources.
    */
-  assemble(sources: BillableSource[], groupBy: BillableGroupBy = BillableGroupBy.TASK): AssembledDraft {
+  assemble(
+    sources: BillableSource[],
+    groupBy: BillableGroupBy = BillableGroupBy.TASK,
+  ): AssembledDraft {
     if (!sources.length) {
       throw new BadRequestException('No billable items to assemble');
     }

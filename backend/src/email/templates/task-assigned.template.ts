@@ -72,10 +72,14 @@ export function getTaskAssignedEmailTemplate(
           <span class="detail-label">Project:</span>
           <span class="detail-value">${projectNumber} — ${projectTitle}</span>
         </div>
-        ${dueDate ? `<div class="detail-row">
+        ${
+          dueDate
+            ? `<div class="detail-row">
           <span class="detail-label">Due:</span>
           <span class="detail-value">${dueDate}</span>
-        </div>` : ''}
+        </div>`
+            : ''
+        }
         <div class="detail-row">
           <span class="detail-label">Assigned by:</span>
           <span class="detail-value">${assignedBy}</span>

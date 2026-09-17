@@ -65,9 +65,9 @@ describe('uc-registry client', () => {
     });
 
     it('POSTs the supplied uuid + Idempotency-Key when UC_REGISTRY_URL is set', async () => {
-      const fetchImpl = jest.fn().mockResolvedValue(
-        new Response(JSON.stringify({ id: WS.id }), { status: 201 }),
-      );
+      const fetchImpl = jest
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({ id: WS.id }), { status: 201 }));
       const outcome = await registerWorkspaceWithRegistry(WS, {
         getEnv: env({ UC_REGISTRY_URL: 'http://registry:8081' }),
         logger: silentLogger,
@@ -95,9 +95,11 @@ describe('uc-registry client', () => {
     it('treats any 2xx (incl. an idempotent dup hit) as success', async () => {
       // The registry returns the existing projection (200) on a supplied-uuid
       // / Idempotency-Key dup — that is success for us.
-      const fetchImpl = jest.fn().mockResolvedValue(
-        new Response(JSON.stringify({ id: WS.id, existing: true }), { status: 200 }),
-      );
+      const fetchImpl = jest
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ id: WS.id, existing: true }), { status: 200 }),
+        );
       const outcome = await registerWorkspaceWithRegistry(WS, {
         getEnv: env({ UC_REGISTRY_URL: 'http://registry:8081' }),
         logger: silentLogger,
@@ -137,9 +139,7 @@ describe('uc-registry client', () => {
     });
 
     it('best-effort: a non-2xx response returns a non-ok result and does NOT throw', async () => {
-      const fetchImpl = jest
-        .fn()
-        .mockResolvedValue(new Response('boom', { status: 500 }));
+      const fetchImpl = jest.fn().mockResolvedValue(new Response('boom', { status: 500 }));
       const outcome = await registerWorkspaceWithRegistry(WS, {
         getEnv: env({ UC_REGISTRY_URL: 'http://registry:8081' }),
         logger: silentLogger,

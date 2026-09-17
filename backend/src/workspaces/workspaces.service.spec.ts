@@ -219,22 +219,14 @@ describe('WorkspacesService', () => {
       expect(upsertArg.create.role).toBe(WorkspaceRole.MEMBER);
     });
 
-    it('creates a PENDING invite (+link) when the email has no user yet', async () => {
-      const { svc, prisma } = make({
+    it('refuses the incomplete client-portal path for a new workspace user', async () => {
+      const { svc: service, prisma } = make({
         membershipByKey: { 'kc-owner': membershipRow(WorkspaceRole.OWNER, 'kc-owner') },
-        userByEmail: {},
       });
-
-      const result = await svc.addMember(owner, WS, {
-        email: 'ghost@x.com',
-        role: WorkspaceRole.VIEWER,
-      });
-      expect(result.kind).toBe('invite');
-      expect(result.invited).toBe(true);
-      expect(result.inviteToken).toMatch(/^[0-9a-f]{32}$/);
-      expect(result.inviteUrl).toContain(`/auth/contact-signup/${result.inviteToken}`);
-      const upsertArg = (prisma.membership as any).upsert.mock.calls[0][0];
-      expect(upsertArg.create.userKey).toBe(`invite:${result.inviteToken}`);
+      await expect(
+        service.addMember(owner, WS, { email: 'new@example.test', role: WorkspaceRole.MEMBER }),
+      ).rejects.toThrow('manual invitation');
+      expect(prisma.membership.upsert).not.toHaveBeenCalled();
     });
 
     it('refuses to grant OWNER via the share path', async () => {

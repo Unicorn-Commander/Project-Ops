@@ -1,3 +1,4 @@
+import { WorkspaceWriteException } from '../common/workspace/workspace-write-policy.decorator';
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { User } from '@prisma/client';
@@ -82,6 +83,7 @@ export class NotificationsController {
   }
 
   @Patch('preferences')
+  @WorkspaceWriteException('personal')
   @ApiOperation({
     summary: "Partially update the current user's email-notification preferences",
   })
@@ -91,6 +93,7 @@ export class NotificationsController {
   }
 
   @Patch(':id/read')
+  @WorkspaceWriteException('personal')
   @ApiOperation({ summary: 'Mark a single notification read' })
   @ApiOkResponse({ description: 'The updated notification' })
   markRead(
@@ -102,6 +105,7 @@ export class NotificationsController {
   }
 
   @Post('read-all')
+  @WorkspaceWriteException('personal')
   @ApiOperation({ summary: "Mark all of the current user's notifications read" })
   @ApiOkResponse({ description: '{ updated }' })
   markAllRead(@CurrentWorkspace() workspaceId: string, @CurrentUser() user: User) {

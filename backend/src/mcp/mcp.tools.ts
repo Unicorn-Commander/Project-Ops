@@ -156,9 +156,7 @@ export function normalizeProjectStatus(value?: string): ProjectStatus | undefine
   if (valid.includes(normalized)) {
     return normalized as ProjectStatus;
   }
-  throw new Error(
-    `Invalid status "${value}". Valid values: ${valid.join(', ')}.`,
-  );
+  throw new Error(`Invalid status "${value}". Valid values: ${valid.join(', ')}.`);
 }
 
 /**
@@ -176,9 +174,7 @@ export function normalizeTaskStatus(value?: string): TaskStatus | undefined {
   if (valid.includes(normalized)) {
     return normalized as TaskStatus;
   }
-  throw new Error(
-    `Invalid task status "${value}". Valid values: ${valid.join(', ')}.`,
-  );
+  throw new Error(`Invalid task status "${value}". Valid values: ${valid.join(', ')}.`);
 }
 
 /**
@@ -194,9 +190,7 @@ export function normalizeTaskPriority(value?: string): TaskPriority | undefined 
   if (valid.includes(normalized)) {
     return normalized as TaskPriority;
   }
-  throw new Error(
-    `Invalid task priority "${value}". Valid values: ${valid.join(', ')}.`,
-  );
+  throw new Error(`Invalid task priority "${value}". Valid values: ${valid.join(', ')}.`);
 }
 
 export class ProjectOpsTools {
@@ -454,10 +448,7 @@ export class ProjectOpsTools {
     const project = await this.runScoped(user, (tx) =>
       tx.project.findFirst({
         where: {
-          AND: [
-            buildVisibilityFilter(user),
-            { OR: [{ id: key }, { projectNumber: key }] },
-          ],
+          AND: [buildVisibilityFilter(user), { OR: [{ id: key }, { projectNumber: key }] }],
         },
         include: {
           organization: { select: { id: true, name: true, type: true } },
@@ -647,11 +638,12 @@ export class ProjectOpsTools {
     });
 
     if (!result) {
-      throw new Error('Task not found or you don\'t have access');
+      throw new Error("Task not found or you don't have access");
     }
     // Drop the raw Prisma _count bag now that we flattened the counters, then
     // apply the CLIENT-role metadata mask (drops quote foreign ids / line ids).
     const { _count: _ignored, ...task } = result as typeof result & { _count?: unknown };
+    void _ignored; // Deliberately strip Prisma relation counts.
     return withTaskMetadataForRole(task, user);
   }
 
@@ -698,10 +690,7 @@ export class ProjectOpsTools {
     const result = await this.runScoped(user, async (tx) => {
       const project = await tx.project.findFirst({
         where: {
-          AND: [
-            buildVisibilityFilter(user),
-            { OR: [{ id: key }, { projectNumber: key }] },
-          ],
+          AND: [buildVisibilityFilter(user), { OR: [{ id: key }, { projectNumber: key }] }],
         },
         select: { id: true, projectNumber: true, title: true, status: true },
       });
@@ -763,7 +752,7 @@ export class ProjectOpsTools {
     });
 
     if (!result) {
-      throw new Error('Project not found or you don\'t have access');
+      throw new Error("Project not found or you don't have access");
     }
 
     return {
@@ -913,10 +902,7 @@ export class ProjectOpsTools {
    * Mirrors REST TasksService.getTaskComments + the MCP visibility chokepoint
    * used by add_task_comment.
    */
-  async listTaskComments(
-    user: User,
-    args: { taskId: string; limit?: number; offset?: number },
-  ) {
+  async listTaskComments(user: User, args: { taskId: string; limit?: number; offset?: number }) {
     if (!args.taskId || !String(args.taskId).trim()) {
       throw new Error('taskId is required');
     }
@@ -980,10 +966,7 @@ export class ProjectOpsTools {
    * via buildVisibilityFilter (stricter for STAFF than workspace-RLS alone).
    * No @mention re-emit — REST update also does not re-fan-out mentions.
    */
-  async updateTaskComment(
-    user: User,
-    args: { commentId: string; content: string },
-  ) {
+  async updateTaskComment(user: User, args: { commentId: string; content: string }) {
     if (!args.commentId || !String(args.commentId).trim()) {
       throw new Error('commentId is required');
     }
@@ -1007,8 +990,7 @@ export class ProjectOpsTools {
         throw new Error("Comment not found or you don't have access");
       }
 
-      const canEdit =
-        comment.authorId === user.id || user.role === UserRole.ADMIN;
+      const canEdit = comment.authorId === user.id || user.role === UserRole.ADMIN;
       if (!canEdit) {
         throw new Error('Only the author or an ADMIN can update this comment');
       }
@@ -1026,9 +1008,7 @@ export class ProjectOpsTools {
           author: { select: { firstName: true, lastName: true } },
         },
       });
-      this.logger.log(
-        `MCP update_task_comment: user=${user.email} comment=${comment.id}`,
-      );
+      this.logger.log(`MCP update_task_comment: user=${user.email} comment=${comment.id}`);
       return row;
     });
 
@@ -1061,15 +1041,11 @@ export class ProjectOpsTools {
         user.role === UserRole.ADMIN ||
         user.role === UserRole.MANAGER;
       if (!canDelete) {
-        throw new Error(
-          'Only the author, ADMIN, or MANAGER can delete this comment',
-        );
+        throw new Error('Only the author, ADMIN, or MANAGER can delete this comment');
       }
 
       await tx.taskComment.delete({ where: { id: comment.id } });
-      this.logger.log(
-        `MCP delete_task_comment: user=${user.email} comment=${comment.id}`,
-      );
+      this.logger.log(`MCP delete_task_comment: user=${user.email} comment=${comment.id}`);
       return { deleted: true, commentId: comment.id, taskId: comment.taskId };
     });
   }
@@ -1791,7 +1767,7 @@ export class ProjectOpsTools {
     });
 
     if (!result) {
-      throw new Error('Task not found or you don\'t have access');
+      throw new Error("Task not found or you don't have access");
     }
 
     return {
@@ -2252,9 +2228,7 @@ export class ProjectOpsTools {
     }
 
     if (Object.keys(data).length === 0) {
-      throw new Error(
-        "Provide at least one of 'description', 'tags', or 'fileName' to update.",
-      );
+      throw new Error("Provide at least one of 'description', 'tags', or 'fileName' to update.");
     }
 
     const updated = await this.runScoped(user, async (tx) => {
@@ -2351,9 +2325,7 @@ export class ProjectOpsTools {
       }
     }
 
-    await this.runScoped(user, (tx) =>
-      tx.document.delete({ where: { id: document.id } }),
-    );
+    await this.runScoped(user, (tx) => tx.document.delete({ where: { id: document.id } }));
 
     this.logger.log(
       `MCP delete_document: user=${user.email} doc=${document.id} file=${document.fileName}`,
@@ -2783,7 +2755,9 @@ export class ProjectOpsTools {
     }
     const type = (CustomFieldType as Record<string, CustomFieldType>)[args?.type ?? ''];
     if (!type) {
-      throw new Error(`Invalid type. Must be one of: ${Object.values(CustomFieldType).join(', ')}.`);
+      throw new Error(
+        `Invalid type. Must be one of: ${Object.values(CustomFieldType).join(', ')}.`,
+      );
     }
     if (!args?.label || !args.label.trim()) {
       throw new Error("'label' is required.");
@@ -2881,7 +2855,9 @@ export class ProjectOpsTools {
     if (!args?.email || !args.email.trim()) {
       throw new Error("'email' is required.");
     }
-    const role = args?.role ? (WorkspaceRole as Record<string, WorkspaceRole>)[args.role] : undefined;
+    const role = args?.role
+      ? (WorkspaceRole as Record<string, WorkspaceRole>)[args.role]
+      : undefined;
     if (args?.role && !role) {
       throw new Error(`Invalid role. Must be one of: ${Object.values(WorkspaceRole).join(', ')}.`);
     }

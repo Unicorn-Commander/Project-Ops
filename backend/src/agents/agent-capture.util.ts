@@ -155,9 +155,9 @@ export function deriveToolTarget(action: string, args: any, result: any): ToolTa
     resource = isCommentTool ? 'comment' : 'task';
     // Prefer result.comment.id / result.commentId / args.commentId for comment tools.
     resourceId = isCommentTool
-      ? pick(comment, ['id']) ??
+      ? (pick(comment, ['id']) ??
         pick(result, ['commentId', 'id']) ??
-        pick(args, ['commentId', 'comment_id'])
+        pick(args, ['commentId', 'comment_id']))
       : taskId;
   } else if (PROJECT_TOOLS.has(action)) {
     resource = 'project';

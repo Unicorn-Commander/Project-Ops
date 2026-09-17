@@ -69,7 +69,7 @@ export class DashboardService {
               ...roleWhere,
               dueDate: {
                 gte: new Date(),
-                lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // Next 7 days
+                lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Next 7 days
               },
               status: { not: ProjectStatus.COMPLETED },
             },
@@ -311,45 +311,41 @@ export class DashboardService {
     return this.workspaceContext.runForUser(
       user,
       async (tx) => {
-        const [
-          projectsCreated,
-          projectsCompleted,
-          documentsUploaded,
-          commentsPosted,
-        ] = await Promise.all([
-          tx.project.count({
-            where: {
-              createdAt: {
-                gte: startDate,
-                lte: endDate,
+        const [projectsCreated, projectsCompleted, documentsUploaded, commentsPosted] =
+          await Promise.all([
+            tx.project.count({
+              where: {
+                createdAt: {
+                  gte: startDate,
+                  lte: endDate,
+                },
               },
-            },
-          }),
-          tx.project.count({
-            where: {
-              completedAt: {
-                gte: startDate,
-                lte: endDate,
+            }),
+            tx.project.count({
+              where: {
+                completedAt: {
+                  gte: startDate,
+                  lte: endDate,
+                },
               },
-            },
-          }),
-          tx.document.count({
-            where: {
-              uploadedAt: {
-                gte: startDate,
-                lte: endDate,
+            }),
+            tx.document.count({
+              where: {
+                uploadedAt: {
+                  gte: startDate,
+                  lte: endDate,
+                },
               },
-            },
-          }),
-          tx.comment.count({
-            where: {
-              createdAt: {
-                gte: startDate,
-                lte: endDate,
+            }),
+            tx.comment.count({
+              where: {
+                createdAt: {
+                  gte: startDate,
+                  lte: endDate,
+                },
               },
-            },
-          }),
-        ]);
+            }),
+          ]);
 
         return {
           year,

@@ -51,8 +51,12 @@ export class DocumentsService {
     }
 
     if (fileSize > MAX_FILE_SIZE) {
-      this.logger.warn(`File size exceeds limit: ${fileSize} bytes (max: ${MAX_FILE_SIZE}) for file ${fileName}`);
-      throw new BadRequestException(`File size exceeds maximum allowed size of 100MB (${MAX_FILE_SIZE} bytes)`);
+      this.logger.warn(
+        `File size exceeds limit: ${fileSize} bytes (max: ${MAX_FILE_SIZE}) for file ${fileName}`,
+      );
+      throw new BadRequestException(
+        `File size exceeds maximum allowed size of 100MB (${MAX_FILE_SIZE} bytes)`,
+      );
     }
 
     // Generate unique S3 key
@@ -124,8 +128,12 @@ export class DocumentsService {
     }
 
     if (fileSize > MAX_FILE_SIZE) {
-      this.logger.warn(`File size exceeds limit: ${fileSize} bytes (max: ${MAX_FILE_SIZE}) for file ${fileName}`);
-      throw new BadRequestException(`File size exceeds maximum allowed size of 100MB (${MAX_FILE_SIZE} bytes)`);
+      this.logger.warn(
+        `File size exceeds limit: ${fileSize} bytes (max: ${MAX_FILE_SIZE}) for file ${fileName}`,
+      );
+      throw new BadRequestException(
+        `File size exceeds maximum allowed size of 100MB (${MAX_FILE_SIZE} bytes)`,
+      );
     }
 
     // Create document record after successful upload (metadata write + audit inside the tx).
@@ -258,8 +266,12 @@ export class DocumentsService {
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      this.logger.warn(`File size exceeds limit: ${file.size} bytes (max: ${MAX_FILE_SIZE}) for file ${file.originalname}`);
-      throw new BadRequestException(`File size exceeds maximum allowed size of 100MB (${MAX_FILE_SIZE} bytes)`);
+      this.logger.warn(
+        `File size exceeds limit: ${file.size} bytes (max: ${MAX_FILE_SIZE}) for file ${file.originalname}`,
+      );
+      throw new BadRequestException(
+        `File size exceeds maximum allowed size of 100MB (${MAX_FILE_SIZE} bytes)`,
+      );
     }
 
     // Generate unique S3 key
@@ -269,7 +281,9 @@ export class DocumentsService {
       : `unassigned/${uuidv4()}.${fileExtension}`;
 
     // Upload file to MinIO — OUTSIDE the tx.
-    await this.minioService.uploadObject(s3Key, file.buffer, file.size, { 'Content-Type': file.mimetype });
+    await this.minioService.uploadObject(s3Key, file.buffer, file.size, {
+      'Content-Type': file.mimetype,
+    });
 
     // Create document record (metadata write + audit inside the tx).
     const document = await this.workspaceContext.runForUser(
@@ -383,16 +397,8 @@ export class DocumentsService {
     );
   }
 
-  async findOne(
-    workspaceId: string,
-    user: User,
-    id: string,
-  ): Promise<Document> {
-    return this.workspaceContext.runForUser(
-      user,
-      (tx) => this.findOneInTx(tx, id),
-      workspaceId,
-    );
+  async findOne(workspaceId: string, user: User, id: string): Promise<Document> {
+    return this.workspaceContext.runForUser(user, (tx) => this.findOneInTx(tx, id), workspaceId);
   }
 
   /**
@@ -418,11 +424,7 @@ export class DocumentsService {
     return document;
   }
 
-  async findByProjectId(
-    workspaceId: string,
-    user: User,
-    projectId: string,
-  ): Promise<Document[]> {
+  async findByProjectId(workspaceId: string, user: User, projectId: string): Promise<Document[]> {
     return this.workspaceContext.runForUser(
       user,
       (tx) =>
@@ -479,11 +481,7 @@ export class DocumentsService {
     );
   }
 
-  async remove(
-    workspaceId: string,
-    user: User,
-    id: string,
-  ): Promise<Document> {
+  async remove(workspaceId: string, user: User, id: string): Promise<Document> {
     // Fetch metadata inside the workspace tx (RLS-scoped).
     const document = await this.workspaceContext.runForUser(
       user,
@@ -498,11 +496,16 @@ export class DocumentsService {
         await this.minioService.deleteObject(document.s3Key);
         this.logger.log(`Deleted file from MinIO: ${document.s3Key}`);
       } catch (error) {
-        this.logger.warn(`Failed to delete file from MinIO (may not exist): ${document.s3Key}`, error.message);
+        this.logger.warn(
+          `Failed to delete file from MinIO (may not exist): ${document.s3Key}`,
+          error.message,
+        );
         // Continue with database deletion even if MinIO delete fails
       }
     } else {
-      this.logger.log(`Skipping MinIO deletion for document with status: ${document.status}, size: ${document.fileSize}`);
+      this.logger.log(
+        `Skipping MinIO deletion for document with status: ${document.status}, size: ${document.fileSize}`,
+      );
     }
 
     // Delete the row + audit inside a (second) workspace tx.

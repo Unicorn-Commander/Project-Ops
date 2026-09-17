@@ -1,3 +1,4 @@
+import { publicMcpUserPayload } from '../common/serialization/public-user';
 /**
  * Builds a per-request MCP server scoped to one authenticated user.
  *
@@ -122,6 +123,8 @@ export class McpService {
     // the prior behavior (claim → default membership).
     requestWorkspaceId?: string | null,
   ) {
+    // Preserve the SDK's deliberate CommonJS interop at request setup.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 
     const server = new McpServer(
@@ -184,6 +187,11 @@ export class McpService {
             return workspaceDenied(name, boundWorkspaceId, effective);
           }
         }
+        const operationScope = MCP_TOOL_SCOPE_MAP[name];
+        if (!operationScope) {
+          recordMcpToolCall(name, 'denied', 0);
+          return scopeDenied(name, undefined, [...(grantedSet ?? [])]);
+        }
         if (grantedSet) {
           const required = MCP_TOOL_SCOPE_MAP[name];
           if (!required) {
@@ -198,9 +206,36 @@ export class McpService {
             return scopeDenied(name, required, [...grantedSet]);
           }
         }
+        {
+          try {
+            await this.workspace.resolveAuthorized(user, boundWorkspaceId ?? addressedWorkspaceId);
+            if (operationScope.startsWith('write:')) {
+              await this.workspace.assertCanWrite(user, boundWorkspaceId ?? addressedWorkspaceId);
+            }
+          } catch {
+            recordMcpToolCall(name, 'denied', 0);
+            return {
+              isError: true,
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({
+                    error: operationScope.startsWith('write:')
+                      ? 'workspace_write_denied'
+                      : 'workspace_access_denied',
+                    tool: name,
+                    hint: operationScope.startsWith('write:')
+                      ? 'An active MEMBER or higher workspace role is required.'
+                      : 'Active workspace membership is required.',
+                  }),
+                },
+              ],
+            };
+          }
+        }
         const startedAt = Date.now();
         try {
-          const result = await handler(args);
+          const result = publicMcpUserPayload(await handler(args));
           const durationMs = Date.now() - startedAt;
           // isError envelopes (scope/workspace denied above, or tool-returned
           // error payloads) count as error for ops metrics when the body set
@@ -477,8 +512,7 @@ export class McpService {
           commentId: z.string().min(1),
         },
       },
-      async (args: { commentId: string }) =>
-        wrap(await tools.deleteTaskComment(user, args)),
+      async (args: { commentId: string }) => wrap(await tools.deleteTaskComment(user, args)),
     );
 
     // ─── Write tools ────────────────────────────────────────────────
@@ -890,8 +924,7 @@ export class McpService {
           documentId: z.string().min(1),
         },
       },
-      async (args: { documentId: string }) =>
-        wrap(await tools.deleteDocument(user, args)),
+      async (args: { documentId: string }) => wrap(await tools.deleteDocument(user, args)),
     );
 
     server.registerTool(

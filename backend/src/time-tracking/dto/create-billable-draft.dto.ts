@@ -19,7 +19,7 @@ export class CreateBillableDraftDto {
   @IsOptional()
   projectId?: string;
 
-  @ApiProperty({ required: false, description: 'Roll up all of a client/contact\'s projects.' })
+  @ApiProperty({ required: false, description: "Roll up all of a client/contact's projects." })
   @IsString()
   @IsOptional()
   clientId?: string;
@@ -39,7 +39,11 @@ export class CreateBillableDraftDto {
   @IsOptional()
   groupBy?: BillableGroupBy;
 
-  @ApiProperty({ required: false, default: false, description: 'Ask AO to issue (status=sent) instead of draft.' })
+  @ApiProperty({
+    required: false,
+    default: false,
+    description: 'Ask AO to issue (status=sent) instead of draft.',
+  })
   @IsBoolean()
   @IsOptional()
   autoSend?: boolean;

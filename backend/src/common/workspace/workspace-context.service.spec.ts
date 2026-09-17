@@ -24,7 +24,7 @@ describe('WorkspaceContextService.resolveAuthorized — addressing precedence', 
   }
 
   const user = (claim?: string | null) =>
-    ({ id: 'u1', email: 'p@x.com', keycloakId: 'kc1', __workspaceClaim: claim } as any);
+    ({ id: 'u1', email: 'p@x.com', keycloakId: 'kc1', __workspaceClaim: claim }) as any;
 
   const claimArg = (m: jest.Mock) => m.mock.calls[0][1];
 

@@ -395,46 +395,11 @@ export class WorkspacesService {
       };
     }
 
-    // No user yet → provisional invite membership + shareable link. Mirrors
-    // ContactsService.inviteToPortal: a random token, an `invite:<token>`
-    // membership binding the token → workspace (read with no GUC at signup).
-    const token = randomBytes(16).toString('hex');
-    await this.prisma.membership.upsert({
-      where: {
-        userKey_workspaceId: { userKey: `invite:${token}`, workspaceId },
-      },
-      update: { role, status: MembershipStatus.ACTIVE },
-      create: {
-        userKey: `invite:${token}`,
-        workspaceId,
-        role,
-        status: MembershipStatus.ACTIVE,
-        isDefault: false,
-      },
-    });
-
-    const inviteUrl = `${this.frontendUrl()}/auth/contact-signup/${token}`;
-
-    await this.audit.log({
-      workspaceId,
-      userId: user.id,
-      action: 'CREATE',
-      resource: 'Membership',
-      resourceId: `invite:${token}`,
-      details: { email, role, mode: 'pending-invite' },
-    });
-    this.logger.log(
-      `Invite created: ${email} -> ${role}@${workspaceId} by ${user.email} (pending; token issued)`,
+    // Client portal signup requires an actual Contact and must remain separate
+    // from staff workspace membership. Never issue an unusable portal token.
+    throw new BadRequestException(
+      'For a new user, ask the workspace owner to create a manual invitation token in workspace settings.',
     );
-
-    return {
-      kind: 'invite' as const,
-      email,
-      role,
-      invited: true,
-      inviteToken: token,
-      inviteUrl,
-    };
   }
 
   // ─────────────────────────────────────────────────────────────────────────

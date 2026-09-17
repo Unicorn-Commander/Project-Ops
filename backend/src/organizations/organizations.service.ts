@@ -198,11 +198,7 @@ export class OrganizationsService {
   }
 
   async findOne(workspaceId: string, user: User, id: string): Promise<Organization> {
-    return this.workspaceContext.runForUser(
-      user,
-      (tx) => this.findOneInTx(tx, id),
-      workspaceId,
-    );
+    return this.workspaceContext.runForUser(user, (tx) => this.findOneInTx(tx, id), workspaceId);
   }
 
   /**
@@ -480,9 +476,7 @@ export class OrganizationsService {
                   },
                 },
               },
-              orderBy: [
-                { lastName: 'asc' },
-              ],
+              orderBy: [{ lastName: 'asc' }],
             },
           },
         });
@@ -563,23 +557,19 @@ export class OrganizationsService {
     return this.workspaceContext.runForUser(
       user,
       async (tx) => {
-        const [
-          totalOrganizations,
-          activeOrganizations,
-          organizationsByType,
-          withPortalAccess,
-        ] = await Promise.all([
-          tx.organization.count(),
-          tx.organization.count({ where: { isActive: true } }),
-          tx.organization.groupBy({
-            by: ['type'],
-            _count: true,
-            where: { isActive: true },
-          }),
-          tx.organization.count({
-            where: { portalAccessEnabled: true, isActive: true },
-          }),
-        ]);
+        const [totalOrganizations, activeOrganizations, organizationsByType, withPortalAccess] =
+          await Promise.all([
+            tx.organization.count(),
+            tx.organization.count({ where: { isActive: true } }),
+            tx.organization.groupBy({
+              by: ['type'],
+              _count: true,
+              where: { isActive: true },
+            }),
+            tx.organization.count({
+              where: { portalAccessEnabled: true, isActive: true },
+            }),
+          ]);
 
         const byType = organizationsByType.reduce(
           (acc, item) => {
@@ -625,7 +615,7 @@ export class OrganizationsService {
           });
 
           this.logger.log(
-            `Portal access ${enabled ? 'enabled' : 'disabled'} for organization: ${organization.name} (${organization.id}) ws=${workspaceId}`
+            `Portal access ${enabled ? 'enabled' : 'disabled'} for organization: ${organization.name} (${organization.id}) ws=${workspaceId}`,
           );
           return organization;
         } catch (error) {

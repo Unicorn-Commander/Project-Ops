@@ -168,9 +168,7 @@ describe('JwtStrategy Keycloak realm audience binding', () => {
     ...overrides,
   });
 
-  const kcPayload = (
-    claims: { azp?: unknown; aud?: unknown },
-  ): JwtPayload & { iss: string } => ({
+  const kcPayload = (claims: { azp?: unknown; aud?: unknown }): JwtPayload & { iss: string } => ({
     sub: 'aaron-uuid',
     email: 'aaron@example.com',
     role: 'ADMIN',
@@ -207,9 +205,9 @@ describe('JwtStrategy Keycloak realm audience binding', () => {
 
   it('rejects a realm token with no azp and only aud=account', async () => {
     const strategy = makeStrategy(async () => fakeUser, kcConfig());
-    await expect(
-      strategy.validate(kcPayload({ aud: 'account' })),
-    ).rejects.toThrow(UnauthorizedException);
+    await expect(strategy.validate(kcPayload({ aud: 'account' }))).rejects.toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('honors KEYCLOAK_EXPECTED_AUDIENCES as an additional accepted client', async () => {
@@ -240,21 +238,11 @@ describe('JwtStrategy Keycloak realm audience binding', () => {
 
   it('keycloakAudienceMatches accepts azp OR aud (string|array)', () => {
     const expected = new Set(['project-ops']);
-    expect(
-      JwtStrategy.keycloakAudienceMatches('account', 'project-ops', expected),
-    ).toBe(true);
-    expect(
-      JwtStrategy.keycloakAudienceMatches('project-ops', undefined, expected),
-    ).toBe(true);
-    expect(
-      JwtStrategy.keycloakAudienceMatches(['a', 'project-ops'], 'b', expected),
-    ).toBe(true);
-    expect(
-      JwtStrategy.keycloakAudienceMatches('account', 'accounting-ops', expected),
-    ).toBe(false);
-    expect(
-      JwtStrategy.keycloakAudienceMatches(undefined, undefined, expected),
-    ).toBe(false);
+    expect(JwtStrategy.keycloakAudienceMatches('account', 'project-ops', expected)).toBe(true);
+    expect(JwtStrategy.keycloakAudienceMatches('project-ops', undefined, expected)).toBe(true);
+    expect(JwtStrategy.keycloakAudienceMatches(['a', 'project-ops'], 'b', expected)).toBe(true);
+    expect(JwtStrategy.keycloakAudienceMatches('account', 'accounting-ops', expected)).toBe(false);
+    expect(JwtStrategy.keycloakAudienceMatches(undefined, undefined, expected)).toBe(false);
   });
 
   it('accepts a Keycloak client-credentials machine token whose azp is on PROJECT_OPS_FEDERATION_ACTORS', async () => {

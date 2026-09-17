@@ -144,7 +144,7 @@ describe('PAT auth flow', () => {
   });
 
   it('mint -> use -> success (user attached to request)', async () => {
-    const created = await service.create(user,{
+    const created = await service.create(user, {
       name: 'Claude Code',
       scopes: ['read:projects'],
     });
@@ -199,7 +199,7 @@ describe('PAT auth flow', () => {
   });
 
   it('mint -> revoke -> use -> 401', async () => {
-    const created = await service.create(user,{ name: 'X' });
+    const created = await service.create(user, { name: 'X' });
     await service.revoke(user.id, created.id);
     const guard = makeGuard(service);
     const ctx = makeContext(`Bearer ${created.plaintext}`);
@@ -207,7 +207,7 @@ describe('PAT auth flow', () => {
   });
 
   it('mint -> expire -> use -> 401', async () => {
-    const created = await service.create(user,{
+    const created = await service.create(user, {
       name: 'X',
       expiresAt: new Date(Date.now() + 60_000),
     });
@@ -219,7 +219,7 @@ describe('PAT auth flow', () => {
   });
 
   it('wrong PAT plaintext -> 401', async () => {
-    await service.create(user,{ name: 'X' });
+    await service.create(user, { name: 'X' });
     const guard = makeGuard(service);
     const ctx = makeContext('Bearer po_pat_obviously-wrong-value');
     await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);

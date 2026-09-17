@@ -349,6 +349,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         __workspaceClaim?: string | null;
         __ucUid?: string | null;
       };
+      // Invitation management is an interactive session operation. The marker
+      // is derived only after signature verification, never from request input.
+      const machine =
+        !!payload?.act ||
+        !!payload?.client_id ||
+        !!payload?.clientId ||
+        String(payload?.preferred_username || '').startsWith('service-account-');
+      const localSession = !issuer;
+      const realmSession =
+        issuer === this.realmIssuer &&
+        !!(payload?.sid || payload?.session_state) &&
+        JwtStrategy.keycloakAudienceMatches(
+          payload?.aud,
+          payload?.azp,
+          this.keycloakExpectedAudiences,
+        );
+      (augmented as any).__invitationSession = !machine && (localSession || realmSession);
       augmented.__workspaceClaim = payload?.workspace_id ?? payload?.tenant_id ?? null;
       // The acting uchub subject for app.uc_uid attribution + Membership key.
       augmented.__ucUid = typeof payload?.sub === 'string' ? payload.sub : null;

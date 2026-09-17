@@ -164,12 +164,24 @@ export async function resolveEntitlement(
 
   const url = ucEntitlementsUrl(getEnv);
   if (!url) {
-    return { outcome: 'indeterminate', role: null, orgId: null, tier: null, reason: 'UC_ENTITLEMENTS_URL unset' };
+    return {
+      outcome: 'indeterminate',
+      role: null,
+      orgId: null,
+      tier: null,
+      reason: 'UC_ENTITLEMENTS_URL unset',
+    };
   }
   if (!accessToken || !accessToken.trim()) {
     // No uchub Bearer to forward (e.g. the realm-token-direct-to-API or
     // Brigade-federated caller — a documented fast-follow). Caller falls back.
-    return { outcome: 'indeterminate', role: null, orgId: null, tier: null, reason: 'no bearer token to forward' };
+    return {
+      outcome: 'indeterminate',
+      role: null,
+      orgId: null,
+      tier: null,
+      reason: 'no bearer token to forward',
+    };
   }
 
   const featureKey = projectOpsFeatureKey(getEnv);

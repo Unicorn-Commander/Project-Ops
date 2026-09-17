@@ -114,7 +114,9 @@ export class TimeEntryService {
     );
 
     this.emit('timeEntry.created', created);
-    this.logger.log(`log_time: user=${user.email} project=${created.projectId} entry=${created.id}`);
+    this.logger.log(
+      `log_time: user=${user.email} project=${created.projectId} entry=${created.id}`,
+    );
 
     return serializeTimeEntry(created, user.role);
   }
@@ -146,7 +148,8 @@ export class TimeEntryService {
           );
           startedAt = resolved.startedAt;
           endedAt = resolved.endedAt;
-          if (endedAt < startedAt) throw new BadRequestException('endedAt cannot be before startedAt');
+          if (endedAt < startedAt)
+            throw new BadRequestException('endedAt cannot be before startedAt');
           await this.assertNoOverlap(tx, workspaceId, user.id, startedAt, endedAt, entry.id);
         }
 
@@ -234,7 +237,12 @@ export class TimeEntryService {
       workspaceId,
     );
 
-    this.events.emit('timeEntry.deleted', { projectId: entry.projectId, userId: entry.userId, id: entry.id });
+    this.events.emit('timeEntry.deleted', {
+      workspaceId,
+      projectId: entry.projectId,
+      userId: entry.userId,
+      id: entry.id,
+    });
     return { message: 'Time entry deleted' };
   }
 
@@ -320,7 +328,9 @@ export class TimeEntryService {
       throw new ForbiddenException('This time entry is billed and cannot be changed');
     }
     if (entry.lockedAt) {
-      throw new ForbiddenException('This time entry is locked (approved/billed) and cannot be changed');
+      throw new ForbiddenException(
+        'This time entry is locked (approved/billed) and cannot be changed',
+      );
     }
     if (entry.approvalStatus !== 'DRAFT') {
       throw new ForbiddenException(

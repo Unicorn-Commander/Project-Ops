@@ -1,3 +1,4 @@
+import { WorkspaceMutationGuard } from '../common/workspace/workspace-mutation.guard';
 import { Controller, Get, Post, Body, Param, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { TriageService, CandidateItem } from './triage.service';
@@ -34,6 +35,7 @@ export class TriageController {
 
   /** Submit candidate action items for triage (propose-only). Source-agnostic. */
   @Post('ingest')
+  @UseGuards(WorkspaceMutationGuard)
   // Opt OUT of the GLOBAL WorkspaceMembershipGuard: this is the federation
   // ingress. A trusted sibling-app actor is NOT a workspace member, and the
   // global guard runs BEFORE this route's per-route FederationActorGuard (which

@@ -15,7 +15,8 @@ import { Public } from '../common/decorators/public.decorator';
 import { SkipWorkspaceMembership } from '../common/workspace/skip-workspace-membership.decorator';
 
 const PACKAGE_VERSION =
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  // Runtime package metadata must resolve from the deployed package layout.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   (require('../../package.json') as { version: string }).version;
 
 @ApiTags('health')

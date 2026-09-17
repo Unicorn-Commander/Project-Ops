@@ -173,6 +173,7 @@ enum MembershipStatus {
 
 /// Thin mirror of the uc-registry workspace record. PO NEVER mints workspace_id.
 model Workspace {
+  invitations WorkspaceInvitation[]
   id                String       @id // == uc-registry workspace_id (uuidv7). NO @default.
   slug              String       @unique
   displayName       String
@@ -1228,4 +1229,23 @@ model TimesheetPeriod {
   @@index([userId])
   @@index([status])
   @@map("timesheet_periods")
+}
+
+// Identity/control table, guarded by owner authorization and exact-email acceptance.
+model WorkspaceInvitation {
+  id String @id @default(uuid())
+  workspaceId String
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  email String
+  role WorkspaceRole @default(MEMBER)
+  tokenHash String @unique
+  status String @default("pending")
+  createdByKey String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  acceptedByKey String?
+  acceptedAt DateTime?
+  @@index([email, status])
+  @@index([workspaceId])
+  @@map("workspace_invitations")
 }

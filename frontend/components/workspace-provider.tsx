@@ -16,6 +16,7 @@ import { useAuthStore } from "@/lib/store";
 import {
   WORKSPACE_HEADER_NAME,
   clearWorkspaceStorage,
+  clearStoredWorkspaceId,
   getStoredWorkspaceId,
   getStoredWorkspaces,
   resolveActiveWorkspaceId,
@@ -51,6 +52,7 @@ const WorkspaceContext = createContext<WorkspaceContextValue | undefined>(
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const isAuthInitialized = useAuthStore((state) => state.isInitialized);
 
   // Start EMPTY so the first client render matches the server render (which has
   // no localStorage) — seeding from localStorage in the `useState` initializer
@@ -99,6 +101,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setActiveWorkspaceId(resolved);
     if (resolved) {
       setStoredWorkspaceId(resolved);
+    } else {
+      clearStoredWorkspaceId();
     }
     return next;
   }, []);
@@ -109,6 +113,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // previous selection.
   useEffect(() => {
     let cancelled = false;
+
+    // AuthProvider restores the user after mount. An initial false value is
+    // not a logout and must not erase the remembered workspace.
+    if (!isAuthInitialized) return;
 
     if (!isAuthenticated) {
       setWorkspaces([]);
@@ -139,7 +147,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, loadWorkspaces]);
+  }, [isAuthenticated, isAuthInitialized, loadWorkspaces]);
 
   // Public refresh: a thin wrapper that swallows nothing (callers may want to
   // surface an error toast) but never throws the app into an unhandled state.

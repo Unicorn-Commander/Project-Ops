@@ -134,11 +134,7 @@ export class AuditService {
     );
   }
 
-  async findByProject(
-    workspaceId: string,
-    user: User,
-    projectId: string,
-  ): Promise<AuditLog[]> {
+  async findByProject(workspaceId: string, user: User, projectId: string): Promise<AuditLog[]> {
     return this.workspaceContext.runForUser(
       user,
       (tx) =>

@@ -9,6 +9,7 @@ import {
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
+import { MembershipService } from '../common/workspace/membership.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { AssignProjectDto } from './dto/assign-project.dto';
@@ -137,6 +138,7 @@ export class ProjectsService {
     @Optional()
     @Inject(CUSTOM_FIELDS_SERVICE)
     private readonly customFields?: CustomFieldsValidator,
+    @Optional() private readonly membership?: MembershipService,
   ) {}
 
   /**
@@ -867,7 +869,7 @@ export class ProjectsService {
   }
 
   async getStatsByStatus(workspaceId: string, user: User): Promise<any> {
-    const where = this.buildRoleBasedWhere(user);
+    const where = await this.buildRoleBasedWhere(user, workspaceId);
 
     return this.workspaceContext.runForUser(
       user,
@@ -888,7 +890,7 @@ export class ProjectsService {
   }
 
   async getStatsByPriority(workspaceId: string, user: User): Promise<any> {
-    const where = this.buildRoleBasedWhere(user);
+    const where = await this.buildRoleBasedWhere(user, workspaceId);
 
     return this.workspaceContext.runForUser(
       user,
@@ -911,10 +913,16 @@ export class ProjectsService {
   /**
    * Build where clause based on user role for row-level security
    */
-  private buildRoleBasedWhere(user: User): Prisma.ProjectWhereInput {
+  private async buildRoleBasedWhere(
+    user: User,
+    workspaceId: string,
+  ): Promise<Prisma.ProjectWhereInput> {
     if (user.role === UserRole.CLIENT) {
       return { createdById: user.id };
-    } else if (user.role === UserRole.STAFF) {
+    } else if (
+      user.role === UserRole.STAFF &&
+      !(await this.membership?.hasManagementRole(user, workspaceId))
+    ) {
       return { assignedToId: user.id };
     }
     // ADMIN and MANAGER see all projects

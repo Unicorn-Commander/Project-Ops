@@ -18,7 +18,15 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiQuery,
+  ApiConsumes,
+  ApiBody,
+} from '@nestjs/swagger';
 import { DocumentsService } from './documents.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
@@ -133,12 +141,7 @@ export class DocumentsController {
       throw new BadRequestException('No file provided');
     }
 
-    return await this.documentsService.uploadFileProxy(
-      workspaceId,
-      user,
-      file,
-      projectId,
-    );
+    return await this.documentsService.uploadFileProxy(workspaceId, user, file, projectId);
   }
 
   @Get(':id/download-url')
@@ -150,7 +153,7 @@ export class DocumentsController {
     @Param('id') id: string,
   ) {
     const url = await this.documentsService.generatePresignedDownloadUrl(workspaceId, user, id);
-    return { url };  // Return as 'url' not 'downloadUrl' to match frontend expectation
+    return { url }; // Return as 'url' not 'downloadUrl' to match frontend expectation
   }
 
   @Get(':id/download')
@@ -162,7 +165,11 @@ export class DocumentsController {
     @Param('id') id: string,
     @Res() res: Response,
   ) {
-    const { stream, fileName, mimeType, size } = await this.documentsService.downloadFileProxy(workspaceId, user, id);
+    const { stream, fileName, mimeType, size } = await this.documentsService.downloadFileProxy(
+      workspaceId,
+      user,
+      id,
+    );
 
     res.set({
       'Content-Type': mimeType,
@@ -182,7 +189,11 @@ export class DocumentsController {
     @Param('id') id: string,
     @Res() res: Response,
   ) {
-    const { stream, fileName, mimeType, size } = await this.documentsService.downloadFileProxy(workspaceId, user, id);
+    const { stream, fileName, mimeType, size } = await this.documentsService.downloadFileProxy(
+      workspaceId,
+      user,
+      id,
+    );
 
     res.set({
       'Content-Type': mimeType,
