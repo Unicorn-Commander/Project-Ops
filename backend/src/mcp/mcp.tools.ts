@@ -1931,6 +1931,7 @@ export class ProjectOpsTools {
   }
 
   async listProjectDocuments(user: User, args: { projectId?: string; projectNumber?: string }) {
+    this.assertCanWrite(user); // Internal documents: clients use the curated portal.
     if (!args.projectId && !args.projectNumber) {
       throw new Error('Either projectId or projectNumber must be provided');
     }
@@ -1980,6 +1981,7 @@ export class ProjectOpsTools {
     user: User,
     args: { documentId?: string; fileName?: string; projectNumber?: string },
   ) {
+    this.assertCanWrite(user); // Internal documents: clients use the curated portal.
     const TEXT_CAP = 50 * 1024;
 
     if (!args.documentId && !(args.fileName && args.projectNumber)) {
@@ -1989,13 +1991,15 @@ export class ProjectOpsTools {
     // Metadata lookup runs inside the workspace tx; the MinIO byte I/O below
     // stays OUTSIDE it (B4 — never hold a DB transaction open across object
     // storage round-trips).
+    // Keep the relation branch non-empty: Prisma prunes project:{} inside
+    // OR for ADMIN/MANAGER, otherwise leaving only the orphan-document branch.
     const document = await this.runScoped(user, (tx) => {
       if (args.documentId) {
         return tx.document.findFirst({
           where: {
             id: args.documentId,
             OR: [
-              { project: buildVisibilityFilter(user) },
+              { project: { is: buildVisibilityFilter(user) }, projectId: { not: null } },
               // orphan docs (no project) only visible to admins / managers
               ...(user.role === UserRole.ADMIN || user.role === UserRole.MANAGER
                 ? [{ projectId: null }]
@@ -2285,7 +2289,7 @@ export class ProjectOpsTools {
         where: {
           id: documentId,
           OR: [
-            { project: buildVisibilityFilter(user) },
+            { project: { is: buildVisibilityFilter(user) }, projectId: { not: null } },
             ...(user.role === UserRole.ADMIN || user.role === UserRole.MANAGER
               ? [{ projectId: null }]
               : []),
@@ -2342,7 +2346,7 @@ export class ProjectOpsTools {
         where: {
           id: documentId,
           OR: [
-            { project: buildVisibilityFilter(user) },
+            { project: { is: buildVisibilityFilter(user) }, projectId: { not: null } },
             ...(user.role === UserRole.ADMIN || user.role === UserRole.MANAGER
               ? [{ projectId: null }]
               : []),

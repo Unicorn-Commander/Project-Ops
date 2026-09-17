@@ -6,6 +6,7 @@ import * as Minio from 'minio';
 export class MinioService implements OnModuleInit {
   private readonly logger = new Logger(MinioService.name);
   private minioClient: Minio.Client;
+  private signingClient: Minio.Client;
   private bucketName: string;
 
   // Public endpoint configuration for presigned URLs
@@ -40,6 +41,18 @@ export class MinioService implements OnModuleInit {
     );
     this.publicUseSSL = this.configService.get('MINIO_PUBLIC_USE_SSL', 'false') === 'true';
 
+    // SigV4 signs Host. Generate against the public endpoint rather than
+    // rewriting an internal signed URL (which invalidates its signature).
+    // A configured region avoids a public-network bucket-region probe.
+    this.signingClient = new Minio.Client({
+      endPoint: this.publicEndpoint,
+      port: this.publicPort,
+      useSSL: this.publicUseSSL,
+      accessKey: this.configService.get('MINIO_ACCESS_KEY', 'minioadmin'),
+      secretKey: this.configService.get('MINIO_SECRET_KEY', 'minioadmin'),
+      region: this.configService.get('MINIO_REGION', 'us-east-1'),
+    });
+
     this.logger.log(
       `MinIO configured - Internal: ${internalUseSSL ? 'https' : 'http'}://${this.internalEndpoint}:${this.internalPort}`,
     );
@@ -61,46 +74,15 @@ export class MinioService implements OnModuleInit {
     }
   }
 
-  /**
-   * Replace internal MinIO endpoint with public endpoint in presigned URLs
-   * This allows browser clients to access MinIO through the public domain
-   */
-  private replaceEndpoint(url: string): string {
-    // Build the public URL
-    const protocol = this.publicUseSSL ? 'https' : 'http';
-    const port =
-      (this.publicUseSSL && this.publicPort === 443) ||
-      (!this.publicUseSSL && this.publicPort === 80)
-        ? ''
-        : `:${this.publicPort}`;
-    const publicUrl = `${protocol}://${this.publicEndpoint}${port}`;
-
-    // Build the internal URL pattern to replace
-    const internalProtocol =
-      this.configService.get('MINIO_USE_SSL', 'false') === 'true' ? 'https' : 'http';
-    const internalUrl = `${internalProtocol}://${this.internalEndpoint}:${this.internalPort}`;
-
-    // Replace internal URL with public URL
-    const replacedUrl = url.replace(internalUrl, publicUrl);
-
-    this.logger.debug(`URL replacement: ${internalUrl} -> ${publicUrl}`);
-    this.logger.debug(`Original URL: ${url}`);
-    this.logger.debug(`Replaced URL: ${replacedUrl}`);
-
-    return replacedUrl;
-  }
-
   async getPresignedUploadUrl(objectName: string, expirySeconds: number = 3600): Promise<string> {
     try {
-      const url = await this.minioClient.presignedPutObject(
+      const url = await this.signingClient.presignedPutObject(
         this.bucketName,
         objectName,
         expirySeconds,
       );
-      // Replace internal endpoint with public endpoint
-      const publicUrl = this.replaceEndpoint(url);
       this.logger.log(`Generated presigned upload URL for: ${objectName}`);
-      return publicUrl;
+      return url;
     } catch (error) {
       this.logger.error('Failed to generate presigned upload URL', error);
       throw error;
@@ -109,15 +91,13 @@ export class MinioService implements OnModuleInit {
 
   async getPresignedDownloadUrl(objectName: string, expirySeconds: number = 3600): Promise<string> {
     try {
-      const url = await this.minioClient.presignedGetObject(
+      const url = await this.signingClient.presignedGetObject(
         this.bucketName,
         objectName,
         expirySeconds,
       );
-      // Replace internal endpoint with public endpoint
-      const publicUrl = this.replaceEndpoint(url);
       this.logger.log(`Generated presigned download URL for: ${objectName}`);
-      return publicUrl;
+      return url;
     } catch (error) {
       this.logger.error('Failed to generate presigned download URL', error);
       throw error;
