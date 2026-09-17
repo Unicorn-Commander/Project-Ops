@@ -454,7 +454,7 @@ export class McpService {
       {
         title: 'Add a comment to a task',
         description:
-          "Post a comment to a task on the user's behalf. Use sparingly — " +
+          "Post a comment (maximum 5,000 characters) to a task on the user's behalf. Use sparingly — " +
           'only when the user has explicitly asked the assistant to log ' +
           'something, not for ambient narration.',
         inputSchema: {

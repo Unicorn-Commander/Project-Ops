@@ -37,7 +37,8 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentWorkspace } from '../common/workspace/current-workspace.decorator';
 import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
-import { User, DocumentStatus } from '@prisma/client';
+import { Roles } from '../common/decorators/roles.decorator';
+import { UserRole, User, DocumentStatus } from '@prisma/client';
 
 /**
  * Suite tenancy (Phase 2, B4): every route resolves the active workspace via
@@ -52,6 +53,7 @@ import { User, DocumentStatus } from '@prisma/client';
 export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @Post('generate-upload-url')
   @ApiOperation({ summary: 'Generate presigned URL for document upload' })
   @ApiResponse({ status: 200, description: 'Returns presigned upload URL' })
@@ -80,6 +82,7 @@ export class DocumentsController {
     }
   }
 
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @Post('confirm-upload')
   @ApiOperation({ summary: 'Confirm document upload completion' })
   @ApiResponse({ status: 200, description: 'Document upload confirmed' })
@@ -110,6 +113,7 @@ export class DocumentsController {
     }
   }
 
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @Post('upload')
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')
@@ -204,6 +208,7 @@ export class DocumentsController {
     stream.pipe(res);
   }
 
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @Post()
   @ApiOperation({ summary: 'Create document record (alternative flow)' })
   @ApiResponse({ status: 201, description: 'Document created successfully' })
@@ -277,6 +282,7 @@ export class DocumentsController {
     return this.documentsService.findOne(workspaceId, user, id);
   }
 
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @Patch(':id')
   @ApiOperation({ summary: 'Update document' })
   @ApiResponse({ status: 200, description: 'Document updated successfully' })
@@ -289,6 +295,7 @@ export class DocumentsController {
     return this.documentsService.update(workspaceId, user, id, updateDocumentDto);
   }
 
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @Delete(':id')
   @ApiOperation({ summary: 'Delete document' })
   @ApiResponse({ status: 200, description: 'Document deleted successfully' })

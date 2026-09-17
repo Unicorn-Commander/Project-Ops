@@ -20,7 +20,8 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentWorkspace } from '../common/workspace/current-workspace.decorator';
 import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
-import { User } from '@prisma/client';
+import { Roles } from '../common/decorators/roles.decorator';
+import { User, UserRole } from '@prisma/client';
 import { clampLimit } from '../common/pagination/clamp';
 
 /**
@@ -30,6 +31,7 @@ import { clampLimit } from '../common/pagination/clamp';
  */
 @ApiTags('comments')
 @Controller('comments')
+@Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
 @UseGuards(JwtAuthGuard, RolesGuard, WorkspaceMembershipGuard)
 @ApiBearerAuth('JWT-auth')
 export class CommentsController {

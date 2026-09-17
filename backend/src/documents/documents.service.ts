@@ -3,7 +3,7 @@ import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { MinioService } from './minio.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
-import { Document, Prisma, User } from '@prisma/client';
+import { Document, Prisma, User, UserRole } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { v4 as uuidv4 } from 'uuid';
@@ -182,7 +182,7 @@ export class DocumentsService {
     // workspace resolves to NotFound under RLS.
     const document = await this.workspaceContext.runForUser(
       user,
-      (tx) => this.findOneInTx(tx, documentId),
+      (tx) => this.findOneInTx(tx, documentId, user, workspaceId),
       workspaceId,
     );
 
@@ -217,7 +217,7 @@ export class DocumentsService {
     // Fetch metadata inside the workspace tx (RLS-scoped).
     const document = await this.workspaceContext.runForUser(
       user,
-      (tx) => this.findOneInTx(tx, documentId),
+      (tx) => this.findOneInTx(tx, documentId, user, workspaceId),
       workspaceId,
     );
 
@@ -359,7 +359,8 @@ export class DocumentsService {
       orderBy?: Prisma.DocumentOrderByWithRelationInput;
     },
   ): Promise<{ documents: Document[]; total: number }> {
-    const { skip, take, where, orderBy } = params || {};
+    const { skip, take, where: requestedWhere, orderBy } = params || {};
+    const where = { AND: [requestedWhere || {}, this.clientWhere(workspaceId, user)] };
 
     return this.workspaceContext.runForUser(
       user,
@@ -391,14 +392,25 @@ export class DocumentsService {
           tx.document.count({ where }),
         ]);
 
-        return { documents, total };
+        return {
+          documents:
+            user.role === UserRole.CLIENT
+              ? (documents.map((d) => this.clientDocument(d)) as Document[])
+              : documents,
+          total,
+        };
       },
       workspaceId,
     );
   }
 
   async findOne(workspaceId: string, user: User, id: string): Promise<Document> {
-    return this.workspaceContext.runForUser(user, (tx) => this.findOneInTx(tx, id), workspaceId);
+    const doc = await this.workspaceContext.runForUser(
+      user,
+      (tx) => this.findOneInTx(tx, id, user, workspaceId),
+      workspaceId,
+    );
+    return user.role === UserRole.CLIENT ? (this.clientDocument(doc) as Document) : doc;
   }
 
   /**
@@ -408,9 +420,14 @@ export class DocumentsService {
    * object I/O. A document belonging to another workspace is invisible under
    * RLS and therefore surfaces as NotFound.
    */
-  private async findOneInTx(tx: WorkspaceTxClient, id: string): Promise<Document> {
+  private async findOneInTx(
+    tx: WorkspaceTxClient,
+    id: string,
+    user: User,
+    workspaceId: string,
+  ): Promise<Document> {
     const document = await tx.document.findUnique({
-      where: { id },
+      where: { id, workspaceId },
       include: {
         project: true,
         uploadedBy: true,
@@ -421,29 +438,35 @@ export class DocumentsService {
       throw new NotFoundException(`Document with ID ${id} not found`);
     }
 
+    if (user.role === UserRole.CLIENT) {
+      const contact = await tx.contact.findUnique({
+        where: {
+          userId: user.id,
+          workspaceId,
+          isActive: true,
+          portalAccessEnabled: true,
+        },
+      });
+      if (
+        !contact ||
+        !document.isClientVisible ||
+        document.status !== 'UPLOADED' ||
+        document.project?.workspaceId !== workspaceId ||
+        document.project?.contactId !== contact.id
+      ) {
+        throw new NotFoundException(`Document with ID ${id} not found`);
+      }
+    }
     return document;
   }
 
   async findByProjectId(workspaceId: string, user: User, projectId: string): Promise<Document[]> {
-    return this.workspaceContext.runForUser(
-      user,
-      (tx) =>
-        tx.document.findMany({
-          where: { projectId },
-          orderBy: { uploadedAt: 'desc' },
-          include: {
-            uploadedBy: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
-            },
-          },
-        }),
-      workspaceId,
-    );
+    return (
+      await this.findAll(workspaceId, user, {
+        where: { projectId },
+        orderBy: { uploadedAt: 'desc' },
+      })
+    ).documents;
   }
 
   async update(
@@ -485,7 +508,7 @@ export class DocumentsService {
     // Fetch metadata inside the workspace tx (RLS-scoped).
     const document = await this.workspaceContext.runForUser(
       user,
-      (tx) => this.findOneInTx(tx, id),
+      (tx) => this.findOneInTx(tx, id, user, workspaceId),
       workspaceId,
     );
 
@@ -533,6 +556,25 @@ export class DocumentsService {
 
     this.logger.log(`Document deleted from database: ${document.fileName}`);
     return deletedDocument;
+  }
+
+  private clientDocument(doc: Document) {
+    const { id, projectId, fileName, fileSize, mimeType, status, description, uploadedAt } = doc;
+    return { id, projectId, fileName, fileSize, mimeType, status, description, uploadedAt };
+  }
+
+  private clientWhere(workspaceId: string, user: User): Prisma.DocumentWhereInput {
+    return user.role === UserRole.CLIENT
+      ? {
+          workspaceId,
+          isClientVisible: true,
+          status: 'UPLOADED',
+          project: {
+            workspaceId,
+            contact: { userId: user.id, workspaceId, isActive: true, portalAccessEnabled: true },
+          },
+        }
+      : {};
   }
 
   private getMimeType(extension: string): string {

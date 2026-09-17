@@ -37,6 +37,7 @@ import { User, UserRole } from '@prisma/client';
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard, WorkspaceMembershipGuard)
 @Controller('tasks')
+@Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
