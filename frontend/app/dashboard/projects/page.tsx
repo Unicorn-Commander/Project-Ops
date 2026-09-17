@@ -16,6 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useWorkspace } from "@/components/workspace-provider";
 import { CreateProjectModal } from "@/components/modals/create-project-modal";
 import { EditProjectModal } from "@/components/modals/edit-project-modal";
 import { HelpHint } from "@/components/guidance";
@@ -136,6 +137,9 @@ type SortDir = "asc" | "desc";
 
 export default function ProjectsPage() {
   const router = useRouter();
+  const { activeWorkspace, isLoading: workspaceLoading } = useWorkspace();
+  const workspaceCanWrite = !workspaceLoading &&
+    ["OWNER", "ADMIN", "MANAGER", "MEMBER"].includes(activeWorkspace?.role ?? "");
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalAvailable, setTotalAvailable] = useState(0);
@@ -176,13 +180,13 @@ export default function ProjectsPage() {
   // Reading window.location.search (instead of useSearchParams) avoids the
   // Next.js Suspense-boundary requirement for prerendered routes.
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !workspaceCanWrite) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("new") === "1") {
       setCreateModalOpen(true);
       router.replace("/dashboard/projects");
     }
-  }, [router]);
+  }, [router, workspaceCanWrite]);
 
   const fetchUserRole = () => {
     if (typeof window !== "undefined") {
@@ -285,7 +289,7 @@ export default function ProjectsPage() {
   };
 
   const canEditProject = () => {
-    return (
+    return workspaceCanWrite && (
       userRole === "ADMIN" ||
       userRole === "MANAGER" ||
       userRole === "STAFF"
@@ -293,11 +297,11 @@ export default function ProjectsPage() {
   };
 
   const canDeleteProject = () => {
-    return userRole === "ADMIN" || userRole === "MANAGER";
+    return workspaceCanWrite && (userRole === "ADMIN" || userRole === "MANAGER");
   };
 
   const canAssignProject = () => {
-    return userRole === "ADMIN" || userRole === "MANAGER";
+    return workspaceCanWrite && (userRole === "ADMIN" || userRole === "MANAGER");
   };
 
   const getStatusColor = statusBadgeClass;
@@ -559,10 +563,10 @@ export default function ProjectsPage() {
               p.paymentStatus ?? "",
             ]}
           />
-          <Button onClick={() => setCreateModalOpen(true)}>
+          {workspaceCanWrite && <Button onClick={() => setCreateModalOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             New project
-          </Button>
+          </Button>}
         </div>
       </div>
 
@@ -683,7 +687,7 @@ export default function ProjectsPage() {
             </span>
           )}
         </p>
-        {filteredProjects.length > 0 && (
+        {canEditProject() && filteredProjects.length > 0 && (
           <button
             type="button"
             onClick={toggleSelectAllFiltered}
@@ -712,7 +716,7 @@ export default function ProjectsPage() {
             <div className="flex items-start gap-3 sm:gap-4">
               {/* Selection checkbox — clicking the row body still
                   navigates; the checkbox stops propagation. */}
-              <button
+              {canEditProject() && <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -724,7 +728,7 @@ export default function ProjectsPage() {
                 {isSelected && (
                   <CheckSquareIcon className="h-4 w-4 text-primary" strokeWidth={2.5} />
                 )}
-              </button>
+              </button>}
               {/* Content + actions — stacked on mobile, side-by-side from
                   the sm breakpoint up so the card reads cleanly on phones. */}
               <div className="flex flex-1 min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -900,19 +904,19 @@ export default function ProjectsPage() {
             icon={FolderPlus}
             iconTone="primary"
             title="No projects yet"
-            body="Create your first project to start tracking work, schedules, and budgets."
-            action={
+            body={workspaceCanWrite ? "Create your first project to start tracking work, schedules, and budgets." : "Projects shared with you will appear here."}
+            action={workspaceCanWrite ? (
               <Button onClick={() => setCreateModalOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 Create project
               </Button>
-            }
+            ) : undefined}
           />
         ))}
 
       {/* Create Project Modal */}
       <CreateProjectModal
-        isOpen={createModalOpen}
+        isOpen={workspaceCanWrite && createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onSuccess={() => {
           fetchProjects();
@@ -923,7 +927,7 @@ export default function ProjectsPage() {
       {/* Edit Project Modal */}
       <EditProjectModal
         projectData={selectedProject}
-        isOpen={editModalOpen}
+        isOpen={canEditProject() && editModalOpen}
         onClose={() => {
           setEditModalOpen(false);
           setSelectedProject(null);
@@ -932,7 +936,7 @@ export default function ProjectsPage() {
       />
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <AlertDialog open={canDeleteProject() && deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Project</AlertDialogTitle>
@@ -957,7 +961,7 @@ export default function ProjectsPage() {
       </AlertDialog>
 
       {/* Bulk-action bar — shows when ≥1 project is selected (v1.6.40). */}
-      <BulkActionBar
+      {canEditProject() && <BulkActionBar
         selectedCount={selectedIds.size}
         entityLabel="project"
         onClear={() => setSelectedIds(new Set())}
@@ -990,7 +994,7 @@ export default function ProjectsPage() {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        <BulkActionButton
+        {canDeleteProject() && <BulkActionButton
           icon={TrashIcon}
           pending={bulkDeletePending}
           onClick={() => {
@@ -1005,8 +1009,8 @@ export default function ProjectsPage() {
           destructive
         >
           Delete
-        </BulkActionButton>
-      </BulkActionBar>
+        </BulkActionButton>}
+      </BulkActionBar>}
     </div>
   );
 }
