@@ -64,7 +64,7 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
   let jwksServer: Server, realmIssuer: string, brigadeIssuer: string, privateKey: string;
   const previousBrigadeIssuers = process.env.BRIGADE_TRUSTED_ISSUERS;
   const signMachine = (claims: Record<string, unknown>) =>
-    jwt.sign(claims, { privateKey, algorithm: 'RS256', keyid: 'fixture-only', expiresIn: '1h' });
+    new JwtService().sign(claims, { privateKey, algorithm: 'RS256', keyid: 'fixture-only', expiresIn: '1h' });
   const email = () => `${randomUUID()}@workspace-invite.example`;
   const created: string[] = [];
   beforeAll(async () => {
@@ -471,7 +471,7 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
       { iss: realmIssuer, azp: 'project-ops', preferred_username: 'service-account-project-ops', email: f.invited, email_verified: true },
       { iss: brigadeIssuer, aud: 'project-ops', act: { client_id: 'meeting-ops' } },
     ]) {
-      const payload = { sub: randomUUID(), workspace_id: f.ws.id, ...claims };
+      const payload = { sub: randomUUID(), aud: 'project-ops', workspace_id: f.ws.id, ...claims };
       const principal = await auth.validateJwtPayload(payload);
       expect(principal).toMatchObject({ __isFederationActor: true, role: null, email: null });
       const credential = signMachine(payload);
