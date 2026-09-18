@@ -100,7 +100,7 @@ export function withProjectQuote<T extends { metadata: unknown }>(
 function maskQuoteSubtreeForClient(q: Record<string, unknown>): Record<string, unknown> {
   const masked: Record<string, unknown> = {};
   for (const key of CLIENT_TASK_QUOTE_KEYS) {
-    if (key in q) masked[key] = q[key];
+    if (key in q) masked[key] = maskMetadataValueForClient(q[key]);
   }
   return masked;
 }
