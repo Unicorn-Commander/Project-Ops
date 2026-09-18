@@ -725,11 +725,9 @@ describe('TasksService.getUserTasks — ownership', () => {
   const client = { id: 'c1', role: UserRole.CLIENT } as any;
   const staff = { id: 'u1', role: UserRole.STAFF } as any;
 
-  it('CLIENT cannot enumerate another user\'s tasks', async () => {
+  it("CLIENT cannot enumerate another user's tasks", async () => {
     const { svc } = makeService({ taskFindMany: async () => [] });
-    await expect(svc.getUserTasks('ws1', client, 'c2')).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(svc.getUserTasks('ws1', client, 'c2')).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('CLIENT can enumerate their own tasks', async () => {
@@ -737,7 +735,7 @@ describe('TasksService.getUserTasks — ownership', () => {
     await expect(svc.getUserTasks('ws1', client, 'c1')).resolves.toEqual([]);
   });
 
-  it('STAFF can enumerate another user\'s tasks', async () => {
+  it("STAFF can enumerate another user's tasks", async () => {
     const { svc } = makeService({ taskFindMany: async () => [] });
     await expect(svc.getUserTasks('ws1', staff, 'c2')).resolves.toEqual([]);
   });
