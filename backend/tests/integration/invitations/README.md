@@ -5,7 +5,18 @@ workspace guards, backed by PostgreSQL using the non-superuser,
 non-BYPASSRLS `project_ops_app` role. Only fixture setup/cleanup and intentional
 failure/lock injection use the separate database owner connection.
 
-Prepare a disposable database with the Prisma schema, existing tenancy migrations,
+The complete local auth database gate now provisions the disposable PostgreSQL,
+runs all 14 RLS cases, and then runs the invitation/public-user suites:
+
+```sh
+# From backend/, after npm ci and npx prisma generate; select an unused port.
+PG_PORT=55443 PO_RLS_CONTAINER=po-auth-check bash tests/integration/rls/run.sh
+```
+
+Do not treat units + RLS alone as sufficient for authentication changes. The
+optional browser proof still requires the separate setup below.
+
+To run only invitations, prepare a disposable database with the Prisma schema, existing tenancy migrations,
 and `20260916040000_manual_workspace_invitations/migration.sql`. Set
 `INVITATION_ADMIN_DATABASE_URL` and `INVITATION_APP_DATABASE_URL`, then run:
 

@@ -5,8 +5,8 @@
 #
 # Provisions a THROWAWAY Postgres in Docker on a NON-default port (so it never
 # collides with a real local Postgres / another project's container), applies the
-# documented db-push-managed bring-up (prisma db push as superuser -> the four
-# tenancy migrations' SQL by hand -> seeds), then runs the §9 acceptance test as
+# documented db-push-managed bring-up (prisma db push as superuser -> the
+# tenancy migrations' SQL by hand -> seeds), then runs the §9 and invitation/public-user acceptance tests as
 # the NOBYPASSRLS role `project_ops_app`.
 #
 # Run from the backend/ directory:
@@ -37,6 +37,7 @@ MIGRATIONS=(
   "20260609120000_phase2_workspace_seed"     # rebrand MU + add GFL + memberships
   "20260610090000_mu_canonical_rekey"        # re-key MU bootstrap uuid -> suite-canonical (MO/CO-shared)
   "20260617000000_phase3_workspace_not_null" # tenanted workspaceId -> NOT NULL (PAT + audit_logs stay nullable)
+  "20260916040000_manual_workspace_invitations" # invitation grants and constraints, also applied in CI
 )
 
 # --- Teardown trap: always remove the throwaway container ---------------------
@@ -127,4 +128,13 @@ npx jest --config ./tests/jest-integration.json \
   tests/integration/rls/workspace-isolation.integration.test.ts
 
 echo "[run.sh] §9 RLS test PASSED."
+
+# Auth changes must also pass the HTTP invitation and public-user suites that
+# CI runs separately. Reuse ONLY this throwaway database, never live services.
+export INVITATION_ADMIN_DATABASE_URL="$DATABASE_URL"
+export INVITATION_APP_DATABASE_URL="$PROJECT_OPS_APP_DATABASE_URL"
+npx jest --config tests/jest-integration.json --runInBand --runTestsByPath \
+  tests/integration/invitations/workspace-invitations.integration.test.ts \
+  tests/integration/users/public-user.integration.test.ts
+echo "[run.sh] Invitation/public-user auth tests PASSED."
 # (container removed by the EXIT trap)
