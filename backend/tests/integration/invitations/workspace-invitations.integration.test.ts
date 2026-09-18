@@ -20,7 +20,9 @@ import { McpService } from '../../../src/mcp/mcp.service';
 import { spawn } from 'child_process';
 import { WorkspacesController } from '../../../src/workspaces/workspaces.controller';
 import { WorkspacesService } from '../../../src/workspaces/workspaces.service';
-import { randomUUID, createHash } from 'crypto';
+import { randomUUID, createHash, generateKeyPairSync } from 'crypto';
+import { createServer, Server } from 'http';
+import { AddressInfo } from 'net';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
@@ -59,9 +61,27 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
     throw new Error('No outbound email permitted');
   });
   const jwt = new JwtService({ secret: 'isolated-workspace-invite-test-only' });
+  let jwksServer: Server, realmIssuer: string, brigadeIssuer: string, privateKey: string;
+  const previousBrigadeIssuers = process.env.BRIGADE_TRUSTED_ISSUERS;
+  const signMachine = (claims: Record<string, unknown>) =>
+    jwt.sign(claims, { privateKey, algorithm: 'RS256', keyid: 'fixture-only', expiresIn: '1h' });
   const email = () => `${randomUUID()}@workspace-invite.example`;
   const created: string[] = [];
   beforeAll(async () => {
+    // Isolated JWKS exercises real signature validation; no live issuer/secret
+    // and no AuthService identity mock on the federation path.
+    const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    privateKey = keys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+    const jwk = { ...keys.publicKey.export({ format: 'jwk' }), kid: 'fixture-only', alg: 'RS256', use: 'sig' };
+    jwksServer = createServer((_req, res) => {
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ keys: [jwk] }));
+    });
+    await new Promise<void>((resolve) => jwksServer.listen(0, '127.0.0.1', resolve));
+    const issuerBase = `http://127.0.0.1:${(jwksServer.address() as AddressInfo).port}`;
+    realmIssuer = `${issuerBase}/realms/uchub`;
+    brigadeIssuer = `${issuerBase}/brigade`;
+    process.env.BRIGADE_TRUSTED_ISSUERS = brigadeIssuer;
     admin = new PrismaClient({ datasources: { db: { url: adminUrl! } } });
     await admin.$connect();
     process.env.DATABASE_URL = appUrl!;
@@ -69,6 +89,10 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
     await prisma.$connect();
     config = new ConfigService({
       JWT_SECRET: 'isolated-workspace-invite-test-only',
+      KEYCLOAK_URL: issuerBase,
+      KEYCLOAK_REALM: 'uchub',
+      BRIGADE_TRUSTED_ISSUERS: brigadeIssuer,
+      PROJECT_OPS_FEDERATION_ACTORS: 'meeting-ops',
       PROJECT_OPS_TENANCY_ENABLED: 'true',
       PROJECT_OPS_ENTITLEMENTS_ENABLED: 'false',
     });
@@ -178,6 +202,9 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
     expect(roles[0]).toEqual({ rolbypassrls: false, rolsuper: false });
   });
   afterAll(async () => {
+    if (previousBrigadeIssuers === undefined) delete process.env.BRIGADE_TRUSTED_ISSUERS;
+    else process.env.BRIGADE_TRUSTED_ISSUERS = previousBrigadeIssuers;
+    await new Promise<void>((resolve, reject) => jwksServer?.close((error) => error ? reject(error) : resolve()));
     expect(mail).not.toHaveBeenCalled();
     await app?.close();
     await admin.comment.deleteMany({ where: { workspaceId: { in: created } } });
@@ -423,7 +450,6 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
     }
     for (const patch of [
       { iss: 'https://brigade.unicorncommander.ai', aud: 'project-ops' },
-      { client_id: 'project-ops' },
       { clientId: 'project-ops' },
       { act: { client_id: 'service' } },
     ])
@@ -436,6 +462,32 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
           ...patch,
         }),
       ).rejects.toThrow();
+  });
+  it('classifies machines without provisioning people and denies invitation HTTP operations', async () => {
+    const f = await proposal();
+    const usersBefore = await admin.user.count();
+    for (const claims of [
+      { iss: realmIssuer, client_id: 'project-ops', email: f.invited, email_verified: true },
+      { iss: realmIssuer, azp: 'project-ops', preferred_username: 'service-account-project-ops', email: f.invited, email_verified: true },
+      { iss: brigadeIssuer, aud: 'project-ops', act: { client_id: 'meeting-ops' } },
+    ]) {
+      const payload = { sub: randomUUID(), workspace_id: f.ws.id, ...claims };
+      const principal = await auth.validateJwtPayload(payload);
+      expect(principal).toMatchObject({ __isFederationActor: true, role: null, email: null });
+      const credential = signMachine(payload);
+      for (const [method, path, body] of [
+        ['post', `/workspaces/${f.ws.id}/invitations`, { email: email() }],
+        ['get', `/workspaces/${f.ws.id}/invitations`, {}],
+        ['delete', `/workspaces/${f.ws.id}/invitations/${f.invite.id}`, {}],
+        ['post', '/workspace-invitations/accept', { token: f.invite.token }],
+      ] as const) {
+        expect((await request(app.getHttpServer())[method](path)
+          .set('Authorization', 'Bearer ' + credential).send(body)).status).toBe(403);
+      }
+    }
+    expect(await admin.user.count()).toBe(usersBefore);
+    expect((await admin.workspaceInvitation.findUniqueOrThrow({ where: { id: f.invite.id } })).status).toBe('pending');
+    expect(await admin.membership.count({ where: { workspaceId: f.ws.id } })).toBe(1);
   });
   it('serializes concurrent redemption, preserves member roles, and refuses suspended membership/workspace', async () => {
     const f = await proposal();
@@ -682,8 +734,9 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
       .set('Authorization', 'Bearer ' + token(f.owner))
       .set('X-Workspace-Id', f.ws.id)
       .send({ items: [] });
-    expect(ingest.status).toBe(201);
-    expect(ingest.body.created).toBe(0);
+    // L2 makes this route machine-only: membership never grants federation.
+    expect(ingest.status).toBe(403);
+    expect(ingest.body.code).toBe('FEDERATION_ACTOR_REQUIRED');
     expect(await admin.project.count({ where: { workspaceId: f.ws.id } })).toBe(1);
     await admin.membership.update({
       where: { userKey_workspaceId: { userKey: f.owner.keycloakId!, workspaceId: f.ws.id } },
@@ -753,18 +806,11 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
   });
   it('actual triage guard order preserves only an allow-listed federation principal', async () => {
     const f = await fixture();
-    // Inject only the identity boundary; the signed local fixture token still
-    // crosses the real HTTP guards, including federation then mutation guard.
-    const original = auth.validateJwtPayload.bind(auth);
-    const identity = jest.spyOn(auth, 'validateJwtPayload').mockImplementation(async (claims) => {
-      if (claims.sub === 'isolated-federation-order')
-        return AuthService.buildFederationPrincipal('meeting-ops');
-      return original(claims);
-    });
-    const credential = jwt.sign(
-      { sub: 'isolated-federation-order', workspace_id: f.ws.id },
-      { expiresIn: '1h' },
-    );
+    const payload = {
+      sub: 'isolated-federation-order', workspace_id: f.ws.id,
+      iss: brigadeIssuer, aud: 'project-ops', act: { client_id: 'meeting-ops' },
+    };
+    const credential = signMachine(payload);
     try {
       config.set('PROJECT_OPS_FEDERATION_ACTORS', 'meeting-ops');
       expect(
@@ -775,6 +821,17 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
             .send({ items: [] })
         ).status,
       ).toBe(201);
+      for (const patch of [
+        { act: { client_id: 'unknown-service' } },
+        { workspace_id: undefined },
+      ]) {
+        expect((await request(app.getHttpServer()).post('/triage/ingest')
+          .set('Authorization', 'Bearer ' + signMachine({ ...payload, ...patch }))
+          .set('X-Workspace-Id', f.ws.id).send({ items: [] })).status).toBe(403);
+      }
+      expect((await request(app.getHttpServer()).post('/triage/ingest')
+        .set('Authorization', 'Bearer ' + signMachine({ ...payload, aud: 'another-app' }))
+        .send({ items: [] })).status).toBe(401);
       config.set('PROJECT_OPS_FEDERATION_ACTORS', '');
       expect(
         (
@@ -785,7 +842,6 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
         ).status,
       ).toBe(403);
     } finally {
-      identity.mockRestore();
       config.set('PROJECT_OPS_FEDERATION_ACTORS', '');
     }
   });
