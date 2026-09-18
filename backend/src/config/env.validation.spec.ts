@@ -114,9 +114,9 @@ describe('validateEnv', () => {
   it.each(['abc', '0', '-1', '12.5', '0x10', '1e30'])(
     'rejects invalid HEALTH_MEMORY_HEAP_MB value %p',
     (value) => {
-      expect(() =>
-        validateEnv({ ...baseProd, HEALTH_MEMORY_HEAP_MB: value }),
-      ).toThrow(/HEALTH_MEMORY_HEAP_MB/);
+      expect(() => validateEnv({ ...baseProd, HEALTH_MEMORY_HEAP_MB: value })).toThrow(
+        /HEALTH_MEMORY_HEAP_MB/,
+      );
     },
   );
 });
