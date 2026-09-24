@@ -114,6 +114,13 @@ export class EnvironmentVariables {
   @IsBoolean()
   KEYCLOAK_ENFORCE_AUDIENCE?: boolean;
 
+  // --- Keycloak realm token lifetime fence (optional, defaults to 24 hours). ---
+  @IsOptional()
+  @Transform(toIntStrict)
+  @IsInt()
+  @Min(0)
+  KEYCLOAK_MAX_TOKEN_LIFETIME_SECONDS?: number;
+
   // --- Tenancy master switch (item 2) — optional, type-checked. ---
   @IsOptional()
   @Transform(toBool)

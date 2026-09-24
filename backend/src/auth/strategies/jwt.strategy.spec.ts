@@ -168,12 +168,19 @@ describe('JwtStrategy Keycloak realm audience binding', () => {
     ...overrides,
   });
 
-  const kcPayload = (claims: { azp?: unknown; aud?: unknown }): JwtPayload & { iss: string } => ({
+  const kcPayload = (claims: {
+    azp?: unknown;
+    aud?: unknown;
+    iat?: unknown;
+    exp?: unknown;
+  }): JwtPayload & { iss: string } => ({
     sub: 'aaron-uuid',
     email: 'aaron@example.com',
     role: 'ADMIN',
     username: 'aaron',
     iss: REALM_ISS,
+    iat: 1_000,
+    exp: 1_900,
     ...claims,
   });
 
@@ -243,6 +250,46 @@ describe('JwtStrategy Keycloak realm audience binding', () => {
     expect(JwtStrategy.keycloakAudienceMatches(['a', 'project-ops'], 'b', expected)).toBe(true);
     expect(JwtStrategy.keycloakAudienceMatches('account', 'accounting-ops', expected)).toBe(false);
     expect(JwtStrategy.keycloakAudienceMatches(undefined, undefined, expected)).toBe(false);
+  });
+
+  it('accepts a normal 900-second realm token', async () => {
+    const strategy = makeStrategy(async () => fakeUser, kcConfig());
+    await expect(
+      strategy.validate(kcPayload({ azp: 'project-ops', aud: 'account', iat: 1_000, exp: 1_900 })),
+    ).resolves.toEqual(fakeUser);
+  });
+
+  it('rejects a one-year realm token', async () => {
+    const validate = jest.fn(async () => fakeUser);
+    const strategy = makeStrategy(
+      validate as unknown as AuthService['validateJwtPayload'],
+      kcConfig(),
+    );
+    await expect(
+      strategy.validate(
+        kcPayload({ azp: 'project-ops', aud: 'account', iat: 1_000, exp: 1_000 + 31_536_000 }),
+      ),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(validate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a realm token with no iat', async () => {
+    const strategy = makeStrategy(async () => fakeUser, kcConfig());
+    await expect(
+      strategy.validate(kcPayload({ azp: 'project-ops', aud: 'account', iat: undefined })),
+    ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('disables the realm lifetime check when configured to 0', async () => {
+    const strategy = makeStrategy(
+      async () => fakeUser,
+      kcConfig({ KEYCLOAK_MAX_TOKEN_LIFETIME_SECONDS: '0' }),
+    );
+    await expect(
+      strategy.validate(
+        kcPayload({ azp: 'project-ops', aud: 'account', iat: undefined, exp: undefined }),
+      ),
+    ).resolves.toEqual(fakeUser);
   });
 
   it('accepts a Keycloak client-credentials machine token whose azp is on PROJECT_OPS_FEDERATION_ACTORS', async () => {
