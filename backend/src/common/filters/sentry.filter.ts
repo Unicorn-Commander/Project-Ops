@@ -50,6 +50,13 @@ export class SentryFilter extends BaseExceptionFilter implements ExceptionFilter
       exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
 
     if (status >= 500) {
+      const requestId =
+        (req as any)?.id ?? (req as any)?.requestId ?? (req as any)?.headers?.['x-request-id'];
+      const message = exception instanceof Error ? exception.message : 'Unknown exception';
+      this.logger.error(
+        `${req?.method ?? 'UNKNOWN'} ${req?.originalUrl ?? req?.url ?? 'UNKNOWN'} ${status} - ${message}${requestId ? ` requestId=${requestId}` : ''}`,
+        exception instanceof Error ? exception.stack : undefined,
+      );
       Sentry.withScope((scope) => {
         scope.setTag('http.method', req?.method);
         scope.setTag('http.url', req?.originalUrl ?? req?.url);

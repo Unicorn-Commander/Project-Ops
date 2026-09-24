@@ -200,6 +200,7 @@ export class TriageService {
   private async getProjectIndex(
     tx: WorkspaceTxClient,
     workspaceId: string,
+    embed: (texts: string[]) => Promise<number[][]> = (texts) => this.embed(texts),
   ): Promise<ProjIndexEntry[]> {
     const cached = this.projIndexByWorkspace.get(workspaceId);
     if (cached && Date.now() - cached.at < TriageService.INDEX_TTL_MS) {
@@ -219,7 +220,7 @@ export class TriageService {
           .replace(/\s+/g, ' ')
           .slice(0, 500)}`,
     );
-    const vecs = texts.length ? await this.embed(texts) : [];
+    const vecs = texts.length ? await embed(texts) : [];
     const entries: ProjIndexEntry[] = rows.map((r, i) => ({
       id: r.id,
       number: r.projectNumber,
@@ -259,13 +260,33 @@ export class TriageService {
     opts?: { federationActor?: string | null },
   ) {
     if (!opts?.federationActor) await this.workspaceContext.assertCanWrite(user, workspaceId);
-    if (!items?.length) return { created: 0, skipped: 0, proposals: [] as any[] };
+    this.logger.log(`triage: ingest start count=${items?.length ?? 0}`);
+    if (!items?.length) {
+      this.logger.log('triage: ingest finish created=0 deduped=0 skipped=0');
+      return { created: 0, skipped: 0, proposals: [] as any[] };
+    }
 
     const ingest = async (tx: WorkspaceTxClient) => {
-      const index = await this.getProjectIndex(tx, workspaceId);
-      const itemVecs = await this.embed(items.map((it) => it.text));
+      let embeddingDegraded = false;
+      const safeEmbed = async (texts: string[]) => {
+        try {
+          return await this.embed(texts);
+        } catch (e) {
+          if (!embeddingDegraded) {
+            embeddingDegraded = true;
+            this.logger.warn(
+              `triage: embeddings degraded host=${this.embedUrl} error=${(e as Error).message}`,
+            );
+          }
+          return texts.map(() => [] as number[]);
+        }
+      };
+
+      const index = await this.getProjectIndex(tx, workspaceId, safeEmbed);
+      const itemVecs = await safeEmbed(items.map((it) => it.text));
       const created: any[] = [];
       let skipped = 0;
+      let deduped = 0;
 
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
@@ -297,6 +318,7 @@ export class TriageService {
           );
           order = rr.map((r) => scored[r.index].p);
         } catch {
+          this.logger.warn(`triage: rerank degraded host=${this.rerankUrl} item=${i}`);
           order = scored.slice(0, 4).map((s) => s.p);
         }
 
@@ -310,8 +332,12 @@ export class TriageService {
         try {
           decision = await this.qwenDecide(userMsg);
         } catch (e) {
-          this.logger.warn(`triage qwen failed for item ${i}: ${(e as Error).message}`);
+          this.logger.warn(
+            `triage: qwen degraded host=${this.qwenUrl} item=${i} error=${(e as Error).message}`,
+          );
         }
+
+        if (decision?.dup_of_existing) deduped++;
 
         const keep = decision ? decision.keep !== false : true;
         const projNumber: string | null =
@@ -346,7 +372,7 @@ export class TriageService {
       }
 
       this.logger.log(
-        `triage: ${created.length} proposals (${skipped} skipped) user=${user.id} ws=${workspaceId}`,
+        `triage: ingest finish created=${created.length} deduped=${deduped} skipped=${skipped}`,
       );
       return { created: created.length, skipped, proposals: created };
     };
