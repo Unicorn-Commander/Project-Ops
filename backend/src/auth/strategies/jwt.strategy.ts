@@ -39,6 +39,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   private readonly brigadeExpectedAudience: string;
   private readonly keycloakEnforceAudience: boolean;
   private readonly keycloakExpectedAudiences: Set<string>;
+  private readonly keycloakMaxTokenLifetimeSeconds: number;
 
   constructor(
     configService: ConfigService,
@@ -66,6 +67,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       true,
     );
     const keycloakExpectedAudiences = JwtStrategy.buildKeycloakExpectedAudiences(configService);
+    const keycloakMaxTokenLifetimeSeconds = JwtStrategy.readMaxTokenLifetime(
+      configService.get<string>('KEYCLOAK_MAX_TOKEN_LIFETIME_SECONDS'),
+    );
 
     let jwks: JwksClient | undefined;
     if (realmJwksUri) {
@@ -137,6 +141,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     this.brigadeExpectedAudience = brigadeExpectedAudience;
     this.keycloakEnforceAudience = keycloakEnforceAudience;
     this.keycloakExpectedAudiences = keycloakExpectedAudiences;
+    this.keycloakMaxTokenLifetimeSeconds = keycloakMaxTokenLifetimeSeconds;
 
     if (realmJwksUri) {
       this.logger.log(`Keycloak realm JWT validation enabled via ${realmJwksUri}`);
@@ -224,6 +229,24 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
    * in Keycloak (a dedicated audience mapper or the client's own scope); this
    * check passes for that layout too.
    */
+  private static readMaxTokenLifetime(value: string | undefined): number {
+    if (value == null || value.trim() === '') return 86400;
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : 86400;
+  }
+
+  /** Return false for a missing timestamp unless the lifetime check is disabled. */
+  static keycloakTokenLifetimeWithinLimit(
+    iat: unknown,
+    exp: unknown,
+    maxLifetimeSeconds: number,
+  ): boolean {
+    if (maxLifetimeSeconds === 0) return true;
+    if (typeof iat !== 'number' || !Number.isFinite(iat)) return false;
+    if (typeof exp !== 'number' || !Number.isFinite(exp)) return false;
+    return exp - iat <= maxLifetimeSeconds;
+  }
+
   static keycloakAudienceMatches(aud: unknown, azp: unknown, expected: Set<string>): boolean {
     if (typeof azp === 'string' && expected.has(azp)) return true;
     if (typeof aud === 'string' && expected.has(aud)) return true;
@@ -299,12 +322,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         // bind the token to THIS app by its `azp`/`aud` — otherwise a token
         // minted for a sibling client in the same realm would be accepted
         // (cross-app confused-deputy). Gated by KEYCLOAK_ENFORCE_AUDIENCE.
-        this.keycloakEnforceAudience &&
         typeof issuer === 'string' &&
         this.realmIssuer != null &&
         issuer === this.realmIssuer
       ) {
         if (
+          this.keycloakEnforceAudience &&
           !JwtStrategy.keycloakAudienceMatches(
             payload?.aud,
             payload?.azp,
@@ -315,6 +338,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
             `Rejected Keycloak realm token: azp=${JSON.stringify(payload?.azp)} aud=${JSON.stringify(payload?.aud)} matches none of [${[...this.keycloakExpectedAudiences].join(', ')}]`,
           );
           throw new UnauthorizedException('Token is not authorized for project-ops');
+        }
+        if (
+          !JwtStrategy.keycloakTokenLifetimeWithinLimit(
+            payload?.iat,
+            payload?.exp,
+            this.keycloakMaxTokenLifetimeSeconds,
+          )
+        ) {
+          this.logger.warn(
+            `Rejected Keycloak realm token: azp=${JSON.stringify(payload?.azp)} sub=${JSON.stringify(payload?.sub)} iat=${JSON.stringify(payload?.iat)} exp=${JSON.stringify(payload?.exp)} exceeds KEYCLOAK_MAX_TOKEN_LIFETIME_SECONDS=${this.keycloakMaxTokenLifetimeSeconds}`,
+          );
+          throw new UnauthorizedException('Keycloak token lifetime is not allowed');
         }
       }
 
