@@ -12,7 +12,7 @@ import { publicMcpUserPayload } from '../common/serialization/public-user';
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { AgentVia, User } from '@prisma/client';
+import { AgentVia, TaskPriority, TaskStatus, TaskType, User } from '@prisma/client';
 import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
 import { MinioService } from '../documents/minio.service';
@@ -40,6 +40,18 @@ import { WorkspacesService } from '../workspaces/workspaces.service';
 import { AgentEventsService } from '../agents/agent-events.service';
 import { deriveToolTarget, McpActorIdentity, resolveMcpActor } from '../agents/agent-capture.util';
 import { recordMcpToolCall } from './mcp.metrics';
+
+const TASK_TYPE_VALUES = Object.values(TaskType) as [TaskType, ...TaskType[]];
+const TASK_PRIORITY_VALUES = Object.values(TaskPriority) as [TaskPriority, ...TaskPriority[]];
+const TASK_STATUS_VALUES = Object.values(TaskStatus) as [TaskStatus, ...TaskStatus[]];
+
+// Keep the historical case-forgiving MCP input while validating against the
+// generated Prisma enum values before a tool reaches Prisma.
+const taskEnum = <T extends string>(values: [T, ...T[]]) =>
+  z.preprocess(
+    (value) => (typeof value === 'string' ? value.trim().toUpperCase() : value),
+    z.enum(values),
+  );
 
 @Injectable()
 export class McpService {
@@ -275,9 +287,16 @@ export class McpService {
         } catch (err) {
           const durationMs = Date.now() - startedAt;
           recordMcpToolCall(name, 'error', durationMs);
+          const safeMessage = sanitizePrismaError(err);
           this.logger.warn(
-            `MCP tool=${name} status=error durationMs=${durationMs} err=${(err as Error).message}`,
+            `MCP tool=${name} status=error durationMs=${durationMs} err=${safeMessage ?? (err as Error).message}`,
           );
+          if (safeMessage) {
+            return {
+              isError: true,
+              content: [{ type: 'text' as const, text: JSON.stringify({ error: safeMessage }) }],
+            };
+          }
           throw err;
         }
       };
@@ -357,9 +376,9 @@ export class McpService {
         description:
           'Return tasks assigned to the calling user, sorted by due date. ' +
           "Optional 'status' filters by TaskStatus " +
-          '(PENDING / IN_PROGRESS / WAITING_FOR_CLIENT / COMPLETED / CANCELLED).',
+          `(TaskStatus: ${TASK_STATUS_VALUES.join(' / ')}).`,
         inputSchema: {
-          status: z.string().optional(),
+          status: taskEnum(TASK_STATUS_VALUES).optional(),
           limit: z.number().int().min(1).max(100).optional(),
         },
       },
@@ -396,15 +415,15 @@ export class McpService {
           'human project number). Window (explicit): offset/limit pagination — ' +
           'limit defaults to 25 (max 100), offset defaults to 0; ordered by ' +
           'priority desc, dueDate asc, createdAt desc. Optional filters: status ' +
-          '(TaskStatus: PENDING / IN_PROGRESS / WAITING_FOR_CLIENT / COMPLETED / ' +
-          'CANCELLED) and priority (LOW / MEDIUM / HIGH / URGENT). Response: ' +
+          `(TaskStatus: ${TASK_STATUS_VALUES.join(' / ')}) and priority ` +
+          `(${TASK_PRIORITY_VALUES.join(' / ')}). Response: ` +
           '{ project, tasks, count, total, offset, limit } where count is the ' +
           'page size and total is the full match count for paging.',
         inputSchema: {
           projectId: z.string().optional(),
           projectNumber: z.string().optional(),
-          status: z.string().optional(),
-          priority: z.string().optional(),
+          status: taskEnum(TASK_STATUS_VALUES).optional(),
+          priority: taskEnum(TASK_PRIORITY_VALUES).optional(),
           limit: z.number().int().min(1).max(100).optional(),
           offset: z.number().int().min(0).optional(),
         },
@@ -686,6 +705,8 @@ export class McpService {
           'Patch a task. Required: taskId. Only fields passed are updated. ' +
           'projectId or projectNumber reparents the task to a different ' +
           'project the caller can see. CLIENT-role users cannot call this. ' +
+          `Allowed type values: ${TASK_TYPE_VALUES.join(' / ')}. ` +
+          `Allowed priority values: ${TASK_PRIORITY_VALUES.join(' / ')}. ` +
           'Optional customFields (object keyed by the workspace TASK custom-field ' +
           'key — validated + merged into metadata.customFields, preserving other ' +
           'metadata), recurrenceRule (RRULE subset; null clears it), and ' +
@@ -694,8 +715,8 @@ export class McpService {
           taskId: z.string().min(1),
           title: z.string().min(1).max(200).optional(),
           description: z.string().optional(),
-          type: z.string().optional(),
-          priority: z.string().optional(),
+          type: taskEnum(TASK_TYPE_VALUES).optional(),
+          priority: taskEnum(TASK_PRIORITY_VALUES).optional(),
           dueDate: z.string().nullable().optional(),
           assignedToId: z.string().optional(),
           projectId: z.string().optional(),
@@ -714,7 +735,8 @@ export class McpService {
         title: 'Create a task on a project',
         description:
           'Create a task on a project the caller can see. Identify the project ' +
-          'by projectId or projectNumber. Defaults: type OTHER, priority MEDIUM, ' +
+          `by projectId or projectNumber. Allowed type values: ${TASK_TYPE_VALUES.join(' / ')}. ` +
+          `Allowed priority values: ${TASK_PRIORITY_VALUES.join(' / ')}. Defaults: type OTHER, priority MEDIUM, ` +
           'assignee = caller. CLIENT-role users cannot call this. Optional ' +
           'parentTaskId creates a subtask under an existing task in the same ' +
           'project (parent must be visible in the workspace; cross-project ' +
@@ -728,8 +750,8 @@ export class McpService {
           projectNumber: z.string().optional(),
           title: z.string().min(1).max(200),
           description: z.string().optional(),
-          type: z.string().optional(),
-          priority: z.string().optional(),
+          type: taskEnum(TASK_TYPE_VALUES).optional(),
+          priority: taskEnum(TASK_PRIORITY_VALUES).optional(),
           dueDate: z.string().optional(),
           assignedToId: z.string().optional(),
           parentTaskId: z.string().min(1).optional(),
@@ -786,12 +808,11 @@ export class McpService {
       {
         title: 'Update a task status',
         description:
-          "Change a task's status. Status: PENDING / IN_PROGRESS / " +
-          'WAITING_FOR_CLIENT / COMPLETED / CANCELLED. Setting COMPLETED ' +
+          `Change a task's status. Allowed values: ${TASK_STATUS_VALUES.join(' / ')}. Setting COMPLETED ` +
           'also stamps completedAt.',
         inputSchema: {
           taskId: z.string().min(1),
-          status: z.string().min(1),
+          status: taskEnum(TASK_STATUS_VALUES),
         },
       },
       async (args: any) => wrap(await tools.updateTaskStatus(user, args)),
@@ -1482,6 +1503,15 @@ function wrap(payload: unknown) {
       },
     ],
   };
+}
+
+/** Never expose Prisma's generated query/invocation text over MCP. */
+function sanitizePrismaError(error: unknown): string | null {
+  const name = error && typeof error === 'object' ? (error as { name?: unknown }).name : undefined;
+  if (name === 'PrismaClientKnownRequestError' || name === 'PrismaClientValidationError') {
+    return 'invalid input';
+  }
+  return null;
 }
 
 /**

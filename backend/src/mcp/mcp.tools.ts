@@ -17,6 +17,7 @@ import {
   ProjectStatus,
   TaskPriority,
   TaskStatus,
+  TaskType,
   User,
   UserRole,
   WorkspaceRole,
@@ -190,6 +191,19 @@ export function normalizeTaskPriority(value?: string): TaskPriority | undefined 
     return normalized as TaskPriority;
   }
   throw new Error(`Invalid task priority "${value}". Valid values: ${valid.join(', ')}.`);
+}
+
+/** Coerce a task type to Prisma's enum while preserving case-forgiving MCP input. */
+export function normalizeTaskType(value?: string): TaskType | undefined {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return undefined;
+  }
+  const normalized = String(value).trim().toUpperCase();
+  const valid = Object.values(TaskType) as string[];
+  if (valid.includes(normalized)) {
+    return normalized as TaskType;
+  }
+  throw new Error(`Invalid task type "${value}". Valid values: ${valid.join(', ')}.`);
 }
 
 export class ProjectOpsTools {
@@ -1505,8 +1519,8 @@ export class ProjectOpsTools {
     const data: Prisma.TaskUpdateInput = {};
     if (args.title !== undefined) data.title = args.title;
     if (args.description !== undefined) data.description = args.description;
-    if (args.type !== undefined) data.type = args.type as any;
-    if (args.priority !== undefined) data.priority = args.priority as any;
+    if (args.type !== undefined) data.type = normalizeTaskType(args.type) as any;
+    if (args.priority !== undefined) data.priority = normalizeTaskPriority(args.priority) as any;
     if (args.dueDate !== undefined) {
       data.dueDate = args.dueDate ? new Date(args.dueDate) : null;
     }
@@ -1650,8 +1664,8 @@ export class ProjectOpsTools {
           projectId: project.id,
           title: args.title,
           description: args.description,
-          type: (args.type as any) ?? 'OTHER',
-          priority: (args.priority as any) ?? 'MEDIUM',
+          type: normalizeTaskType(args.type) ?? 'OTHER',
+          priority: normalizeTaskPriority(args.priority) ?? 'MEDIUM',
           dueDate: args.dueDate ? new Date(args.dueDate) : null,
           ...(parentTaskId ? { parentTaskId } : {}),
           ...(args.recurrenceRule !== undefined ? { recurrenceRule: args.recurrenceRule } : {}),
@@ -1833,8 +1847,8 @@ export class ProjectOpsTools {
       return tx.task.update({
         where: { id: found.id },
         data: {
-          status: args.status as any,
-          ...(args.status === 'COMPLETED' ? { completedAt: new Date() } : {}),
+          status: normalizeTaskStatus(args.status) as any,
+          ...(normalizeTaskStatus(args.status) === 'COMPLETED' ? { completedAt: new Date() } : {}),
         },
         select: { id: true, title: true, status: true, completedAt: true },
       });
