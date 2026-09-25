@@ -305,6 +305,8 @@ describe('JwtStrategy Keycloak realm audience binding', () => {
         azp: 'meeting-ops',
         aud: 'account',
         preferred_username: 'service-account-meeting-ops',
+        iat: 1_000,
+        exp: 1_900,
       } as any),
     ).resolves.toEqual(machineUser);
   });
@@ -333,6 +335,9 @@ describe('JwtStrategy Keycloak realm audience binding', () => {
         email: 'service-account-meeting-ops@magicunicorn.tech',
         clientHost: '10.10.0.11',
         clientAddress: '10.10.0.11',
+        // Real realm access tokens carry iat/exp (900 s lifespan on uchub).
+        iat: 1_000,
+        exp: 1_900,
       } as any),
     ).resolves.toEqual(machineUser);
   });
