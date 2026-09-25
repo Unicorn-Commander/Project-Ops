@@ -20,6 +20,7 @@ import {
   normalizeProjectStatus,
   normalizeTaskPriority,
   normalizeTaskStatus,
+  normalizeTaskType,
   withProjectQuote,
   CLIENT_MASKED_PROJECT_FIELDS,
 } from './mcp.tools';
@@ -719,6 +720,13 @@ describe('normalizeTaskStatus / normalizeTaskPriority — forgiving filters', ()
     );
     expect(() => normalizeTaskPriority('critical')).toThrow(
       /Invalid task priority "critical"\. Valid values: LOW, MEDIUM, HIGH, URGENT\./,
+    );
+  });
+
+  it('case-normalizes valid task types and rejects unknown values cleanly', () => {
+    expect(normalizeTaskType('review')).toBe('REVIEW');
+    expect(() => normalizeTaskType('DEPLOYMENT')).toThrow(
+      /Invalid task type "DEPLOYMENT"\. Valid values: TASK, MILESTONE, DELIVERABLE, REVIEW, MEETING, RESEARCH, OTHER\./,
     );
   });
 });

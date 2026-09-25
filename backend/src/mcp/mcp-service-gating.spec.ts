@@ -17,12 +17,14 @@
 
 // Replace the SDK server with a fake that records (name -> gated handler).
 const registered = new Map<string, (args: any) => Promise<any> | any>();
+const registeredSchemas = new Map<string, any>();
 jest.mock(
   '@modelcontextprotocol/sdk/server/mcp.js',
   () => ({
     McpServer: class {
-      registerTool(name: string, _schema: unknown, handler: (args: any) => any) {
+      registerTool(name: string, schema: unknown, handler: (args: any) => any) {
         registered.set(name, handler);
+        registeredSchemas.set(name, schema);
       }
     },
   }),
@@ -31,7 +33,9 @@ jest.mock(
 
 import { Logger } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import { z } from 'zod';
 import { McpService } from './mcp.service';
+import { ProjectOpsTools } from './mcp.tools';
 import { getMcpMetricsSnapshot, resetMcpMetricsForTests } from './mcp.metrics';
 
 /** Minimal user; the gate only reads identity for workspace resolution. */
@@ -82,6 +86,7 @@ function payload(result: any): any {
 describe('McpService tool gating (RBAC + workspace)', () => {
   beforeEach(() => {
     registered.clear();
+    registeredSchemas.clear();
     resetMcpMetricsForTests();
   });
 
@@ -94,6 +99,42 @@ describe('McpService tool gating (RBAC + workspace)', () => {
     const row = snap.tools.find((t) => t.tool === 'create_project');
     expect(row?.denied).toBe(1);
     expect(snap.totals.denied).toBeGreaterThanOrEqual(1);
+  });
+
+  it('validates task enum inputs at the MCP boundary and keeps lowercase values working', async () => {
+    const svc = makeService('ws-1');
+    await svc.createServerForUser(adminUser(), null, null, null);
+    const schema = z.object(registeredSchemas.get('create_task').inputSchema);
+
+    const invalid = schema.safeParse({ title: 't', type: 'DEPLOYMENT' });
+    expect(invalid.success).toBe(false);
+    expect(JSON.stringify(invalid.error)).not.toMatch(/prisma|invocation/i);
+
+    const valid = schema.safeParse({ title: 't', type: 'review', priority: 'high' });
+    expect(valid.success).toBe(true);
+    if (!valid.success) throw valid.error;
+    expect(valid.data.type).toBe('REVIEW');
+    expect(valid.data.priority).toBe('HIGH');
+  });
+
+  it('sanitizes Prisma errors at the shared MCP error boundary', async () => {
+    const original = ProjectOpsTools.prototype.getProject;
+    ProjectOpsTools.prototype.getProject = jest.fn().mockRejectedValue(
+      Object.assign(new Error('Invalid `prisma.task.create()` invocation with payload'), {
+        name: 'PrismaClientValidationError',
+      }),
+    ) as any;
+    try {
+      const svc = makeService('ws-1');
+      await svc.createServerForUser(adminUser(), null, null, null);
+      const result = await registered.get('get_project')!({ id: 'p1' });
+      const text = result.content[0].text;
+      expect(result.isError).toBe(true);
+      expect(text).toContain('invalid input');
+      expect(text).not.toMatch(/prisma|invocation/i);
+    } finally {
+      ProjectOpsTools.prototype.getProject = original;
+    }
   });
 
   it('JWT-auth (no granted scopes, no PAT workspace) — tools pass the gate', async () => {
