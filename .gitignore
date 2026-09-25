@@ -10,3 +10,8 @@ coverage/
 uploads/
 logs/
 *.tgz
+
+# Runtime secrets for the compose stack. Never commit; create it from infrastructure/docker/.env.example (setup.sh does this).
+infrastructure/docker/.env
+# Backups of it that operators take before a pull (e.g. .env.bak-untrack-20260925).
+infrastructure/docker/.env.bak*

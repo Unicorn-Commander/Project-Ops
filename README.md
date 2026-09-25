@@ -229,7 +229,7 @@ Health & diagnostics: `GET /api/v1/health` (liveness/readiness) and **`GET /api/
 | **Production** | [`projectops.unicorncommander.ai`](https://projectops.unicorncommander.ai) | Customer-facing |
 | **MU/UC internal** | [`projectops.magicunicorn.dev`](https://projectops.magicunicorn.dev) | Magic Unicorn / Unicorn Commander team (dogfood) |
 
-Both federate to the Keycloak `uchub` realm at `auth.unicorncommander.ai`. Each deployment carries brand-specific logo, theme, landing copy, and Keycloak client, wired through `infrastructure/docker/.env` — the same compose runs anywhere by changing `${DOMAIN}` / `${API_DOMAIN}` / `${STORAGE_DOMAIN}` and the client secret.
+Both federate to the Keycloak `uchub` realm at `auth.unicorncommander.ai`. Each deployment carries brand-specific logo, theme, landing copy, and Keycloak client, wired through `infrastructure/docker/.env` (not tracked in git: create it from `infrastructure/docker/.env.example`; `infrastructure/scripts/setup.sh` does this and generates the secrets) — the same compose runs anywhere by changing `${DOMAIN}` / `${API_DOMAIN}` / `${STORAGE_DOMAIN}` and the client secret.
 
 ## ⚡ Quick start
 
