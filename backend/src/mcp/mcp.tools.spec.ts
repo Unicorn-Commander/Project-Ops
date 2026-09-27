@@ -1603,8 +1603,9 @@ describe('ProjectOpsTools — document update/delete MCP parity', () => {
       expect.arrayContaining([
         {
           project: {
-            OR: [{ assignedToId: 'staff-1' }, { createdById: 'staff-1' }],
+            is: { OR: [{ assignedToId: 'staff-1' }, { createdById: 'staff-1' }] },
           },
+          projectId: { not: null },
         },
       ]),
     );

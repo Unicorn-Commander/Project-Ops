@@ -40,9 +40,9 @@ export class ClientPortalService {
    * existing workspace tx. Shared by every portal method so the contact lookup
    * and its dependent reads always run under the same GUC.
    */
-  private async requireContact(tx: WorkspaceTxClient, user: User) {
+  private async requireContact(tx: WorkspaceTxClient, user: User, workspaceId: string) {
     const contact = await tx.contact.findUnique({
-      where: { userId: user.id },
+      where: { userId: user.id, workspaceId, isActive: true, portalAccessEnabled: true },
     });
     if (!contact) {
       throw new NotFoundException('Contact profile not found');
@@ -56,9 +56,14 @@ export class ClientPortalService {
    * RLS scope; 403 when it resolves but is another contact's project (mirrors
    * getProjectDetails). Returns the project row for callers that need it.
    */
-  private async requireOwnedProject(tx: WorkspaceTxClient, contactId: string, projectId: string) {
+  private async requireOwnedProject(
+    tx: WorkspaceTxClient,
+    contactId: string,
+    projectId: string,
+    workspaceId: string,
+  ) {
     const project = await tx.project.findUnique({
-      where: { id: projectId },
+      where: { id: projectId, workspaceId },
     });
     if (!project) {
       throw new NotFoundException('Project not found');
@@ -75,7 +80,7 @@ export class ClientPortalService {
       async (tx) => {
         // Find the contact profile for this user
         const contact = await tx.contact.findUnique({
-          where: { userId: user.id },
+          where: { userId: user.id, workspaceId, isActive: true, portalAccessEnabled: true },
         });
 
         if (!contact) {
@@ -84,12 +89,12 @@ export class ClientPortalService {
 
         // Get projects count
         const projectsCount = await tx.project.count({
-          where: { contactId: contact.id },
+          where: { contactId: contact.id, workspaceId },
         });
 
         // Get recent projects (5 most recent)
         const recentProjects = await tx.project.findMany({
-          where: { contactId: contact.id },
+          where: { contactId: contact.id, workspaceId },
           take: 5,
           orderBy: { createdAt: 'desc' },
           include: {
@@ -103,8 +108,8 @@ export class ClientPortalService {
             },
             _count: {
               select: {
-                documents: true,
-                comments: true,
+                documents: { where: { workspaceId, isClientVisible: true, status: 'UPLOADED' } },
+                comments: { where: { workspaceId, isInternal: false } },
               },
             },
           },
@@ -113,6 +118,9 @@ export class ClientPortalService {
         // Get documents count
         const documentsCount = await tx.document.count({
           where: {
+            isClientVisible: true,
+            status: 'UPLOADED',
+            workspaceId,
             project: {
               contactId: contact.id,
             },
@@ -146,7 +154,7 @@ export class ClientPortalService {
       async (tx) => {
         // Find the contact profile for this user
         const contact = await tx.contact.findUnique({
-          where: { userId: user.id },
+          where: { userId: user.id, workspaceId, isActive: true, portalAccessEnabled: true },
         });
 
         if (!contact) {
@@ -154,7 +162,7 @@ export class ClientPortalService {
         }
 
         const projects = await tx.project.findMany({
-          where: { contactId: contact.id },
+          where: { contactId: contact.id, workspaceId },
           orderBy: { createdAt: 'desc' },
           include: {
             assignedTo: {
@@ -167,8 +175,8 @@ export class ClientPortalService {
             },
             _count: {
               select: {
-                documents: true,
-                comments: true,
+                documents: { where: { workspaceId, isClientVisible: true, status: 'UPLOADED' } },
+                comments: { where: { workspaceId, isInternal: false } },
               },
             },
           },
@@ -178,7 +186,7 @@ export class ClientPortalService {
           id: case_.id,
           projectNumber: case_.projectNumber,
           title: case_.title,
-          description: case_.description,
+          description: case_.clientDescription,
           status: case_.status,
           priority: case_.priority,
           dueDate: case_.dueDate,
@@ -205,7 +213,7 @@ export class ClientPortalService {
       async (tx) => {
         // Find the contact profile for this user
         const contact = await tx.contact.findUnique({
-          where: { userId: user.id },
+          where: { userId: user.id, workspaceId, isActive: true, portalAccessEnabled: true },
         });
 
         if (!contact) {
@@ -214,7 +222,7 @@ export class ClientPortalService {
 
         // Get the project with full details
         const case_ = await tx.project.findUnique({
-          where: { id: projectId },
+          where: { id: projectId, workspaceId },
           include: {
             assignedTo: {
               select: {
@@ -225,6 +233,7 @@ export class ClientPortalService {
               },
             },
             documents: {
+              where: { workspaceId, isClientVisible: true, status: 'UPLOADED' },
               orderBy: { uploadedAt: 'desc' },
               select: {
                 id: true,
@@ -243,7 +252,7 @@ export class ClientPortalService {
               },
             },
             comments: {
-              where: { isInternal: false }, // Only show non-internal comments to clients
+              where: { workspaceId, isInternal: false }, // Only show non-internal comments to clients
               orderBy: { createdAt: 'desc' },
               include: {
                 author: {
@@ -271,7 +280,7 @@ export class ClientPortalService {
           id: case_.id,
           projectNumber: case_.projectNumber,
           title: case_.title,
-          description: case_.description,
+          description: case_.clientDescription,
           status: case_.status,
           priority: case_.priority,
           dueDate: case_.dueDate,
@@ -306,8 +315,8 @@ export class ClientPortalService {
     const project = await this.workspaceContext.runForUser(
       user,
       async (tx) => {
-        const contact = await this.requireContact(tx, user);
-        return this.requireOwnedProject(tx, contact.id, projectId);
+        const contact = await this.requireContact(tx, user, workspaceId);
+        return this.requireOwnedProject(tx, contact.id, projectId, workspaceId);
       },
       workspaceId,
     );
@@ -322,7 +331,7 @@ export class ClientPortalService {
       async (tx) => {
         // Find the contact profile for this user
         const contact = await tx.contact.findUnique({
-          where: { userId: user.id },
+          where: { userId: user.id, workspaceId, isActive: true, portalAccessEnabled: true },
         });
 
         if (!contact) {
@@ -332,6 +341,9 @@ export class ClientPortalService {
         // Get all documents for projects belonging to this contact
         const documents = await tx.document.findMany({
           where: {
+            isClientVisible: true,
+            status: 'UPLOADED',
+            workspaceId,
             project: {
               contactId: contact.id,
             },
@@ -355,7 +367,29 @@ export class ClientPortalService {
           },
         });
 
-        return documents;
+        return documents.map(
+          ({
+            id,
+            fileName,
+            fileSize,
+            mimeType,
+            status,
+            description,
+            uploadedAt,
+            project,
+            uploadedBy,
+          }) => ({
+            id,
+            fileName,
+            fileSize,
+            mimeType,
+            status,
+            description,
+            uploadedAt,
+            project,
+            uploadedBy,
+          }),
+        );
       },
       workspaceId,
     );
@@ -382,11 +416,11 @@ export class ClientPortalService {
     return this.workspaceContext.runForUser(
       user,
       async (tx) => {
-        const contact = await this.requireContact(tx, user);
-        await this.requireOwnedProject(tx, contact.id, projectId);
+        const contact = await this.requireContact(tx, user, workspaceId);
+        await this.requireOwnedProject(tx, contact.id, projectId, workspaceId);
 
         const comments = await tx.comment.findMany({
-          where: { projectId, isInternal: false },
+          where: { workspaceId, projectId, isInternal: false },
           orderBy: { createdAt: 'desc' },
           take: clampLimit(take, 50),
           skip: clampOffset(skip),
@@ -418,8 +452,8 @@ export class ClientPortalService {
     const comment = await this.workspaceContext.runForUser(
       user,
       async (tx) => {
-        const contact = await this.requireContact(tx, user);
-        await this.requireOwnedProject(tx, contact.id, projectId);
+        const contact = await this.requireContact(tx, user, workspaceId);
+        await this.requireOwnedProject(tx, contact.id, projectId, workspaceId);
 
         return tx.comment.create({
           data: {
@@ -501,11 +535,12 @@ export class ClientPortalService {
     return this.workspaceContext.runForUser(
       user,
       async (tx) => {
-        const contact = await this.requireContact(tx, user);
+        const contact = await this.requireContact(tx, user, workspaceId);
 
         const projects = await tx.project.findMany({
           where: {
             contactId: contact.id,
+            workspaceId,
             // "Has an invoice" == a billing number was assigned OR an amount set.
             OR: [{ invoiceNumber: { not: null } }, { billingAmount: { not: null } }],
           },
@@ -523,8 +558,8 @@ export class ClientPortalService {
     return this.workspaceContext.runForUser(
       user,
       async (tx) => {
-        const contact = await this.requireContact(tx, user);
-        const project = await this.requireOwnedProject(tx, contact.id, projectId);
+        const contact = await this.requireContact(tx, user, workspaceId);
+        const project = await this.requireOwnedProject(tx, contact.id, projectId, workspaceId);
 
         if (!project.invoiceNumber && project.billingAmount == null) {
           // The project is the client's but has no billing data — there is no

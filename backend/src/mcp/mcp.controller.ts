@@ -17,7 +17,7 @@ import { Request, Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { McpService } from './mcp.service';
 import { THROTTLER_MCP } from '../config/throttler.config';
-import { User, PersonalAccessToken } from '@prisma/client';
+import { User, UserRole, PersonalAccessToken } from '@prisma/client';
 
 @ApiTags('mcp')
 @ApiBearerAuth()
@@ -47,6 +47,12 @@ export class McpController {
     const user = req.user as User | undefined;
     if (!user) {
       res.status(401).json({ error: 'unauthenticated' });
+      return;
+    }
+
+    // Generic agent tools expose internal working material; clients use the curated portal.
+    if (user.role === UserRole.CLIENT) {
+      res.status(403).json({ error: 'client_portal_required' });
       return;
     }
 

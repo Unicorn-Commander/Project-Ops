@@ -488,6 +488,7 @@ model Project {
   projectNumber String
   title         String
   description   String?
+  clientDescription String?
   status        ProjectStatus   @default(NEW)
   priority      ProjectPriority @default(MEDIUM)
   category      String?
@@ -581,6 +582,7 @@ model Document {
   mimeType     String
   s3Key        String         @unique
   s3Bucket     String
+  isClientVisible Boolean @default(false)
   status       DocumentStatus @default(PENDING)
   description  String?
   tags         String[]

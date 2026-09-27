@@ -34,6 +34,7 @@ import { Prisma, UserRole, ProjectStatus, ProjectPriority, User } from '@prisma/
  */
 @ApiTags('projects')
 @Controller('projects')
+@Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
 @UseGuards(JwtAuthGuard, RolesGuard, WorkspaceMembershipGuard)
 @ApiBearerAuth('JWT-auth')
 export class ProjectsController {
