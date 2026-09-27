@@ -10,7 +10,8 @@ import { ThrottlerModuleOptions } from '@nestjs/throttler';
  * defaults so routes don't need to escape the limiter wholesale, and give the
  * surfaces that genuinely differ their OWN named tier instead of "off".
  *
- * Tiers (all keyed per-client by IP via the default ThrottlerGuard tracker):
+ * Tiers (keyed by the verified PAT/user principal, or by a trusted client IP
+ * for unauthenticated requests, via PrincipalThrottlerGuard):
  *
  *   short  — the GLOBAL interactive default. 120 req / 60s (~2 rps sustained,
  *            with burst). Comfortable for a logged-in UI fanning out several
