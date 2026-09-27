@@ -121,6 +121,13 @@ export class EnvironmentVariables {
   @Min(0)
   KEYCLOAK_MAX_TOKEN_LIFETIME_SECONDS?: number;
 
+  // Optional comma-separated CIDRs for the immediate reverse-proxy peer. When
+  // unset, private/Docker and loopback ranges are trusted; forwarded headers
+  // from any other peer are ignored by the principal throttler.
+  @IsOptional()
+  @IsString()
+  TRUSTED_PROXY_CIDRS?: string;
+
   // --- Tenancy master switch (item 2) — optional, type-checked. ---
   @IsOptional()
   @Transform(toBool)

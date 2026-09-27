@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
@@ -10,6 +10,7 @@ import { THROTTLER_TIERS } from './config/throttler.config';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { WorkspaceMembershipGuard } from './common/workspace/workspace-membership.guard';
 import { MembershipService } from './common/workspace/membership.service';
+import { PrincipalThrottlerGuard } from './common/guards/principal-throttler.guard';
 
 // Core modules
 import { PrismaModule } from './prisma/prisma.module';
@@ -113,23 +114,24 @@ import { QuotesModule } from './quotes/quotes.module';
     // declaration order, BEFORE any controller/route guard
     // (`globalGuards.concat(scopedGuards)`).
     //
-    //   1. ThrottlerGuard            — cheapest gate first; reject floods before
-    //                                  we touch auth/DB.
-    //   2. JwtAuthGuard              — authenticate by default. Routes opt out
+    //   1. JwtAuthGuard              — authenticate by default. Routes opt out
     //                                  with @Public() (login, SSO, signup,
     //                                  health, version). Populates req.user so
-    //                                  the membership guard below can resolve.
+    //                                  the throttler and membership guard below
+    //                                  can resolve the verified principal.
+    //   2. PrincipalThrottlerGuard  — rate-limit by PAT/user when authenticated,
+    //                                  otherwise by a trusted client IP.
     //   3. WorkspaceMembershipGuard  — membership-gate by default so a new
     //                                  controller can't silently skip the 403.
     //                                  Routes opt out with @SkipWorkspaceMembership().
     //                                  Inert (never throws) while tenancy is OFF.
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: JwtAuthGuard,
     },
     {
       provide: APP_GUARD,
-      useClass: JwtAuthGuard,
+      useClass: PrincipalThrottlerGuard,
     },
     {
       provide: APP_GUARD,

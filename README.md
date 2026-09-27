@@ -292,6 +292,17 @@ Resolution is exact-match → domain-wildcard → deny. The email + password for
 
 The full set is indexed in [`docs/README.md`](docs/README.md).
 
+### Rate limiting
+
+The backend keeps the `short`, `long`, and `mcp` throttling tiers. Authenticated
+requests are bucketed by the verified PAT id or JWT user/Keycloak subject;
+unauthenticated requests use `CF-Connecting-IP` or the first
+`X-Forwarded-For` value only when the immediate peer is a trusted proxy.
+
+`TRUSTED_PROXY_CIDRS` optionally overrides the default private/Docker and
+loopback proxy ranges with a comma-separated CIDR list. Do not set it to an
+unbounded range: forwarded headers from an untrusted peer are ignored.
+
 | Doc | What |
 |---|---|
 | [`docs/FEATURES.md`](docs/FEATURES.md) | The complete, user-facing feature guide |
