@@ -47,4 +47,14 @@ export class CreateBillableDraftDto {
   @IsBoolean()
   @IsOptional()
   autoSend?: boolean;
+
+  @ApiProperty({
+    required: false,
+    default: false,
+    description:
+      'Create the draft, then issue it (post the journal). A preview leaves this false and does not stamp the fee as invoiced.',
+  })
+  @IsBoolean()
+  @IsOptional()
+  issue?: boolean;
 }

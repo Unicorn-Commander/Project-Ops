@@ -47,6 +47,7 @@ interface Project {
   assignedToId: string | null;
   invoiceNumber?: string | null;
   billingAmount?: number | null;
+  flatFeeAmount?: number | null;
   amountPaid?: number | null;
   paymentStatus?: string | null;
   billingDate?: string | null;
@@ -107,6 +108,7 @@ export function EditProjectModal({
     dueDate: "",
     invoiceNumber: "",
     billingAmount: null as number | null,
+    flatFeeAmount: null as number | null,
     amountPaid: null as number | null,
     paymentStatus: "UNPAID",
     billingDate: "",
@@ -172,6 +174,7 @@ export function EditProjectModal({
           : "",
         invoiceNumber: projectData.invoiceNumber || "",
         billingAmount: projectData.billingAmount || null,
+        flatFeeAmount: projectData.flatFeeAmount || null,
         amountPaid: projectData.amountPaid || null,
         paymentStatus: projectData.paymentStatus || "UNPAID",
         billingDate: projectData.billingDate
@@ -642,6 +645,29 @@ export function EditProjectModal({
                     setFormData({
                       ...formData,
                       billingAmount: e.target.value ? Number(e.target.value) : null
+                    })
+                  }
+                  placeholder="2500.00"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="flatFeeAmount">
+                  Flat fee
+                  <FieldHint learnMore={{ category: "time-billing", article: "billing" }}>
+                    A fixed price for the whole project, billed once. A task
+                    with its own flat fee is billed instead of this.
+                  </FieldHint>
+                </Label>
+                <Input
+                  id="flatFeeAmount"
+                  type="number"
+                  step="0.01"
+                  value={formData.flatFeeAmount ?? ""}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      flatFeeAmount: e.target.value ? Number(e.target.value) : null,
                     })
                   }
                   placeholder="2500.00"

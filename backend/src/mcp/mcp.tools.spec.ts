@@ -584,14 +584,13 @@ describe('ProjectOpsTools — agent-surface gap tools', () => {
     );
   });
 
-  it('issue_invoice delegates to createBillableDraft with autoSend=true', async () => {
+  it('issue_invoice delegates to createBillableDraft with issue=true', async () => {
     const { tools, rollup } = makeGapTools();
     await tools.issueInvoice(admin, { projectId: 'p-1', groupBy: 'TASK' });
     expect(rollup.createBillableDraft).toHaveBeenCalledTimes(1);
-    // (workspaceId, user, args, ctx) — args must carry autoSend:true.
     const billArgs = rollup.createBillableDraft.mock.calls[0] as any[];
     expect(billArgs[2]).toEqual(
-      expect.objectContaining({ projectId: 'p-1', groupBy: 'TASK', autoSend: true }),
+      expect.objectContaining({ projectId: 'p-1', groupBy: 'TASK', issue: true }),
     );
   });
 

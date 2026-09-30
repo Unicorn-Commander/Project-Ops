@@ -360,6 +360,11 @@ export class QuotesFederationService {
       quoteSummary: buildQuoteSummaryCache(dto, currency),
     } as unknown as Prisma.InputJsonObject;
 
+    const taskLines = selectTaskLines(dto.lines);
+    const linePriced = taskLines.some(
+      (line) => line.amount_cents != null && line.amount_cents > 0,
+    );
+
     const project = await tx.project.create({
       data: {
         workspaceId,
@@ -371,6 +376,11 @@ export class QuotesFederationService {
         createdById: creatorId,
         billingAmount: committed,
         budgetAmount: committed,
+        // Task fees win. A project flat fee on top of them would bill the total twice.
+        ...(linePriced ? {} : { flatFeeAmount: committed }),
+        ...(dto.customer_ops_customer_id
+          ? { customerOpsCustomerId: dto.customer_ops_customer_id }
+          : {}),
         defaultBillRate: billRate,
         billingNotes: buildBillingNotes(dto.number, dto.version, dto.billing.schedule_text),
         metadata,
@@ -379,7 +389,7 @@ export class QuotesFederationService {
 
     // One task per accepted one_time / milestone line, in position order (A16).
     const tasks: Task[] = [];
-    for (const line of selectTaskLines(dto.lines)) {
+    for (const line of taskLines) {
       const task = await tx.task.create({
         data: {
           workspaceId,
@@ -390,6 +400,9 @@ export class QuotesFederationService {
           status: TaskStatus.PENDING,
           priority: TaskPriority.MEDIUM,
           estimatedHours: line.estimated_hours ?? null,
+          ...(line.amount_cents != null && line.amount_cents > 0
+            ? { fixedAmount: centsToAmountString(line.amount_cents) }
+            : {}),
           createdById: creatorId,
           metadata: buildTaskQuoteMetadata(dto, line) as unknown as Prisma.InputJsonObject,
         },

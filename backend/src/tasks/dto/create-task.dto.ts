@@ -117,6 +117,17 @@ export class CreateTaskDto {
 
   @ApiProperty({
     description:
+      'Flat fee for this task, in currency units. Billed as quantity 1. Leave empty for hourly work. Cannot change after the fee is invoiced.',
+    example: 2500,
+    required: false,
+  })
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @IsOptional()
+  fixedAmount?: number;
+
+  @ApiProperty({
+    description:
       'Custom-field VALUES for this task, keyed by the workspace TASK field key. Validated + normalized against the workspace custom-field definitions, then merged into metadata.customFields.',
     example: { priority_score: 8, client_tier: 'gold' },
     required: false,

@@ -73,6 +73,7 @@ export function EditTaskModal({
   const [hasCustomFields, setHasCustomFields] = useState(false);
   const [recurrenceRule, setRecurrenceRule] = useState("");
   const [estimatedHours, setEstimatedHours] = useState("");
+  const [fixedAmount, setFixedAmount] = useState("");
   const { toast } = useToast();
 
   const {
@@ -109,6 +110,11 @@ export function EditTaskModal({
           ? ""
           : String(task.estimatedHours),
       );
+      setFixedAmount(
+        task.fixedAmount === null || task.fixedAmount === undefined
+          ? ""
+          : String(task.fixedAmount),
+      );
       fetchUsers();
     }
   }, [isOpen, task, reset]);
@@ -140,6 +146,7 @@ export function EditTaskModal({
         recurrenceRule: recurrenceRule,
         estimatedHours:
           estimatedHours.trim() !== "" ? Number(estimatedHours) : undefined,
+        fixedAmount: fixedAmount.trim() !== "" ? Number(fixedAmount) : null,
         customFields: customFields,
       });
 
@@ -379,6 +386,25 @@ export function EditTaskModal({
                     placeholder="e.g. 4.5"
                     value={estimatedHours}
                     onChange={(e) => setEstimatedHours(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-fixedAmount">
+                    Flat fee
+                    <FieldHint learnMore={{ category: "time-billing", article: "billing" }}>
+                      A fixed price for this task, billed once. Clear it only
+                      before the fee has been invoiced.
+                    </FieldHint>
+                  </Label>
+                  <Input
+                    id="edit-fixedAmount"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="e.g. 2500.00"
+                    value={fixedAmount}
+                    onChange={(e) => setFixedAmount(e.target.value)}
+                    disabled={!!task?.invoicedAt}
                   />
                 </div>
               </div>

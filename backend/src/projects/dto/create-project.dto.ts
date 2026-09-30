@@ -7,6 +7,7 @@ import {
   IsDateString,
   IsObject,
   IsNumber,
+  Min,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { ProjectStatus, ProjectPriority, PaymentStatus } from '@prisma/client';
@@ -88,6 +89,28 @@ export class CreateProjectDto {
   @IsOptional()
   @Type(() => Number)
   billingAmount?: number;
+
+  @ApiProperty({
+    example: 2500,
+    required: false,
+    description:
+      'Flat fee for the whole project. Billed once, due on receipt, when no task on the project has its own flat fee. Distinct from billingAmount, which mirrors the last invoice total.',
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  @Type(() => Number)
+  flatFeeAmount?: number;
+
+  @ApiProperty({ required: false, description: 'Customer-Ops customer id this project bills.' })
+  @IsString()
+  @IsOptional()
+  customerOpsCustomerId?: string;
+
+  @ApiProperty({ required: false, description: 'Contact-Ops contact id for the billed party.' })
+  @IsString()
+  @IsOptional()
+  contactOpsContactId?: string;
 
   @ApiProperty({ example: 0.0, required: false })
   @IsNumber()

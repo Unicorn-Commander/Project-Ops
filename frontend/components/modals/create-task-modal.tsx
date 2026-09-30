@@ -89,6 +89,7 @@ export function CreateTaskModal({
   const [hasCustomFields, setHasCustomFields] = useState(false);
   const [recurrenceRule, setRecurrenceRule] = useState("");
   const [estimatedHours, setEstimatedHours] = useState("");
+  const [fixedAmount, setFixedAmount] = useState("");
   const { toast } = useToast();
 
   const {
@@ -180,6 +181,7 @@ export function CreateTaskModal({
         recurrenceRule: recurrenceRule || undefined,
         estimatedHours:
           estimatedHours.trim() !== "" ? Number(estimatedHours) : undefined,
+        fixedAmount: fixedAmount.trim() !== "" ? Number(fixedAmount) : undefined,
         customFields: Object.keys(customFields).length ? customFields : undefined,
       });
 
@@ -462,6 +464,24 @@ export function CreateTaskModal({
                     placeholder="e.g. 4.5"
                     value={estimatedHours}
                     onChange={(e) => setEstimatedHours(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="fixedAmount">
+                    Flat fee
+                    <FieldHint learnMore={{ category: "time-billing", article: "billing" }}>
+                      A fixed price for this task. Billed once, as quantity 1.
+                      Leave it empty to bill the hours instead.
+                    </FieldHint>
+                  </Label>
+                  <Input
+                    id="fixedAmount"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="e.g. 2500.00"
+                    value={fixedAmount}
+                    onChange={(e) => setFixedAmount(e.target.value)}
                   />
                 </div>
               </div>

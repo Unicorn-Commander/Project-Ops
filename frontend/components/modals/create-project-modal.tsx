@@ -101,6 +101,7 @@ const createProjectSchema = z.object({
     .positive("Amount must be positive")
     .optional()
     .nullable(),
+  flatFeeAmount: z.number().min(0, "Flat fee cannot be negative").optional().nullable(),
   amountPaid: z
     .number()
     .min(0, "Amount paid cannot be negative")
@@ -176,6 +177,7 @@ export function CreateProjectModal({
       description: "",
       invoiceNumber: "",
       billingAmount: null,
+      flatFeeAmount: null,
       amountPaid: null,
       paymentStatus: "UNPAID",
       billingDate: "",
@@ -296,6 +298,7 @@ export function CreateProjectModal({
         // Billing fields
         invoiceNumber: data.invoiceNumber || undefined,
         billingAmount: data.billingAmount || undefined,
+        flatFeeAmount: data.flatFeeAmount || undefined,
         amountPaid: data.amountPaid || undefined,
         paymentStatus: data.paymentStatus || undefined,
         billingDate: data.billingDate || undefined,
@@ -758,6 +761,23 @@ export function CreateProjectModal({
                     {errors.billingAmount.message}
                   </p>
                 )}
+              </div>
+
+              <div>
+                <Label htmlFor="flatFeeAmount">
+                  Flat fee
+                  <FieldHint learnMore={{ category: "time-billing", article: "billing" }}>
+                    A fixed price for the whole project, billed once. Leave it
+                    empty to bill hours, or set a flat fee on a task instead.
+                  </FieldHint>
+                </Label>
+                <Input
+                  id="flatFeeAmount"
+                  type="number"
+                  step="0.01"
+                  placeholder="2500.00"
+                  {...register("flatFeeAmount", { valueAsNumber: true })}
+                />
               </div>
 
               {/* Amount Paid */}

@@ -97,6 +97,11 @@ export class HttpAccountingOpsClient extends AccountingOpsPort {
       ...(input.poNumber ? { po_number: input.poNumber } : {}),
       ...(input.notes ? { notes: input.notes } : {}),
       auto_send: input.autoSend ?? false,
+      post_journal: input.postJournal ?? false,
+      ...(input.customerOpsCustomerId
+        ? { customer_ops_customer_id: input.customerOpsCustomerId }
+        : {}),
+      ...(input.presentation ? { presentation: input.presentation } : {}),
     };
 
     let res: Response;
@@ -141,6 +146,50 @@ export class HttpAccountingOpsClient extends AccountingOpsPort {
     return { ok: true, invoice: this.mapInvoice(data) };
   }
 
+  async issueInvoice(invoiceId: string, ctx: AoCallContext): Promise<AoCreateResult> {
+    if (!this.isLive()) {
+      return { ok: false, reason: 'DISABLED', message: 'Live Accounting-Ops invoicing is not enabled.' };
+    }
+    if (!ctx.bearerToken) {
+      return {
+        ok: false,
+        reason: 'NOT_ENTITLED',
+        message: 'No bearer token available to authenticate the Accounting-Ops call.',
+      };
+    }
+    if (!invoiceId) {
+      return { ok: false, reason: 'ERROR', message: 'Accounting-Ops did not return an invoice id.' };
+    }
+    const url = `${this.baseUrl}/api/workspaces/${this.aoWorkspaceId}/invoices/${invoiceId}/issue`;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${ctx.bearerToken}`,
+          'X-Workspace-Id': this.aoWorkspaceId as string,
+        },
+        body: JSON.stringify({ send_email: true }),
+      });
+    } catch (err) {
+      this.logger.error(`Accounting-Ops unreachable at ${url}: ${(err as Error).message}`);
+      return { ok: false, reason: 'UNREACHABLE', message: 'Accounting-Ops is unreachable right now.' };
+    }
+    if (res.status === 401 || res.status === 403) {
+      return {
+        ok: false,
+        reason: 'NOT_ENTITLED',
+        message: 'Accounting-Ops declined issuing the invoice (not entitled or insufficient role).',
+      };
+    }
+    if (!res.ok) {
+      return { ok: false, reason: 'ERROR', message: `Accounting-Ops error ${res.status}.` };
+    }
+    const data: any = await res.json().catch(() => ({}));
+    return { ok: true, invoice: this.mapInvoice(data) };
+  }
+
   async getInvoice(invoiceId: string, ctx: AoCallContext): Promise<AoInvoice | null> {
     if (!this.baseUrl || !this.aoWorkspaceId || !ctx.bearerToken) return null;
     const url = `${this.baseUrl}/api/workspaces/${this.aoWorkspaceId}/invoices/${invoiceId}`;
@@ -169,6 +218,9 @@ export class HttpAccountingOpsClient extends AccountingOpsPort {
       balanceDue: data.balance_due != null ? String(data.balance_due) : null,
       externalRef: data.external_ref ?? null,
       pdfUrl: data.pdf_url ?? null,
+      journalEntryId: data.journal_entry_id ?? null,
+      hostedPayUrl: data.hosted_pay_url ?? null,
+      publicUrl: data.public_url ?? null,
       raw: data,
     };
   }

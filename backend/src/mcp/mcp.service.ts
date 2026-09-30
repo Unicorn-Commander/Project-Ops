@@ -710,7 +710,8 @@ export class McpService {
           'Optional customFields (object keyed by the workspace TASK custom-field ' +
           'key — validated + merged into metadata.customFields, preserving other ' +
           'metadata), recurrenceRule (RRULE subset; null clears it), and ' +
-          'estimatedHours (null clears it).',
+          'estimatedHours (null clears it), and fixedAmount (a flat fee, ' +
+          'quantity 1; null clears it until the fee has been invoiced).',
         inputSchema: {
           taskId: z.string().min(1),
           title: z.string().min(1).max(200).optional(),
@@ -724,6 +725,7 @@ export class McpService {
           customFields: z.record(z.string(), z.any()).optional(),
           recurrenceRule: z.string().nullable().optional(),
           estimatedHours: z.number().min(0).nullable().optional(),
+          fixedAmount: z.number().min(0).nullable().optional(),
         },
       },
       async (args: any) => wrap(await tools.updateTask(user, args)),
@@ -744,7 +746,8 @@ export class McpService {
           'workspace TASK custom-field key — validated + stored under ' +
           'metadata.customFields), recurrenceRule (an RRULE subset, e.g. ' +
           '"FREQ=WEEKLY;INTERVAL=1", makes this a recurrence template), and ' +
-          'estimatedHours (effort estimate used by capacity planning).',
+          'estimatedHours (effort estimate used by capacity planning), and ' +
+          'fixedAmount (a flat fee for this task, quantity 1).',
         inputSchema: {
           projectId: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -758,6 +761,7 @@ export class McpService {
           customFields: z.record(z.string(), z.any()).optional(),
           recurrenceRule: z.string().optional(),
           estimatedHours: z.number().min(0).optional(),
+          fixedAmount: z.number().min(0).optional(),
         },
       },
       async (args: any) => wrap(await tools.createTask(user, args)),
@@ -956,8 +960,9 @@ export class McpService {
           "Patch a project's billing data — invoiceNumber, billingAmount, " +
           'amountPaid, paymentStatus (UNPAID / PARTIALLY_PAID / PAID / OVERDUE / ' +
           'CANCELLED), billingDate, paymentDueDate, paymentReceivedDate, ' +
-          'billingNotes. Only the fields you pass are updated; omitted fields ' +
-          'are left alone. CLIENT-role users cannot call this.',
+          'billingNotes, flatFeeAmount (the project flat fee; not billingAmount), ' +
+          'customerOpsCustomerId and contactOpsContactId. Only the fields you ' +
+          'pass are updated. CLIENT-role users cannot call this.',
         inputSchema: {
           id: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -969,6 +974,9 @@ export class McpService {
           paymentDueDate: z.string().optional(),
           paymentReceivedDate: z.string().optional(),
           billingNotes: z.string().optional(),
+          flatFeeAmount: z.number().min(0).nullable().optional(),
+          customerOpsCustomerId: z.string().nullable().optional(),
+          contactOpsContactId: z.string().nullable().optional(),
         },
       },
       async (args: any) => wrap(await tools.updateBillingFields(user, args)),
@@ -1439,10 +1447,10 @@ export class McpService {
         {
           title: 'Create a billable draft (→ Accounting-Ops invoice)',
           description:
-            'Roll up APPROVED, billable, unbilled time for a projectId or clientId (optional ' +
-            'periodStart/periodEnd) into invoice line items (groupBy TASK/ROLE/DAY/NONE). When ' +
-            'Accounting-Ops is connected + entitled, creates the invoice (idempotent) and marks ' +
-            'entries billed; otherwise returns a draft + PDF preview. MANAGER/ADMIN only.',
+            'Preview an invoice for a projectId or clientId: approved unbilled time plus ' +
+            'uninvoiced flat fees (groupBy TASK/ROLE/DAY/NONE). When Accounting-Ops is connected ' +
+            'this stores a draft and does not post the journal or stamp the fee. Pass issue=true ' +
+            'to post it. MANAGER/ADMIN only.',
           inputSchema: {
             projectId: z.string().optional(),
             clientId: z.string().optional(),
@@ -1450,6 +1458,7 @@ export class McpService {
             periodEnd: z.string().optional(),
             groupBy: z.string().optional(),
             autoSend: z.boolean().optional(),
+            issue: z.boolean().optional(),
           },
         },
         async (args: any) => wrap(await tools.createBillableDraft(user, args)),
@@ -1460,12 +1469,10 @@ export class McpService {
         {
           title: 'Issue + send an invoice (→ Accounting-Ops)',
           description:
-            'Roll up APPROVED, billable, unbilled time for a projectId or clientId and ISSUE the ' +
-            'invoice (status=sent) via Accounting-Ops in one step — create_billable_draft with ' +
-            'autoSend. Optional periodStart/periodEnd + groupBy (TASK/ROLE/DAY/NONE). When ' +
-            "Accounting-Ops isn't connected/entitled this CANNOT send — it returns a draft + PDF " +
-            'preview and the response `status` says so. There is no separate "send an existing ' +
-            'draft" path; issuing happens at creation. MANAGER/ADMIN only.',
+            'Roll up approved time and uninvoiced flat fees for a projectId or clientId and ' +
+            'ISSUE the invoice in Accounting-Ops (post the journal, stage the email draft). ' +
+            'Optional periodStart/periodEnd + groupBy (TASK/ROLE/DAY/NONE). When Accounting-Ops ' +
+            "isn't connected this returns a preview and does not stamp the fee. MANAGER/ADMIN only.",
           inputSchema: {
             projectId: z.string().optional(),
             clientId: z.string().optional(),

@@ -19,6 +19,9 @@ export interface Task {
   recurrenceRule?: string | null;
   /** Effort estimate in hours (capacity planning). Decimal — may arrive as a string. */
   estimatedHours?: number | string | null;
+  /** Flat fee for this task. Decimal — may arrive as a string. */
+  fixedAmount?: number | string | null;
+  invoicedAt?: string | null;
   /**
    * Free-form entity metadata. Custom-field VALUES live under
    * `metadata.customFields`, keyed by the workspace TASK field key.
@@ -160,6 +163,7 @@ export interface CreateTaskData {
   recurrenceRule?: string;
   /** Effort estimate in hours (>= 0, up to 2 decimals). */
   estimatedHours?: number;
+  fixedAmount?: number;
   /**
    * Custom-field VALUES keyed by the workspace TASK field key. Validated +
    * normalized server-side against the workspace definitions, then merged into
@@ -178,6 +182,7 @@ export interface UpdateTaskData {
   assignedToId?: string;
   recurrenceRule?: string;
   estimatedHours?: number;
+  fixedAmount?: number | null;
   customFields?: Record<string, any>;
 }
 
