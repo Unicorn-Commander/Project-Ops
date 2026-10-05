@@ -19,6 +19,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/use-toast';
+import { commentAuthorId, commentAuthorName } from '@/lib/comment-author';
 
 interface Comment {
   id: string;
@@ -47,7 +48,7 @@ export function CommentItem({ comment, currentUserId, onUpdate, onDelete }: Comm
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
-  const isAuthor = comment.userId === currentUserId;
+  const isAuthor = commentAuthorId(comment) === currentUserId;
   const userRole = localStorage.getItem('userRole') || '';
   const canEdit = isAuthor || userRole === 'ADMIN';
   const canDelete = isAuthor || ['ADMIN', 'MANAGER'].includes(userRole);
@@ -113,14 +114,14 @@ export function CommentItem({ comment, currentUserId, onUpdate, onDelete }: Comm
       <Card className="p-4">
         <div className="flex gap-3">
           <div className="h-10 w-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-semibold flex-shrink-0">
-            {getInitials(comment.user?.name || 'Unknown')}
+            {getInitials(commentAuthorName(comment))}
           </div>
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-2">
               <div>
                 <p className="font-semibold text-foreground">
-                  {comment.user?.name || 'Unknown User'}
+                  {commentAuthorName(comment)}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {getRelativeTime(comment.createdAt)}

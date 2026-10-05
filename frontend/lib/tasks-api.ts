@@ -105,10 +105,19 @@ export interface TaskComment {
   id: string;
   content: string;
   taskId: string;
-  userId: string;
+  // The API sends the writer as authorId / author. userId / user are legacy and optional.
+  authorId?: string;
+  author?: {
+    id: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    role?: string;
+  };
+  userId?: string;
   createdAt: string;
   updatedAt: string;
-  user: {
+  user?: {
     id: string;
     email: string;
     firstName: string | null;

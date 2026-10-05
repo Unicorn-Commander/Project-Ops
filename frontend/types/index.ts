@@ -41,10 +41,14 @@ export interface Document {
 export interface Comment {
   id: string;
   projectId: string;
-  userId: string;
+  // The API sends the writer as authorId / author. userId / user are legacy and optional.
+  authorId?: string;
+  author?: Pick<User, 'id' | 'email' | 'firstName' | 'lastName'>;
+  userId?: string;
   content: string;
   user?: User;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Activity {
