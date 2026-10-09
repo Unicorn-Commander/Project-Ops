@@ -739,14 +739,10 @@ describe('normalizeTaskStatus / normalizeTaskPriority — forgiving filters', ()
     ).rejects.toThrow(
       /Invalid task type "BUG"\. Valid values: TASK, MILESTONE, DELIVERABLE, REVIEW, MEETING, RESEARCH, OTHER\./,
     );
-    await expect(
-      tools.updateTask(staff, { taskId: 't1', priority: 'CRITICAL' }),
-    ).rejects.toThrow(
+    await expect(tools.updateTask(staff, { taskId: 't1', priority: 'CRITICAL' })).rejects.toThrow(
       /Invalid task priority "CRITICAL"\. Valid values: LOW, MEDIUM, HIGH, URGENT\./,
     );
-    await expect(
-      tools.updateTaskStatus(staff, { taskId: 't1', status: 'ACTIVE' }),
-    ).rejects.toThrow(
+    await expect(tools.updateTaskStatus(staff, { taskId: 't1', status: 'ACTIVE' })).rejects.toThrow(
       /Invalid task status "ACTIVE"\. Valid values: PENDING, IN_PROGRESS, WAITING_FOR_CLIENT, COMPLETED, CANCELLED\./,
     );
   });

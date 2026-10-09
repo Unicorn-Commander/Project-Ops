@@ -169,12 +169,14 @@ describe('McpService tool gating (RBAC + workspace)', () => {
 
   it('returns a one-line safe error for create_task Prisma validation failures', async () => {
     const original = ProjectOpsTools.prototype.createTask;
-    ProjectOpsTools.prototype.createTask = jest.fn().mockRejectedValue(
-      Object.assign(
-        new Error('Invalid `prisma.task.create()` invocation with workspace and payload'),
-        { name: 'PrismaClientValidationError' },
-      ),
-    ) as any;
+    ProjectOpsTools.prototype.createTask = jest
+      .fn()
+      .mockRejectedValue(
+        Object.assign(
+          new Error('Invalid `prisma.task.create()` invocation with workspace and payload'),
+          { name: 'PrismaClientValidationError' },
+        ),
+      ) as any;
     try {
       const svc = makeService('ws-1');
       await svc.createServerForUser(adminUser(), null, null, null);
