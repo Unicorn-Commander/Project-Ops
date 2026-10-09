@@ -86,9 +86,13 @@ function normalizeIp(value: unknown): string | null {
 
 function isTrustedProxy(ip: string): boolean {
   const configured = process.env.TRUSTED_PROXY_CIDRS;
-  const cidrs = configured === undefined
-    ? DEFAULT_TRUSTED_PROXY_CIDRS
-    : configured.split(',').map((value) => value.trim()).filter(Boolean);
+  const cidrs =
+    configured === undefined
+      ? DEFAULT_TRUSTED_PROXY_CIDRS
+      : configured
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean);
   return cidrs.some((cidr) => ipInCidr(ip, cidr));
 }
 
