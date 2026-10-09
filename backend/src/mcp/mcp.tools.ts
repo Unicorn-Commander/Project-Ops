@@ -1516,11 +1516,13 @@ export class ProjectOpsTools {
   ) {
     this.assertCanWrite(user);
 
+    const type = args.type !== undefined ? normalizeTaskType(args.type) : undefined;
+    const priority = args.priority !== undefined ? normalizeTaskPriority(args.priority) : undefined;
     const data: Prisma.TaskUpdateInput = {};
     if (args.title !== undefined) data.title = args.title;
     if (args.description !== undefined) data.description = args.description;
-    if (args.type !== undefined) data.type = normalizeTaskType(args.type) as any;
-    if (args.priority !== undefined) data.priority = normalizeTaskPriority(args.priority) as any;
+    if (type !== undefined) data.type = type;
+    if (priority !== undefined) data.priority = priority;
     if (args.dueDate !== undefined) {
       data.dueDate = args.dueDate ? new Date(args.dueDate) : null;
     }
@@ -1622,6 +1624,8 @@ export class ProjectOpsTools {
     if (!args.projectId && !args.projectNumber) {
       throw new Error('Either projectId or projectNumber must be provided');
     }
+    const type = normalizeTaskType(args.type) ?? 'OTHER';
+    const priority = normalizeTaskPriority(args.priority) ?? 'MEDIUM';
     const parentTaskId =
       args.parentTaskId !== undefined && args.parentTaskId !== null
         ? String(args.parentTaskId).trim() || undefined
@@ -1664,8 +1668,8 @@ export class ProjectOpsTools {
           projectId: project.id,
           title: args.title,
           description: args.description,
-          type: normalizeTaskType(args.type) ?? 'OTHER',
-          priority: normalizeTaskPriority(args.priority) ?? 'MEDIUM',
+          type,
+          priority,
           dueDate: args.dueDate ? new Date(args.dueDate) : null,
           ...(parentTaskId ? { parentTaskId } : {}),
           ...(args.recurrenceRule !== undefined ? { recurrenceRule: args.recurrenceRule } : {}),
@@ -1833,6 +1837,10 @@ export class ProjectOpsTools {
 
   async updateTaskStatus(user: User, args: { taskId: string; status: string }) {
     this.assertCanWrite(user);
+    const status = normalizeTaskStatus(args.status);
+    if (!status) {
+      throw new Error('status is required');
+    }
     const updated = await this.runScoped(user, async (tx) => {
       const found = await tx.task.findFirst({
         where: {
@@ -1847,8 +1855,8 @@ export class ProjectOpsTools {
       return tx.task.update({
         where: { id: found.id },
         data: {
-          status: normalizeTaskStatus(args.status) as any,
-          ...(normalizeTaskStatus(args.status) === 'COMPLETED' ? { completedAt: new Date() } : {}),
+          status,
+          ...(status === 'COMPLETED' ? { completedAt: new Date() } : {}),
         },
         select: { id: true, title: true, status: true, completedAt: true },
       });

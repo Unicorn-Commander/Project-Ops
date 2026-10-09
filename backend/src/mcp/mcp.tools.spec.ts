@@ -729,6 +729,27 @@ describe('normalizeTaskStatus / normalizeTaskPriority — forgiving filters', ()
       /Invalid task type "DEPLOYMENT"\. Valid values: TASK, MILESTONE, DELIVERABLE, REVIEW, MEETING, RESEARCH, OTHER\./,
     );
   });
+
+  it('write handlers reject invalid enum values before touching Prisma', async () => {
+    const tools = new ProjectOpsTools({} as any, {} as any, { log: () => {}, warn: () => {} });
+    const staff = baseUser({ role: UserRole.STAFF });
+
+    await expect(
+      tools.createTask(staff, { projectId: 'p1', title: 'T', type: 'BUG' }),
+    ).rejects.toThrow(
+      /Invalid task type "BUG"\. Valid values: TASK, MILESTONE, DELIVERABLE, REVIEW, MEETING, RESEARCH, OTHER\./,
+    );
+    await expect(
+      tools.updateTask(staff, { taskId: 't1', priority: 'CRITICAL' }),
+    ).rejects.toThrow(
+      /Invalid task priority "CRITICAL"\. Valid values: LOW, MEDIUM, HIGH, URGENT\./,
+    );
+    await expect(
+      tools.updateTaskStatus(staff, { taskId: 't1', status: 'ACTIVE' }),
+    ).rejects.toThrow(
+      /Invalid task status "ACTIVE"\. Valid values: PENDING, IN_PROGRESS, WAITING_FOR_CLIENT, COMPLETED, CANCELLED\./,
+    );
+  });
 });
 
 describe('ProjectOpsTools.getTask — full detail + visibility', () => {
