@@ -335,8 +335,13 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
     expect(await membership.hasManagementRole(f.owner, f.ws.id)).toBe(false);
     await admin.workspace.update({ where: { id: f.ws.id }, data: { status: 'active' } });
     await admin.user.update({ where: { id: f.owner.id }, data: { role: 'CLIENT' } });
-    expect((await get('/projects', f.ws.id)).body.data).toEqual([]);
-    expect((await get('/projects', other.ws.id)).body.data).toEqual([]);
+    // Since the client-portal boundary (0dd649d) the internal project API
+    // refuses the CLIENT app role outright; clients read through /client-portal.
+    for (const wsId of [f.ws.id, other.ws.id]) {
+      const refused = await get('/projects', wsId);
+      expect(refused.status).toBe(403);
+      expect(refused.body.data).toBeUndefined();
+    }
     await admin.user.update({ where: { id: f.owner.id }, data: { role: 'STAFF' } });
     const disabled = new MembershipService(
       prisma,
@@ -1017,6 +1022,15 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
         },
       });
       await admin.project.update({ where: { id: pid }, data: { contactId: contact.id } });
+      // A linked contact is still fenced out until portal access is enabled
+      // (portalAccessEnabled defaults to false since the 0dd649d boundary).
+      expect(await send(viewer, 'join-project', { projectId: pid }, 'joined-project')).toBe(
+        'error',
+      );
+      await admin.contact.update({
+        where: { id: contact.id },
+        data: { portalAccessEnabled: true },
+      });
       expect(await send(viewer, 'join-project', { projectId: pid }, 'joined-project')).toBe(
         'joined-project',
       );
