@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
@@ -39,7 +39,7 @@ import { recordVisit } from "@/lib/recently-visited";
 import { CreateTaskModal } from "@/components/modals/create-task-modal";
 import { TaskDetailsModal } from "@/components/modals/task-details-modal";
 import { EditTaskModal } from "@/components/modals/edit-task-modal";
-import { getProjectTasks, Task } from "@/lib/tasks-api";
+import { getProjectTasks, getTask, Task } from "@/lib/tasks-api";
 import api from "@/lib/api";
 import {
   statusBadgeClass,
@@ -117,7 +117,9 @@ interface Project {
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const projectId = params.id as string;
+  const taskId = searchParams.get("taskId");
   const [projectData, setProjectData] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [budget, setBudget] = useState<ProjectBudget | null>(null);
@@ -125,10 +127,13 @@ export default function ProjectDetailPage() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
+  const [loadedTasksProjectId, setLoadedTasksProjectId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [isTaskDetailsModalOpen, setIsTaskDetailsModalOpen] = useState(false);
   const [isEditTaskModalOpen, setIsEditTaskModalOpen] = useState(false);
+  const openedTaskIdRef = useRef<string | null>(null);
+  const fetchingDeepLinkedTaskRef = useRef<string | null>(null);
   // Timeline section open/closed. Open by default so dependency arrows are
   // discoverable; collapsible to keep the long detail page tidy.
   const [timelineOpen, setTimelineOpen] = useState(true);
@@ -193,12 +198,15 @@ export default function ProjectDetailPage() {
 
   const fetchProjectTasks = async () => {
     setLoadingTasks(true);
+    setLoadedTasksProjectId(null);
     try {
       const projectTasks = await getProjectTasks(projectId);
       setTasks(projectTasks || []);
+      setLoadedTasksProjectId(projectId);
     } catch (error) {
       console.error("Error fetching tasks:", error);
       setTasks([]);
+      setLoadedTasksProjectId(projectId);
     } finally {
       setLoadingTasks(false);
     }
@@ -229,14 +237,73 @@ export default function ProjectDetailPage() {
     }
   };
 
-  const handleTaskClick = (task: Task) => {
+  const handleTaskClick = useCallback((task: Task) => {
     setSelectedTask(task);
     setIsTaskDetailsModalOpen(true);
+  }, []);
+
+  const clearTaskIdFromUrl = () => {
+    if (!searchParams.get("taskId")) return;
+    const nextSearchParams = new URLSearchParams(searchParams.toString());
+    nextSearchParams.delete("taskId");
+    const query = nextSearchParams.toString();
+    router.replace(`/dashboard/projects/${projectId}${query ? `?${query}` : ""}`);
   };
+
+  // Activity-feed and palette links carry taskId on the project URL. Prefer
+  // the already-loaded project task, but fall back to the task endpoint for a
+  // task omitted by the project listing (for example, due to pagination or a
+  // stale project link).
+  useEffect(() => {
+    if (!taskId) {
+      openedTaskIdRef.current = null;
+      fetchingDeepLinkedTaskRef.current = null;
+      return;
+    }
+    if (
+      loadingTasks ||
+      loadedTasksProjectId !== projectId ||
+      openedTaskIdRef.current === taskId ||
+      fetchingDeepLinkedTaskRef.current === taskId
+    ) {
+      return;
+    }
+
+    const matchingTask = tasks.find((task) => task.id === taskId);
+    if (matchingTask) {
+      openedTaskIdRef.current = taskId;
+      handleTaskClick(matchingTask);
+      return;
+    }
+
+    let cancelled = false;
+    fetchingDeepLinkedTaskRef.current = taskId;
+    getTask(taskId)
+      .then((task) => {
+        if (cancelled) return;
+        openedTaskIdRef.current = taskId;
+        handleTaskClick(task);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error("Error fetching deep-linked task:", error);
+        }
+      })
+      .finally(() => {
+        if (fetchingDeepLinkedTaskRef.current === taskId) {
+          fetchingDeepLinkedTaskRef.current = null;
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [handleTaskClick, loadedTasksProjectId, loadingTasks, projectId, taskId, tasks]);
 
   const handleEditTaskClick = () => {
     setIsTaskDetailsModalOpen(false);
     setIsEditTaskModalOpen(true);
+    clearTaskIdFromUrl();
   };
 
   const handleTaskUpdate = () => {
@@ -896,6 +963,7 @@ export default function ProjectDetailPage() {
         onClose={() => {
           setIsTaskDetailsModalOpen(false);
           setSelectedTask(null);
+          clearTaskIdFromUrl();
         }}
         task={selectedTask}
         onEdit={handleEditTaskClick}
@@ -907,6 +975,7 @@ export default function ProjectDetailPage() {
         onClose={() => {
           setIsEditTaskModalOpen(false);
           setSelectedTask(null);
+          clearTaskIdFromUrl();
         }}
         onSuccess={() => {
           handleTaskUpdate();

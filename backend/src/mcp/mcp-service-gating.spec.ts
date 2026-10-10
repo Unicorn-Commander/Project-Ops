@@ -101,20 +101,50 @@ describe('McpService tool gating (RBAC + workspace)', () => {
     expect(snap.totals.denied).toBeGreaterThanOrEqual(1);
   });
 
-  it('validates task enum inputs at the MCP boundary and keeps lowercase values working', async () => {
+  it('validates every registered task enum input and keeps lowercase values working', async () => {
     const svc = makeService('ws-1');
     await svc.createServerForUser(adminUser(), null, null, null);
-    const schema = z.object(registeredSchemas.get('create_task').inputSchema);
+    const schemaFor = (name: string) => z.object(registeredSchemas.get(name).inputSchema);
+    const expectInvalid = (name: string, input: Record<string, unknown>, validValue: string) => {
+      const invalid = schemaFor(name).safeParse(input);
+      expect(invalid.success).toBe(false);
+      expect(JSON.stringify(invalid.error)).toContain(validValue);
+      expect(JSON.stringify(invalid.error)).not.toMatch(/prisma|invocation/i);
+    };
 
-    const invalid = schema.safeParse({ title: 't', type: 'DEPLOYMENT' });
-    expect(invalid.success).toBe(false);
-    expect(JSON.stringify(invalid.error)).not.toMatch(/prisma|invocation/i);
+    expectInvalid('create_task', { title: 't', type: 'BUG' }, 'TASK');
+    expectInvalid('update_task', { taskId: 'task-1', priority: 'CRITICAL' }, 'URGENT');
+    expectInvalid('list_my_tasks', { status: 'ACTIVE' }, 'PENDING');
+    expectInvalid('list_project_tasks', { projectId: 'project-1', status: 'ACTIVE' }, 'COMPLETED');
+    expectInvalid('update_task_status', { taskId: 'task-1', status: 'ACTIVE' }, 'CANCELLED');
 
-    const valid = schema.safeParse({ title: 't', type: 'review', priority: 'high' });
-    expect(valid.success).toBe(true);
-    if (!valid.success) throw valid.error;
-    expect(valid.data.type).toBe('REVIEW');
-    expect(valid.data.priority).toBe('HIGH');
+    const create = schemaFor('create_task').safeParse({
+      title: 't',
+      type: 'review',
+      priority: 'high',
+    });
+    expect(create.success).toBe(true);
+    if (!create.success) throw create.error;
+    expect(create.data.type).toBe('REVIEW');
+    expect(create.data.priority).toBe('HIGH');
+
+    const projectTasks = schemaFor('list_project_tasks').safeParse({
+      projectId: 'project-1',
+      status: 'in_progress',
+      priority: 'urgent',
+    });
+    expect(projectTasks.success).toBe(true);
+    if (!projectTasks.success) throw projectTasks.error;
+    expect(projectTasks.data.status).toBe('IN_PROGRESS');
+    expect(projectTasks.data.priority).toBe('URGENT');
+
+    const status = schemaFor('update_task_status').safeParse({
+      taskId: 'task-1',
+      status: 'completed',
+    });
+    expect(status.success).toBe(true);
+    if (!status.success) throw status.error;
+    expect(status.data.status).toBe('COMPLETED');
   });
 
   it('sanitizes Prisma errors at the shared MCP error boundary', async () => {
@@ -134,6 +164,34 @@ describe('McpService tool gating (RBAC + workspace)', () => {
       expect(text).not.toMatch(/prisma|invocation/i);
     } finally {
       ProjectOpsTools.prototype.getProject = original;
+    }
+  });
+
+  it('returns a one-line safe error for create_task Prisma validation failures', async () => {
+    const original = ProjectOpsTools.prototype.createTask;
+    ProjectOpsTools.prototype.createTask = jest
+      .fn()
+      .mockRejectedValue(
+        Object.assign(
+          new Error('Invalid `prisma.task.create()` invocation with workspace and payload'),
+          { name: 'PrismaClientValidationError' },
+        ),
+      ) as any;
+    try {
+      const svc = makeService('ws-1');
+      await svc.createServerForUser(adminUser(), null, null, null);
+      const result = await registered.get('create_task')!({
+        projectId: 'project-secret',
+        title: 'private payload',
+        type: 'TASK',
+        priority: 'HIGH',
+      });
+      const text = result.content[0].text;
+      expect(result.isError).toBe(true);
+      expect(text).toBe('{"error":"invalid input"}');
+      expect(text).not.toMatch(/prisma|invocation|project-secret|private payload/i);
+    } finally {
+      ProjectOpsTools.prototype.createTask = original;
     }
   });
 
