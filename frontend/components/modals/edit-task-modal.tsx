@@ -54,10 +54,26 @@ interface User {
 }
 
 const PRIORITY_LEVELS = [
-  { value: TaskPriority.LOW, label: "Low", color: "text-zinc-500 dark:text-zinc-400" },
-  { value: TaskPriority.MEDIUM, label: "Medium", color: "text-blue-600 dark:text-blue-400" },
-  { value: TaskPriority.HIGH, label: "High", color: "text-orange-600 dark:text-orange-400" },
-  { value: TaskPriority.URGENT, label: "Urgent", color: "text-rose-600 dark:text-rose-400" },
+  {
+    value: TaskPriority.LOW,
+    label: "Low",
+    color: "text-zinc-500 dark:text-zinc-400",
+  },
+  {
+    value: TaskPriority.MEDIUM,
+    label: "Medium",
+    color: "text-blue-600 dark:text-blue-400",
+  },
+  {
+    value: TaskPriority.HIGH,
+    label: "High",
+    color: "text-orange-600 dark:text-orange-400",
+  },
+  {
+    value: TaskPriority.URGENT,
+    label: "Urgent",
+    color: "text-rose-600 dark:text-rose-400",
+  },
 ];
 
 export function EditTaskModal({
@@ -99,7 +115,7 @@ export function EditTaskModal({
         description: task.description,
         type: task.type,
         priority: task.priority,
-        dueDate: task.dueDate ? task.dueDate.split('T')[0] : "",
+        dueDate: task.dueDate ? task.dueDate.split("T")[0] : "",
         assignedToId: task.assignedToId || "",
       });
       // Hydrate the non-form fields from the task.
@@ -174,7 +190,12 @@ export function EditTaskModal({
   if (!task) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <DialogContent
         overlayClassName="bg-black/50 backdrop-blur-sm"
         className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-card"
@@ -243,7 +264,12 @@ export function EditTaskModal({
                 <div>
                   <Label htmlFor="type">
                     Task Type
-                    <FieldHint learnMore={{ category: "projects-tasks", article: "tasks" }}>
+                    <FieldHint
+                      learnMore={{
+                        category: "projects-tasks",
+                        article: "tasks",
+                      }}
+                    >
                       What kind of work this is — Task, Milestone, Deliverable,
                       Review, Meeting, or Research — so boards and the schedule
                       can tell milestones apart from routine work.
@@ -251,7 +277,9 @@ export function EditTaskModal({
                   </Label>
                   <Select
                     value={taskType}
-                    onValueChange={(value) => setValue("type", value as TaskType)}
+                    onValueChange={(value) =>
+                      setValue("type", value as TaskType)
+                    }
                   >
                     <SelectTrigger
                       id="type"
@@ -278,7 +306,12 @@ export function EditTaskModal({
                 <div>
                   <Label htmlFor="priority">
                     Priority
-                    <FieldHint learnMore={{ category: "projects-tasks", article: "tasks" }}>
+                    <FieldHint
+                      learnMore={{
+                        category: "projects-tasks",
+                        article: "tasks",
+                      }}
+                    >
                       How urgent this task is — Low, Medium, High, or Urgent.
                       It's colour-coded everywhere the task appears so the
                       urgent ones stand out at a glance.
@@ -361,7 +394,9 @@ export function EditTaskModal({
           <div>
             <h3 className="flex items-center gap-1.5 text-lg font-semibold text-foreground mb-4 border-b pb-2">
               Scheduling
-              <HelpHint learnMore={{ category: "recurring", article: "repeats" }}>
+              <HelpHint
+                learnMore={{ category: "recurring", article: "repeats" }}
+              >
                 Set a “Repeats” rule and Project Ops materializes the next
                 instance automatically — for work on a cadence like a weekly
                 report or a monthly close.
@@ -372,7 +407,12 @@ export function EditTaskModal({
                 <div>
                   <Label htmlFor="estimatedHours">
                     Estimated hours
-                    <FieldHint learnMore={{ category: "capacity", article: "capacity-overview" }}>
+                    <FieldHint
+                      learnMore={{
+                        category: "capacity",
+                        article: "capacity-overview",
+                      }}
+                    >
                       Your best guess at the effort this task takes, in hours.
                       Estimates roll up into capacity planning to show who's
                       over- or under-committed.
@@ -391,7 +431,12 @@ export function EditTaskModal({
                 <div>
                   <Label htmlFor="edit-fixedAmount">
                     Flat fee
-                    <FieldHint learnMore={{ category: "time-billing", article: "billing" }}>
+                    <FieldHint
+                      learnMore={{
+                        category: "time-billing",
+                        article: "billing",
+                      }}
+                    >
                       A fixed price for this task, billed once. Clear it only
                       before the fee has been invoiced.
                     </FieldHint>
@@ -422,7 +467,12 @@ export function EditTaskModal({
             {hasCustomFields && (
               <h3 className="flex items-center gap-1.5 text-lg font-semibold text-foreground mb-4 border-b pb-2">
                 Custom fields
-                <HelpHint learnMore={{ category: "custom-fields", article: "custom-fields-overview" }}>
+                <HelpHint
+                  learnMore={{
+                    category: "custom-fields",
+                    article: "custom-fields-overview",
+                  }}
+                >
                   Workspace-specific attributes an admin added to tasks — a
                   client code, a billing category, a launch date. Fill in the
                   values as you work.
@@ -433,7 +483,9 @@ export function EditTaskModal({
               entity={CustomFieldEntity.TASK}
               values={customFields}
               onChange={setCustomFields}
-              onDefinitionsLoaded={(defs) => setHasCustomFields(defs.length > 0)}
+              onDefinitionsLoaded={(defs) =>
+                setHasCustomFields(defs.length > 0)
+              }
             />
           </div>
 

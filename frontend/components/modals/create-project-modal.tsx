@@ -47,88 +47,106 @@ const PROJECT_TYPES = [
 // Priority levels with colors
 const PRIORITY_LEVELS = [
   { value: "LOW", label: "Low", color: "text-zinc-500 dark:text-zinc-400" },
-  { value: "MEDIUM", label: "Medium", color: "text-blue-600 dark:text-blue-400" },
-  { value: "HIGH", label: "High", color: "text-orange-600 dark:text-orange-400" },
-  { value: "URGENT", label: "Urgent", color: "text-rose-600 dark:text-rose-400" },
+  {
+    value: "MEDIUM",
+    label: "Medium",
+    color: "text-blue-600 dark:text-blue-400",
+  },
+  {
+    value: "HIGH",
+    label: "High",
+    color: "text-orange-600 dark:text-orange-400",
+  },
+  {
+    value: "URGENT",
+    label: "Urgent",
+    color: "text-rose-600 dark:text-rose-400",
+  },
 ];
 
 // Zod validation schema
-const createProjectSchema = z.object({
-  contactId: z.string().optional().or(z.literal("")),
-  clientName: z
-    .string()
-    .min(2, "Client name must be at least 2 characters")
-    .max(100, "Client name must not exceed 100 characters"),
-  clientEmail: z
-    .string()
-    .email("Invalid email address")
-    .optional()
-    .or(z.literal("")),
-  clientPhone: z
-    .string()
-    .regex(
-      /^(\+1\s?)?(\([0-9]{3}\)|[0-9]{3})[\s.-]?[0-9]{3}[\s.-]?[0-9]{4}$/,
-      "Invalid phone number format (e.g., (555) 123-4567)"
-    )
-    .optional()
-    .or(z.literal("")),
-  projectType: z.string().min(1, "Project type is required"),
-  priority: z.string().min(1, "Priority is required"),
-  category: z
-    .string()
-    .max(60, "Category must not exceed 60 characters")
-    .optional()
-    .or(z.literal("")),
-  tags: z.array(z.string()).optional(),
-  dueDate: z
-    .string()
-    .optional()
-    .refine(
-      (date) => {
-        if (!date) return true;
-        return new Date(date) > new Date();
-      },
-      { message: "Due date must be in the future" }
-    ),
-  description: z
-    .string()
-    .min(10, "Description must be at least 10 characters")
-    .max(2000, "Description must not exceed 2000 characters"),
-  // Billing & Invoicing Fields
-  invoiceNumber: z.string().optional().or(z.literal("")),
-  billingAmount: z
-    .number()
-    .positive("Amount must be positive")
-    .optional()
-    .nullable(),
-  flatFeeAmount: z.number().min(0, "Flat fee cannot be negative").optional().nullable(),
-  amountPaid: z
-    .number()
-    .min(0, "Amount paid cannot be negative")
-    .optional()
-    .nullable(),
-  paymentStatus: z.string().optional().or(z.literal("")),
-  billingDate: z.string().optional().or(z.literal("")),
-  paymentDueDate: z.string().optional().or(z.literal("")),
-  paymentReceivedDate: z.string().optional().or(z.literal("")),
-  billingNotes: z
-    .string()
-    .max(500, "Notes must not exceed 500 characters")
-    .optional()
-    .or(z.literal("")),
-}).refine(
-  (data) => {
-    // Validate that amount paid does not exceed billing amount
-    if (data.amountPaid && data.billingAmount) {
-      return data.amountPaid <= data.billingAmount;
-    }
-    return true;
-  },
-  {
-    message: "Amount paid cannot exceed billing amount",
-    path: ["amountPaid"],
-  }
-);
+const createProjectSchema = z
+  .object({
+    contactId: z.string().optional().or(z.literal("")),
+    clientName: z
+      .string()
+      .min(2, "Client name must be at least 2 characters")
+      .max(100, "Client name must not exceed 100 characters"),
+    clientEmail: z
+      .string()
+      .email("Invalid email address")
+      .optional()
+      .or(z.literal("")),
+    clientPhone: z
+      .string()
+      .regex(
+        /^(\+1\s?)?(\([0-9]{3}\)|[0-9]{3})[\s.-]?[0-9]{3}[\s.-]?[0-9]{4}$/,
+        "Invalid phone number format (e.g., (555) 123-4567)",
+      )
+      .optional()
+      .or(z.literal("")),
+    projectType: z.string().min(1, "Project type is required"),
+    priority: z.string().min(1, "Priority is required"),
+    category: z
+      .string()
+      .max(60, "Category must not exceed 60 characters")
+      .optional()
+      .or(z.literal("")),
+    tags: z.array(z.string()).optional(),
+    dueDate: z
+      .string()
+      .optional()
+      .refine(
+        (date) => {
+          if (!date) return true;
+          return new Date(date) > new Date();
+        },
+        { message: "Due date must be in the future" },
+      ),
+    description: z
+      .string()
+      .min(10, "Description must be at least 10 characters")
+      .max(2000, "Description must not exceed 2000 characters"),
+    // Billing & Invoicing Fields
+    invoiceNumber: z.string().optional().or(z.literal("")),
+    billingAmount: z
+      .number()
+      .positive("Amount must be positive")
+      .optional()
+      .nullable(),
+    flatFeeAmount: z
+      .number()
+      .min(0, "Flat fee cannot be negative")
+      .optional()
+      .nullable(),
+    amountPaid: z
+      .number()
+      .min(0, "Amount paid cannot be negative")
+      .optional()
+      .nullable(),
+    paymentStatus: z.string().optional().or(z.literal("")),
+    billingDate: z.string().optional().or(z.literal("")),
+    paymentDueDate: z.string().optional().or(z.literal("")),
+    paymentReceivedDate: z.string().optional().or(z.literal("")),
+    billingNotes: z
+      .string()
+      .max(500, "Notes must not exceed 500 characters")
+      .optional()
+      .or(z.literal("")),
+  })
+  .refine(
+    (data) => {
+      // Validate that amount paid does not exceed billing amount
+      if (data.amountPaid && data.billingAmount) {
+        return data.amountPaid <= data.billingAmount;
+      }
+      return true;
+    },
+    {
+      message: "Amount paid cannot exceed billing amount",
+      path: ["amountPaid"],
+    },
+  );
 
 type CreateProjectFormData = z.infer<typeof createProjectSchema>;
 
@@ -246,7 +264,10 @@ export function CreateProjectModal({
     const selectedClient = clients.find((c) => c.id === selectedClientId);
     if (selectedClient) {
       setValue("contactId", selectedClient.id);
-      setValue("clientName", `${selectedClient.firstName} ${selectedClient.lastName}`);
+      setValue(
+        "clientName",
+        `${selectedClient.firstName} ${selectedClient.lastName}`,
+      );
       setValue("clientEmail", selectedClient.email || "");
       setValue("clientPhone", selectedClient.phone || "");
       setShowClientSelector(false);
@@ -258,14 +279,14 @@ export function CreateProjectModal({
   const filteredClients = clients.filter((client) =>
     `${client.firstName} ${client.lastName} ${client.email} ${client.company || ""}`
       .toLowerCase()
-      .includes(searchTerm.toLowerCase())
+      .includes(searchTerm.toLowerCase()),
   );
 
   // Auto-focus first field when modal opens
   useEffect(() => {
     if (isOpen) {
       const firstInput = document.querySelector<HTMLInputElement>(
-        '#create-project-modal input[name="clientName"]'
+        '#create-project-modal input[name="clientName"]',
       );
       if (firstInput) {
         setTimeout(() => firstInput.focus(), 100);
@@ -306,7 +327,9 @@ export function CreateProjectModal({
         paymentReceivedDate: data.paymentReceivedDate || undefined,
         billingNotes: data.billingNotes || undefined,
         recurrenceRule: recurrenceRule || undefined,
-        customFields: Object.keys(customFields).length ? customFields : undefined,
+        customFields: Object.keys(customFields).length
+          ? customFields
+          : undefined,
       };
 
       await api.post("/projects", payload);
@@ -334,7 +357,12 @@ export function CreateProjectModal({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <DialogContent
         id="create-project-modal"
         overlayClassName="bg-black/50 backdrop-blur-sm"
@@ -544,7 +572,12 @@ export function CreateProjectModal({
               <div>
                 <Label htmlFor="priority">
                   Priority <span className="text-red-500">*</span>
-                  <FieldHint learnMore={{ category: "projects-tasks", article: "projects" }}>
+                  <FieldHint
+                    learnMore={{
+                      category: "projects-tasks",
+                      article: "projects",
+                    }}
+                  >
                     How urgent this project is — Low, Medium, High, or Urgent.
                     It's colour-coded across lists and the schedule so the
                     pressing work stands out.
@@ -642,12 +675,18 @@ export function CreateProjectModal({
                       if (e.key === "Enter" || e.key === ",") {
                         e.preventDefault();
                         addTag(tagDraft);
-                      } else if (e.key === "Backspace" && !tagDraft && tags.length) {
+                      } else if (
+                        e.key === "Backspace" &&
+                        !tagDraft &&
+                        tags.length
+                      ) {
                         removeTag(tags[tags.length - 1]);
                       }
                     }}
                     onBlur={() => addTag(tagDraft)}
-                    placeholder={tags.length ? "Add another…" : "Add tags (press Enter)"}
+                    placeholder={
+                      tags.length ? "Add another…" : "Add tags (press Enter)"
+                    }
                     className="flex-1 min-w-[120px] border-0 bg-transparent px-1 py-0.5 text-sm outline-none placeholder:text-muted-foreground"
                   />
                 </div>
@@ -711,7 +750,9 @@ export function CreateProjectModal({
               <div>
                 <Label htmlFor="paymentStatus">
                   Payment Status
-                  <FieldHint learnMore={{ category: "time-billing", article: "billing" }}>
+                  <FieldHint
+                    learnMore={{ category: "time-billing", article: "billing" }}
+                  >
                     Where this project's invoice stands — Unpaid, Partially
                     paid, Paid, Overdue, or Cancelled.
                   </FieldHint>
@@ -725,7 +766,9 @@ export function CreateProjectModal({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="UNPAID">Unpaid</SelectItem>
-                    <SelectItem value="PARTIALLY_PAID">Partially Paid</SelectItem>
+                    <SelectItem value="PARTIALLY_PAID">
+                      Partially Paid
+                    </SelectItem>
                     <SelectItem value="PAID">Paid</SelectItem>
                     <SelectItem value="OVERDUE">Overdue</SelectItem>
                     <SelectItem value="CANCELLED">Cancelled</SelectItem>
@@ -742,7 +785,9 @@ export function CreateProjectModal({
               <div>
                 <Label htmlFor="billingAmount">
                   Billing Amount
-                  <FieldHint learnMore={{ category: "time-billing", article: "billing" }}>
+                  <FieldHint
+                    learnMore={{ category: "time-billing", article: "billing" }}
+                  >
                     The total you're invoicing the client for this project.
                     Amount Paid is tracked against it to surface what's
                     outstanding.
@@ -766,7 +811,9 @@ export function CreateProjectModal({
               <div>
                 <Label htmlFor="flatFeeAmount">
                   Flat fee
-                  <FieldHint learnMore={{ category: "time-billing", article: "billing" }}>
+                  <FieldHint
+                    learnMore={{ category: "time-billing", article: "billing" }}
+                  >
                     A fixed price for the whole project, billed once. Leave it
                     empty to bill hours, or set a flat fee on a task instead.
                   </FieldHint>
@@ -832,7 +879,9 @@ export function CreateProjectModal({
 
               {/* Payment Received Date */}
               <div>
-                <Label htmlFor="paymentReceivedDate">Payment Received Date</Label>
+                <Label htmlFor="paymentReceivedDate">
+                  Payment Received Date
+                </Label>
                 <Input
                   id="paymentReceivedDate"
                   type="date"
@@ -876,7 +925,9 @@ export function CreateProjectModal({
           <div>
             <h3 className="flex items-center gap-1.5 text-lg font-semibold text-foreground mb-4 border-b pb-2">
               Recurrence
-              <HelpHint learnMore={{ category: "recurring", article: "repeats" }}>
+              <HelpHint
+                learnMore={{ category: "recurring", article: "repeats" }}
+              >
                 Set a “Repeats” rule and Project Ops materializes the next
                 instance automatically — for recurring engagements like a
                 monthly retainer.
@@ -895,7 +946,12 @@ export function CreateProjectModal({
             {hasCustomFields && (
               <h3 className="flex items-center gap-1.5 text-lg font-semibold text-foreground mb-4 border-b pb-2">
                 Custom fields
-                <HelpHint learnMore={{ category: "custom-fields", article: "custom-fields-overview" }}>
+                <HelpHint
+                  learnMore={{
+                    category: "custom-fields",
+                    article: "custom-fields-overview",
+                  }}
+                >
                   Workspace-specific attributes an admin added to projects — a
                   matter number, an engagement type, a target date. Fill in the
                   values as you go.
@@ -906,7 +962,9 @@ export function CreateProjectModal({
               entity={CustomFieldEntity.PROJECT}
               values={customFields}
               onChange={setCustomFields}
-              onDefinitionsLoaded={(defs) => setHasCustomFields(defs.length > 0)}
+              onDefinitionsLoaded={(defs) =>
+                setHasCustomFields(defs.length > 0)
+              }
             />
           </div>
 

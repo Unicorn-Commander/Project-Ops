@@ -22,7 +22,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { createTask, TaskType, TaskPriority, TaskStatus } from "@/lib/tasks-api";
+import {
+  createTask,
+  TaskType,
+  TaskPriority,
+  TaskStatus,
+} from "@/lib/tasks-api";
 import { TASK_TYPES } from "@/lib/task-types";
 import {
   createTaskSchema,
@@ -66,10 +71,26 @@ interface Project {
 }
 
 const PRIORITY_LEVELS = [
-  { value: TaskPriority.LOW, label: "Low", color: "text-zinc-500 dark:text-zinc-400" },
-  { value: TaskPriority.MEDIUM, label: "Medium", color: "text-blue-600 dark:text-blue-400" },
-  { value: TaskPriority.HIGH, label: "High", color: "text-orange-600 dark:text-orange-400" },
-  { value: TaskPriority.URGENT, label: "Urgent", color: "text-rose-600 dark:text-rose-400" },
+  {
+    value: TaskPriority.LOW,
+    label: "Low",
+    color: "text-zinc-500 dark:text-zinc-400",
+  },
+  {
+    value: TaskPriority.MEDIUM,
+    label: "Medium",
+    color: "text-blue-600 dark:text-blue-400",
+  },
+  {
+    value: TaskPriority.HIGH,
+    label: "High",
+    color: "text-orange-600 dark:text-orange-400",
+  },
+  {
+    value: TaskPriority.URGENT,
+    label: "Urgent",
+    color: "text-rose-600 dark:text-rose-400",
+  },
 ];
 
 export function CreateTaskModal({
@@ -144,8 +165,8 @@ export function CreateTaskModal({
         params: { take: 100 },
       });
       // Filter to only ADMIN, MANAGER, STAFF on frontend
-      const filteredUsers = (response.data.data || response.data).filter((user: User) =>
-        ['ADMIN', 'MANAGER', 'STAFF'].includes(user.role)
+      const filteredUsers = (response.data.data || response.data).filter(
+        (user: User) => ["ADMIN", "MANAGER", "STAFF"].includes(user.role),
       );
       setUsers(filteredUsers);
     } catch (error) {
@@ -177,12 +198,18 @@ export function CreateTaskModal({
         status: defaultStatus,
         dueDate: data.dueDate || undefined,
         projectId: data.projectId,
-        assignedToId: data.assignedToId && data.assignedToId !== "UNASSIGNED" ? data.assignedToId : undefined,
+        assignedToId:
+          data.assignedToId && data.assignedToId !== "UNASSIGNED"
+            ? data.assignedToId
+            : undefined,
         recurrenceRule: recurrenceRule || undefined,
         estimatedHours:
           estimatedHours.trim() !== "" ? Number(estimatedHours) : undefined,
-        fixedAmount: fixedAmount.trim() !== "" ? Number(fixedAmount) : undefined,
-        customFields: Object.keys(customFields).length ? customFields : undefined,
+        fixedAmount:
+          fixedAmount.trim() !== "" ? Number(fixedAmount) : undefined,
+        customFields: Object.keys(customFields).length
+          ? customFields
+          : undefined,
       });
 
       toast({
@@ -208,14 +235,21 @@ export function CreateTaskModal({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <DialogContent
         overlayClassName="bg-black/50 backdrop-blur-sm"
         className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-card"
       >
         {/* Header */}
         <DialogHeader>
-          <DialogTitle className="text-2xl font-bold">Create New Task</DialogTitle>
+          <DialogTitle className="text-2xl font-bold">
+            Create New Task
+          </DialogTitle>
           <DialogDescription>
             Add a task to track work on a project
           </DialogDescription>
@@ -279,7 +313,12 @@ export function CreateTaskModal({
                 <div>
                   <Label htmlFor="type">
                     Task Type <span className="text-red-500">*</span>
-                    <FieldHint learnMore={{ category: "projects-tasks", article: "tasks" }}>
+                    <FieldHint
+                      learnMore={{
+                        category: "projects-tasks",
+                        article: "tasks",
+                      }}
+                    >
                       What kind of work this is — Task, Milestone, Deliverable,
                       Review, Meeting, or Research — so boards and the schedule
                       can tell milestones apart from routine work.
@@ -287,7 +326,9 @@ export function CreateTaskModal({
                   </Label>
                   <Select
                     value={taskType}
-                    onValueChange={(value) => setValue("type", value as TaskType)}
+                    onValueChange={(value) =>
+                      setValue("type", value as TaskType)
+                    }
                   >
                     <SelectTrigger
                       id="type"
@@ -314,7 +355,12 @@ export function CreateTaskModal({
                 <div>
                   <Label htmlFor="priority">
                     Priority <span className="text-red-500">*</span>
-                    <FieldHint learnMore={{ category: "projects-tasks", article: "tasks" }}>
+                    <FieldHint
+                      learnMore={{
+                        category: "projects-tasks",
+                        article: "tasks",
+                      }}
+                    >
                       How urgent this task is — Low, Medium, High, or Urgent.
                       It's colour-coded everywhere the task appears so the
                       urgent ones stand out at a glance.
@@ -393,7 +439,9 @@ export function CreateTaskModal({
                     {projects.map((projectItem) => (
                       <SelectItem key={projectItem.id} value={projectItem.id}>
                         <div className="flex flex-col">
-                          <span className="font-medium">{projectItem.projectNumber}</span>
+                          <span className="font-medium">
+                            {projectItem.projectNumber}
+                          </span>
                           <span className="text-xs text-muted-foreground">
                             {projectItem.clientName}
                           </span>
@@ -439,7 +487,9 @@ export function CreateTaskModal({
           <div>
             <h3 className="flex items-center gap-1.5 text-lg font-semibold text-foreground mb-4 border-b pb-2">
               Scheduling
-              <HelpHint learnMore={{ category: "recurring", article: "repeats" }}>
+              <HelpHint
+                learnMore={{ category: "recurring", article: "repeats" }}
+              >
                 Set a “Repeats” rule and Project Ops materializes the next
                 instance automatically — for work on a cadence like a weekly
                 report or a monthly close.
@@ -450,7 +500,12 @@ export function CreateTaskModal({
                 <div>
                   <Label htmlFor="estimatedHours">
                     Estimated hours
-                    <FieldHint learnMore={{ category: "capacity", article: "capacity-overview" }}>
+                    <FieldHint
+                      learnMore={{
+                        category: "capacity",
+                        article: "capacity-overview",
+                      }}
+                    >
                       Your best guess at the effort this task takes, in hours.
                       Estimates roll up into capacity planning to show who's
                       over- or under-committed.
@@ -469,7 +524,12 @@ export function CreateTaskModal({
                 <div>
                   <Label htmlFor="fixedAmount">
                     Flat fee
-                    <FieldHint learnMore={{ category: "time-billing", article: "billing" }}>
+                    <FieldHint
+                      learnMore={{
+                        category: "time-billing",
+                        article: "billing",
+                      }}
+                    >
                       A fixed price for this task. Billed once, as quantity 1.
                       Leave it empty to bill the hours instead.
                     </FieldHint>
@@ -499,7 +559,12 @@ export function CreateTaskModal({
             {hasCustomFields && (
               <h3 className="flex items-center gap-1.5 text-lg font-semibold text-foreground mb-4 border-b pb-2">
                 Custom fields
-                <HelpHint learnMore={{ category: "custom-fields", article: "custom-fields-overview" }}>
+                <HelpHint
+                  learnMore={{
+                    category: "custom-fields",
+                    article: "custom-fields-overview",
+                  }}
+                >
                   Workspace-specific attributes an admin added to tasks — a
                   client code, a billing category, a launch date. Fill in the
                   values as you work.
@@ -510,7 +575,9 @@ export function CreateTaskModal({
               entity={CustomFieldEntity.TASK}
               values={customFields}
               onChange={setCustomFields}
-              onDefinitionsLoaded={(defs) => setHasCustomFields(defs.length > 0)}
+              onDefinitionsLoaded={(defs) =>
+                setHasCustomFields(defs.length > 0)
+              }
             />
           </div>
 
