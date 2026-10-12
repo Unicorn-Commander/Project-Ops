@@ -2004,6 +2004,10 @@ describe('ProjectOpsTools.getProject — metadata.quote exposure (QUOTES-CONTRAC
     budgetHours: '48.00',
     billByDefault: true,
     billingNotes: 'Quote Q-2026-0001 v1: 50% on acceptance, 50% per milestone.',
+    flatFeeAmount: '4300.00',
+    flatFeeInvoicedAt: new Date('2026-09-30T12:00:00Z'),
+    customerOpsCustomerId: 'cust-private',
+    contactOpsContactId: 'contact-private',
   };
 
   function makeTools(findFirst: jest.Mock) {

@@ -1,6 +1,7 @@
 import { UserRole } from '@prisma/client';
 import {
   CLIENT_MASKED_PROJECT_FIELDS,
+  CLIENT_MASKED_TASK_FIELDS,
   maskTaskMetadataForClient,
   withProjectQuote,
   withTaskMetadataForRole,
@@ -53,6 +54,10 @@ describe('withProjectQuote — per-role', () => {
         defaultBillRate: '150.0000',
         budgetAmount: '4300',
         billingNotes: 'Quote Q-2026-0001 v1',
+        flatFeeAmount: '4300.00',
+        flatFeeInvoicedAt: new Date('2026-09-30T12:00:00Z'),
+        customerOpsCustomerId: 'cust-private',
+        contactOpsContactId: 'contact-private',
       },
       { role: UserRole.CLIENT },
     );
@@ -85,7 +90,13 @@ describe('withTaskMetadataForRole — per-role', () => {
 
   it('CLIENT: strips quote/internal ids from get_task-shaped metadata', () => {
     const out: any = withTaskMetadataForRole(
-      { id: 't1', metadata: TASK_META },
+      {
+        id: 't1',
+        metadata: TASK_META,
+        fixedAmount: '1500.00',
+        invoicedAt: new Date('2026-09-30T12:00:00Z'),
+        invoiceExternalRef: 'ao-private',
+      },
       { role: UserRole.CLIENT },
     );
     expect(out.metadata.quote).toEqual({
@@ -96,6 +107,9 @@ describe('withTaskMetadataForRole — per-role', () => {
       weeks: 3,
     });
     expect(out.metadata.customFields).toEqual({ score: 1 });
+    for (const field of CLIENT_MASKED_TASK_FIELDS) {
+      expect(out).not.toHaveProperty(field);
+    }
     const wire = JSON.stringify(out);
     expect(wire).not.toContain('customer_ops_quote_id');
     expect(wire).not.toContain('customer_ops_line_id');
