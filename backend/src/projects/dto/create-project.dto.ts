@@ -96,7 +96,7 @@ export class CreateProjectDto {
     description:
       'Flat fee for the whole project. Billed once, due on receipt, when no task on the project has its own flat fee. Distinct from billingAmount, which mirrors the last invoice total.',
   })
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   @IsOptional()
   @Type(() => Number)

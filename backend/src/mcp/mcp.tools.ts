@@ -25,6 +25,7 @@ import {
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MinioService } from '../documents/minio.service';
 import { v4 as uuidv4 } from 'uuid';
+import { Decimal } from '@prisma/client/runtime/library';
 
 // Type-only imports: erased at compile time, so they're safe even when the
 // imported services import helpers (e.g. buildVisibilityFilter) back from this
@@ -2428,10 +2429,23 @@ export class ProjectOpsTools {
           ...buildVisibilityFilter(user),
           ...(args.id ? { id: args.id } : { projectNumber: args.projectNumber! }),
         },
-        select: { id: true, projectNumber: true },
+        select: {
+          id: true,
+          projectNumber: true,
+          flatFeeAmount: true,
+          flatFeeInvoicedAt: true,
+        },
       });
       if (!found) {
         throw new Error('Project not found or no access');
+      }
+      if (args.flatFeeAmount !== undefined && found.flatFeeInvoicedAt) {
+        const next = args.flatFeeAmount == null ? null : new Decimal(args.flatFeeAmount).toFixed(2);
+        const previous =
+          found.flatFeeAmount == null ? null : new Decimal(found.flatFeeAmount).toFixed(2);
+        if (next !== previous) {
+          throw new Error('This project flat fee was already invoiced and cannot be changed');
+        }
       }
       return tx.project.update({
         where: { id: found.id },

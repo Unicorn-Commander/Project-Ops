@@ -694,6 +694,44 @@ describe('ProjectOpsTools — agent-surface gap tools', () => {
   });
 });
 
+describe('ProjectOpsTools.updateBillingFields — invoiced flat-fee immutability', () => {
+  it('rejects changing an invoiced project flat fee inside the workspace tx', async () => {
+    const update = jest.fn(async () => ({ id: 'p1' }));
+    const tx = {
+      project: {
+        findFirst: jest.fn(async () => ({
+          id: 'p1',
+          projectNumber: 'P-1',
+          flatFeeAmount: '1250.00',
+          flatFeeInvoicedAt: new Date('2026-09-30T12:00:00Z'),
+        })),
+        update,
+      },
+    };
+    const workspace = {
+      resolveAuthorized: jest.fn(async () => 'ws-1'),
+      runForUser: jest.fn(async (_user: any, fn: (scopedTx: any) => any) => fn(tx)),
+    };
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace as any,
+    );
+
+    await expect(
+      tools.updateBillingFields(baseUser({ role: UserRole.ADMIN }), {
+        id: 'p1',
+        flatFeeAmount: 1251,
+      }),
+    ).rejects.toThrow(/already invoiced/);
+    expect(update).not.toHaveBeenCalled();
+  });
+});
+
 describe('normalizeTaskStatus / normalizeTaskPriority — forgiving filters', () => {
   it('returns undefined for empty / missing input (no filter)', () => {
     expect(normalizeTaskStatus(undefined)).toBeUndefined();

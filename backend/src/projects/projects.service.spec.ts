@@ -331,3 +331,31 @@ describe('ProjectsService — safe User selects (never the full User row)', () =
     expect(args.include.assignedTo).toEqual(SAFE_USER_SELECT);
   });
 });
+
+describe('ProjectsService.update — invoiced flat-fee immutability', () => {
+  it('rejects changing a project flat fee after it was invoiced', async () => {
+    const update = jest.fn(async () => ({ id: 'p1' }));
+    const findUnique = jest.fn(async () => ({
+      flatFeeAmount: '1250.00',
+      flatFeeInvoicedAt: new Date('2026-09-30T12:00:00Z'),
+    }));
+    const { svc } = makeService({ tx: { project: { findUnique, update } } });
+
+    await expect(svc.update('ws1', user, 'p1', { flatFeeAmount: 1251 } as any)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('allows an idempotent rewrite of the same invoiced flat fee', async () => {
+    const update = jest.fn(async () => ({ id: 'p1' }));
+    const findUnique = jest.fn(async () => ({
+      flatFeeAmount: '1250.00',
+      flatFeeInvoicedAt: new Date('2026-09-30T12:00:00Z'),
+    }));
+    const { svc } = makeService({ tx: { project: { findUnique, update } } });
+
+    await svc.update('ws1', user, 'p1', { flatFeeAmount: 1250 } as any);
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+});
