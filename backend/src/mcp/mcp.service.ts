@@ -45,6 +45,14 @@ const TASK_TYPE_VALUES = Object.values(TaskType) as [TaskType, ...TaskType[]];
 const TASK_PRIORITY_VALUES = Object.values(TaskPriority) as [TaskPriority, ...TaskPriority[]];
 const TASK_STATUS_VALUES = Object.values(TaskStatus) as [TaskStatus, ...TaskStatus[]];
 
+const moneyInput = z
+  .number()
+  .finite()
+  .min(0)
+  .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-8, {
+    message: 'must have at most two decimal places',
+  });
+
 // Keep the historical case-forgiving MCP input while validating against the
 // generated Prisma enum values before a tool reaches Prisma.
 const taskEnum = <T extends string>(values: [T, ...T[]]) =>
@@ -725,7 +733,7 @@ export class McpService {
           customFields: z.record(z.string(), z.any()).optional(),
           recurrenceRule: z.string().nullable().optional(),
           estimatedHours: z.number().min(0).nullable().optional(),
-          fixedAmount: z.number().min(0).nullable().optional(),
+          fixedAmount: moneyInput.nullable().optional(),
         },
       },
       async (args: any) => wrap(await tools.updateTask(user, args)),
@@ -761,7 +769,7 @@ export class McpService {
           customFields: z.record(z.string(), z.any()).optional(),
           recurrenceRule: z.string().optional(),
           estimatedHours: z.number().min(0).optional(),
-          fixedAmount: z.number().min(0).optional(),
+          fixedAmount: moneyInput.optional(),
         },
       },
       async (args: any) => wrap(await tools.createTask(user, args)),
@@ -974,7 +982,7 @@ export class McpService {
           paymentDueDate: z.string().optional(),
           paymentReceivedDate: z.string().optional(),
           billingNotes: z.string().optional(),
-          flatFeeAmount: z.number().min(0).nullable().optional(),
+          flatFeeAmount: moneyInput.nullable().optional(),
           customerOpsCustomerId: z.string().nullable().optional(),
           contactOpsContactId: z.string().nullable().optional(),
         },

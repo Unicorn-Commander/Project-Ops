@@ -1548,8 +1548,8 @@ export class ProjectOpsTools {
         throw new Error('Task not found or no access');
       }
       if (args.fixedAmount !== undefined && found.invoicedAt) {
-        const next = args.fixedAmount == null ? null : Number(args.fixedAmount).toFixed(2);
-        const prev = found.fixedAmount == null ? null : Number(found.fixedAmount).toFixed(2);
+        const next = args.fixedAmount == null ? null : new Decimal(args.fixedAmount).toFixed(2);
+        const prev = found.fixedAmount == null ? null : new Decimal(found.fixedAmount).toFixed(2);
         if (next !== prev) {
           throw new Error('This flat fee was already invoiced and cannot be changed');
         }

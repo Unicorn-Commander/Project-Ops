@@ -147,6 +147,32 @@ describe('McpService tool gating (RBAC + workspace)', () => {
     expect(status.data.status).toBe('COMPLETED');
   });
 
+  it('limits new MCP fee inputs to non-negative cents', async () => {
+    const svc = makeService('ws-1');
+    await svc.createServerForUser(adminUser(), null, null, null);
+    const schemaFor = (name: string) => z.object(registeredSchemas.get(name).inputSchema);
+
+    expect(schemaFor('create_task').safeParse({ title: 't', fixedAmount: 12.345 }).success).toBe(
+      false,
+    );
+    expect(schemaFor('update_task').safeParse({ taskId: 't1', fixedAmount: 12.345 }).success).toBe(
+      false,
+    );
+    expect(
+      schemaFor('update_billing_fields').safeParse({ id: 'p1', flatFeeAmount: 12.345 }).success,
+    ).toBe(false);
+
+    expect(schemaFor('create_task').safeParse({ title: 't', fixedAmount: 12.34 }).success).toBe(
+      true,
+    );
+    expect(schemaFor('update_task').safeParse({ taskId: 't1', fixedAmount: null }).success).toBe(
+      true,
+    );
+    expect(
+      schemaFor('update_billing_fields').safeParse({ id: 'p1', flatFeeAmount: null }).success,
+    ).toBe(true);
+  });
+
   it('sanitizes Prisma errors at the shared MCP error boundary', async () => {
     const original = ProjectOpsTools.prototype.getProject;
     ProjectOpsTools.prototype.getProject = jest.fn().mockRejectedValue(
