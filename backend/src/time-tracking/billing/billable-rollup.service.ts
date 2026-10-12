@@ -14,11 +14,7 @@ import { WorkspaceContextService } from '../../common/workspace/workspace-contex
 import { AuditService } from '../../audit/audit.service';
 import { BillableDraftAssembler, BillableSource } from './billable-draft.assembler';
 import { InvoicePdfService } from './invoice-pdf.service';
-import {
-  buildInvoicePresentation,
-  FixedFeeLine,
-  selectFixedFeesForScope,
-} from './fixed-fee';
+import { buildInvoicePresentation, FixedFeeLine, selectFixedFeesForScope } from './fixed-fee';
 import {
   ACCOUNTING_OPS_PORT,
   AccountingOpsPort,
@@ -187,9 +183,7 @@ export class BillableRollupService {
         ? ''
         : `${fees.lines.length} flat fee${fees.lines.length === 1 ? '' : 's'}`;
     const timeNote =
-      priced.length === 0
-        ? ''
-        : `${priced.length} time entr${priced.length === 1 ? 'y' : 'ies'}`;
+      priced.length === 0 ? '' : `${priced.length} time entr${priced.length === 1 ? 'y' : 'ies'}`;
     const notes = `Generated from Project-Ops — ${[feeNote, timeNote].filter(Boolean).join(' and ')}.`;
 
     let aoResult: AoCreateResult | null = null;
@@ -231,7 +225,14 @@ export class BillableRollupService {
       if (!this.alreadyPosted(invoice)) {
         const issued = await this.ao.issueInvoice(invoice.id, ctx);
         if (!issued.ok) {
-          await this.auditDraft(user, workspaceId, singleProject?.id, 'DRAFT', issued.reason, externalRef);
+          await this.auditDraft(
+            user,
+            workspaceId,
+            singleProject?.id,
+            'DRAFT',
+            issued.reason,
+            externalRef,
+          );
           return {
             status: 'DRAFT',
             invoice,
@@ -275,7 +276,9 @@ export class BillableRollupService {
 
     if (!wantIssue && aoResult?.ok) {
       await this.auditDraft(user, workspaceId, singleProject?.id, 'DRAFT', 'preview', externalRef);
-      this.logger.log(`create_billable_draft: user=${user.email} DRAFT invoice=${aoResult.invoice.id}`);
+      this.logger.log(
+        `create_billable_draft: user=${user.email} DRAFT invoice=${aoResult.invoice.id}`,
+      );
       return { status: 'DRAFT', invoice: aoResult.invoice, ...preview };
     }
 
@@ -612,7 +615,7 @@ export class BillableRollupService {
             where: { id: singleProjectId },
             data: {
               invoiceNumber: invoice.invoiceNumber ?? invoice.id,
-              billingAmount: (invoice.total ? Number(invoice.total) : Number(total)) as any,
+              billingAmount: invoice.total ?? total,
               paymentStatus,
               billingDate: now,
             },
