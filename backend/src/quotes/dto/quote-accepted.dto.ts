@@ -373,7 +373,8 @@ export class QuoteAcceptedDto {
   contact_id?: string;
 
   @ApiPropertyOptional({
-    description: 'Customer-Ops customer id. Stored on the project so the invoice can be listed there.',
+    description:
+      'Customer-Ops customer id. Stored on the project so the invoice can be listed there.',
   })
   @IsOptional()
   @IsString()

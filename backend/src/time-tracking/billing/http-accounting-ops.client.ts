@@ -148,7 +148,11 @@ export class HttpAccountingOpsClient extends AccountingOpsPort {
 
   async issueInvoice(invoiceId: string, ctx: AoCallContext): Promise<AoCreateResult> {
     if (!this.isLive()) {
-      return { ok: false, reason: 'DISABLED', message: 'Live Accounting-Ops invoicing is not enabled.' };
+      return {
+        ok: false,
+        reason: 'DISABLED',
+        message: 'Live Accounting-Ops invoicing is not enabled.',
+      };
     }
     if (!ctx.bearerToken) {
       return {
@@ -158,7 +162,11 @@ export class HttpAccountingOpsClient extends AccountingOpsPort {
       };
     }
     if (!invoiceId) {
-      return { ok: false, reason: 'ERROR', message: 'Accounting-Ops did not return an invoice id.' };
+      return {
+        ok: false,
+        reason: 'ERROR',
+        message: 'Accounting-Ops did not return an invoice id.',
+      };
     }
     const url = `${this.baseUrl}/api/workspaces/${this.aoWorkspaceId}/invoices/${invoiceId}/issue`;
     let res: Response;
@@ -174,7 +182,11 @@ export class HttpAccountingOpsClient extends AccountingOpsPort {
       });
     } catch (err) {
       this.logger.error(`Accounting-Ops unreachable at ${url}: ${(err as Error).message}`);
-      return { ok: false, reason: 'UNREACHABLE', message: 'Accounting-Ops is unreachable right now.' };
+      return {
+        ok: false,
+        reason: 'UNREACHABLE',
+        message: 'Accounting-Ops is unreachable right now.',
+      };
     }
     if (res.status === 401 || res.status === 403) {
       return {

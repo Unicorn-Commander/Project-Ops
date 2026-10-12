@@ -502,12 +502,12 @@ export class TasksService {
 
         if (updateData.fixedAmount !== undefined && task.invoicedAt) {
           const next =
-            updateData.fixedAmount == null
-              ? null
-              : new Decimal(updateData.fixedAmount).toFixed(2);
+            updateData.fixedAmount == null ? null : new Decimal(updateData.fixedAmount).toFixed(2);
           const prev = task.fixedAmount == null ? null : new Decimal(task.fixedAmount).toFixed(2);
           if (next !== prev) {
-            throw new BadRequestException('This flat fee was already invoiced and cannot be changed');
+            throw new BadRequestException(
+              'This flat fee was already invoiced and cannot be changed',
+            );
           }
         }
 

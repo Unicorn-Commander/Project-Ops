@@ -361,9 +361,7 @@ export class QuotesFederationService {
     } as unknown as Prisma.InputJsonObject;
 
     const taskLines = selectTaskLines(dto.lines);
-    const linePriced = taskLines.some(
-      (line) => line.amount_cents != null && line.amount_cents > 0,
-    );
+    const linePriced = taskLines.some((line) => line.amount_cents != null && line.amount_cents > 0);
 
     const project = await tx.project.create({
       data: {
