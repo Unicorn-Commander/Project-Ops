@@ -155,7 +155,12 @@ export interface RealizationReport {
 
 export interface WipRow {
   projectId: string;
-  project?: { id: string; projectNumber: string; title: string; clientName: string };
+  project?: {
+    id: string;
+    projectNumber: string;
+    title: string;
+    clientName: string;
+  };
   wipAmount: number;
   wipHours: number;
 }
@@ -214,7 +219,22 @@ export interface BillableDraftDraftOnly {
   unpricedCount: number;
 }
 
-export type BillableDraftResult = BillableDraftInvoiced | BillableDraftDraftOnly;
+export interface BillableDraftPending {
+  /** Accounting-Ops created/returned a draft, but the requested issue failed. */
+  status: 'DRAFT';
+  invoice: AoInvoice;
+  reason: 'NOT_ENTITLED' | 'UNREACHABLE' | 'DISABLED' | 'ERROR';
+  message: string;
+  externalRef: string;
+  previewUrl: string;
+  draft: DraftSummary;
+  unpricedCount: number;
+}
+
+export type BillableDraftResult =
+  | BillableDraftInvoiced
+  | BillableDraftDraftOnly
+  | BillableDraftPending;
 
 // ---------------------------------------------------------------------------
 // Request shapes
@@ -282,6 +302,8 @@ export interface CreateBillableDraftInput {
   periodEnd?: string; // ISO
   groupBy?: BillableGroupBy;
   autoSend?: boolean;
+  /** Preview by default; true asks Accounting-Ops to issue and post. */
+  issue?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -303,16 +325,12 @@ export const getRunningTimer = async (): Promise<TimeEntry | null> => {
   return data ?? null;
 };
 
-export const createTimeEntry = async (
-  input: CreateTimeEntryInput,
-): Promise<TimeEntry> => {
+export const createTimeEntry = async (input: CreateTimeEntryInput): Promise<TimeEntry> => {
   const { data } = await api.post('/time-entries', input);
   return data;
 };
 
-export const getTimeEntries = async (
-  params?: QueryTimeEntriesInput,
-): Promise<TimeEntriesPage> => {
+export const getTimeEntries = async (params?: QueryTimeEntriesInput): Promise<TimeEntriesPage> => {
   const { data } = await api.get('/time-entries', { params });
   return data;
 };
@@ -339,9 +357,7 @@ export const deleteTimeEntry = async (id: string): Promise<{ message: string }> 
 // Timesheets
 // ---------------------------------------------------------------------------
 
-export const submitTimesheet = async (
-  periodStart?: string,
-): Promise<TimesheetPeriod> => {
+export const submitTimesheet = async (periodStart?: string): Promise<TimesheetPeriod> => {
   const { data } = await api.post('/timesheets/submit', { periodStart });
   return data;
 };
@@ -419,9 +435,7 @@ export const getBillingRates = async (params?: {
   return data;
 };
 
-export const createBillingRate = async (
-  input: CreateBillingRateInput,
-): Promise<BillingRate> => {
+export const createBillingRate = async (input: CreateBillingRateInput): Promise<BillingRate> => {
   const { data } = await api.post('/billing-rates', input);
   return data;
 };
@@ -434,9 +448,7 @@ export const updateBillingRate = async (
   return data;
 };
 
-export const deleteBillingRate = async (
-  id: string,
-): Promise<{ message: string }> => {
+export const deleteBillingRate = async (id: string): Promise<{ message: string }> => {
   const { data } = await api.delete(`/billing-rates/${id}`);
   return data;
 };
@@ -477,10 +489,7 @@ export function secondsToHours(seconds: number | null | undefined): number {
 }
 
 /** Format a number/decimal-string as currency. Tolerates both wire shapes. */
-export function formatMoney(
-  value: number | string | null | undefined,
-  currency = 'USD',
-): string {
+export function formatMoney(value: number | string | null | undefined, currency = 'USD'): string {
   if (value === null || value === undefined || value === '') return '—';
   const n = typeof value === 'string' ? Number(value) : value;
   if (Number.isNaN(n)) return '—';
@@ -539,13 +548,13 @@ export interface UserOption {
 }
 
 export const getProjectOptions = async (): Promise<ProjectOption[]> => {
-  const { data } = await api.get('/projects', { params: { page: 1, limit: 1000 } });
+  const { data } = await api.get('/projects', {
+    params: { page: 1, limit: 1000 },
+  });
   return data.data ?? data ?? [];
 };
 
-export const getProjectTaskOptions = async (
-  projectId: string,
-): Promise<TaskOption[]> => {
+export const getProjectTaskOptions = async (projectId: string): Promise<TaskOption[]> => {
   const { data } = await api.get(`/tasks/project/${projectId}`, {
     params: { take: 500 },
   });
