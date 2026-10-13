@@ -68,6 +68,7 @@ import { CustomFieldEntity } from "@/lib/custom-fields-api";
 import { Repeat, Timer, SlidersHorizontal } from "lucide-react";
 import { parseRecurrenceRule } from "@/components/custom-fields/recurrence-picker";
 import { HelpHint } from "@/components/guidance";
+import { commentAuthorName } from "@/lib/comment-author";
 
 interface TaskDetailsModalProps {
   isOpen: boolean;
@@ -940,9 +941,7 @@ export function TaskDetailsModal({
                   <div className="flex items-start justify-between mb-2">
                     <div>
                       <span className="font-semibold text-foreground">
-                        {comment.user && comment.user.firstName && comment.user.lastName
-                          ? `${comment.user.firstName} ${comment.user.lastName}`
-                          : comment.user?.email || "Unknown User"}
+                        {commentAuthorName(comment)}
                       </span>
                       <span className="text-sm text-muted-foreground ml-2">
                         {format(new Date(comment.createdAt), "MMM d, yyyy h:mm a")}
