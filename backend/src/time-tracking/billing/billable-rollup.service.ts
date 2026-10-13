@@ -14,11 +14,13 @@ import { WorkspaceContextService } from '../../common/workspace/workspace-contex
 import { AuditService } from '../../audit/audit.service';
 import { BillableDraftAssembler, BillableSource } from './billable-draft.assembler';
 import { InvoicePdfService } from './invoice-pdf.service';
+import { buildInvoicePresentation, FixedFeeLine, selectFixedFeesForScope } from './fixed-fee';
 import {
   ACCOUNTING_OPS_PORT,
   AccountingOpsPort,
   AoCallContext,
   AoCreateResult,
+  AoInvoice,
 } from './accounting-ops.port';
 import { CreateBillableDraftDto, BillableGroupBy } from '../dto/create-billable-draft.dto';
 import { buildExternalRef } from './external-ref.util';
@@ -66,38 +68,33 @@ export class BillableRollupService {
       throw new BadRequestException('Provide projectId or clientId');
     }
 
-    // Read phase: gather candidate entries + resolve the customer in ONE short
-    // workspace tx, then CLOSE it before any network/file I/O (MinIO PDF render,
-    // Accounting-Ops HTTP). Holding a tx open across I/O would pin a connection
-    // and risk the SET LOCAL GUC's transaction outliving its purpose. The
-    // write-back (markBilledAndMirror) opens its own SECOND tx after the I/O.
-    const { entries, customer } = await this.workspaceContext.runForUser(
+    // Read phase: time entries + uninvoiced flat fees + the customer, in ONE
+    // short workspace tx. Close it before PDF / Accounting-Ops I/O. The
+    // write-back opens a second tx, and only after a successful issue.
+    const { entries, customer, fees, feeProjects } = await this.workspaceContext.runForUser(
       user,
       async (tx) => {
         const rows = await this.gatherEntries(tx, workspaceId, dto);
-        // resolveCustomer may read a Contact; do it in the same read tx.
-        const cust = await this.resolveCustomer(tx, workspaceId, dto, rows);
-        return { entries: rows, customer: cust };
+        const gathered = await this.gatherFixedFees(tx, workspaceId, dto);
+        const cust = await this.resolveCustomer(tx, workspaceId, dto, rows, gathered.projects);
+        return {
+          entries: rows,
+          customer: cust,
+          fees: gathered.selection,
+          feeProjects: gathered.projects,
+        };
       },
       workspaceId,
     );
-    if (entries.length === 0) {
-      throw new BadRequestException(
-        'No approved, billable, unbilled time entries match this scope/period',
-      );
-    }
 
-    // Only entries with a resolved price can be invoiced; the rest are reported
-    // back so they can be re-rated, and are deliberately left unbilled.
-    const priced = entries.filter((e) => e.billableAmount !== null && e.billRateApplied !== null);
-    const unpricedCount = entries.length - priced.length;
-    if (priced.length === 0) {
-      throw new BadRequestException(
-        'Matching entries have no resolved bill rate; set a BillingRate or project default rate first',
-      );
-    }
+    const excluded = new Set(fees.excludedTaskIds);
+    const hourlyEntries = entries.filter((e) => !e.taskId || !excluded.has(e.taskId));
+    const priced = hourlyEntries.filter(
+      (e) => e.billableAmount !== null && e.billRateApplied !== null,
+    );
+    const unpricedCount = hourlyEntries.length - priced.length;
 
-    const sources: BillableSource[] = priced.map((e) => ({
+    const timeSources: BillableSource[] = priced.map((e) => ({
       id: e.id,
       date: e.startedAt,
       description: e.description || e.task?.title || 'Work',
@@ -110,15 +107,48 @@ export class BillableRollupService {
       role: e.user?.role ?? null,
       userId: e.userId,
     }));
+    const fixedSources: BillableSource[] = fees.lines.map((line) => ({
+      id: line.sourceId,
+      date: new Date(),
+      description: line.title,
+      quantityHours: new Decimal(1),
+      unitRate: line.amount,
+      amount: line.amount,
+      currency: 'USD',
+      taskId: line.taskId,
+      taskTitle: line.title,
+    }));
 
+    if (timeSources.length === 0 && fixedSources.length === 0) {
+      if (entries.length > 0 && hourlyEntries.length === 0) {
+        throw new BadRequestException(
+          'The matching time sits on flat-fee tasks, and no uninvoiced flat fee remains',
+        );
+      }
+      if (hourlyEntries.length > 0) {
+        throw new BadRequestException(
+          'Matching entries have no resolved bill rate; set a BillingRate or project default rate first',
+        );
+      }
+      throw new BadRequestException(
+        'No approved, billable, unbilled time and no uninvoiced flat fee match this scope',
+      );
+    }
+
+    const sources = [...timeSources, ...fixedSources];
     const draft = this.assembler.assemble(sources, dto.groupBy ?? BillableGroupBy.TASK);
     const externalRef = buildExternalRef(
       workspaceId,
       { projectId: dto.projectId, clientId: dto.clientId },
       draft.sourceIds,
     );
-    const projectIds = Array.from(new Set(priced.map((e) => e.projectId)));
-    const singleProject = projectIds.length === 1 ? priced[0].project : null;
+    const projectIds = Array.from(
+      new Set<string>([...priced.map((e) => e.projectId), ...fees.lines.map((l) => l.projectId)]),
+    );
+    const singleProject =
+      projectIds.length === 1
+        ? (priced[0]?.project ?? feeProjects.find((p) => p.id === projectIds[0]) ?? null)
+        : null;
 
     const periodLabel =
       dto.periodStart || dto.periodEnd
@@ -137,13 +167,32 @@ export class BillableRollupService {
       externalRef,
     });
 
+    const fixedOnly = timeSources.length === 0 && fixedSources.length > 0;
+    const netTerms = fixedOnly
+      ? 0
+      : Number(this.config.get<string>('INVOICE_NET_TERMS', '30')) || 30;
+    const presentation = buildInvoicePresentation(fees.lines, timeSources.length);
+    const suiteCustomerId = this.oneSuiteId(feeProjects.map((p) => p.customerOpsCustomerId));
+    const suiteContactId = this.oneSuiteId(feeProjects.map((p) => p.contactOpsContactId));
+    const aoCustomer = {
+      ...customer,
+      ...(suiteContactId ? { contactId: suiteContactId } : {}),
+    };
+    const feeNote =
+      fees.lines.length === 0
+        ? ''
+        : `${fees.lines.length} flat fee${fees.lines.length === 1 ? '' : 's'}`;
+    const timeNote =
+      priced.length === 0 ? '' : `${priced.length} time entr${priced.length === 1 ? 'y' : 'ies'}`;
+    const notes = `Generated from Project-Ops — ${[feeNote, timeNote].filter(Boolean).join(' and ')}.`;
+
     let aoResult: AoCreateResult | null = null;
     if (this.ao.isLive()) {
       aoResult = await this.ao.createInvoiceFromDraft(
         {
           externalRef,
           currency: draft.currency,
-          customer,
+          customer: aoCustomer,
           lineItems: draft.lineItems.map((li) => ({
             description: li.description,
             quantity: li.quantity,
@@ -151,24 +200,57 @@ export class BillableRollupService {
             amount: li.amount,
             sourceRef: this.lineSourceRef(li.sourceRefs),
           })),
-          netTerms: Number(this.config.get<string>('INVOICE_NET_TERMS', '30')) || 30,
+          netTerms,
           poNumber: singleProject?.projectNumber ?? null,
-          notes: `Generated from Project-Ops — ${priced.length} time entr${priced.length === 1 ? 'y' : 'ies'}.`,
-          autoSend: dto.autoSend ?? false,
+          notes,
+          autoSend: false,
+          postJournal: false,
+          customerOpsCustomerId: suiteCustomerId,
+          presentation,
         },
         ctx,
       );
     }
 
-    if (aoResult && aoResult.ok) {
-      // Write-back phase: SECOND short workspace tx, after the AO I/O completed.
+    const wantIssue = dto.issue === true || dto.autoSend === true;
+    const preview = {
+      previewUrl,
+      draft: this.draftView(draft),
+      unpricedCount,
+      externalRef,
+    };
+
+    if (wantIssue && aoResult?.ok) {
+      let invoice = aoResult.invoice;
+      if (!this.alreadyPosted(invoice)) {
+        const issued = await this.ao.issueInvoice(invoice.id, ctx);
+        if (!issued.ok) {
+          await this.auditDraft(
+            user,
+            workspaceId,
+            singleProject?.id,
+            'DRAFT',
+            issued.reason,
+            externalRef,
+          );
+          return {
+            status: 'DRAFT',
+            invoice,
+            reason: issued.reason,
+            message: issued.message,
+            ...preview,
+          };
+        }
+        invoice = issued.invoice;
+      }
       await this.markBilledAndMirror(
         user,
         workspaceId,
-        draft.sourceIds,
+        priced.map((e) => e.id),
+        fees.lines,
         projectIds,
         singleProject ? singleProject.id : null,
-        aoResult,
+        { ok: true, invoice },
         draft.total,
       );
       await this.audit.log({
@@ -178,57 +260,41 @@ export class BillableRollupService {
         action: 'EXPORT',
         resource: 'TimeEntry',
         details: {
-          action: 'create_billable_draft',
+          action: 'issue_invoice',
           result: 'INVOICED',
-          invoiceId: aoResult.invoice.id,
+          invoiceId: invoice.id,
           externalRef,
           entryCount: draft.sourceIds.length,
         },
       });
-      this.events.emit('billing.invoiced', {
-        workspaceId,
-        projectIds,
-        invoice: aoResult.invoice,
-      });
+      this.events.emit('billing.invoiced', { workspaceId, projectIds, invoice });
       this.logger.log(
-        `create_billable_draft: user=${user.email} INVOICED invoice=${aoResult.invoice.id} entries=${draft.sourceIds.length}`,
+        `issue_invoice: user=${user.email} INVOICED invoice=${invoice.id} sources=${draft.sourceIds.length}`,
       );
-
-      return {
-        status: 'INVOICED',
-        invoice: aoResult.invoice,
-        previewUrl,
-        draft: this.draftView(draft),
-        unpricedCount,
-      };
+      return { status: 'INVOICED', invoice, ...preview };
     }
 
-    // Fallback: draft + preview only.
+    if (!wantIssue && aoResult?.ok) {
+      await this.auditDraft(user, workspaceId, singleProject?.id, 'DRAFT', 'preview', externalRef);
+      this.logger.log(
+        `create_billable_draft: user=${user.email} DRAFT invoice=${aoResult.invoice.id}`,
+      );
+      return { status: 'DRAFT', invoice: aoResult.invoice, ...preview };
+    }
+
     const reason = aoResult && !aoResult.ok ? aoResult.reason : 'DISABLED';
     const message =
       aoResult && !aoResult.ok
         ? aoResult.message
         : 'Live Accounting-Ops invoicing is off. Connect Accounting-Ops to invoice.';
-
-    await this.audit.log({
-      workspaceId,
-      userId: user.id,
-      projectId: singleProject?.id,
-      action: 'EXPORT',
-      resource: 'TimeEntry',
-      details: { action: 'create_billable_draft', result: 'DRAFT_ONLY', reason, externalRef },
-    });
+    await this.auditDraft(user, workspaceId, singleProject?.id, 'DRAFT_ONLY', reason, externalRef);
     this.logger.log(`create_billable_draft: user=${user.email} DRAFT_ONLY reason=${reason}`);
-
     return {
       status: 'DRAFT_ONLY',
       reason,
       message,
       connectAccountingOps: true,
-      externalRef,
-      previewUrl,
-      draft: this.draftView(draft),
-      unpricedCount,
+      ...preview,
     };
   }
 
@@ -381,11 +447,94 @@ export class BillableRollupService {
     });
   }
 
+  private async gatherFixedFees(
+    tx: WorkspaceTxClient,
+    workspaceId: string,
+    dto: CreateBillableDraftDto,
+  ) {
+    const where: Prisma.ProjectWhereInput = { workspaceId };
+    if (dto.projectId) where.id = dto.projectId;
+    else if (dto.clientId) where.contactId = dto.clientId;
+    const projects = await tx.project.findMany({
+      where,
+      select: {
+        id: true,
+        title: true,
+        projectNumber: true,
+        flatFeeAmount: true,
+        flatFeeInvoicedAt: true,
+        customerOpsCustomerId: true,
+        contactOpsContactId: true,
+        clientName: true,
+        clientEmail: true,
+        contactId: true,
+        contact: {
+          select: { id: true, firstName: true, lastName: true, email: true, company: true },
+        },
+      },
+    });
+    const tasks = projects.length
+      ? await tx.task.findMany({
+          where: { workspaceId, projectId: { in: projects.map((p) => p.id) } },
+          select: {
+            id: true,
+            projectId: true,
+            title: true,
+            description: true,
+            fixedAmount: true,
+            invoicedAt: true,
+          },
+        })
+      : [];
+    return { projects, selection: selectFixedFeesForScope(projects, tasks) };
+  }
+
+  private oneSuiteId(ids: Array<string | null | undefined>): string | null {
+    const present = Array.from(new Set(ids.filter((id): id is string => !!id)));
+    return present.length === 1 ? present[0] : null;
+  }
+
+  private alreadyPosted(invoice: AoInvoice): boolean {
+    if (invoice.journalEntryId) return true;
+    const status = (invoice.status || '').toLowerCase();
+    return status !== '' && status !== 'draft';
+  }
+
+  private async auditDraft(
+    user: User,
+    workspaceId: string,
+    projectId: string | undefined,
+    result: string,
+    reason: string,
+    externalRef: string,
+  ) {
+    await this.audit.log({
+      workspaceId,
+      userId: user.id,
+      projectId,
+      action: 'EXPORT',
+      resource: 'TimeEntry',
+      details: { action: 'create_billable_draft', result, reason, externalRef },
+    });
+  }
+
   private async resolveCustomer(
     tx: WorkspaceTxClient,
     workspaceId: string,
     dto: CreateBillableDraftDto,
     priced: any[],
+    feeProjects: Array<{
+      clientName: string | null;
+      clientEmail: string | null;
+      contactId: string | null;
+      contact: {
+        id: string;
+        firstName: string | null;
+        lastName: string | null;
+        email: string | null;
+        company: string | null;
+      } | null;
+    }> = [],
   ): Promise<{ name: string; email?: string | null; contactId?: string | null }> {
     if (dto.clientId) {
       const contact = await tx.contact.findUnique({ where: { id: dto.clientId } });
@@ -395,7 +544,8 @@ export class BillableRollupService {
         return { name, email: contact.email, contactId: contact.id };
       }
     }
-    const project = priced[0].project;
+    const project = priced[0]?.project ?? feeProjects[0];
+    if (!project) return { name: 'Client' };
     if (project?.contact) {
       const c = project.contact;
       const name = `${c.firstName} ${c.lastName}`.trim() || c.company || project.clientName;
@@ -417,7 +567,8 @@ export class BillableRollupService {
   private async markBilledAndMirror(
     user: User,
     workspaceId: string,
-    sourceIds: string[],
+    timeEntryIds: string[],
+    feeLines: FixedFeeLine[],
     projectIds: string[],
     singleProjectId: string | null,
     aoResult: Extract<AoCreateResult, { ok: true }>,
@@ -426,6 +577,12 @@ export class BillableRollupService {
     const now = new Date();
     const invoice = aoResult.invoice;
     const paymentStatus = mapPaymentStatus(invoice.status);
+    const fixedTaskIds = feeLines
+      .filter((line) => line.kind === 'fixed_task' && line.taskId)
+      .map((line) => line.taskId as string);
+    const flatFeeProjectIds = feeLines
+      .filter((line) => line.kind === 'fixed_project')
+      .map((line) => line.projectId);
 
     // A $transaction(ARRAY) batch CANNOT carry SET LOCAL, so it would bypass the
     // RLS GUC under the NOBYPASSRLS runtime role. Rewritten as an interactive
@@ -434,17 +591,31 @@ export class BillableRollupService {
     await this.workspaceContext.runForUser(
       user,
       async (tx) => {
-        await tx.timeEntry.updateMany({
-          where: { id: { in: sourceIds }, workspaceId, billed: false },
-          data: { billed: true, invoiceRef: invoice.id, lockedAt: now },
-        });
+        if (timeEntryIds.length) {
+          await tx.timeEntry.updateMany({
+            where: { id: { in: timeEntryIds }, workspaceId, billed: false },
+            data: { billed: true, invoiceRef: invoice.id, lockedAt: now },
+          });
+        }
+        if (fixedTaskIds.length) {
+          await tx.task.updateMany({
+            where: { id: { in: fixedTaskIds }, workspaceId, invoicedAt: null },
+            data: { invoicedAt: now, invoiceExternalRef: invoice.id },
+          });
+        }
+        if (flatFeeProjectIds.length) {
+          await tx.project.updateMany({
+            where: { id: { in: flatFeeProjectIds }, workspaceId, flatFeeInvoicedAt: null },
+            data: { flatFeeInvoicedAt: now },
+          });
+        }
 
         if (singleProjectId) {
           await tx.project.update({
             where: { id: singleProjectId },
             data: {
               invoiceNumber: invoice.invoiceNumber ?? invoice.id,
-              billingAmount: (invoice.total ? Number(invoice.total) : Number(total)) as any,
+              billingAmount: invoice.total ?? total,
               paymentStatus,
               billingDate: now,
             },

@@ -43,6 +43,17 @@ export const CLIENT_MASKED_PROJECT_FIELDS = [
   'budgetHours',
   'billByDefault',
   'billingNotes',
+  'flatFeeAmount',
+  'flatFeeInvoicedAt',
+  'customerOpsCustomerId',
+  'contactOpsContactId',
+] as const;
+
+/** New invoice-source columns are internal; CLIENTs see invoice projections instead. */
+export const CLIENT_MASKED_TASK_FIELDS = [
+  'fixedAmount',
+  'invoicedAt',
+  'invoiceExternalRef',
 ] as const;
 
 /** Client-safe keys on task.metadata.quote (no foreign ids). */
@@ -138,7 +149,12 @@ export function maskTaskMetadataForClient(metadata: unknown): unknown {
 
 export function withTaskMetadataForRole<T>(task: T, user: Pick<User, 'role'>): T {
   if (user.role !== UserRole.CLIENT) return task;
+  if (task === null || typeof task !== 'object') return task;
+  const row = { ...(task as Record<string, unknown>) };
+  for (const field of CLIENT_MASKED_TASK_FIELDS) delete row[field];
   const metadata = (task as { metadata?: unknown } | null | undefined)?.metadata;
-  if (metadata === undefined || metadata === null) return task;
-  return { ...task, metadata: maskTaskMetadataForClient(metadata) } as T;
+  if (metadata !== undefined && metadata !== null) {
+    row.metadata = maskTaskMetadataForClient(metadata);
+  }
+  return row as T;
 }

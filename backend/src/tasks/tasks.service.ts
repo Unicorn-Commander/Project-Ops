@@ -28,6 +28,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { withTaskMetadataForRole } from '../common/serializers/client-metadata';
+import { Decimal } from '@prisma/client/runtime/library';
 
 /**
  * SUITE TENANCY (Phase 2, B2): Task + TaskComment are RLS-scoped tables, so
@@ -497,6 +498,17 @@ export class TasksService {
 
         if (!canUpdate) {
           throw new ForbiddenException('You do not have permission to update this task');
+        }
+
+        if (updateData.fixedAmount !== undefined && task.invoicedAt) {
+          const next =
+            updateData.fixedAmount == null ? null : new Decimal(updateData.fixedAmount).toFixed(2);
+          const prev = task.fixedAmount == null ? null : new Decimal(task.fixedAmount).toFixed(2);
+          if (next !== prev) {
+            throw new BadRequestException(
+              'This flat fee was already invoiced and cannot be changed',
+            );
+          }
         }
 
         // Verify assignee exists if being updated

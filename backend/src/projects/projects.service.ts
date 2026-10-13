@@ -711,6 +711,28 @@ export class ProjectsService {
           customFields,
         );
 
+        if (projectDataFields.flatFeeAmount !== undefined) {
+          const existing = await tx.project.findUnique({
+            where: { id },
+            select: { flatFeeAmount: true, flatFeeInvoicedAt: true },
+          });
+          if (existing?.flatFeeInvoicedAt) {
+            const next =
+              projectDataFields.flatFeeAmount == null
+                ? null
+                : new Decimal(projectDataFields.flatFeeAmount).toFixed(2);
+            const previous =
+              existing.flatFeeAmount == null
+                ? null
+                : new Decimal(existing.flatFeeAmount).toFixed(2);
+            if (next !== previous) {
+              throw new BadRequestException(
+                'This project flat fee was already invoiced and cannot be changed',
+              );
+            }
+          }
+        }
+
         const projectData = await tx.project.update({
           where: { id },
           data: {

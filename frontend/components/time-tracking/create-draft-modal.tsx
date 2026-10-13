@@ -6,11 +6,13 @@
  *
  * Flow: pick a project (clientId is supported by the API but v1 surfaces
  * project selection only) + optional period + groupBy, then POST
- * /billing/drafts via `createBillableDraft`. The endpoint is MANAGER/ADMIN
- * only on the backend.
+ * /billing/drafts via `createBillableDraft`. Preview is the default; the
+ * explicit issue action asks Accounting-Ops to post and only then stamps the
+ * source fee/time. The endpoint is MANAGER/ADMIN only on the backend.
  *
- * The result is a UNION the caller must handle two ways:
+ * The result is a UNION the caller must handle three ways:
  *   - INVOICED   → Accounting-Ops issued a real invoice (show invoice + PDF).
+ *   - DRAFT      → AO returned a draft but the requested issue failed.
  *   - DRAFT_ONLY → AO not connected/entitled/reachable; we STILL rendered a
  *                  draft PDF + assembled line items. This is NOT an error —
  *                  the UI works against the draft regardless of AO status.
@@ -20,7 +22,13 @@
  */
 
 import { useEffect, useState } from "react";
-import { Loader2, FileText, ExternalLink, AlertTriangle, PlugZap } from "lucide-react";
+import {
+  Loader2,
+  FileText,
+  ExternalLink,
+  AlertTriangle,
+  PlugZap,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -91,7 +99,9 @@ export function CreateDraftModal({
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
   const [groupBy, setGroupBy] = useState<BillableGroupBy>("TASK");
-  const [submitting, setSubmitting] = useState(false);
+  const [submittingAction, setSubmittingAction] = useState<
+    "draft" | "issue" | null
+  >(null);
   const [result, setResult] = useState<BillableDraftResult | null>(null);
 
   // Seed / reset fields whenever the modal opens.
@@ -102,14 +112,14 @@ export function CreateDraftModal({
     setPeriodEnd("");
     setGroupBy("TASK");
     setResult(null);
-    setSubmitting(false);
+    setSubmittingAction(null);
   }, [isOpen, preselectedProjectId]);
 
-  const canSubmit = !!projectId && !submitting;
+  const canSubmit = !!projectId && submittingAction === null;
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (issue: boolean) => {
     if (!canSubmit) return;
-    setSubmitting(true);
+    setSubmittingAction(issue ? "issue" : "draft");
     try {
       // periodStart/End are <input type=date> values ("YYYY-MM-DD"); the API
       // accepts ISO — a bare date is a valid ISO calendar date.
@@ -118,22 +128,29 @@ export function CreateDraftModal({
         periodStart: periodStart || undefined,
         periodEnd: periodEnd || undefined,
         groupBy,
+        issue,
       });
       setResult(res);
       onCreated(res);
 
       if (res.status === "INVOICED") {
         toast({
-          title: "Invoice created",
+          title: "Invoice issued",
           description: res.invoice.invoiceNumber
             ? `Invoice ${res.invoice.invoiceNumber} issued via Accounting-Ops.`
             : "Issued via Accounting-Ops.",
+        });
+      } else if (issue && res.status === "DRAFT") {
+        toast({
+          title: "Invoice remains a draft",
+          description: res.message,
         });
       } else {
         // DRAFT_ONLY is informational, not a failure.
         toast({
           title: "Draft created",
-          description: res.message || "Accounting-Ops is not connected — draft saved.",
+          description:
+            res.message || "Accounting-Ops is not connected — draft saved.",
         });
       }
     } catch (e: any) {
@@ -145,24 +162,31 @@ export function CreateDraftModal({
         variant: "destructive",
       });
     } finally {
-      setSubmitting(false);
+      setSubmittingAction(null);
     }
   };
 
   const draft = result?.draft;
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <DialogContent
         overlayClassName="bg-black/50 backdrop-blur-sm"
         className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-card"
       >
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold">Create draft invoice</DialogTitle>
+          <DialogTitle className="text-xl font-bold">
+            Create draft invoice
+          </DialogTitle>
           <DialogDescription>
-            Rolls up approved, billable, unbilled time into a draft. If
-            Accounting-Ops is connected it issues a real invoice; otherwise
-            you still get a draft PDF.
+            Preview approved, billable, unbilled work first, or explicitly issue
+            it through Accounting-Ops. Fees are stamped only after
+            Accounting-Ops accepts the issue.
           </DialogDescription>
         </DialogHeader>
 
@@ -217,7 +241,10 @@ export function CreateDraftModal({
               <Label htmlFor="draft-groupby" className="mb-1.5 block">
                 Group line items
               </Label>
-              <Select value={groupBy} onValueChange={(v) => setGroupBy(v as BillableGroupBy)}>
+              <Select
+                value={groupBy}
+                onValueChange={(v) => setGroupBy(v as BillableGroupBy)}
+              >
                 <SelectTrigger id="draft-groupby">
                   <SelectValue placeholder="By task" />
                 </SelectTrigger>
@@ -248,7 +275,9 @@ export function CreateDraftModal({
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
                     <span className="font-semibold text-foreground">
-                      {result.invoice.invoiceNumber || result.invoice.externalRef || "Invoice issued"}
+                      {result.invoice.invoiceNumber ||
+                        result.invoice.externalRef ||
+                        "Invoice issued"}
                     </span>
                     {result.invoice.status && (
                       <span
@@ -261,14 +290,18 @@ export function CreateDraftModal({
                     )}
                   </div>
                   <span className="font-mono tabular-nums text-sm font-semibold text-foreground">
-                    {formatMoney(result.invoice.total ?? draft.total, draft.currency)}
+                    {formatMoney(
+                      result.invoice.total ?? draft.total,
+                      draft.currency,
+                    )}
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-emerald-700/80 dark:text-emerald-300/80">
                   Issued via Accounting-Ops.
                   {result.invoice.balanceDue != null && (
                     <>
-                      {" "}Balance due{" "}
+                      {" "}
+                      Balance due{" "}
                       <span className="font-mono tabular-nums">
                         {formatMoney(result.invoice.balanceDue, draft.currency)}
                       </span>
@@ -306,7 +339,9 @@ export function CreateDraftModal({
                 className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
               >
                 <FileText className="h-4 w-4" />
-                {result.status === "INVOICED" ? "View / download PDF" : "View draft PDF"}
+                {result.status === "INVOICED"
+                  ? "View / download PDF"
+                  : "View draft PDF"}
                 <ExternalLink className="h-3.5 w-3.5 opacity-70" />
               </a>
             )}
@@ -314,9 +349,9 @@ export function CreateDraftModal({
             {/* Unpriced warning */}
             {result.unpricedCount > 0 && (
               <p className="rounded-md border border-orange-500/40 bg-orange-500/10 px-3 py-2 text-xs text-orange-700 dark:text-orange-300">
-                {result.unpricedCount} entr{result.unpricedCount === 1 ? "y" : "ies"} had
-                no resolved bill rate and {result.unpricedCount === 1 ? "was" : "were"}{" "}
-                skipped.
+                {result.unpricedCount} entr
+                {result.unpricedCount === 1 ? "y" : "ies"} had no resolved bill
+                rate and {result.unpricedCount === 1 ? "was" : "were"} skipped.
               </p>
             )}
 
@@ -327,7 +362,8 @@ export function CreateDraftModal({
                   Line items ({draft.lineItems.length})
                 </h3>
                 <span className="text-xs text-muted-foreground">
-                  {draft.entryCount} entr{draft.entryCount === 1 ? "y" : "ies"} rolled up
+                  {draft.entryCount} entr{draft.entryCount === 1 ? "y" : "ies"}{" "}
+                  rolled up
                 </span>
               </div>
               {draft.lineItems.length === 0 ? (
@@ -340,15 +376,26 @@ export function CreateDraftModal({
                     <thead>
                       <tr className="border-b border-border bg-muted/40 text-left text-xs text-muted-foreground">
                         <th className="px-3 py-2 font-medium">Description</th>
-                        <th className="px-3 py-2 text-right font-medium">Qty</th>
-                        <th className="px-3 py-2 text-right font-medium">Unit price</th>
-                        <th className="px-3 py-2 text-right font-medium">Amount</th>
+                        <th className="px-3 py-2 text-right font-medium">
+                          Qty
+                        </th>
+                        <th className="px-3 py-2 text-right font-medium">
+                          Unit price
+                        </th>
+                        <th className="px-3 py-2 text-right font-medium">
+                          Amount
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {draft.lineItems.map((line, i) => (
-                        <tr key={i} className="border-b border-border last:border-0">
-                          <td className="px-3 py-2 text-foreground">{line.description}</td>
+                        <tr
+                          key={i}
+                          className="border-b border-border last:border-0"
+                        >
+                          <td className="px-3 py-2 text-foreground">
+                            {line.description}
+                          </td>
                           <td className="px-3 py-2 text-right font-mono tabular-nums">
                             {Number(line.quantity)}
                           </td>
@@ -363,7 +410,10 @@ export function CreateDraftModal({
                     </tbody>
                     <tfoot>
                       <tr className="bg-muted/40">
-                        <td className="px-3 py-2 text-xs font-semibold text-muted-foreground" colSpan={3}>
+                        <td
+                          className="px-3 py-2 text-xs font-semibold text-muted-foreground"
+                          colSpan={3}
+                        >
                           Total
                         </td>
                         <td className="px-3 py-2 text-right font-mono tabular-nums font-semibold text-foreground">
@@ -384,17 +434,35 @@ export function CreateDraftModal({
             <Button onClick={onClose}>Done</Button>
           ) : (
             <>
-              <Button variant="outline" onClick={onClose} disabled={submitting}>
+              <Button
+                variant="outline"
+                onClick={onClose}
+                disabled={submittingAction !== null}
+              >
                 Cancel
               </Button>
-              <Button onClick={handleSubmit} disabled={!canSubmit}>
-                {submitting ? (
+              <Button
+                variant="outline"
+                onClick={() => handleSubmit(false)}
+                disabled={!canSubmit}
+              >
+                {submittingAction === "draft" ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Creating…
                   </>
                 ) : (
                   "Create draft"
+                )}
+              </Button>
+              <Button onClick={() => handleSubmit(true)} disabled={!canSubmit}>
+                {submittingAction === "issue" ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Issuing…
+                  </>
+                ) : (
+                  "Issue invoice"
                 )}
               </Button>
             </>

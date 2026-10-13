@@ -47,6 +47,7 @@ interface Project {
   assignedToId: string | null;
   invoiceNumber?: string | null;
   billingAmount?: number | null;
+  flatFeeAmount?: number | null;
   amountPaid?: number | null;
   paymentStatus?: string | null;
   billingDate?: string | null;
@@ -107,6 +108,7 @@ export function EditProjectModal({
     dueDate: "",
     invoiceNumber: "",
     billingAmount: null as number | null,
+    flatFeeAmount: null as number | null,
     amountPaid: null as number | null,
     paymentStatus: "UNPAID",
     billingDate: "",
@@ -129,14 +131,18 @@ export function EditProjectModal({
     const value = raw.trim();
     if (!value) return;
     setFormData((prev) => {
-      if (prev.tags.some((t) => t.toLowerCase() === value.toLowerCase())) return prev;
+      if (prev.tags.some((t) => t.toLowerCase() === value.toLowerCase()))
+        return prev;
       return { ...prev, tags: [...prev.tags, value].slice(0, 20) };
     });
     setTagDraft("");
   };
 
   const removeTag = (value: string) => {
-    setFormData((prev) => ({ ...prev, tags: prev.tags.filter((t) => t !== value) }));
+    setFormData((prev) => ({
+      ...prev,
+      tags: prev.tags.filter((t) => t !== value),
+    }));
   };
 
   // Fetch clients
@@ -172,6 +178,7 @@ export function EditProjectModal({
           : "",
         invoiceNumber: projectData.invoiceNumber || "",
         billingAmount: projectData.billingAmount || null,
+        flatFeeAmount: projectData.flatFeeAmount || null,
         amountPaid: projectData.amountPaid || null,
         paymentStatus: projectData.paymentStatus || "UNPAID",
         billingDate: projectData.billingDate
@@ -181,7 +188,9 @@ export function EditProjectModal({
           ? new Date(projectData.paymentDueDate).toISOString().split("T")[0]
           : "",
         paymentReceivedDate: projectData.paymentReceivedDate
-          ? new Date(projectData.paymentReceivedDate).toISOString().split("T")[0]
+          ? new Date(projectData.paymentReceivedDate)
+              .toISOString()
+              .split("T")[0]
           : "",
         billingNotes: projectData.billingNotes || "",
       });
@@ -209,7 +218,7 @@ export function EditProjectModal({
   const filteredClients = clients.filter((client) =>
     `${client.firstName} ${client.lastName} ${client.email} ${client.company || ""}`
       .toLowerCase()
-      .includes(searchTerm.toLowerCase())
+      .includes(searchTerm.toLowerCase()),
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -236,7 +245,11 @@ export function EditProjectModal({
     }
 
     // Validate amount paid does not exceed billing amount
-    if (formData.amountPaid && formData.billingAmount && formData.amountPaid > formData.billingAmount) {
+    if (
+      formData.amountPaid &&
+      formData.billingAmount &&
+      formData.amountPaid > formData.billingAmount
+    ) {
       toast({
         title: "Validation Error",
         description: "Amount paid cannot exceed billing amount",
@@ -450,7 +463,12 @@ export function EditProjectModal({
             <div>
               <Label htmlFor="status">
                 Status
-                <FieldHint learnMore={{ category: "projects-tasks", article: "projects" }}>
+                <FieldHint
+                  learnMore={{
+                    category: "projects-tasks",
+                    article: "projects",
+                  }}
+                >
                   Where the project stands — New, In progress, Under review, On
                   hold, Completed, or Archived. It drives the dashboard counts
                   and the status charts.
@@ -478,7 +496,12 @@ export function EditProjectModal({
             <div>
               <Label htmlFor="priority">
                 Priority
-                <FieldHint learnMore={{ category: "projects-tasks", article: "projects" }}>
+                <FieldHint
+                  learnMore={{
+                    category: "projects-tasks",
+                    article: "projects",
+                  }}
+                >
                   How urgent this project is — Low, Medium, High, or Urgent.
                   It's colour-coded across lists and the schedule so the
                   pressing work stands out.
@@ -502,7 +525,6 @@ export function EditProjectModal({
                 </SelectContent>
               </Select>
             </div>
-
           </div>
 
           {/* Due Date + Category */}
@@ -570,7 +592,9 @@ export function EditProjectModal({
                 }}
                 onBlur={() => addTag(tagDraft)}
                 placeholder={
-                  formData.tags.length ? "Add another…" : "Add tags (press Enter)"
+                  formData.tags.length
+                    ? "Add another…"
+                    : "Add tags (press Enter)"
                 }
                 className="flex-1 min-w-[120px] border-0 bg-transparent px-1 py-0.5 text-sm outline-none placeholder:text-muted-foreground"
               />
@@ -599,7 +623,9 @@ export function EditProjectModal({
               <div>
                 <Label htmlFor="paymentStatus">
                   Payment Status
-                  <FieldHint learnMore={{ category: "time-billing", article: "billing" }}>
+                  <FieldHint
+                    learnMore={{ category: "time-billing", article: "billing" }}
+                  >
                     Where this project's invoice stands — Unpaid, Partially
                     paid, Paid, Overdue, or Cancelled.
                   </FieldHint>
@@ -627,7 +653,9 @@ export function EditProjectModal({
               <div>
                 <Label htmlFor="billingAmount">
                   Billing Amount
-                  <FieldHint learnMore={{ category: "time-billing", article: "billing" }}>
+                  <FieldHint
+                    learnMore={{ category: "time-billing", article: "billing" }}
+                  >
                     The total you're invoicing the client for this project.
                     Amount Paid is tracked against it to surface what's
                     outstanding.
@@ -641,7 +669,36 @@ export function EditProjectModal({
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      billingAmount: e.target.value ? Number(e.target.value) : null
+                      billingAmount: e.target.value
+                        ? Number(e.target.value)
+                        : null,
+                    })
+                  }
+                  placeholder="2500.00"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="flatFeeAmount">
+                  Flat fee
+                  <FieldHint
+                    learnMore={{ category: "time-billing", article: "billing" }}
+                  >
+                    A fixed price for the whole project, billed once. A task
+                    with its own flat fee is billed instead of this.
+                  </FieldHint>
+                </Label>
+                <Input
+                  id="flatFeeAmount"
+                  type="number"
+                  step="0.01"
+                  value={formData.flatFeeAmount ?? ""}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      flatFeeAmount: e.target.value
+                        ? Number(e.target.value)
+                        : null,
                     })
                   }
                   placeholder="2500.00"
@@ -659,7 +716,9 @@ export function EditProjectModal({
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      amountPaid: e.target.value ? Number(e.target.value) : null
+                      amountPaid: e.target.value
+                        ? Number(e.target.value)
+                        : null,
                     })
                   }
                   placeholder="0.00"
@@ -694,13 +753,18 @@ export function EditProjectModal({
 
               {/* Payment Received Date */}
               <div>
-                <Label htmlFor="paymentReceivedDate">Payment Received Date</Label>
+                <Label htmlFor="paymentReceivedDate">
+                  Payment Received Date
+                </Label>
                 <Input
                   id="paymentReceivedDate"
                   type="date"
                   value={formData.paymentReceivedDate}
                   onChange={(e) =>
-                    setFormData({ ...formData, paymentReceivedDate: e.target.value })
+                    setFormData({
+                      ...formData,
+                      paymentReceivedDate: e.target.value,
+                    })
                   }
                 />
               </div>
@@ -725,7 +789,9 @@ export function EditProjectModal({
           <div className="pt-4 border-t">
             <h3 className="flex items-center gap-1.5 text-lg font-semibold mb-4">
               Recurrence
-              <HelpHint learnMore={{ category: "recurring", article: "repeats" }}>
+              <HelpHint
+                learnMore={{ category: "recurring", article: "repeats" }}
+              >
                 Set a “Repeats” rule and Project Ops materializes the next
                 instance automatically — for recurring engagements like a
                 monthly retainer.
@@ -744,7 +810,12 @@ export function EditProjectModal({
             {hasCustomFields && (
               <h3 className="flex items-center gap-1.5 text-lg font-semibold mb-4">
                 Custom Fields
-                <HelpHint learnMore={{ category: "custom-fields", article: "custom-fields-overview" }}>
+                <HelpHint
+                  learnMore={{
+                    category: "custom-fields",
+                    article: "custom-fields-overview",
+                  }}
+                >
                   Workspace-specific attributes an admin added to projects — a
                   matter number, an engagement type, a target date. Fill in the
                   values as you go.
@@ -755,7 +826,9 @@ export function EditProjectModal({
               entity={CustomFieldEntity.PROJECT}
               values={customFields}
               onChange={setCustomFields}
-              onDefinitionsLoaded={(defs) => setHasCustomFields(defs.length > 0)}
+              onDefinitionsLoaded={(defs) =>
+                setHasCustomFields(defs.length > 0)
+              }
             />
           </div>
 

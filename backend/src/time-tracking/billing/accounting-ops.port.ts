@@ -38,6 +38,10 @@ export interface CreateInvoiceInput {
   poNumber?: string | null;
   notes?: string | null;
   autoSend?: boolean;
+  /** False keeps the Accounting-Ops row a draft (no journal). Issue posts it. */
+  postJournal?: boolean;
+  customerOpsCustomerId?: string | null;
+  presentation?: Record<string, unknown> | null;
 }
 
 export interface AoInvoice {
@@ -48,6 +52,9 @@ export interface AoInvoice {
   balanceDue?: string | null;
   externalRef?: string | null;
   pdfUrl?: string | null;
+  journalEntryId?: string | null;
+  hostedPayUrl?: string | null;
+  publicUrl?: string | null;
   raw?: any;
 }
 
@@ -70,5 +77,7 @@ export abstract class AccountingOpsPort {
     input: CreateInvoiceInput,
     ctx: AoCallContext,
   ): Promise<AoCreateResult>;
+  /** Post a draft that already exists. Idempotent when the journal is already there. */
+  abstract issueInvoice(invoiceId: string, ctx: AoCallContext): Promise<AoCreateResult>;
   abstract getInvoice(invoiceId: string, ctx: AoCallContext): Promise<AoInvoice | null>;
 }

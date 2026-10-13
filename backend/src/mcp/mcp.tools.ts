@@ -25,6 +25,7 @@ import {
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MinioService } from '../documents/minio.service';
 import { v4 as uuidv4 } from 'uuid';
+import { Decimal } from '@prisma/client/runtime/library';
 
 // Type-only imports: erased at compile time, so they're safe even when the
 // imported services import helpers (e.g. buildVisibilityFilter) back from this
@@ -397,6 +398,7 @@ export class ProjectOpsTools {
       periodEnd?: string;
       groupBy?: string;
       autoSend?: boolean;
+      issue?: boolean;
     },
   ) {
     const tt = this.requireTt();
@@ -1512,6 +1514,7 @@ export class ProjectOpsTools {
       customFields?: Record<string, any>;
       recurrenceRule?: string | null;
       estimatedHours?: number | null;
+      fixedAmount?: number | null;
     },
   ) {
     this.assertCanWrite(user);
@@ -1531,6 +1534,7 @@ export class ProjectOpsTools {
     }
     if (args.recurrenceRule !== undefined) data.recurrenceRule = args.recurrenceRule;
     if (args.estimatedHours !== undefined) data.estimatedHours = args.estimatedHours;
+    if (args.fixedAmount !== undefined) data.fixedAmount = args.fixedAmount as any;
 
     const updated = await this.runScoped(user, async (tx, workspaceId) => {
       const found = await tx.task.findFirst({
@@ -1538,10 +1542,17 @@ export class ProjectOpsTools {
           id: args.taskId,
           project: buildVisibilityFilter(user),
         },
-        select: { id: true, projectId: true, metadata: true },
+        select: { id: true, projectId: true, metadata: true, fixedAmount: true, invoicedAt: true },
       });
       if (!found) {
         throw new Error('Task not found or no access');
+      }
+      if (args.fixedAmount !== undefined && found.invoicedAt) {
+        const next = args.fixedAmount == null ? null : new Decimal(args.fixedAmount).toFixed(2);
+        const prev = found.fixedAmount == null ? null : new Decimal(found.fixedAmount).toFixed(2);
+        if (next !== prev) {
+          throw new Error('This flat fee was already invoiced and cannot be changed');
+        }
       }
 
       if (args.projectId || args.projectNumber) {
@@ -1581,6 +1592,8 @@ export class ProjectOpsTools {
           dueDate: true,
           recurrenceRule: true,
           estimatedHours: true,
+          fixedAmount: true,
+          invoicedAt: true,
           metadata: true,
           project: { select: { id: true, projectNumber: true, title: true } },
           assignedTo: { select: { id: true, firstName: true, lastName: true } },
@@ -1618,6 +1631,7 @@ export class ProjectOpsTools {
       customFields?: Record<string, any>;
       recurrenceRule?: string;
       estimatedHours?: number;
+      fixedAmount?: number;
     },
   ) {
     this.assertCanWrite(user);
@@ -1674,6 +1688,7 @@ export class ProjectOpsTools {
           ...(parentTaskId ? { parentTaskId } : {}),
           ...(args.recurrenceRule !== undefined ? { recurrenceRule: args.recurrenceRule } : {}),
           ...(args.estimatedHours !== undefined ? { estimatedHours: args.estimatedHours } : {}),
+          ...(args.fixedAmount !== undefined ? { fixedAmount: args.fixedAmount } : {}),
           ...(metadata !== undefined ? { metadata } : {}),
           createdById: user.id,
           assignedToId: args.assignedToId ?? user.id,
@@ -1687,6 +1702,7 @@ export class ProjectOpsTools {
           parentTaskId: true,
           recurrenceRule: true,
           estimatedHours: true,
+          fixedAmount: true,
           metadata: true,
           project: { select: { projectNumber: true, title: true } },
         },
@@ -2376,6 +2392,9 @@ export class ProjectOpsTools {
       paymentDueDate?: string;
       paymentReceivedDate?: string;
       billingNotes?: string;
+      flatFeeAmount?: number | null;
+      customerOpsCustomerId?: string | null;
+      contactOpsContactId?: string | null;
     },
   ) {
     this.assertCanWrite(user);
@@ -2398,6 +2417,11 @@ export class ProjectOpsTools {
         ? new Date(args.paymentReceivedDate)
         : null;
     if (args.billingNotes !== undefined) data.billingNotes = args.billingNotes;
+    if (args.flatFeeAmount !== undefined) data.flatFeeAmount = args.flatFeeAmount as any;
+    if (args.customerOpsCustomerId !== undefined) {
+      data.customerOpsCustomerId = args.customerOpsCustomerId;
+    }
+    if (args.contactOpsContactId !== undefined) data.contactOpsContactId = args.contactOpsContactId;
 
     const updated = await this.runScoped(user, async (tx) => {
       const found = await tx.project.findFirst({
@@ -2405,10 +2429,23 @@ export class ProjectOpsTools {
           ...buildVisibilityFilter(user),
           ...(args.id ? { id: args.id } : { projectNumber: args.projectNumber! }),
         },
-        select: { id: true, projectNumber: true },
+        select: {
+          id: true,
+          projectNumber: true,
+          flatFeeAmount: true,
+          flatFeeInvoicedAt: true,
+        },
       });
       if (!found) {
         throw new Error('Project not found or no access');
+      }
+      if (args.flatFeeAmount !== undefined && found.flatFeeInvoicedAt) {
+        const next = args.flatFeeAmount == null ? null : new Decimal(args.flatFeeAmount).toFixed(2);
+        const previous =
+          found.flatFeeAmount == null ? null : new Decimal(found.flatFeeAmount).toFixed(2);
+        if (next !== previous) {
+          throw new Error('This project flat fee was already invoiced and cannot be changed');
+        }
       }
       return tx.project.update({
         where: { id: found.id },
@@ -2424,6 +2461,10 @@ export class ProjectOpsTools {
           paymentDueDate: true,
           paymentReceivedDate: true,
           billingNotes: true,
+          flatFeeAmount: true,
+          flatFeeInvoicedAt: true,
+          customerOpsCustomerId: true,
+          contactOpsContactId: true,
         },
       });
     });
@@ -2804,13 +2845,8 @@ export class ProjectOpsTools {
   // ── Billing: issue invoice ───────────────────────────────────────────
 
   /**
-   * Issue + send an invoice in one step: roll up APPROVED, billable, unbilled
-   * time and ask Accounting-Ops to ISSUE it (status=sent). Thin wrapper over
-   * createBillableDraft with autoSend=true, so it inherits that path's
-   * MANAGER/ADMIN gate. When Accounting-Ops isn't connected/entitled (or no
-   * user bearer is present) it CANNOT actually send — the rollup returns a
-   * draft + PDF preview and the response `status` says which happened. There is
-   * deliberately no "send an existing draft" path (PO has no backing for it).
+   * Issue an invoice: the same rollup as a preview, then post the draft.
+   * Stamps flat fees and time entries only when Accounting-Ops accepts the issue.
    */
   async issueInvoice(
     user: User,
@@ -2822,7 +2858,7 @@ export class ProjectOpsTools {
       groupBy?: string;
     },
   ) {
-    return this.createBillableDraft(user, { ...args, autoSend: true });
+    return this.createBillableDraft(user, { ...args, issue: true });
   }
 
   // ── Project lifecycle: archive (the safe alternative to deletion) ────

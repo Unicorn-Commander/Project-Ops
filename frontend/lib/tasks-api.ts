@@ -19,6 +19,9 @@ export interface Task {
   recurrenceRule?: string | null;
   /** Effort estimate in hours (capacity planning). Decimal — may arrive as a string. */
   estimatedHours?: number | string | null;
+  /** Flat fee for this task. Decimal — may arrive as a string. */
+  fixedAmount?: number | string | null;
+  invoicedAt?: string | null;
   /**
    * Free-form entity metadata. Custom-field VALUES live under
    * `metadata.customFields`, keyed by the workspace TASK field key.
@@ -169,6 +172,7 @@ export interface CreateTaskData {
   recurrenceRule?: string;
   /** Effort estimate in hours (>= 0, up to 2 decimals). */
   estimatedHours?: number;
+  fixedAmount?: number;
   /**
    * Custom-field VALUES keyed by the workspace TASK field key. Validated +
    * normalized server-side against the workspace definitions, then merged into
@@ -187,6 +191,7 @@ export interface UpdateTaskData {
   assignedToId?: string;
   recurrenceRule?: string;
   estimatedHours?: number;
+  fixedAmount?: number | null;
   customFields?: Record<string, any>;
 }
 
@@ -250,10 +255,7 @@ export const createTask = async (data: CreateTaskData): Promise<Task> => {
 };
 
 // Update task
-export const updateTask = async (
-  id: string,
-  data: UpdateTaskData
-): Promise<Task> => {
+export const updateTask = async (id: string, data: UpdateTaskData): Promise<Task> => {
   const response = await api.patch(`/tasks/${id}`, data);
   return response.data;
 };
@@ -264,19 +266,13 @@ export const deleteTask = async (id: string): Promise<void> => {
 };
 
 // Update task status
-export const updateTaskStatus = async (
-  id: string,
-  status: TaskStatus
-): Promise<Task> => {
+export const updateTaskStatus = async (id: string, status: TaskStatus): Promise<Task> => {
   const response = await api.patch(`/tasks/${id}/status`, { status });
   return response.data;
 };
 
 // Assign task to user
-export const assignTask = async (
-  id: string,
-  userId: string
-): Promise<Task> => {
+export const assignTask = async (id: string, userId: string): Promise<Task> => {
   const response = await api.patch(`/tasks/${id}/assign`, { assignedToId: userId });
   return response.data;
 };
@@ -292,7 +288,7 @@ export const markTaskComplete = async (id: string): Promise<Task> => {
 // callers (time-tracking, task-details dependency picker) rely on that shape.
 export const getProjectTasks = async (
   projectId: string,
-  params?: { skip?: number; take?: number; status?: TaskStatus }
+  params?: { skip?: number; take?: number; status?: TaskStatus },
 ): Promise<Task[]> => {
   const response = await api.get(`/tasks/project/${projectId}`, { params });
   return response.data;
@@ -323,18 +319,12 @@ export const getTaskComments = async (taskId: string): Promise<TaskComment[]> =>
   return response.data;
 };
 
-export const addTaskComment = async (
-  taskId: string,
-  content: string
-): Promise<TaskComment> => {
+export const addTaskComment = async (taskId: string, content: string): Promise<TaskComment> => {
   const response = await api.post(`/tasks/${taskId}/comments`, { content });
   return response.data;
 };
 
-export const deleteTaskComment = async (
-  taskId: string,
-  commentId: string
-): Promise<void> => {
+export const deleteTaskComment = async (taskId: string, commentId: string): Promise<void> => {
   await api.delete(`/tasks/${taskId}/comments/${commentId}`);
 };
 
@@ -351,9 +341,7 @@ export const getSubtasks = async (taskId: string): Promise<Task[]> => {
 // ── Dependencies (Push B) ───────────────────────────────────────────────────
 
 // Get a task's dependencies in both directions.
-export const getTaskDependencies = async (
-  taskId: string
-): Promise<TaskDependencies> => {
+export const getTaskDependencies = async (taskId: string): Promise<TaskDependencies> => {
   const response = await api.get(`/tasks/${taskId}/dependencies`);
   return response.data;
 };
@@ -371,15 +359,12 @@ export interface AddDependencyData {
 // 400 on self / duplicate / cycle; 404 if a task isn't visible.
 export const addTaskDependency = async (
   taskId: string,
-  data: AddDependencyData
+  data: AddDependencyData,
 ): Promise<TaskDependency> => {
   const response = await api.post(`/tasks/${taskId}/dependencies`, data);
   return response.data;
 };
 
-export const removeTaskDependency = async (
-  taskId: string,
-  dependencyId: string
-): Promise<void> => {
+export const removeTaskDependency = async (taskId: string, dependencyId: string): Promise<void> => {
   await api.delete(`/tasks/${taskId}/dependencies/${dependencyId}`);
 };

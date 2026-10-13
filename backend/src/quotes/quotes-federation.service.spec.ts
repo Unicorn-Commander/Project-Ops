@@ -317,6 +317,8 @@ describe('QuotesFederationService.acceptQuote — first acceptance', () => {
     expect(project.createdById).toBe('svc-user'); // the deterministic federation service user
     expect(project.billingAmount).toBe('4300.00'); // 1400.00 + 2900.00, integer cents → decimal string
     expect(project.budgetAmount).toBe('4300.00');
+    // No line carries amount_cents, so the committed total is the project flat fee.
+    expect(project.flatFeeAmount).toBe('4300.00');
     expect(project.defaultBillRate).toBe('150.00'); // hourly.primary rate only (A14)
     expect(project.billingNotes).toBe(
       'Quote Q-2026-0001 v1: 50% on acceptance, 50% per milestone; hosting monthly in advance.',

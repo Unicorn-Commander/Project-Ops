@@ -524,6 +524,14 @@ model Project {
   paymentReceivedDate DateTime?
   billingNotes        String?
 
+  // Flat fee is the price the operator set. billingAmount is overwritten with
+  // the invoice total when an invoice is issued, so it is not the source.
+  flatFeeAmount         Decimal?  @db.Decimal(12, 2)
+  flatFeeInvoicedAt     DateTime?
+  // Suite ids. contactId stays the local Project-Ops contact.
+  customerOpsCustomerId String?
+  contactOpsContactId   String?
+
   // Time-tracking & billing policy
   billByDefault            Boolean       @default(true)
   defaultBillRate          Decimal?      @db.Decimal(12, 4)
@@ -706,6 +714,11 @@ model Task {
   // Time-tracking policy overrides (null = inherit from project)
   billable     Boolean?
   billRate     Decimal?      @db.Decimal(12, 4)
+  // Flat fee for this task (quantity 1). Time on a task that has one is not
+  // billed hourly. invoicedAt stops the fee from being invoiced twice.
+  fixedAmount        Decimal? @db.Decimal(12, 2)
+  invoicedAt         DateTime?
+  invoiceExternalRef String?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   comments     TaskComment[]

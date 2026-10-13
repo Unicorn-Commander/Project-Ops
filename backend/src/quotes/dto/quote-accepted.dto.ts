@@ -258,7 +258,8 @@ export class QuoteLineDto {
 
   @ApiPropertyOptional({
     example: 200000,
-    description: 'Line total in integer cents (A4). Ignored by Project-Ops.',
+    description:
+      'Line total in integer cents (A4). On an accepted one_time or milestone line this becomes the task flat fee. Payment splits stay ignored.',
   })
   @IsOptional()
   @IsInt()
@@ -370,6 +371,15 @@ export class QuoteAcceptedDto {
   @IsString()
   @MaxLength(128)
   contact_id?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Customer-Ops customer id. Stored on the project so the invoice can be listed there.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  customer_ops_customer_id?: string;
 
   @ApiProperty({
     example: 'USD',
