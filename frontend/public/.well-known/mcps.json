@@ -218,6 +218,24 @@
       "expected_latency_ms": 500
     },
     {
+      "name": "list_triage_proposals",
+      "description": "List workspace-scoped triage proposals for an agent first pass. Returns routing fields, status, timestamps, and sourceRef including meetingDate and meetingTitle when present. PENDING aliases PENDING_REVIEW.",
+      "input_schema": { "type": "object", "properties": { "status": { "type": "string", "enum": ["PENDING", "PENDING_REVIEW", "APPROVED", "REJECTED", "APPLIED", "DROPPED"] }, "limit": { "type": "integer", "minimum": 1, "maximum": 200 }, "offset": { "type": "integer", "minimum": 0 } } },
+      "scopes_required": ["read:tasks"],
+      "tier_required": "free",
+      "read_only": true,
+      "expected_latency_ms": 250
+    },
+    {
+      "name": "rule_triage_proposals",
+      "description": "Approve or reject up to 200 triage proposals with independent per-id results. reasonPreset values: stale, duplicate, not_ours, handled_elsewhere, vague, personal. Rejections may include reason and duplicateOfTaskId; approvals may include targetProjectId.",
+      "input_schema": { "type": "object", "properties": { "decisions": { "type": "array", "minItems": 1, "maxItems": 200, "items": { "type": "object", "properties": { "proposalId": { "type": "string" }, "action": { "type": "string", "enum": ["approve", "reject"] }, "targetProjectId": { "type": "string" }, "reasonPreset": { "type": "string", "enum": ["stale", "duplicate", "not_ours", "handled_elsewhere", "vague", "personal"] }, "reason": { "type": "string", "maxLength": 5000 }, "duplicateOfTaskId": { "type": "string" } }, "required": ["proposalId", "action"] } } }, "required": ["decisions"] },
+      "scopes_required": ["write:tasks"],
+      "tier_required": "free",
+      "read_only": false,
+      "expected_latency_ms": 800
+    },
+    {
       "name": "list_project_documents",
       "description": "List documents attached to a project.",
       "input_schema": { "type": "object", "properties": { "projectId": { "type": "string" } }, "required": ["projectId"] },

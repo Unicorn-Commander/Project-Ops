@@ -69,6 +69,7 @@ Ops metrics (this branch): process-local counters + latency buckets + structured
 | Subtasks list/create | `GET /tasks/:id/subtasks` + create w/ parent | — | NONE | REST: `tasks.controller.ts:227–239` |
 | Dependencies CRUD | `GET/POST/DELETE …/dependencies` | — | NONE | REST: `tasks.controller.ts:239–271` |
 | Triage candidates (agent ingest) | triage UI + REST | `submit_candidate_action_items` | FULL | `resolveAuthorized` `mcp.tools.ts:1206–1207` → triage `runForUser` |
+| Triage review queue + bulk decisions | triage UI + REST | `list_triage_proposals`, `rule_triage_proposals` | FULL | workspace-aware `TriageService.listProposals` / `applyDecisions` |
 
 ## 3. Comments
 

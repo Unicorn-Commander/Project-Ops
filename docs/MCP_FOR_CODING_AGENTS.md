@@ -11,7 +11,7 @@ uses. You're plugging in via the same door.
 
 ## What you get
 
-11 tools, all RBAC-scoped per user:
+All tools are RBAC-scoped per user:
 
 | Tool | Purpose |
 |---|---|
@@ -29,11 +29,54 @@ uses. You're plugging in via the same door.
 | `list_task_comments` | List comments on a task (paginated) |
 | `update_task_comment` | Edit a task comment (author or ADMIN) |
 | `delete_task_comment` | Delete a task comment (author, ADMIN, or MANAGER) |
+| `list_triage_proposals` | Read the workspace-scoped triage queue, including meeting source metadata |
+| `rule_triage_proposals` | Approve or reject up to 200 proposals with per-item results |
 
 CLIENT-role users can only call the read tools; write tools enforce ADMIN /
 MANAGER / STAFF role.
 
 For exact federated lookups, `list_my_projects` and `search_projects` accept the optional UUID filters `customerOpsCustomerId` and `contactOpsContactId`; supply both to require both matches. The filters remain inside the calling user's workspace and visibility scope, and `search_projects` combines them with its free-text query.
+
+## Triage review API and agent first pass
+
+The dashboard at `/dashboard/triage` and the authenticated REST API share the
+same workspace-scoped service. Pending proposals can be listed with:
+
+```http
+GET /api/v1/triage/proposals?status=PENDING&limit=200&offset=0
+```
+
+Each proposal includes its routing fields and `sourceRef`; Meeting-Ops records
+may provide `sourceRef.meetingDate` and `sourceRef.meetingTitle` for review.
+`PENDING` is an alias for `PENDING_REVIEW`.
+
+Bulk review is:
+
+```http
+POST /api/v1/triage/proposals/bulk
+Content-Type: application/json
+
+{
+  "proposalIds": ["proposal-uuid-1", "proposal-uuid-2"],
+  "action": "reject",
+  "reasonPreset": "duplicate",
+  "reason": "Already tracked in the delivery board.",
+  "duplicateOfTaskId": "task-uuid"
+}
+```
+
+`action` is `approve` or `reject`; approvals may set `targetProjectId` to
+override the agent's project. Valid rejection presets are `stale`, `duplicate`,
+`not_ours`, `handled_elsewhere`, `vague`, and `personal`. The response is an
+array of `{ id, ok, taskId?, error? }` results, capped at 200 proposal ids;
+one failed item does not abort the rest. Rejection metadata is stored on the
+proposal and included in its rejection reason text.
+
+The equivalent MCP tools are `list_triage_proposals` and
+`rule_triage_proposals`. The latter accepts `decisions` with
+`{ proposalId, action, targetProjectId?, reasonPreset?, reason?,
+duplicateOfTaskId? }` and uses the same per-item service path. It requires the
+`write:tasks` PAT scope; listing requires `read:tasks`.
 
 ## Authentication
 
