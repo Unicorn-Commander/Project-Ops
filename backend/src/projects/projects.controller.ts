@@ -63,6 +63,18 @@ export class ProjectsController {
   @ApiQuery({ name: 'priority', required: false, enum: ProjectPriority })
   @ApiQuery({ name: 'assignedToId', required: false, type: String })
   @ApiQuery({
+    name: 'customerOpsCustomerId',
+    required: false,
+    type: String,
+    description: 'Exact match on the Customer-Ops customer UUID.',
+  })
+  @ApiQuery({
+    name: 'contactOpsContactId',
+    required: false,
+    type: String,
+    description: 'Exact match on the Contact-Ops contact UUID.',
+  })
+  @ApiQuery({
     name: 'search',
     required: false,
     type: String,
@@ -94,6 +106,12 @@ export class ProjectsController {
     if (query.status) where.status = query.status;
     if (query.priority) where.priority = query.priority;
     if (query.assignedToId) where.assignedToId = query.assignedToId;
+    if (query.customerOpsCustomerId !== undefined) {
+      where.customerOpsCustomerId = query.customerOpsCustomerId;
+    }
+    if (query.contactOpsContactId !== undefined) {
+      where.contactOpsContactId = query.contactOpsContactId;
+    }
 
     // Free-text search: case-insensitive (ILIKE) contains across the project's
     // title, the denormalized clientName, and the human projectNumber. Trimmed;

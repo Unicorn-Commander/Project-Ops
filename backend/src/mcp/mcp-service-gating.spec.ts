@@ -173,6 +173,79 @@ describe('McpService tool gating (RBAC + workspace)', () => {
     ).toBe(true);
   });
 
+  it('validates federated ids as UUIDs across project filters and write tools', async () => {
+    const svc = makeService('ws-1');
+    await svc.createServerForUser(adminUser(), null, null, null);
+    const schemaFor = (name: string) => z.object(registeredSchemas.get(name).inputSchema);
+    const customerOpsCustomerId = '550e8400-e29b-41d4-a716-446655440000';
+    const contactOpsContactId = '6ba7b810-9dad-41d1-80b4-00c04fd430c8';
+
+    const invalidCases = [
+      ['list_my_projects', { customerOpsCustomerId: 'not-a-uuid' }, 'customerOpsCustomerId'],
+      [
+        'search_projects',
+        { query: 'project', contactOpsContactId: 'not-a-uuid' },
+        'contactOpsContactId',
+      ],
+      [
+        'create_project',
+        { title: 'Project', clientName: 'Client', customerOpsCustomerId: 'not-a-uuid' },
+        'customerOpsCustomerId',
+      ],
+      [
+        'update_project',
+        { id: 'project-1', contactOpsContactId: 'not-a-uuid' },
+        'contactOpsContactId',
+      ],
+      [
+        'update_billing_fields',
+        { id: 'project-1', customerOpsCustomerId: 'not-a-uuid' },
+        'customerOpsCustomerId',
+      ],
+    ] as const;
+
+    for (const [tool, input, field] of invalidCases) {
+      const result = schemaFor(tool).safeParse(input);
+      expect(result.success).toBe(false);
+      if (result.success) continue;
+      expect(result.error.issues.map((issue) => issue.message).join(' ')).toContain(field);
+    }
+
+    expect(
+      schemaFor('list_my_projects').safeParse({ customerOpsCustomerId, contactOpsContactId })
+        .success,
+    ).toBe(true);
+    expect(
+      schemaFor('search_projects').safeParse({
+        query: 'project',
+        customerOpsCustomerId,
+        contactOpsContactId,
+      }).success,
+    ).toBe(true);
+    expect(
+      schemaFor('create_project').safeParse({
+        title: 'Project',
+        clientName: 'Client',
+        customerOpsCustomerId,
+        contactOpsContactId,
+      }).success,
+    ).toBe(true);
+    expect(
+      schemaFor('update_project').safeParse({
+        id: 'project-1',
+        customerOpsCustomerId: null,
+        contactOpsContactId: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      schemaFor('update_billing_fields').safeParse({
+        id: 'project-1',
+        customerOpsCustomerId: null,
+        contactOpsContactId: null,
+      }).success,
+    ).toBe(true);
+  });
+
   it('sanitizes Prisma errors at the shared MCP error boundary', async () => {
     const original = ProjectOpsTools.prototype.getProject;
     ProjectOpsTools.prototype.getProject = jest.fn().mockRejectedValue(

@@ -1909,6 +1909,51 @@ describe('ProjectOpsTools.searchProjects — visibility filter must survive the 
     expect(where.AND[0]).toEqual({});
     expect(where.AND[1].OR.length).toBe(5);
   });
+
+  it('adds exact federated id filters without weakening visibility or text search', async () => {
+    const findMany = jest.fn(async () => []);
+    const tools = makeTools(findMany);
+    const customerOpsCustomerId = '550e8400-e29b-41d4-a716-446655440000';
+    const contactOpsContactId = '6ba7b810-9dad-41d1-80b4-00c04fd430c8';
+
+    await tools.searchProjects(baseUser({ role: UserRole.STAFF, id: 'staff-1' }), {
+      query: 'corporal',
+      customerOpsCustomerId,
+      contactOpsContactId,
+    });
+
+    const where = (findMany.mock.calls[0] as any[])[0].where;
+    expect(where.AND[0]).toEqual({
+      OR: [{ assignedToId: 'staff-1' }, { createdById: 'staff-1' }],
+    });
+    expect(where.AND[1]).toEqual(
+      expect.objectContaining({ customerOpsCustomerId, contactOpsContactId }),
+    );
+    expect(where.AND[1].OR).toEqual(
+      expect.arrayContaining([{ title: { contains: 'corporal', mode: 'insensitive' } }]),
+    );
+  });
+
+  it('adds exact federated id filters to list_my_projects', async () => {
+    const findMany = jest.fn(async () => []);
+    const tools = makeTools(findMany);
+    const customerOpsCustomerId = '550e8400-e29b-41d4-a716-446655440000';
+    const contactOpsContactId = '6ba7b810-9dad-41d1-80b4-00c04fd430c8';
+
+    await tools.listMyProjects(baseUser({ role: UserRole.STAFF, id: 'staff-1' }), {
+      status: 'in_progress',
+      customerOpsCustomerId,
+      contactOpsContactId,
+    });
+
+    const where = (findMany.mock.calls[0] as any[])[0].where;
+    expect(where).toEqual({
+      OR: [{ assignedToId: 'staff-1' }, { createdById: 'staff-1' }],
+      status: 'IN_PROGRESS',
+      customerOpsCustomerId,
+      contactOpsContactId,
+    });
+  });
 });
 
 describe('ProjectOpsTools — request-addressed workspace (X-Workspace-Id) threading', () => {

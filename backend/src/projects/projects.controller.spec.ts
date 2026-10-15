@@ -38,6 +38,41 @@ describe('ProjectsController gating', () => {
   });
 });
 
+describe('ProjectsController.findAll — federated id filters', () => {
+  it('passes exact federated filters alongside existing filters to the workspace-scoped service', async () => {
+    const findAll = jest.fn().mockResolvedValue({ projects: [], total: 0 });
+    const controller = new ProjectsController({ findAll } as any);
+    const user = { id: 'u1', role: UserRole.ADMIN } as any;
+    const customerOpsCustomerId = '550e8400-e29b-41d4-a716-446655440000';
+    const contactOpsContactId = '6ba7b810-9dad-41d1-80b4-00c04fd430c8';
+
+    await controller.findAll('ws-1', user, {
+      page: 2,
+      limit: 10,
+      status: 'IN_PROGRESS',
+      priority: 'HIGH',
+      assignedToId: 'u2',
+      customerOpsCustomerId,
+      contactOpsContactId,
+      sortBy: 'title',
+      sortDir: 'asc',
+    } as any);
+
+    expect(findAll).toHaveBeenCalledWith('ws-1', user, {
+      skip: 10,
+      take: 10,
+      where: {
+        status: 'IN_PROGRESS',
+        priority: 'HIGH',
+        assignedToId: 'u2',
+        customerOpsCustomerId,
+        contactOpsContactId,
+      },
+      orderBy: { title: 'asc' },
+    });
+  });
+});
+
 /**
  * Behavioral check of the guard that actually decides the route: build an
  * ExecutionContext whose handler is `ProjectsController.prototype.create`, with

@@ -45,6 +45,8 @@ const TASK_TYPE_VALUES = Object.values(TaskType) as [TaskType, ...TaskType[]];
 const TASK_PRIORITY_VALUES = Object.values(TaskPriority) as [TaskPriority, ...TaskPriority[]];
 const TASK_STATUS_VALUES = Object.values(TaskStatus) as [TaskStatus, ...TaskStatus[]];
 
+const federatedUuid = (field: string) => z.string().uuid({ message: `${field} must be a UUID` });
+
 const moneyInput = z
   .number()
   .finite()
@@ -347,14 +349,22 @@ export class McpService {
         description:
           'Return the projects the calling user can see, newest first. ' +
           "Optional 'status' filters by ProjectStatus (NEW, IN_PROGRESS, " +
-          'UNDER_REVIEW, COMPLETED, ARCHIVED, ON_HOLD).',
+          'UNDER_REVIEW, COMPLETED, ARCHIVED, ON_HOLD). Optional ' +
+          'customerOpsCustomerId and contactOpsContactId filters are exact-match UUIDs; ' +
+          'both may be supplied.',
         inputSchema: {
           status: z.string().optional(),
           limit: z.number().int().min(1).max(100).optional(),
+          customerOpsCustomerId: federatedUuid('customerOpsCustomerId').optional(),
+          contactOpsContactId: federatedUuid('contactOpsContactId').optional(),
         },
       },
-      async (args: { status?: string; limit?: number }) =>
-        wrap(await tools.listMyProjects(user, args)),
+      async (args: {
+        status?: string;
+        limit?: number;
+        customerOpsCustomerId?: string;
+        contactOpsContactId?: string;
+      }) => wrap(await tools.listMyProjects(user, args)),
     );
 
     server.registerTool(
@@ -452,14 +462,22 @@ export class McpService {
         title: 'Search projects',
         description:
           'Free-text search across visible projects (title, description, ' +
-          'project number, client name, organization name).',
+          'project number, client name, organization name). Optional ' +
+          'customerOpsCustomerId and contactOpsContactId filters are exact-match UUIDs ' +
+          'and can be combined with the text query.',
         inputSchema: {
           query: z.string().min(1),
           limit: z.number().int().min(1).max(50).optional(),
+          customerOpsCustomerId: federatedUuid('customerOpsCustomerId').optional(),
+          contactOpsContactId: federatedUuid('contactOpsContactId').optional(),
         },
       },
-      async (args: { query: string; limit?: number }) =>
-        wrap(await tools.searchProjects(user, args)),
+      async (args: {
+        query: string;
+        limit?: number;
+        customerOpsCustomerId?: string;
+        contactOpsContactId?: string;
+      }) => wrap(await tools.searchProjects(user, args)),
     );
 
     server.registerTool(
@@ -644,7 +662,8 @@ export class McpService {
           'Defaults: status NEW, priority MEDIUM, assignee = caller. ' +
           'CLIENT-role users cannot call this. Optional customFields (object ' +
           'keyed by the workspace PROJECT custom-field key — validated + stored ' +
-          'under metadata.customFields) and recurrenceRule (RRULE subset).',
+          'under metadata.customFields) and recurrenceRule (RRULE subset). ' +
+          'customerOpsCustomerId and contactOpsContactId must be UUIDs when supplied.',
         inputSchema: {
           title: z.string().min(1).max(200),
           description: z.string().optional(),
@@ -655,6 +674,8 @@ export class McpService {
           assignedToId: z.string().optional(),
           customFields: z.record(z.string(), z.any()).optional(),
           recurrenceRule: z.string().optional(),
+          customerOpsCustomerId: federatedUuid('customerOpsCustomerId').nullable().optional(),
+          contactOpsContactId: federatedUuid('contactOpsContactId').nullable().optional(),
         },
       },
       async (args: any) => wrap(await tools.createProject(user, args)),
@@ -687,7 +708,8 @@ export class McpService {
           'different organization (pass null to detach). CLIENT-role users ' +
           'cannot call this. Optional customFields (object keyed by the workspace ' +
           'PROJECT custom-field key — validated + merged into metadata.customFields, ' +
-          'preserving other metadata) and recurrenceRule (RRULE subset; null clears it).',
+          'preserving other metadata) and recurrenceRule (RRULE subset; null clears it). ' +
+          'customerOpsCustomerId and contactOpsContactId must be UUIDs; null clears them.',
         inputSchema: {
           id: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -700,6 +722,8 @@ export class McpService {
           assignedToId: z.string().optional(),
           customFields: z.record(z.string(), z.any()).optional(),
           recurrenceRule: z.string().nullable().optional(),
+          customerOpsCustomerId: federatedUuid('customerOpsCustomerId').nullable().optional(),
+          contactOpsContactId: federatedUuid('contactOpsContactId').nullable().optional(),
         },
       },
       async (args: any) => wrap(await tools.updateProject(user, args)),
@@ -969,8 +993,8 @@ export class McpService {
           'amountPaid, paymentStatus (UNPAID / PARTIALLY_PAID / PAID / OVERDUE / ' +
           'CANCELLED), billingDate, paymentDueDate, paymentReceivedDate, ' +
           'billingNotes, flatFeeAmount (the project flat fee; not billingAmount), ' +
-          'customerOpsCustomerId and contactOpsContactId. Only the fields you ' +
-          'pass are updated. CLIENT-role users cannot call this.',
+          'customerOpsCustomerId and contactOpsContactId (both UUIDs; null clears them). ' +
+          'Only the fields you pass are updated. CLIENT-role users cannot call this.',
         inputSchema: {
           id: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -983,8 +1007,8 @@ export class McpService {
           paymentReceivedDate: z.string().optional(),
           billingNotes: z.string().optional(),
           flatFeeAmount: moneyInput.nullable().optional(),
-          customerOpsCustomerId: z.string().nullable().optional(),
-          contactOpsContactId: z.string().nullable().optional(),
+          customerOpsCustomerId: federatedUuid('customerOpsCustomerId').nullable().optional(),
+          contactOpsContactId: federatedUuid('contactOpsContactId').nullable().optional(),
         },
       },
       async (args: any) => wrap(await tools.updateBillingFields(user, args)),

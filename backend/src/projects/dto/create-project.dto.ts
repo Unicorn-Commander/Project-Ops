@@ -8,6 +8,7 @@ import {
   IsObject,
   IsNumber,
   Min,
+  IsUUID,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { ProjectStatus, ProjectPriority, PaymentStatus } from '@prisma/client';
@@ -102,15 +103,25 @@ export class CreateProjectDto {
   @Type(() => Number)
   flatFeeAmount?: number;
 
-  @ApiProperty({ required: false, description: 'Customer-Ops customer id this project bills.' })
-  @IsString()
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    format: 'uuid',
+    description: 'Customer-Ops customer id this project bills.',
+  })
   @IsOptional()
-  customerOpsCustomerId?: string;
+  @IsUUID()
+  customerOpsCustomerId?: string | null;
 
-  @ApiProperty({ required: false, description: 'Contact-Ops contact id for the billed party.' })
-  @IsString()
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    format: 'uuid',
+    description: 'Contact-Ops contact id for the billed party.',
+  })
   @IsOptional()
-  contactOpsContactId?: string;
+  @IsUUID()
+  contactOpsContactId?: string | null;
 
   @ApiProperty({ example: 0.0, required: false })
   @IsNumber()
