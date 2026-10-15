@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsIn, IsEnum, IsInt, Min } from 'class-validator';
+import { IsOptional, IsString, IsIn, IsEnum, IsInt, Min, IsUUID } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ProjectStatus, ProjectPriority } from '@prisma/client';
@@ -51,6 +51,24 @@ export class ListProjectsDto {
   @IsString()
   @IsOptional()
   assignedToId?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    format: 'uuid',
+    description: 'Exact match on the Customer-Ops customer id.',
+  })
+  @IsUUID()
+  @IsOptional()
+  customerOpsCustomerId?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    format: 'uuid',
+    description: 'Exact match on the Contact-Ops contact id.',
+  })
+  @IsUUID()
+  @IsOptional()
+  contactOpsContactId?: string;
 
   @ApiPropertyOptional({
     type: String,

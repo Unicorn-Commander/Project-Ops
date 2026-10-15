@@ -268,6 +268,20 @@ describe('ProjectsService.findAll — CLIENT-role masking on the list', () => {
     expect(p.budgetSummary.budgetAmount).toBe('4300.00');
     expect(p.budgetSummary.budgetHours).toBe(40);
   });
+
+  it('passes exact federated id filters to both the project page and total count', async () => {
+    const tx = makeListTx();
+    const { svc } = makeService({ tx });
+    const where = {
+      customerOpsCustomerId: '550e8400-e29b-41d4-a716-446655440000',
+      contactOpsContactId: '6ba7b810-9dad-41d1-80b4-00c04fd430c8',
+    };
+
+    await svc.findAll('ws1', staff, { where });
+
+    expect(tx.project.findMany).toHaveBeenCalledWith(expect.objectContaining({ where }));
+    expect(tx.project.count).toHaveBeenCalledWith({ where });
+  });
 });
 
 describe('ProjectsService — safe User selects (never the full User row)', () => {
