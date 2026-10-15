@@ -66,7 +66,7 @@ export type TriageDecisionResult = {
 
 type TriageReviewMetadata = Pick<TriageDecision, 'reasonPreset' | 'reason' | 'duplicateOfTaskId'>;
 
-type TriageListOptions = {
+export type TriageListOptions = {
   status?: TriageListStatus;
   limit?: number;
   offset?: number;

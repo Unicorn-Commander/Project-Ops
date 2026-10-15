@@ -19,6 +19,10 @@ import { MinioService } from '../documents/minio.service';
 import { ProjectOpsTools, TimeTrackingDeps, Wave2Deps } from './mcp.tools';
 import { MCP_TOOL_SCOPE_MAP } from '../auth/pat/pat.constants';
 import { TriageService } from '../triage/triage.service';
+import {
+  TRIAGE_LIST_STATUS_VALUES,
+  TRIAGE_REASON_PRESETS,
+} from '../triage/dto/triage-proposals.dto';
 import { timeTrackingEnabled } from '../common/workspace/feature-flags';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { TimerService } from '../time-tracking/timer.service';
@@ -837,6 +841,53 @@ export class McpService {
         },
       },
       async (args: any) => wrap(await tools.submitCandidateActionItems(user, args)),
+    );
+
+    server.registerTool(
+      'list_triage_proposals',
+      {
+        title: 'List triage proposals',
+        description:
+          'List workspace-scoped triage proposals for an agent first pass, including ' +
+          'proposedTitle, rawText, project routing, status, timestamps, and sourceRef ' +
+          'with meetingDate and meetingTitle when supplied. PENDING is an alias for ' +
+          'PENDING_REVIEW. Read-only.',
+        inputSchema: {
+          status: z.enum(TRIAGE_LIST_STATUS_VALUES).optional(),
+          limit: z.number().int().min(1).max(200).optional(),
+          offset: z.number().int().min(0).optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.listTriageProposals(user, args)),
+    );
+
+    server.registerTool(
+      'rule_triage_proposals',
+      {
+        title: 'Approve or reject triage proposals',
+        description:
+          'Apply up to 200 independent triage decisions in one call. Each decision ' +
+          'uses action approve or reject; approvals may set targetProjectId. Rejections ' +
+          'may set reasonPreset (stale, duplicate, not_ours, handled_elsewhere, vague, ' +
+          'personal), reason, and duplicateOfTaskId. Returns one result per proposal; ' +
+          'a failed item does not abort other decisions. Staff and above only.',
+        inputSchema: {
+          decisions: z
+            .array(
+              z.object({
+                proposalId: z.string().min(1),
+                action: z.enum(['approve', 'reject']),
+                targetProjectId: z.string().min(1).optional(),
+                reasonPreset: z.enum(TRIAGE_REASON_PRESETS).optional(),
+                reason: z.string().max(5000).optional(),
+                duplicateOfTaskId: z.string().min(1).optional(),
+              }),
+            )
+            .min(1)
+            .max(200),
+        },
+      },
+      async (args: any) => wrap(await tools.ruleTriageProposals(user, args)),
     );
 
     server.registerTool(
