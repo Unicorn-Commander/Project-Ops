@@ -423,11 +423,25 @@ export class ProjectOpsTools {
     });
   }
 
-  async listMyProjects(user: User, args: { status?: string; limit?: number }) {
+  async listMyProjects(
+    user: User,
+    args: {
+      status?: string;
+      limit?: number;
+      customerOpsCustomerId?: string;
+      contactOpsContactId?: string;
+    },
+  ) {
     const status = normalizeProjectStatus(args.status);
     const where: Prisma.ProjectWhereInput = {
       ...buildVisibilityFilter(user),
       ...(status ? { status } : {}),
+      ...(args.customerOpsCustomerId !== undefined
+        ? { customerOpsCustomerId: args.customerOpsCustomerId }
+        : {}),
+      ...(args.contactOpsContactId !== undefined
+        ? { contactOpsContactId: args.contactOpsContactId }
+        : {}),
     };
     const projects = await this.runScoped(user, (tx) =>
       tx.project.findMany({
@@ -780,7 +794,15 @@ export class ProjectOpsTools {
     };
   }
 
-  async searchProjects(user: User, args: { query: string; limit?: number }) {
+  async searchProjects(
+    user: User,
+    args: {
+      query: string;
+      limit?: number;
+      customerOpsCustomerId?: string;
+      contactOpsContactId?: string;
+    },
+  ) {
     const q = (args.query ?? '').trim();
     if (!q) {
       throw new Error('query is required');
@@ -797,6 +819,12 @@ export class ProjectOpsTools {
           AND: [
             buildVisibilityFilter(user),
             {
+              ...(args.customerOpsCustomerId !== undefined
+                ? { customerOpsCustomerId: args.customerOpsCustomerId }
+                : {}),
+              ...(args.contactOpsContactId !== undefined
+                ? { contactOpsContactId: args.contactOpsContactId }
+                : {}),
               OR: [
                 { title: { contains: q, mode: 'insensitive' } },
                 { description: { contains: q, mode: 'insensitive' } },
@@ -1316,6 +1344,8 @@ export class ProjectOpsTools {
       priority?: string;
       dueDate?: string;
       assignedToId?: string;
+      customerOpsCustomerId?: string | null;
+      contactOpsContactId?: string | null;
       // Wave 2 pass-throughs — handled as ProjectsService does. customFields are
       // validated against the workspace PROJECT definitions and folded into
       // metadata.customFields; recurrenceRule (RRULE) is a plain column.
@@ -1348,6 +1378,8 @@ export class ProjectOpsTools {
           description: args.description,
           clientName: args.clientName,
           organizationId: args.organizationId,
+          customerOpsCustomerId: args.customerOpsCustomerId,
+          contactOpsContactId: args.contactOpsContactId,
           priority: (args.priority as any) ?? 'MEDIUM',
           dueDate: args.dueDate ? new Date(args.dueDate) : null,
           ...(args.recurrenceRule !== undefined ? { recurrenceRule: args.recurrenceRule } : {}),
@@ -1417,6 +1449,8 @@ export class ProjectOpsTools {
       priority?: string;
       dueDate?: string | null;
       assignedToId?: string;
+      customerOpsCustomerId?: string | null;
+      contactOpsContactId?: string | null;
       // Wave 2 pass-throughs (see createProject).
       customFields?: Record<string, any>;
       recurrenceRule?: string | null;
@@ -1442,6 +1476,12 @@ export class ProjectOpsTools {
     }
     if (args.assignedToId !== undefined) {
       data.assignedTo = { connect: { id: args.assignedToId } };
+    }
+    if (args.customerOpsCustomerId !== undefined) {
+      data.customerOpsCustomerId = args.customerOpsCustomerId;
+    }
+    if (args.contactOpsContactId !== undefined) {
+      data.contactOpsContactId = args.contactOpsContactId;
     }
     if (args.recurrenceRule !== undefined) data.recurrenceRule = args.recurrenceRule;
 

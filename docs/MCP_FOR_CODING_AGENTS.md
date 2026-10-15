@@ -33,6 +33,8 @@ uses. You're plugging in via the same door.
 CLIENT-role users can only call the read tools; write tools enforce ADMIN /
 MANAGER / STAFF role.
 
+For exact federated lookups, `list_my_projects` and `search_projects` accept the optional UUID filters `customerOpsCustomerId` and `contactOpsContactId`; supply both to require both matches. The filters remain inside the calling user's workspace and visibility scope, and `search_projects` combines them with its free-text query.
+
 ## Authentication
 
 Bearer JWT signed with the Project Ops `JWT_SECRET`. The tools run as the
