@@ -1089,6 +1089,8 @@ model TriageProposal {
   createdById     String // user the agent acted for
   reviewedById    String?
   rejectionReason String?
+  reasonPreset    String?
+  duplicateOfTaskId String?
   createdTaskId   String? // Task created on approval (soft link, no FK)
   appliedAt       DateTime?
 

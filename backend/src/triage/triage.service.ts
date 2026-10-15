@@ -32,6 +32,12 @@ import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { ProjectsService } from '../projects/projects.service';
 import { TasksService } from '../tasks/tasks.service';
+import {
+  TRIAGE_LIST_STATUS_VALUES,
+  TriageAction,
+  TriageReasonPreset,
+  type TriageListStatus,
+} from './dto/triage-proposals.dto';
 
 export type CandidateItem = {
   text: string;
@@ -40,6 +46,30 @@ export type CandidateItem = {
   /** stable id from the source (e.g. meeting-ops action_items.id) for idempotency */
   sourceActionItemId?: string;
   sourceRef?: Record<string, any>;
+};
+
+export type TriageDecision = {
+  proposalId: string;
+  action: TriageAction;
+  targetProjectId?: string;
+  reasonPreset?: TriageReasonPreset;
+  reason?: string;
+  duplicateOfTaskId?: string;
+};
+
+export type TriageDecisionResult = {
+  id: string;
+  ok: boolean;
+  taskId?: string;
+  error?: string;
+};
+
+type TriageReviewMetadata = Pick<TriageDecision, 'reasonPreset' | 'reason' | 'duplicateOfTaskId'>;
+
+export type TriageListOptions = {
+  status?: TriageListStatus;
+  limit?: number;
+  offset?: number;
 };
 
 type ProjIndexEntry = {
@@ -414,12 +444,19 @@ export class TriageService {
   }
 
   listPending(workspaceId: string, user: User) {
+    return this.listProposals(workspaceId, user, { status: 'PENDING_REVIEW' });
+  }
+
+  listProposals(workspaceId: string, user: User, options: TriageListOptions = {}) {
+    const status = this.resolveListStatus(options.status);
     return this.workspaceContext.runForUser(
       user,
       (tx) =>
         tx.triageProposal.findMany({
-          where: { status: 'PENDING_REVIEW' },
+          where: status ? { status } : {},
           orderBy: { createdAt: 'desc' },
+          ...(options.offset !== undefined ? { skip: options.offset } : {}),
+          ...(options.limit !== undefined ? { take: options.limit } : {}),
           include: {
             proposedProject: { select: { projectNumber: true, title: true } },
           },
@@ -428,10 +465,27 @@ export class TriageService {
     );
   }
 
-  async approve(workspaceId: string, user: User, proposalId: string, overrideProjectId?: string) {
+  private resolveListStatus(status?: TriageListStatus) {
+    if (!status) return undefined;
+    if (status === 'PENDING') return 'PENDING_REVIEW' as const;
+    if ((TRIAGE_LIST_STATUS_VALUES as readonly string[]).includes(status)) {
+      return status as 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | 'APPLIED' | 'DROPPED';
+    }
+    throw new BadRequestException(
+      `invalid triage status. Valid values: ${TRIAGE_LIST_STATUS_VALUES.join(', ')}`,
+    );
+  }
+
+  async approve(
+    workspaceId: string,
+    user: User,
+    proposalId: string,
+    overrideProjectId?: string,
+    metadata: TriageReviewMetadata = {},
+  ) {
     return this.workspaceContext.runForUser(
       user,
-      (tx) => this.approveInTx(tx, workspaceId, user, proposalId, overrideProjectId),
+      (tx) => this.approveInTx(tx, workspaceId, user, proposalId, overrideProjectId, metadata),
       workspaceId,
     );
   }
@@ -452,6 +506,7 @@ export class TriageService {
     user: User,
     proposalId: string,
     overrideProjectId?: string,
+    metadata: TriageReviewMetadata = {},
   ) {
     const p = await tx.triageProposal.findUnique({
       where: { id: proposalId },
@@ -477,24 +532,128 @@ export class TriageService {
         reviewedById: user.id,
         proposedProjectId: projectId,
         createdTaskId: task.id,
+        ...(metadata.reasonPreset !== undefined ? { reasonPreset: metadata.reasonPreset } : {}),
+        ...(metadata.duplicateOfTaskId !== undefined
+          ? { duplicateOfTaskId: metadata.duplicateOfTaskId }
+          : {}),
       },
     });
   }
 
-  async reject(workspaceId: string, user: User, proposalId: string, reason?: string) {
+  async reject(
+    workspaceId: string,
+    user: User,
+    proposalId: string,
+    metadata: TriageReviewMetadata = {},
+  ) {
     return this.workspaceContext.runForUser(
       user,
-      (tx) =>
-        tx.triageProposal.update({
-          where: { id: proposalId },
-          data: {
-            status: 'REJECTED',
-            reviewedById: user.id,
-            rejectionReason: reason ?? null,
-          },
-        }),
+      (tx) => this.rejectInTx(tx, user, proposalId, metadata),
       workspaceId,
     );
+  }
+
+  private async rejectInTx(
+    tx: WorkspaceTxClient,
+    user: User,
+    proposalId: string,
+    metadata: TriageReviewMetadata,
+  ) {
+    const p = await tx.triageProposal.findUnique({ where: { id: proposalId } });
+    if (!p) throw new NotFoundException('proposal not found');
+    if (p.status !== 'PENDING_REVIEW') throw new BadRequestException(`proposal is ${p.status}`);
+
+    return tx.triageProposal.update({
+      where: { id: proposalId },
+      data: {
+        status: 'REJECTED',
+        reviewedById: user.id,
+        rejectionReason: this.formatRejectionReason(metadata),
+        reasonPreset: metadata.reasonPreset ?? null,
+        duplicateOfTaskId: metadata.duplicateOfTaskId ?? null,
+      } as any,
+    });
+  }
+
+  private formatRejectionReason(metadata: TriageReviewMetadata): string | null {
+    const note = metadata.reason?.trim();
+    const context = [
+      metadata.duplicateOfTaskId ? `Duplicate of task ${metadata.duplicateOfTaskId}` : undefined,
+      metadata.reasonPreset ? `Preset: ${metadata.reasonPreset}` : undefined,
+    ].filter(Boolean) as string[];
+    const parts = [...context, ...(note ? [note] : [])];
+    return parts.length ? parts.join(' — ') : null;
+  }
+
+  /**
+   * Apply independent decisions in input order. Each item uses the existing
+   * single-item service path, so a failed proposal transaction cannot roll back
+   * a neighbouring approval/rejection.
+   */
+  async applyDecisions(
+    workspaceId: string,
+    user: User,
+    decisions: TriageDecision[],
+  ): Promise<TriageDecisionResult[]> {
+    if (!Array.isArray(decisions) || decisions.length === 0) {
+      throw new BadRequestException('at least one triage decision is required');
+    }
+    if (decisions.length > 200) {
+      throw new BadRequestException('a maximum of 200 triage decisions is allowed');
+    }
+
+    const results: TriageDecisionResult[] = [];
+    for (const decision of decisions) {
+      try {
+        if (decision.action === TriageAction.APPROVE) {
+          const proposal = await this.approve(
+            workspaceId,
+            user,
+            decision.proposalId,
+            decision.targetProjectId,
+            decision,
+          );
+          results.push({
+            id: decision.proposalId,
+            ok: true,
+            taskId: proposal.createdTaskId ?? undefined,
+          });
+        } else if (decision.action === TriageAction.REJECT) {
+          await this.reject(workspaceId, user, decision.proposalId, decision);
+          results.push({ id: decision.proposalId, ok: true });
+        } else {
+          throw new BadRequestException('action must be approve or reject');
+        }
+      } catch (error) {
+        results.push({
+          id: decision.proposalId,
+          ok: false,
+          error: this.decisionErrorMessage(error),
+        });
+      }
+    }
+    return results;
+  }
+
+  async bulk(
+    workspaceId: string,
+    user: User,
+    proposalIds: string[],
+    action: TriageAction,
+    metadata: Omit<TriageReviewMetadata, 'reason'> & { reason?: string } = {},
+  ) {
+    return this.applyDecisions(
+      workspaceId,
+      user,
+      proposalIds.map((proposalId) => ({ proposalId, action, ...metadata })),
+    );
+  }
+
+  private decisionErrorMessage(error: unknown): string {
+    if (error instanceof BadRequestException || error instanceof NotFoundException) {
+      return error.message;
+    }
+    return 'failed to apply triage decision';
   }
 
   /** Create a NEW project from a set of unassigned proposals, then apply them as its tasks. */

@@ -11,14 +11,13 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { priorityBadgeClass } from "@/lib/badge-styles";
-import { type TriageProposal } from "@/lib/triage-api";
+import { type RejectProposalData, type TriageProposal } from "@/lib/triage-api";
 import {
   Check,
   X,
   ChevronDown,
   ChevronRight,
   Sparkles,
-  User as UserIcon,
   FileText,
   Loader2,
   ArrowRight,
@@ -26,6 +25,7 @@ import {
   Copy,
   Mic,
   Gauge,
+  CalendarDays,
 } from "lucide-react";
 
 // A loaded project the user can route a proposal to. Kept minimal — the page
@@ -48,14 +48,14 @@ interface ProposalCardProps {
   variant: ProposalVariant;
   projects: TriageProjectOption[];
   projectsLoading?: boolean;
-  // Selection (only wired for the "needs-project" hero section).
+  // Selection is wired for every pending card; the page owns the selected set.
   selectable?: boolean;
   selected?: boolean;
   onToggleSelect?: (id: string) => void;
   // Mutations — the parent owns list state + toasts; these resolve when the
   // server call settles. The card manages its own pending/error affordances.
   onApprove: (id: string, targetProjectId?: string) => Promise<void>;
-  onReject: (id: string, reason?: string) => Promise<void>;
+  onReject: (id: string, data?: RejectProposalData) => Promise<void>;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -100,6 +100,15 @@ export function ProposalCard({
 
   const meetingTitle: string | undefined =
     (proposal.sourceRef?.meetingTitle as string | undefined) || undefined;
+  const meetingDate: string | undefined =
+    (proposal.sourceRef?.meetingDate as string | undefined) || undefined;
+  const meetingDateLabel = meetingDate
+    ? new Date(meetingDate).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : undefined;
 
   const handleApprove = async (targetProjectId?: string) => {
     setApproving(true);
@@ -113,7 +122,7 @@ export function ProposalCard({
   const handleReject = async () => {
     setRejecting(true);
     try {
-      await onReject(proposal.id, rejectReason.trim() || undefined);
+      await onReject(proposal.id, rejectReason.trim() ? { reason: rejectReason.trim() } : {});
     } finally {
       setRejecting(false);
     }
@@ -163,16 +172,15 @@ export function ProposalCard({
       }`}
     >
       <div className="flex items-start gap-3">
-        {/* Multi-select checkbox (hero section only). */}
+        {/* Multi-select checkbox for every pending proposal. */}
         {selectable && (
-          <button
-            type="button"
-            onClick={() => onToggleSelect?.(proposal.id)}
-            className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border transition-colors hover:border-primary"
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect?.(proposal.id)}
+            className="mt-1 h-4 w-4 shrink-0 accent-primary"
             aria-label={selected ? "Deselect item" : "Select item"}
-          >
-            {selected && <Check className="h-3.5 w-3.5 text-primary" strokeWidth={3} />}
-          </button>
+          />
         )}
 
         <div className="min-w-0 flex-1">
@@ -220,6 +228,12 @@ export function ProposalCard({
               <span className="inline-flex items-center gap-1">
                 <span className="text-muted-foreground/40">·</span>
                 {meetingTitle}
+              </span>
+            )}
+            {meetingDateLabel && (
+              <span className="inline-flex items-center gap-1">
+                <CalendarDays className="h-3 w-3" />
+                {meetingDateLabel}
               </span>
             )}
           </div>

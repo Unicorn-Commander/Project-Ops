@@ -1,5 +1,5 @@
 import { WorkspaceMutationGuard } from '../common/workspace/workspace-mutation.guard';
-import { Controller, Get, Post, Body, Param, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { TriageService, CandidateItem } from './triage.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -11,6 +11,12 @@ import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membersh
 import { FederationActorGuard } from '../common/workspace/federation-actor.guard';
 import { SkipWorkspaceMembership } from '../common/workspace/skip-workspace-membership.decorator';
 import { User, UserRole } from '@prisma/client';
+import {
+  ApproveTriageProposalDto,
+  BulkTriageProposalsDto,
+  ListTriageProposalsDto,
+  RejectTriageProposalDto,
+} from './dto/triage-proposals.dto';
 
 /**
  * Approval surface for the PO-owned triage agent. Everything is propose-then-
@@ -76,8 +82,25 @@ export class TriageController {
   /** All pending proposals (assigned + unassigned). */
   @Get('proposals')
   @ApiOperation({ summary: 'List pending triage proposals' })
-  proposals(@CurrentWorkspace() workspaceId: string, @CurrentUser() user: User) {
-    return this.triage.listPending(workspaceId, user);
+  proposals(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Query() query: ListTriageProposalsDto,
+  ) {
+    return this.triage.listProposals(workspaceId, user, query);
+  }
+
+  /** Approve or reject up to 200 proposals, returning one result per id. */
+  @Post('proposals/bulk')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
+  @ApiOperation({ summary: 'Bulk approve or reject triage proposals' })
+  bulk(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Body() body: BulkTriageProposalsDto,
+  ) {
+    const { proposalIds, action, ...metadata } = body;
+    return this.triage.bulk(workspaceId, user, proposalIds, action, metadata);
   }
 
   /** Approve a proposal -> creates the task (optionally override the project). */
@@ -88,7 +111,7 @@ export class TriageController {
     @CurrentWorkspace() workspaceId: string,
     @CurrentUser() user: User,
     @Param('id') id: string,
-    @Body() body: { targetProjectId?: string },
+    @Body() body: ApproveTriageProposalDto,
   ) {
     return this.triage.approve(workspaceId, user, id, body?.targetProjectId);
   }
@@ -101,9 +124,9 @@ export class TriageController {
     @CurrentWorkspace() workspaceId: string,
     @CurrentUser() user: User,
     @Param('id') id: string,
-    @Body() body: { reason?: string },
+    @Body() body: RejectTriageProposalDto,
   ) {
-    return this.triage.reject(workspaceId, user, id, body?.reason);
+    return this.triage.reject(workspaceId, user, id, body ?? {});
   }
 
   /** Create a NEW project from unassigned proposals, then apply them as its tasks. */

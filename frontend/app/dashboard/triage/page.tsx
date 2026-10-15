@@ -11,7 +11,10 @@ import api from "@/lib/api";
 import {
   getTriageProposals,
   approveProposal,
+  bulkTriageProposals,
   rejectProposal,
+  type RejectProposalData,
+  type TriageReasonPreset,
   type TriageProposal,
 } from "@/lib/triage-api";
 import {
@@ -19,6 +22,10 @@ import {
   type TriageProjectOption,
 } from "@/components/triage/proposal-card";
 import { CreateProjectFromProposalsModal } from "@/components/triage/create-project-from-proposals-modal";
+import {
+  BulkActionBar,
+  type TriageTaskOption,
+} from "@/components/triage/bulk-action-bar";
 import {
   Inbox,
   FolderInput,
@@ -63,7 +70,14 @@ export default function TriagePage() {
   const [error, setError] = useState(false);
   const [projects, setProjects] = useState<TriageProjectOption[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
+  const [tasks, setTasks] = useState<TriageTaskOption[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkProjectId, setBulkProjectId] = useState("");
+  const [bulkReasonPreset, setBulkReasonPreset] = useState<TriageReasonPreset | "">("");
+  const [bulkReason, setBulkReason] = useState("");
+  const [bulkDuplicateOfTaskId, setBulkDuplicateOfTaskId] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   // Collapsible sections — duplicates + set-aside start collapsed.
   const [showDuplicates, setShowDuplicates] = useState(false);
@@ -73,6 +87,7 @@ export default function TriagePage() {
   useEffect(() => {
     fetchProposals();
     fetchProjects();
+    fetchTasks();
   }, []);
 
   const fetchProposals = async () => {
@@ -81,7 +96,7 @@ export default function TriagePage() {
     try {
       const data = await getTriageProposals();
       setProposals(Array.isArray(data) ? data : []);
-    } catch (err) {
+    } catch {
       setError(true);
       setProposals([]);
       toast({
@@ -108,10 +123,33 @@ export default function TriagePage() {
           title: p.title,
         })),
       );
-    } catch (err) {
+    } catch {
       setProjects([]);
     } finally {
       setProjectsLoading(false);
+    }
+  };
+
+  // The duplicate picker uses the most recent visible tasks. The API clamps
+  // this bounded request to its normal task-list cap.
+  const fetchTasks = async () => {
+    setTasksLoading(true);
+    try {
+      const response = await api.get("/tasks", {
+        params: { page: 1, pageSize: 50, sortBy: "createdAt", sortDir: "desc" },
+      });
+      const list = response.data?.data ?? [];
+      setTasks(
+        list.map((task: any) => ({
+          id: task.id,
+          title: task.title,
+          projectNumber: task.project?.projectNumber,
+        })),
+      );
+    } catch {
+      setTasks([]);
+    } finally {
+      setTasksLoading(false);
     }
   };
 
@@ -119,6 +157,7 @@ export default function TriagePage() {
     setSelectedIds(new Set());
     fetchProposals();
     fetchProjects();
+    fetchTasks();
   };
 
   // Approve — the card resolves on settle; we drop the proposal from the list
@@ -147,9 +186,9 @@ export default function TriagePage() {
     }
   };
 
-  const handleReject = async (id: string, reason?: string) => {
+  const handleReject = async (id: string, data: RejectProposalData = {}) => {
     try {
-      await rejectProposal(id, reason ? { reason } : {});
+      await rejectProposal(id, data);
       setProposals((prev) => prev.filter((p) => p.id !== id));
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -179,12 +218,76 @@ export default function TriagePage() {
     });
   };
 
+  const selectedPendingIds = useMemo(
+    () => proposals.filter((proposal) => selectedIds.has(proposal.id)).map((proposal) => proposal.id),
+    [proposals, selectedIds],
+  );
+
+  const handleBulk = async (
+    action: "approve" | "reject",
+    options: {
+      targetProjectId?: string;
+      reasonPreset?: TriageReasonPreset;
+      reason?: string;
+      duplicateOfTaskId?: string;
+    },
+  ) => {
+    if (selectedPendingIds.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const results = await bulkTriageProposals({
+        proposalIds: selectedPendingIds,
+        action,
+        ...options,
+      });
+      const successfulIds = new Set(results.filter((result) => result.ok).map((result) => result.id));
+      const failed = results.filter((result) => !result.ok);
+      setProposals((prev) => prev.filter((proposal) => !successfulIds.has(proposal.id)));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        successfulIds.forEach((id) => next.delete(id));
+        return next;
+      });
+      if (failed.length > 0) {
+        toast({
+          title: `${successfulIds.size} applied; ${failed.length} stayed in the inbox`,
+          description: failed.map((result) => `${result.id}: ${result.error ?? "failed"}`).join(" · "),
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: action === "approve" ? "Proposals approved" : "Proposals rejected",
+          description: `${successfulIds.size} proposal${successfulIds.size === 1 ? "" : "s"} processed.`,
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: "Bulk action failed",
+        description: err.response?.data?.message || "The selected proposals were not changed.",
+        variant: "destructive",
+      });
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkApprove = () =>
+    handleBulk("approve", { targetProjectId: bulkProjectId });
+
+  const handleBulkReject = () =>
+    handleBulk("reject", {
+      reasonPreset: bulkReasonPreset || undefined,
+      reason: bulkReason.trim() || undefined,
+      duplicateOfTaskId: bulkDuplicateOfTaskId || undefined,
+    });
+
   const { needsProject, routed, duplicates, setAside } = useMemo(
     () => groupProposals(proposals),
     [proposals],
   );
 
-  // Selected proposals confined to the hero section (the only selectable one).
+  // The existing create-project modal remains limited to unrouted items; the
+  // new bulk action bar operates on every pending bucket.
   const selectedProposals = useMemo(
     () => needsProject.filter((p) => selectedIds.has(p.id)),
     [needsProject, selectedIds],
@@ -202,6 +305,15 @@ export default function TriagePage() {
       const next = new Set(prev);
       needsProject.forEach((p) => next.add(p.id));
       return next;
+    });
+  };
+
+  const allPendingSelected =
+    proposals.length > 0 && proposals.every((proposal) => selectedIds.has(proposal.id));
+  const toggleSelectAllPending = () => {
+    setSelectedIds(() => {
+      if (allPendingSelected) return new Set();
+      return new Set(proposals.map((proposal) => proposal.id));
     });
   };
 
@@ -272,6 +384,54 @@ export default function TriagePage() {
           </Card>
         ) : (
           <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
+              <button
+                type="button"
+                onClick={toggleSelectAllPending}
+                className="inline-flex items-center gap-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                aria-pressed={allPendingSelected}
+              >
+                <span
+                  className={`inline-flex h-4 w-4 items-center justify-center rounded border ${
+                    allPendingSelected
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border"
+                  }`}
+                >
+                  {allPendingSelected && <CheckCircle2 className="h-3 w-3" strokeWidth={3} />}
+                </span>
+                {allPendingSelected ? "Deselect all pending" : "Select all pending"}
+                {selectedIds.size > 0 && (
+                  <span className="text-muted-foreground/70">· {selectedIds.size} selected</span>
+                )}
+              </button>
+              <span className="text-xs text-muted-foreground">
+                Select across routed, unrouted, duplicate, and set-aside proposals.
+              </span>
+            </div>
+
+            {selectedIds.size > 0 && (
+              <BulkActionBar
+                selectedCount={selectedIds.size}
+                projects={projects}
+                projectsLoading={projectsLoading}
+                tasks={tasks}
+                tasksLoading={tasksLoading}
+                projectId={bulkProjectId}
+                onProjectChange={setBulkProjectId}
+                reasonPreset={bulkReasonPreset}
+                onReasonPresetChange={setBulkReasonPreset}
+                reason={bulkReason}
+                onReasonChange={setBulkReason}
+                duplicateOfTaskId={bulkDuplicateOfTaskId}
+                onDuplicateOfTaskChange={setBulkDuplicateOfTaskId}
+                busy={bulkBusy}
+                onApprove={handleBulkApprove}
+                onReject={handleBulkReject}
+                onClear={() => setSelectedIds(new Set())}
+              />
+            )}
+
             {/* 1) HERO — Needs a project */}
             <Card className="overflow-visible p-6">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -405,6 +565,9 @@ export default function TriagePage() {
                       variant="routed"
                       projects={projects}
                       projectsLoading={projectsLoading}
+                      selectable
+                      selected={selectedIds.has(p.id)}
+                      onToggleSelect={toggleSelected}
                       onApprove={handleApprove}
                       onReject={handleReject}
                     />
@@ -465,6 +628,9 @@ export default function TriagePage() {
                           variant="duplicate"
                           projects={projects}
                           projectsLoading={projectsLoading}
+                          selectable
+                          selected={selectedIds.has(p.id)}
+                          onToggleSelect={toggleSelected}
                           onApprove={handleApprove}
                           onReject={handleReject}
                         />
@@ -526,6 +692,9 @@ export default function TriagePage() {
                           variant="set-aside"
                           projects={projects}
                           projectsLoading={projectsLoading}
+                          selectable
+                          selected={selectedIds.has(p.id)}
+                          onToggleSelect={toggleSelected}
                           onApprove={handleApprove}
                           onReject={handleReject}
                         />

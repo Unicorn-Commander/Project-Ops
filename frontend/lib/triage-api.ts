@@ -11,6 +11,14 @@ export type TriageStatus =
   | 'APPLIED'
   | 'DROPPED';
 
+export type TriageReasonPreset =
+  | 'stale'
+  | 'duplicate'
+  | 'not_ours'
+  | 'handled_elsewhere'
+  | 'vague'
+  | 'personal';
+
 // A project the agent considered routing this proposal to (other than the
 // top match). Rendered as small secondary chips.
 export interface TriageAlternative {
@@ -40,6 +48,8 @@ export interface TriageProposal {
   status: TriageStatus;
   sourceType: string; // e.g. 'MEETING_OPS', 'MANUAL'
   sourceRef: Record<string, any> | null; // e.g. { meetingTitle: 'Weekly Client Sync' }
+  reasonPreset?: TriageReasonPreset | null;
+  duplicateOfTaskId?: string | null;
   createdAt: string;
 }
 
@@ -50,6 +60,24 @@ export interface ApproveProposalData {
 
 export interface RejectProposalData {
   reason?: string;
+  reasonPreset?: TriageReasonPreset;
+  duplicateOfTaskId?: string;
+}
+
+export interface BulkTriageProposalsData {
+  proposalIds: string[];
+  action: 'approve' | 'reject';
+  targetProjectId?: string;
+  reason?: string;
+  reasonPreset?: TriageReasonPreset;
+  duplicateOfTaskId?: string;
+}
+
+export interface BulkTriageProposalResult {
+  id: string;
+  ok: boolean;
+  taskId?: string;
+  error?: string;
 }
 
 export interface CreateProjectFromProposalsData {
@@ -89,6 +117,15 @@ export const rejectProposal = async (
   data: RejectProposalData = {}
 ): Promise<TriageProposal> => {
   const response = await api.post(`/triage/proposals/${id}/reject`, data);
+  return response.data;
+};
+
+// Apply the same decision to up to 200 proposals. The backend returns a result
+// for every id so partial failures can remain visible to the reviewer.
+export const bulkTriageProposals = async (
+  data: BulkTriageProposalsData
+): Promise<BulkTriageProposalResult[]> => {
+  const response = await api.post('/triage/proposals/bulk', data);
   return response.data;
 };
 

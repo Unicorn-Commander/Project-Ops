@@ -30,7 +30,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 // Type-only imports: erased at compile time, so they're safe even when the
 // imported services import helpers (e.g. buildVisibilityFilter) back from this
 // file — `import type` avoids the runtime cycle.
-import type { TriageService } from '../triage/triage.service';
+import type { TriageDecision, TriageListOptions, TriageService } from '../triage/triage.service';
 import type { TimerService } from '../time-tracking/timer.service';
 import type { TimeEntryService } from '../time-tracking/time-entry.service';
 import type { TimesheetService } from '../time-tracking/timesheet.service';
@@ -1889,6 +1889,32 @@ export class ProjectOpsTools {
       this.requestWorkspaceId,
     );
     return this.triage.ingestCandidates(workspaceId, user, items);
+  }
+
+  async listTriageProposals(user: User, args: TriageListOptions = {}) {
+    if (!this.triage) {
+      throw new Error('Triage is not enabled on this server');
+    }
+    const workspaceId = await this.requireWorkspace().resolveAuthorized(
+      user,
+      this.requestWorkspaceId,
+    );
+    return this.triage.listProposals(workspaceId, user, args);
+  }
+
+  async ruleTriageProposals(user: User, args: { decisions: TriageDecision[] }) {
+    this.assertCanWrite(user);
+    if (!this.triage) {
+      throw new Error('Triage is not enabled on this server');
+    }
+    if (!Array.isArray(args?.decisions) || args.decisions.length === 0) {
+      throw new Error('decisions must contain at least one proposal decision');
+    }
+    const workspaceId = await this.requireWorkspace().resolveAuthorized(
+      user,
+      this.requestWorkspaceId,
+    );
+    return this.triage.applyDecisions(workspaceId, user, args.decisions);
   }
 
   async updateTaskStatus(user: User, args: { taskId: string; status: string }) {

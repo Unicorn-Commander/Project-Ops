@@ -694,6 +694,68 @@ describe('ProjectOpsTools — agent-surface gap tools', () => {
   });
 });
 
+describe('ProjectOpsTools — triage review tools', () => {
+  const WS = 'ws-triage';
+
+  function makeTools(triage: any) {
+    const workspace = { resolveAuthorized: jest.fn(async () => WS) } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      triage,
+      undefined,
+      null,
+      workspace,
+    );
+    return { tools, workspace };
+  }
+
+  it('lists proposals through the workspace-aware triage service', async () => {
+    const listProposals = jest.fn(async () => [
+      { id: 'proposal-1', sourceRef: { meetingTitle: 'Weekly sync' } },
+    ]);
+    const { tools, workspace } = makeTools({ listProposals });
+    const user = baseUser({ role: UserRole.STAFF });
+
+    await tools.listTriageProposals(user, { status: 'PENDING', limit: 25, offset: 5 });
+
+    expect(workspace.resolveAuthorized).toHaveBeenCalledWith(user, null);
+    expect(listProposals).toHaveBeenCalledWith(WS, user, {
+      status: 'PENDING',
+      limit: 25,
+      offset: 5,
+    });
+  });
+
+  it('rules proposals through the shared service and gates CLIENT writes', async () => {
+    const applyDecisions = jest.fn(async () => [{ id: 'proposal-1', ok: true, taskId: 'task-1' }]);
+    const { tools } = makeTools({ applyDecisions });
+    const staff = baseUser({ role: UserRole.STAFF });
+    const decisions = [
+      {
+        proposalId: 'proposal-1',
+        action: 'approve',
+        targetProjectId: 'project-1',
+      },
+    ] as any;
+
+    await expect(
+      tools.ruleTriageProposals(baseUser({ role: UserRole.CLIENT }), { decisions }),
+    ).rejects.toThrow(/Read-only role/);
+    await tools.ruleTriageProposals(staff, { decisions });
+
+    expect(applyDecisions).toHaveBeenCalledWith('ws-triage', staff, decisions);
+  });
+
+  it('returns a clear error when triage is not wired', async () => {
+    const { tools } = makeTools(undefined);
+    await expect(tools.listTriageProposals(baseUser({ role: UserRole.STAFF }), {})).rejects.toThrow(
+      /Triage is not enabled/,
+    );
+  });
+});
+
 describe('ProjectOpsTools.updateBillingFields — invoiced flat-fee immutability', () => {
   it('rejects changing an invoiced project flat fee inside the workspace tx', async () => {
     const update = jest.fn(async () => ({ id: 'p1' }));
