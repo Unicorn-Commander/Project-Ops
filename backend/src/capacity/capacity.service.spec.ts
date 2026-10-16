@@ -278,9 +278,14 @@ describe('CapacityService.aggregateWorkload', () => {
     expect(map.get('u1')).toEqual({ committedHours: 0, taskCount: 3, unestimatedCount: 3 });
   });
 
-  it('filters by window, assignee set, and excludes COMPLETED/CANCELLED', async () => {
+  it('filters date-only due dates by UTC-midnight business-date bounds', async () => {
     const { svc, tx } = makeService({ committedRows: [], unestimatedRows: [] });
-    const window = { from: new Date(2026, 5, 1), to: new Date(2026, 5, 7, 23, 59, 59) };
+    const window = {
+      // The Oct 12 Monday task is stored at UTC midnight, while the reported
+      // business week still begins at midnight in New York.
+      from: new Date('2026-10-12T04:00:00.000Z'),
+      to: new Date('2026-10-19T03:59:59.999Z'),
+    };
     await svc.aggregateWorkload(tx as any, window, ['u1', 'u2']);
 
     const firstCallWhere = (tx.task.groupBy as jest.Mock).mock.calls[0][0].where;
@@ -288,7 +293,10 @@ describe('CapacityService.aggregateWorkload', () => {
     expect(firstCallWhere.status).toEqual({
       notIn: [TaskStatus.COMPLETED, TaskStatus.CANCELLED],
     });
-    expect(firstCallWhere.dueDate).toEqual({ gte: window.from, lte: window.to });
+    expect(firstCallWhere.dueDate).toEqual({
+      gte: new Date('2026-10-12T00:00:00.000Z'),
+      lt: new Date('2026-10-19T00:00:00.000Z'),
+    });
 
     // second pass adds estimatedHours: null
     const secondCallWhere = (tx.task.groupBy as jest.Mock).mock.calls[1][0].where;

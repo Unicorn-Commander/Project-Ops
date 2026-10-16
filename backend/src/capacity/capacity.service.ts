@@ -9,7 +9,13 @@ import { MembershipStatus, TaskStatus, User } from '@prisma/client';
 import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { WithWorkspaceClaim } from '../common/workspace/workspace.util';
-import { businessCalendarDaysInclusive, businessWeekBoundsUtc } from '../common/time/business-time';
+import {
+  addCalendarDays,
+  businessCalendarDaysInclusive,
+  businessDateForInstant,
+  businessWeekBoundsUtc,
+  dateOnlyToUtcDate,
+} from '../common/time/business-time';
 
 /**
  * Capacity / resource planning (Wave 2).
@@ -287,7 +293,9 @@ export class CapacityService {
    * NOT-done = status NOT IN (COMPLETED, CANCELLED): a cancelled task will never
    * consume capacity, so it isn't "committed" work either. Only assigned tasks
    * (assignedToId not null) and only tasks whose dueDate falls within
-   * [from, to]. `restrictToUserIds` narrows the GROUP BY to a known member set.
+   * the inclusive business-date window. The date-only column is queried with
+   * UTC-midnight bounds `[startDate, dayAfterEndDate)`, matching storage.
+   * `restrictToUserIds` narrows the GROUP BY to a known member set.
    */
   async aggregateWorkload(
     tx: WorkspaceTxClient,
@@ -297,10 +305,15 @@ export class CapacityService {
     const byUser = new Map<string, AssigneeWorkload>();
     if (restrictToUserIds.length === 0) return byUser;
 
+    const startDate = businessDateForInstant(window.from);
+    const endDate = businessDateForInstant(window.to);
     const baseWhere = {
       assignedToId: { in: restrictToUserIds },
       status: { notIn: [TaskStatus.COMPLETED, TaskStatus.CANCELLED] },
-      dueDate: { gte: window.from, lte: window.to },
+      dueDate: {
+        gte: dateOnlyToUtcDate(startDate),
+        lt: dateOnlyToUtcDate(addCalendarDays(endDate, 1)),
+      },
     };
 
     const [committed, unestimated] = await Promise.all([
