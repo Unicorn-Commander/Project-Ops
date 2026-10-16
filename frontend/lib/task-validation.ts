@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { TaskType, TaskPriority, TaskStatus } from './tasks-api';
+import { businessDateToday } from './date-only';
 
 // Create task validation schema
 export const createTaskSchema = z.object({
@@ -19,7 +20,7 @@ export const createTaskSchema = z.object({
     .refine(
       (date) => {
         if (!date) return true;
-        return new Date(date) > new Date();
+        return date > businessDateToday();
       },
       { message: 'Due date must be in the future' }
     ),
@@ -48,7 +49,7 @@ export const updateTaskSchema = z.object({
     .refine(
       (date) => {
         if (!date) return true;
-        return new Date(date) > new Date();
+        return date > businessDateToday();
       },
       { message: 'Due date must be in the future' }
     ),

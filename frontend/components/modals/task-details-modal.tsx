@@ -69,6 +69,7 @@ import { Repeat, Timer, SlidersHorizontal } from "lucide-react";
 import { parseRecurrenceRule } from "@/components/custom-fields/recurrence-picker";
 import { HelpHint } from "@/components/guidance";
 import { commentAuthorName } from "@/lib/comment-author";
+import { formatDateOnly, isDateOnlyBeforeToday } from "@/lib/date-only";
 
 interface TaskDetailsModalProps {
   isOpen: boolean;
@@ -409,7 +410,11 @@ export function TaskDetailsModal({
 
   if (!task) return null;
 
-  const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== TaskStatus.COMPLETED;
+  const isOverdue =
+    !!task.dueDate &&
+    isDateOnlyBeforeToday(task.dueDate) &&
+    task.status !== TaskStatus.COMPLETED &&
+    task.status !== TaskStatus.CANCELLED;
 
   // Human-readable recurrence ("Every week" / "Every 2 weeks"). The picker's
   // parser tolerates anything; an unrecognized rule shows the raw string.
@@ -558,7 +563,12 @@ export function TaskDetailsModal({
                 DUE DATE
               </h3>
               <p className={`text-foreground ${isOverdue ? 'text-rose-600 dark:text-rose-400 font-semibold' : ''}`}>
-                {format(new Date(task.dueDate), "EEEE, MMMM d, yyyy")}
+                {formatDateOnly(task.dueDate, {
+                  weekday: "long",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })}
               </p>
             </div>
           )}
@@ -716,8 +726,9 @@ export function TaskDetailsModal({
               {subtasks.map((sub) => {
                 const subOverdue =
                   sub.dueDate &&
-                  new Date(sub.dueDate) < new Date() &&
-                  sub.status !== TaskStatus.COMPLETED;
+                  isDateOnlyBeforeToday(sub.dueDate) &&
+                  sub.status !== TaskStatus.COMPLETED &&
+                  sub.status !== TaskStatus.CANCELLED;
                 return (
                   <div
                     key={sub.id}
@@ -731,7 +742,7 @@ export function TaskDetailsModal({
                       <span
                         className={`text-xs ${subOverdue ? "text-rose-600 dark:text-rose-400 font-medium" : "text-muted-foreground"}`}
                       >
-                        {format(new Date(sub.dueDate), "MMM d")}
+                        {formatDateOnly(sub.dueDate, { month: "short", day: "numeric" })}
                       </span>
                     )}
                     <Badge className={`shrink-0 ${getStatusColor(sub.status)}`}>

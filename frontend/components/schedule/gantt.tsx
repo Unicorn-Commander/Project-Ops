@@ -78,6 +78,11 @@ import {
 import { projectColorClasses } from "@/lib/project-colors";
 import { cn } from "@/lib/utils";
 import { getTaskDependencies } from "@/lib/tasks-api";
+import {
+  businessDateToday,
+  dateOnlyToCalendarDate,
+  formatDateOnly,
+} from "@/lib/date-only";
 import { DependencyArrows, useBarRegistry } from "@/components/schedule/dependency-arrows";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -316,7 +321,7 @@ export function Gantt({ projects, onReschedule }: GanttProps) {
       const explicitEnd = p.completedAt
         ? new Date(p.completedAt)
         : p.dueDate
-          ? new Date(p.dueDate)
+          ? dateOnlyToCalendarDate(p.dueDate)
           : addMonths(start, 1);
       const end = startOfDay(explicitEnd);
 
@@ -530,7 +535,7 @@ export function Gantt({ projects, onReschedule }: GanttProps) {
   // Computed over the *filtered* set (the operator's current scope), not just
   // the window, so the ribbon reads as a real portfolio summary.
   const summary = useMemo(() => {
-    const today = startOfDay(new Date());
+    const today = dateOnlyToCalendarDate(businessDateToday());
     const weekEnd = addDays(today, 7);
     let active = 0;
     let overdue = 0;
@@ -542,7 +547,7 @@ export function Gantt({ projects, onReschedule }: GanttProps) {
       const isParked = p.status === "ARCHIVED";
       if (!isCompleted && !isParked) active += 1;
       if (p.dueDate) {
-        const due = startOfDay(new Date(p.dueDate));
+        const due = dateOnlyToCalendarDate(p.dueDate);
         if (!isCompleted && isBefore(due, today)) overdue += 1;
         if (!isCompleted && isWithinInterval(due, { start: today, end: weekEnd })) {
           dueThisWeek += 1;
@@ -558,7 +563,7 @@ export function Gantt({ projects, onReschedule }: GanttProps) {
   }, [filteredProjects]);
 
   // Today indicator
-  const today = startOfDay(new Date());
+  const today = dateOnlyToCalendarDate(businessDateToday());
   const todayInWindow = isWithinInterval(today, { start: windowStart, end: windowEnd });
   const todayPct = todayInWindow
     ? (differenceInCalendarDays(today, windowStart) / totalDays) * 100
@@ -1008,7 +1013,9 @@ function ScheduleRow({
   const pc = projectColorClasses(project.id);
   const isCompleted = !!project.completedAt || project.status === "COMPLETED";
   const isOverdue =
-    !isCompleted && !!project.dueDate && isAfter(today, new Date(project.dueDate));
+    !isCompleted &&
+    !!project.dueDate &&
+    isAfter(today, dateOnlyToCalendarDate(project.dueDate));
   const isDragging = drag?.projectId === project.id;
   const draggable = !!onReschedule && !isCompleted && !!project.dueDate;
   const dragOffsetPx = isDragging ? drag!.dxDays * pixelsPerDay : 0;
@@ -1101,13 +1108,13 @@ function ScheduleRow({
             width: `calc(${widthPct}% - 4px)`,
             transform: isDragging ? `translateX(${dragOffsetPx}px)` : undefined,
           }}
-          title={`${project.projectNumber} · ${project.title}\n${format(new Date(project.createdAt), "MMM d, yyyy")} → ${project.completedAt ? format(new Date(project.completedAt), "MMM d, yyyy") + " (completed)" : project.dueDate ? format(new Date(project.dueDate), "MMM d, yyyy") + (isOverdue ? " (overdue)" : "") : "ongoing"}\n${progress}% complete${project.taskStats && project.taskStats.total > 0 ? ` (${project.taskStats.completed}/${project.taskStats.total} tasks)` : ""}`}
+          title={`${project.projectNumber} · ${project.title}\n${format(new Date(project.createdAt), "MMM d, yyyy")} → ${project.completedAt ? format(new Date(project.completedAt), "MMM d, yyyy") + " (completed)" : project.dueDate ? formatDateOnly(project.dueDate) + (isOverdue ? " (overdue)" : "") : "ongoing"}\n${progress}% complete${project.taskStats && project.taskStats.total > 0 ? ` (${project.taskStats.completed}/${project.taskStats.total} tasks)` : ""}`}
           onPointerDown={(e) => {
             if (!draggable) return;
             if (e.button !== 0) return;
             e.stopPropagation();
             e.preventDefault();
-            const endDate = project.dueDate ? new Date(project.dueDate) : end;
+            const endDate = project.dueDate ? dateOnlyToCalendarDate(project.dueDate) : end;
             setDrag({
               projectId: project.id,
               startX: e.clientX,

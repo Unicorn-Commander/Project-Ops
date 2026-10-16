@@ -12,6 +12,7 @@ import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { AuditService } from '../audit/audit.service';
 import { SubmitTimesheetDto, ApproveTimeDto, RejectTimeDto } from './dto/timesheet.dto';
+import { businessWeekBoundsUtc, parseBusinessDateInput } from '../common/time/business-time';
 
 @Injectable()
 export class TimesheetService {
@@ -37,7 +38,7 @@ export class TimesheetService {
     if (user.role === UserRole.CLIENT) {
       throw new ForbiddenException('CLIENT users cannot submit timesheets');
     }
-    const anchor = dto.periodStart ? new Date(dto.periodStart) : new Date();
+    const anchor = dto.periodStart ? parseBusinessDateInput(dto.periodStart) : new Date();
     const { periodStart, periodEnd } = this.weekBounds(anchor);
 
     // The draft scan + period upsert + entry updateMany + audit are ONE workspace
@@ -306,15 +307,10 @@ export class TimesheetService {
 
   /** Week containing `date`. Week start day from WEEK_START_DAY (0=Sun..6=Sat, default 1=Mon). */
   private weekBounds(date: Date): { periodStart: Date; periodEnd: Date } {
-    const weekStartDay = Number(this.config.get<string>('WEEK_START_DAY', '1')) || 1;
-    const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-    const diff = (d.getUTCDay() - weekStartDay + 7) % 7;
-    const periodStart = new Date(d);
-    periodStart.setUTCDate(d.getUTCDate() - diff);
-    periodStart.setUTCHours(0, 0, 0, 0);
-    const periodEnd = new Date(periodStart);
-    periodEnd.setUTCDate(periodStart.getUTCDate() + 7);
-    periodEnd.setUTCMilliseconds(-1); // end of the 7th day
-    return { periodStart, periodEnd };
+    const configured = Number(this.config.get<string>('WEEK_START_DAY', '1'));
+    const weekStartDay =
+      Number.isInteger(configured) && configured >= 0 && configured <= 6 ? configured : 1;
+    const bounds = businessWeekBoundsUtc(date, weekStartDay);
+    return { periodStart: bounds.from, periodEnd: bounds.to };
   }
 }

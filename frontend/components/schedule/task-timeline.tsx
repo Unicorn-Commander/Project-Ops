@@ -57,6 +57,7 @@ import {
   DependencyEdge,
   useBarRegistry,
 } from "@/components/schedule/dependency-arrows";
+import { businessDateToday, dateOnlyToCalendarDate } from "@/lib/date-only";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Status → bar styling. Calm, on-brand (indigo primary, amber in-progress),
@@ -191,7 +192,7 @@ export function TaskTimeline({ projectId, onTaskClick }: TaskTimelineProps) {
         unsched.push(t);
         continue;
       }
-      const due = startOfDay(new Date(t.dueDate));
+      const due = dateOnlyToCalendarDate(t.dueDate);
       // End at the earlier of due / completion (a task finished early shouldn't
       // draw past where the work actually stopped).
       const end = t.completedAt
@@ -217,7 +218,7 @@ export function TaskTimeline({ projectId, onTaskClick }: TaskTimelineProps) {
     if (scheduled.length === 0) return null;
     const starts = scheduled.map((s) => s.start);
     const ends = scheduled.map((s) => s.end);
-    const today = startOfDay(new Date());
+    const today = dateOnlyToCalendarDate(businessDateToday());
     const rawStart = minDate([...starts, today]);
     const rawEnd = maxDate([...ends, today]);
     const windowStart = addDays(rawStart, -WINDOW_PAD_DAYS);
@@ -270,7 +271,7 @@ export function TaskTimeline({ projectId, onTaskClick }: TaskTimelineProps) {
   const todayPct = useMemo(() => {
     if (!axis) return null;
     const { windowStart, windowEnd, totalDays } = axis;
-    const today = startOfDay(new Date());
+    const today = dateOnlyToCalendarDate(businessDateToday());
     if (!isWithinInterval(today, { start: windowStart, end: windowEnd })) return null;
     return (differenceInCalendarDays(today, windowStart) / totalDays) * 100;
   }, [axis]);
@@ -413,7 +414,7 @@ export function TaskTimeline({ projectId, onTaskClick }: TaskTimelineProps) {
     );
   }
 
-  const today = startOfDay(new Date());
+  const today = dateOnlyToCalendarDate(businessDateToday());
 
   return (
     <div className="space-y-4">
@@ -476,7 +477,7 @@ export function TaskTimeline({ projectId, onTaskClick }: TaskTimelineProps) {
                 row.task.status !== TaskStatus.COMPLETED &&
                 row.task.status !== TaskStatus.CANCELLED &&
                 !!row.task.dueDate &&
-                isAfter(today, new Date(row.task.dueDate));
+                isAfter(today, dateOnlyToCalendarDate(row.task.dueDate));
               return (
                 <div
                   key={row.task.id}

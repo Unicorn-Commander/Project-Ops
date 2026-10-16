@@ -24,6 +24,7 @@ import {
 } from './accounting-ops.port';
 import { CreateBillableDraftDto, BillableGroupBy } from '../dto/create-billable-draft.dto';
 import { buildExternalRef } from './external-ref.util';
+import { businessDateForInstant, dateOnlyToUtcDate } from '../../common/time/business-time';
 
 function mapPaymentStatus(aoStatus?: string | null): PaymentStatus {
   switch ((aoStatus || '').toLowerCase()) {
@@ -326,6 +327,7 @@ export class BillableRollupService {
       this.logger.debug('syncInvoiceStatuses skipped: no workspace scope provided');
       return { synced: 0 };
     }
+    const businessDate = dateOnlyToUtcDate(businessDateForInstant(new Date()));
 
     // Read the distinct billed invoice refs for THIS workspace in one short tx.
     const refs = await this.runScopedSync(scope, (tx) =>
@@ -363,7 +365,9 @@ export class BillableRollupService {
             data: {
               paymentStatus,
               ...(amountPaid !== undefined ? { amountPaid: amountPaid as any } : {}),
-              ...(paymentStatus === PaymentStatus.PAID ? { paymentReceivedDate: new Date() } : {}),
+              ...(paymentStatus === PaymentStatus.PAID
+                ? { paymentReceivedDate: businessDate }
+                : {}),
             },
           });
         }
@@ -575,6 +579,7 @@ export class BillableRollupService {
     total: string,
   ) {
     const now = new Date();
+    const businessDate = dateOnlyToUtcDate(businessDateForInstant(now));
     const invoice = aoResult.invoice;
     const paymentStatus = mapPaymentStatus(invoice.status);
     const fixedTaskIds = feeLines
@@ -617,7 +622,7 @@ export class BillableRollupService {
               invoiceNumber: invoice.invoiceNumber ?? invoice.id,
               billingAmount: invoice.total ?? total,
               paymentStatus,
-              billingDate: now,
+              billingDate: businessDate,
             },
           });
         } else {
@@ -625,7 +630,10 @@ export class BillableRollupService {
           // but don't overwrite per-project billingAmount.
           await tx.project.updateMany({
             where: { id: { in: projectIds } },
-            data: { invoiceNumber: invoice.invoiceNumber ?? invoice.id, billingDate: now },
+            data: {
+              invoiceNumber: invoice.invoiceNumber ?? invoice.id,
+              billingDate: businessDate,
+            },
           });
         }
       },

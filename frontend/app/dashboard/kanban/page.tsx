@@ -57,6 +57,7 @@ import { CreateTaskModal } from '@/components/modals/create-task-modal';
 import { EditTaskModal } from '@/components/modals/edit-task-modal';
 import { HelpHint } from '@/components/guidance';
 import api from '@/lib/api';
+import { dateOnlyDaysFromToday, isDateOnlyBeforeToday, formatDateOnly } from '@/lib/date-only';
 
 // Interfaces — Organization comes from lib/organizations-api, Task from
 // lib/tasks-api. Kept the locally-declared UserItem shape since the kanban
@@ -124,17 +125,19 @@ function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
     opacity: isDragging || isDraggingState ? 0.5 : 1,
   };
 
-  const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== TaskStatus.COMPLETED;
+  const isOverdue =
+    !!task.dueDate &&
+    isDateOnlyBeforeToday(task.dueDate) &&
+    task.status !== TaskStatus.COMPLETED &&
+    task.status !== TaskStatus.CANCELLED;
 
   const formatDueDate = (date: string) => {
-    const dueDate = new Date(date);
-    const today = new Date();
-    const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const diffDays = dateOnlyDaysFromToday(date);
 
     if (diffDays < 0)  return { text: `${Math.abs(diffDays)}d overdue`, color: 'text-rose-600 dark:text-rose-400' };
     if (diffDays === 0) return { text: 'Due today',                       color: 'text-amber-600 dark:text-amber-400' };
     if (diffDays <= 3) return { text: `${diffDays}d left`,                color: 'text-amber-600 dark:text-amber-400' };
-    return { text: `${diffDays}d left`, color: 'text-muted-foreground' };
+    return { text: `${formatDateOnly(date)} · ${diffDays}d left`, color: 'text-muted-foreground' };
   };
 
   const dueInfo = task.dueDate ? formatDueDate(task.dueDate) : null;

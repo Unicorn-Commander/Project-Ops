@@ -7,7 +7,7 @@ import { Loader2, Receipt, FileText, Wallet, ArrowRight } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useHydrated } from "@/lib/use-hydrated";
 import { paymentStatusBadgeClass } from "@/lib/badge-styles";
-import { format } from "date-fns";
+import { formatDateOnly } from "@/lib/date-only";
 import Link from "next/link";
 import { HelpHint } from "@/components/guidance";
 import { PortalPageHeader, StatCard, PortalEmpty, money } from "@/components/portal";
@@ -132,7 +132,7 @@ export default function ClientInvoicesPage() {
                       </p>
                       {hydrated && inv.billingDate && (
                         <p className="mt-0.5 text-xs text-muted-foreground">
-                          Issued {format(new Date(inv.billingDate), "MMM d, yyyy")}
+                          Issued {formatDateOnly(inv.billingDate)}
                         </p>
                       )}
                     </div>

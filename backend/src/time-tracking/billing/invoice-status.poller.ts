@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { BUSINESS_TIME_ZONE } from '../../common/time/business-time';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BillableRollupService } from './billable-rollup.service';
 import { ACCOUNTING_OPS_PORT, AccountingOpsPort } from './accounting-ops.port';
@@ -29,7 +30,7 @@ export class InvoiceStatusPoller {
     @Inject(ACCOUNTING_OPS_PORT) private readonly ao: AccountingOpsPort,
   ) {}
 
-  @Cron(CronExpression.EVERY_30_MINUTES)
+  @Cron(CronExpression.EVERY_30_MINUTES, { timeZone: BUSINESS_TIME_ZONE })
   async poll(): Promise<void> {
     if (!this.ao.isLive()) return;
     const token = this.config.get<string>('ACCOUNTING_OPS_SERVICE_TOKEN');

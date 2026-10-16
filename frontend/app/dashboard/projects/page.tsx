@@ -58,7 +58,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { ChevronDown as ChevronDownIcon } from "lucide-react";
-import { format } from "date-fns";
+import { formatDateOnly, dateOnlyValue } from "@/lib/date-only";
 import {
   Plus,
   User,
@@ -553,7 +553,7 @@ export default function ProjectsPage() {
               p.status,
               p.priority,
               p.createdAt ? new Date(p.createdAt).toISOString().slice(0, 10) : "",
-              p.dueDate ? new Date(p.dueDate).toISOString().slice(0, 10) : "",
+              dateOnlyValue(p.dueDate) ?? "",
               p.assignedTo
                 ? `${p.assignedTo.firstName ?? ""} ${p.assignedTo.lastName ?? ""}`.trim() ||
                   (p.assignedTo.email ?? "")
@@ -820,7 +820,7 @@ export default function ProjectsPage() {
                     <div className="flex items-center gap-1.5">
                       <AlertCircle className="h-4 w-4" />
                       <span>
-                        Due: {format(new Date(projectItem.dueDate), "MMM d, yyyy")}
+                        Due: {formatDateOnly(projectItem.dueDate)}
                       </span>
                     </div>
                   )}

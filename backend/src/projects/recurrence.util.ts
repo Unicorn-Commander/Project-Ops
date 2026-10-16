@@ -19,6 +19,8 @@
  * returns null, and the caller treats that template as non-spawning.
  */
 
+import { advanceBusinessWallTime } from '../common/time/business-time';
+
 export type RecurrenceFreq = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
 export interface ParsedRecurrence {
@@ -77,34 +79,14 @@ export function parseRecurrenceRule(rule: string | null | undefined): ParsedRecu
 }
 
 /**
- * Advance `from` by one recurrence step, preserving the time-of-day. MONTHLY
+ * Advance `from` by one recurrence step, preserving the business-zone wall time. MONTHLY
  * arithmetic clamps to the last valid day of the target month (e.g. Jan 31 +1mo
  * → Feb 28/29) instead of overflowing into the following month, which is the
  * least-surprising behavior for a due date.
  */
 export function advanceByRecurrence(from: Date, parsed: ParsedRecurrence): Date {
-  const next = new Date(from.getTime());
-
-  switch (parsed.freq) {
-    case 'DAILY':
-      next.setUTCDate(next.getUTCDate() + parsed.interval);
-      return next;
-    case 'WEEKLY':
-      next.setUTCDate(next.getUTCDate() + 7 * parsed.interval);
-      return next;
-    case 'MONTHLY': {
-      const day = from.getUTCDate();
-      // Move to the first of the month first so adding months never rolls over
-      // (e.g. Mar 31 + 1mo would otherwise skip to May 1). Then clamp the day.
-      next.setUTCDate(1);
-      next.setUTCMonth(next.getUTCMonth() + parsed.interval);
-      const lastDayOfTargetMonth = new Date(
-        Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0),
-      ).getUTCDate();
-      next.setUTCDate(Math.min(day, lastDayOfTargetMonth));
-      return next;
-    }
-  }
+  // Expand in the named business zone so the wall-clock time survives DST.
+  return advanceBusinessWallTime(from, parsed.freq, parsed.interval);
 }
 
 /**

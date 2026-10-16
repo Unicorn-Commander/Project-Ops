@@ -18,7 +18,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useHydrated } from "@/lib/use-hydrated";
 import { paymentStatusBadgeClass } from "@/lib/badge-styles";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { formatDateOnly } from "@/lib/date-only";
 import Link from "next/link";
 import { money } from "@/components/portal";
 import { getInvoice, type PortalInvoice } from "@/lib/portal-api";
@@ -93,19 +93,19 @@ export default function InvoiceDetailPage() {
   if (hydrated && invoice.billingDate) {
     fields.push({
       label: "Issued",
-      value: format(new Date(invoice.billingDate), "MMM d, yyyy"),
+      value: formatDateOnly(invoice.billingDate),
     });
   }
   if (hydrated && invoice.paymentDueDate) {
     fields.push({
       label: "Due",
-      value: format(new Date(invoice.paymentDueDate), "MMM d, yyyy"),
+      value: formatDateOnly(invoice.paymentDueDate),
     });
   }
   if (hydrated && invoice.paymentReceivedDate) {
     fields.push({
       label: "Paid on",
-      value: format(new Date(invoice.paymentReceivedDate), "MMM d, yyyy"),
+      value: formatDateOnly(invoice.paymentReceivedDate),
     });
   }
 

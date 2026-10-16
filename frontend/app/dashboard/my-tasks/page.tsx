@@ -11,6 +11,7 @@ import { CreateTaskModal } from "@/components/modals/create-task-modal";
 import { TaskDetailsModal } from "@/components/modals/task-details-modal";
 import { EditTaskModal } from "@/components/modals/edit-task-modal";
 import { HelpHint } from "@/components/guidance";
+import { dateOnlyValue } from "@/lib/date-only";
 import {
   getTasks,
   getOverdueTasks,
@@ -464,7 +465,7 @@ export default function MyTasksPage() {
                 t.status,
                 t.priority,
                 t.type ?? "",
-                t.dueDate ? new Date(t.dueDate).toISOString().slice(0, 10) : "",
+                dateOnlyValue(t.dueDate) ?? "",
                 (t as any).createdAt ? new Date((t as any).createdAt).toISOString().slice(0, 10) : "",
               ]}
             />

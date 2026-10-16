@@ -50,6 +50,7 @@ import type { ApprovalsService } from '../client-portal/approvals/approvals.serv
 import type { WorkspacesService } from '../workspaces/workspaces.service';
 import { clampLimit, clampOffset } from '../common/pagination/clamp';
 import { withProjectQuote, withTaskMetadataForRole } from '../common/serializers/client-metadata';
+import { coerceDateOnly, serializeDateOnlyFields } from '../common/time/business-time';
 
 export {
   CLIENT_MASKED_PROJECT_FIELDS,
@@ -291,7 +292,8 @@ export class ProjectOpsTools {
     // requested workspace". resolveAuthorized authorizes membership and
     // returns the id we pin as the RLS GUC.
     const workspaceId = await ws.resolveAuthorized(user, this.requestWorkspaceId);
-    return ws.runForUser(user, (tx) => fn(tx, workspaceId), workspaceId);
+    const result = await ws.runForUser(user, (tx) => fn(tx, workspaceId), workspaceId);
+    return serializeDateOnlyFields(result);
   }
 
   // ── Time tracking tools ──────────────────────────────────
@@ -1381,7 +1383,7 @@ export class ProjectOpsTools {
           customerOpsCustomerId: args.customerOpsCustomerId,
           contactOpsContactId: args.contactOpsContactId,
           priority: (args.priority as any) ?? 'MEDIUM',
-          dueDate: args.dueDate ? new Date(args.dueDate) : null,
+          dueDate: args.dueDate ? coerceDateOnly(args.dueDate) : null,
           ...(args.recurrenceRule !== undefined ? { recurrenceRule: args.recurrenceRule } : {}),
           ...(metadata !== undefined ? { metadata } : {}),
           createdById: user.id,
@@ -1472,7 +1474,7 @@ export class ProjectOpsTools {
     }
     if (args.priority !== undefined) data.priority = args.priority as any;
     if (args.dueDate !== undefined) {
-      data.dueDate = args.dueDate ? new Date(args.dueDate) : null;
+      data.dueDate = args.dueDate ? coerceDateOnly(args.dueDate) : null;
     }
     if (args.assignedToId !== undefined) {
       data.assignedTo = { connect: { id: args.assignedToId } };
@@ -1567,7 +1569,7 @@ export class ProjectOpsTools {
     if (type !== undefined) data.type = type;
     if (priority !== undefined) data.priority = priority;
     if (args.dueDate !== undefined) {
-      data.dueDate = args.dueDate ? new Date(args.dueDate) : null;
+      data.dueDate = args.dueDate ? coerceDateOnly(args.dueDate) : null;
     }
     if (args.assignedToId !== undefined) {
       data.assignedTo = { connect: { id: args.assignedToId } };
@@ -1724,7 +1726,7 @@ export class ProjectOpsTools {
           description: args.description,
           type,
           priority,
-          dueDate: args.dueDate ? new Date(args.dueDate) : null,
+          dueDate: args.dueDate ? coerceDateOnly(args.dueDate) : null,
           ...(parentTaskId ? { parentTaskId } : {}),
           ...(args.recurrenceRule !== undefined ? { recurrenceRule: args.recurrenceRule } : {}),
           ...(args.estimatedHours !== undefined ? { estimatedHours: args.estimatedHours } : {}),
@@ -2475,12 +2477,12 @@ export class ProjectOpsTools {
     if (args.amountPaid !== undefined) data.amountPaid = args.amountPaid as any;
     if (args.paymentStatus !== undefined) data.paymentStatus = args.paymentStatus as any;
     if (args.billingDate !== undefined)
-      data.billingDate = args.billingDate ? new Date(args.billingDate) : null;
+      data.billingDate = args.billingDate ? coerceDateOnly(args.billingDate) : null;
     if (args.paymentDueDate !== undefined)
-      data.paymentDueDate = args.paymentDueDate ? new Date(args.paymentDueDate) : null;
+      data.paymentDueDate = args.paymentDueDate ? coerceDateOnly(args.paymentDueDate) : null;
     if (args.paymentReceivedDate !== undefined)
       data.paymentReceivedDate = args.paymentReceivedDate
-        ? new Date(args.paymentReceivedDate)
+        ? coerceDateOnly(args.paymentReceivedDate)
         : null;
     if (args.billingNotes !== undefined) data.billingNotes = args.billingNotes;
     if (args.flatFeeAmount !== undefined) data.flatFeeAmount = args.flatFeeAmount as any;

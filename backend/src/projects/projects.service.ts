@@ -18,6 +18,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { AuditService } from '../audit/audit.service';
 import { CUSTOM_FIELDS_SERVICE, CustomFieldsValidator } from './custom-fields.contract';
 import { withProjectQuote } from '../common/serializers/client-metadata';
+import { coerceDateOnly } from '../common/time/business-time';
 
 /**
  * Domain events emitted (after the tx commits) for the automations + webhooks
@@ -192,7 +193,7 @@ export class ProjectsService {
     for (const field of dateFields) {
       const value = data[field];
       if (typeof value === 'string' && value.length > 0) {
-        (data as Record<string, any>)[field] = new Date(value);
+        (data as Record<string, any>)[field] = coerceDateOnly(value);
       }
     }
     return data;

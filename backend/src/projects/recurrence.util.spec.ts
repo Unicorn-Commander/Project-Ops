@@ -46,9 +46,9 @@ describe('advanceByRecurrence', () => {
   });
 
   it('advances MONTHLY and clamps to month length (Jan-31 + 1mo -> Feb-28)', () => {
-    const jan31 = new Date('2026-01-31T00:00:00Z');
+    const jan31 = new Date('2026-01-31T05:00:00Z');
     expect(advanceByRecurrence(jan31, { freq: 'MONTHLY', interval: 1 }).toISOString()).toBe(
-      '2026-02-28T00:00:00.000Z',
+      '2026-02-28T05:00:00.000Z',
     );
   });
 
@@ -56,6 +56,14 @@ describe('advanceByRecurrence', () => {
     const base = new Date('2026-01-01T00:00:00Z');
     advanceByRecurrence(base, { freq: 'DAILY', interval: 5 });
     expect(base.toISOString()).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  it('keeps a 09:00 New York daily occurrence at 09:00 after fall-back', () => {
+    const anchor = new Date('2026-10-31T13:00:00.000Z');
+
+    expect(advanceByRecurrence(anchor, { freq: 'DAILY', interval: 1 }).toISOString()).toBe(
+      '2026-11-01T14:00:00.000Z',
+    );
   });
 });
 

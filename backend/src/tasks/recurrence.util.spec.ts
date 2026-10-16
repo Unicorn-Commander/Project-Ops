@@ -64,16 +64,24 @@ describe('advanceByRecurrence', () => {
 
   it('clamps MONTHLY to the last day when the target month is shorter', () => {
     // Jan 31 + 1 month → Feb 28 (2026 is not a leap year), NOT Mar 3.
-    const from = new Date('2026-01-31T00:00:00.000Z');
+    const from = new Date('2026-01-31T05:00:00.000Z');
     expect(advanceByRecurrence(from, { freq: 'MONTHLY', interval: 1 }).toISOString()).toBe(
-      '2026-02-28T00:00:00.000Z',
+      '2026-02-28T05:00:00.000Z',
     );
   });
 
   it('clamps MONTHLY to Feb 29 in a leap year', () => {
-    const from = new Date('2028-01-31T00:00:00.000Z');
+    const from = new Date('2028-01-31T05:00:00.000Z');
     expect(advanceByRecurrence(from, { freq: 'MONTHLY', interval: 1 }).toISOString()).toBe(
-      '2028-02-29T00:00:00.000Z',
+      '2028-02-29T05:00:00.000Z',
+    );
+  });
+
+  it('keeps a 09:00 New York daily occurrence at 09:00 after fall-back', () => {
+    const anchor = new Date('2026-10-31T13:00:00.000Z');
+
+    expect(advanceByRecurrence(anchor, { freq: 'DAILY', interval: 1 }).toISOString()).toBe(
+      '2026-11-01T14:00:00.000Z',
     );
   });
 });

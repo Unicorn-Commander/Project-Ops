@@ -17,6 +17,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
 import { Card } from "@/components/ui/card";
+import { isDateOnlyBeforeToday } from "@/lib/date-only";
 import { CheckCircle2, ListTodo, AlertOctagon } from "lucide-react";
 import type { Task } from "@/lib/tasks-api";
 
@@ -54,7 +55,7 @@ export function ProjectSnapshot({ tasks }: ProjectSnapshotProps) {
   const completed = tasks.filter((t) => t.status === "COMPLETED").length;
   const overdue = tasks.filter((t) => {
     if (!t.dueDate || t.status === "COMPLETED" || t.status === "CANCELLED") return false;
-    return new Date(t.dueDate) < new Date();
+    return isDateOnlyBeforeToday(t.dueDate);
   }).length;
   const completionPct = total === 0 ? 0 : Math.round((completed / total) * 100);
 

@@ -27,7 +27,11 @@ import {
 import { projectColorClasses } from "@/lib/project-colors";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
-import { format, formatDistanceToNowStrict, isPast } from "date-fns";
+import {
+  dateOnlyDaysFromToday,
+  formatDateOnly,
+  isDateOnlyBeforeToday,
+} from "@/lib/date-only";
 import {
   FileText,
   Users,
@@ -157,9 +161,10 @@ export default function DashboardPage() {
   const getPriorityColor = priorityTextClass;
 
   const formatDueDate = (iso: string) => {
-    const d = new Date(iso);
-    if (isPast(d)) return `overdue · ${format(d, "MMM d")}`;
-    return `${formatDistanceToNowStrict(d, { addSuffix: true })} · ${format(d, "MMM d")}`;
+    const diffDays = dateOnlyDaysFromToday(iso);
+    if (isDateOnlyBeforeToday(iso)) return `overdue · ${formatDateOnly(iso, { month: "short", day: "numeric" })}`;
+    const relative = diffDays === 0 ? "today" : `in ${diffDays} day${diffDays === 1 ? "" : "s"}`;
+    return `${relative} · ${formatDateOnly(iso, { month: "short", day: "numeric" })}`;
   };
 
   if (loading) {
@@ -503,7 +508,7 @@ export default function DashboardPage() {
                           Due
                         </p>
                         <p className="text-sm font-semibold text-foreground tabular-nums">
-                          {format(new Date(projectItem.dueDate), "MMM d, yyyy")}
+                          {formatDateOnly(projectItem.dueDate)}
                         </p>
                       </div>
                     )}

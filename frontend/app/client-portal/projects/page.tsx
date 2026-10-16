@@ -18,6 +18,7 @@ import { useHydrated } from "@/lib/use-hydrated";
 import api from "@/lib/api";
 import { statusBadgeClass, priorityBadgeClass } from "@/lib/badge-styles";
 import { format } from "date-fns";
+import { formatDateOnly } from "@/lib/date-only";
 import Link from "next/link";
 import { PortalPageHeader, PortalEmpty } from "@/components/portal";
 
@@ -173,7 +174,7 @@ export default function ClientProjectsPage() {
                   {project_.dueDate && hydrated && (
                     <span className="inline-flex items-center gap-1.5">
                       <Calendar className="h-4 w-4" />
-                      Due {format(new Date(project_.dueDate), "MMM d, yyyy")}
+                      Due {formatDateOnly(project_.dueDate)}
                     </span>
                   )}
                 </div>

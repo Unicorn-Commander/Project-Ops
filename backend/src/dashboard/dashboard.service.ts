@@ -3,6 +3,7 @@ import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { ProjectStatus, User, UserRole, Prisma } from '@prisma/client';
 import { withProjectQuote } from '../common/serializers/client-metadata';
+import { businessMonthBoundsUtc } from '../common/time/business-time';
 
 /**
  * Dashboard aggregates: overview counts, project statistics, due-date lists,
@@ -314,8 +315,9 @@ export class DashboardService {
   }
 
   async getMonthlyStats(workspaceId: string, user: User, year: number, month: number) {
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59);
+    const monthBounds = businessMonthBoundsUtc(year, month);
+    const startDate = monthBounds.from;
+    const endDateExclusive = new Date(monthBounds.to.getTime() + 1);
 
     return this.workspaceContext.runForUser(
       user,
@@ -326,7 +328,7 @@ export class DashboardService {
               where: {
                 createdAt: {
                   gte: startDate,
-                  lte: endDate,
+                  lt: endDateExclusive,
                 },
               },
             }),
@@ -334,7 +336,7 @@ export class DashboardService {
               where: {
                 completedAt: {
                   gte: startDate,
-                  lte: endDate,
+                  lt: endDateExclusive,
                 },
               },
             }),
@@ -342,7 +344,7 @@ export class DashboardService {
               where: {
                 uploadedAt: {
                   gte: startDate,
-                  lte: endDate,
+                  lt: endDateExclusive,
                 },
               },
             }),
@@ -350,7 +352,7 @@ export class DashboardService {
               where: {
                 createdAt: {
                   gte: startDate,
-                  lte: endDate,
+                  lt: endDateExclusive,
                 },
               },
             }),

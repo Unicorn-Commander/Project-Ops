@@ -7,7 +7,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Gantt, type ScheduleProject } from "@/components/schedule/gantt";
 import { HelpHint } from "@/components/guidance";
 import api from "@/lib/api";
-import { format } from "date-fns";
+import { formatDateOnly, localDateToDateOnly } from "@/lib/date-only";
 
 export default function SchedulePage() {
   const [projects, setProjects] = useState<ScheduleProject[]>([]);
@@ -45,7 +45,7 @@ export default function SchedulePage() {
     async (projectId: string, newDueDate: Date) => {
       const original = projects.find((p) => p.id === projectId);
       if (!original) return;
-      const newIso = newDueDate.toISOString();
+      const newIso = localDateToDateOnly(newDueDate);
       // Optimistic: shift the local row immediately so the bar settles
       // at the new position even before the server responds.
       setProjects((prev) =>
@@ -55,7 +55,7 @@ export default function SchedulePage() {
         await api.patch(`/projects/${projectId}`, { dueDate: newIso });
         toast({
           title: "Project rescheduled",
-          description: `${original.projectNumber} due ${format(newDueDate, "MMM d, yyyy")}`,
+          description: `${original.projectNumber} due ${formatDateOnly(newIso)}`,
         });
       } catch (err: any) {
         // Revert on failure.

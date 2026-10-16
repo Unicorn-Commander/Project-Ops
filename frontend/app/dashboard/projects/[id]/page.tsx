@@ -57,6 +57,7 @@ import {
   type ApprovalEntityType,
 } from "@/lib/portal-api";
 import { format } from "date-fns";
+import { formatDateOnly } from "@/lib/date-only";
 import {
   ArrowLeft,
   Calendar,
@@ -547,7 +548,7 @@ export default function ProjectDetailPage() {
                   </label>
                   <p className="text-foreground mt-1">
                     {projectData.dueDate
-                      ? format(new Date(projectData.dueDate), "MMM d, yyyy")
+                      ? formatDateOnly(projectData.dueDate)
                       : "Not set"}
                   </p>
                 </div>
@@ -684,7 +685,7 @@ export default function ProjectDetailPage() {
                         Billing Date
                       </label>
                       <p className="text-foreground mt-1">
-                        {format(new Date(projectData.billingDate), "MMM d, yyyy")}
+                        {formatDateOnly(projectData.billingDate)}
                       </p>
                     </div>
                   )}
@@ -695,7 +696,7 @@ export default function ProjectDetailPage() {
                         Payment Due Date
                       </label>
                       <p className="text-foreground mt-1">
-                        {format(new Date(projectData.paymentDueDate), "MMM d, yyyy")}
+                        {formatDateOnly(projectData.paymentDueDate)}
                       </p>
                     </div>
                   )}
@@ -706,7 +707,7 @@ export default function ProjectDetailPage() {
                         Payment Received
                       </label>
                       <p className="text-foreground mt-1">
-                        {format(new Date(projectData.paymentReceivedDate), "MMM d, yyyy")}
+                        {formatDateOnly(projectData.paymentReceivedDate)}
                       </p>
                     </div>
                   )}

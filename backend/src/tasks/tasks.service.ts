@@ -29,6 +29,11 @@ import {
 } from '@prisma/client';
 import { withTaskMetadataForRole } from '../common/serializers/client-metadata';
 import { Decimal } from '@prisma/client/runtime/library';
+import {
+  coerceDateOnly,
+  overdueDateCutoffUtc,
+  parseBusinessDateInput,
+} from '../common/time/business-time';
 
 /**
  * SUITE TENANCY (Phase 2, B2): Task + TaskComment are RLS-scoped tables, so
@@ -184,7 +189,7 @@ export class TasksService {
         metadata,
         workspaceId,
         createdById: user.id,
-        dueDate: createTaskDto.dueDate ? new Date(createTaskDto.dueDate) : null,
+        dueDate: createTaskDto.dueDate ? coerceDateOnly(createTaskDto.dueDate) : null,
       },
       include: {
         project: {
@@ -337,8 +342,8 @@ export class TasksService {
     // naturally excluded once either bound is set (Prisma filters them out).
     if (dueBefore || dueAfter) {
       where.dueDate = {};
-      if (dueBefore) where.dueDate.lt = new Date(dueBefore);
-      if (dueAfter) where.dueDate.gte = new Date(dueAfter);
+      if (dueBefore) where.dueDate.lt = parseBusinessDateInput(dueBefore);
+      if (dueAfter) where.dueDate.gte = parseBusinessDateInput(dueAfter);
     }
 
     const orderBy = this.buildOrderBy(sortBy, sortDir);
@@ -544,7 +549,7 @@ export class TasksService {
             ...updateData,
             ...(metadata !== undefined && { metadata }),
             ...(completedAt !== undefined && { completedAt }),
-            dueDate: updateTaskDto.dueDate ? new Date(updateTaskDto.dueDate) : undefined,
+            dueDate: updateTaskDto.dueDate ? coerceDateOnly(updateTaskDto.dueDate) : undefined,
           },
           include: {
             project: {
@@ -1182,7 +1187,7 @@ export class TasksService {
    * Get all overdue tasks
    */
   async getOverdueTasks(workspaceId: string, user: User) {
-    const now = new Date();
+    const overdueCutoff = overdueDateCutoffUtc(new Date());
 
     return this.workspaceContext.runForUser(
       user,
@@ -1190,7 +1195,7 @@ export class TasksService {
         const tasks = await tx.task.findMany({
           where: {
             dueDate: {
-              lt: now,
+              lt: overdueCutoff,
             },
             status: {
               notIn: [TaskStatus.COMPLETED, TaskStatus.CANCELLED],

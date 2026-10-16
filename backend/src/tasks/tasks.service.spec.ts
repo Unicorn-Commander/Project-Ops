@@ -750,6 +750,39 @@ describe('TasksService.getUserTasks — ownership', () => {
   });
 });
 
+describe('TasksService.getOverdueTasks — business-date cutoff', () => {
+  it('does not mark an Oct 16 date-only task overdue during Oct 16 in New York', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-10-16T12:00:00.000Z'));
+    try {
+      const { svc, tx } = makeService({ taskFindMany: async () => [] });
+
+      await svc.getOverdueTasks('ws1', user);
+
+      const args = (tx.task.findMany as jest.Mock).mock.calls[0][0];
+      expect(args.where.dueDate).toEqual({ lt: new Date('2026-10-16T00:00:00.000Z') });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe('TasksService.findAll — business-date filters', () => {
+  it('interprets bare due-date bounds in the business zone', async () => {
+    const { svc, tx } = makeService({ taskFindMany: async () => [] });
+
+    await svc.findAll('ws1', user, {
+      dueAfter: '2026-10-16',
+      dueBefore: '2026-10-17',
+    });
+
+    const args = (tx.task.findMany as jest.Mock).mock.calls[0][0];
+    expect(args.where.dueDate).toEqual({
+      gte: new Date('2026-10-16T04:00:00.000Z'),
+      lt: new Date('2026-10-17T04:00:00.000Z'),
+    });
+  });
+});
+
 describe('TasksService write routes — safe selects + CLIENT masking', () => {
   const client = { id: 'c1', role: UserRole.CLIENT } as any;
   const TASK_META = {

@@ -42,6 +42,7 @@ import {
   type CustomFieldValueMap,
 } from "@/lib/custom-fields-api";
 import { FieldHint, HelpHint } from "@/components/guidance";
+import { businessDateToday } from "@/lib/date-only";
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -400,7 +401,7 @@ export function CreateTaskModal({
                 <Input
                   id="dueDate"
                   type="date"
-                  min={new Date().toISOString().split("T")[0]}
+                  min={businessDateToday()}
                   {...register("dueDate")}
                   className={errors.dueDate ? "border-red-500" : ""}
                 />

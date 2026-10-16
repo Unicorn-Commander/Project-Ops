@@ -32,6 +32,7 @@ import {
   type PortalComment,
 } from "@/lib/portal-api";
 import { format } from "date-fns";
+import { formatDateOnly } from "@/lib/date-only";
 import Link from "next/link";
 import { PortalEmpty, money, formatFileSize } from "@/components/portal";
 
@@ -242,7 +243,7 @@ export default function ProjectDetailsPage() {
                     Target date
                   </p>
                   <p className="text-sm font-medium text-foreground">
-                    {format(new Date(projectData.dueDate), "MMM d, yyyy")}
+                    {formatDateOnly(projectData.dueDate)}
                   </p>
                 </div>
               </div>
@@ -325,7 +326,7 @@ export default function ProjectDetailsPage() {
                       Payment due
                     </p>
                     <p className="mt-1 text-sm font-medium text-foreground">
-                      {format(new Date(projectData.paymentDueDate), "MMM d, yyyy")}
+                      {formatDateOnly(projectData.paymentDueDate)}
                     </p>
                   </div>
                 )}

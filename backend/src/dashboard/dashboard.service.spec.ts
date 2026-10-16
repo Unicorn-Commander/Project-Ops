@@ -131,3 +131,29 @@ describe('DashboardService — CLIENT-role masking on full-row project summaries
     expect(JSON.stringify(p)).not.toContain('customer_ops_quote_id');
   });
 });
+
+describe('DashboardService.getMonthlyStats — business-month boundaries', () => {
+  it('uses New York midnight through the next New York month start', async () => {
+    const count = jest.fn(async (..._args: any[]) => 0);
+    const tx = {
+      project: { count },
+      document: { count },
+      comment: { count },
+    };
+    const workspaceContext = {
+      runForUser: jest.fn(async (_u: any, fn: (t: any) => any) => fn(tx)),
+    };
+    const service = new DashboardService({} as any, workspaceContext as any);
+
+    await service.getMonthlyStats('ws1', admin, 2026, 10);
+
+    for (const call of count.mock.calls) {
+      const args: any = call[0];
+      const field = Object.keys(args.where)[0];
+      expect(args.where[field]).toEqual({
+        gte: new Date('2026-10-01T04:00:00.000Z'),
+        lt: new Date('2026-11-01T04:00:00.000Z'),
+      });
+    }
+  });
+});

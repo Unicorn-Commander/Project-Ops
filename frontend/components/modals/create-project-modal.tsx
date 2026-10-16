@@ -33,6 +33,7 @@ import {
   type CustomFieldValueMap,
 } from "@/lib/custom-fields-api";
 import { FieldHint, HelpHint } from "@/components/guidance";
+import { businessDateToday } from "@/lib/date-only";
 
 // Project types with display names
 const PROJECT_TYPES = [
@@ -99,7 +100,7 @@ const createProjectSchema = z
       .refine(
         (date) => {
           if (!date) return true;
-          return new Date(date) > new Date();
+          return date > businessDateToday();
         },
         { message: "Due date must be in the future" },
       ),
@@ -614,7 +615,7 @@ export function CreateProjectModal({
                 <Input
                   id="dueDate"
                   type="date"
-                  min={new Date().toISOString().split("T")[0]}
+                  min={businessDateToday()}
                   {...register("dueDate")}
                   className={errors.dueDate ? "border-red-500" : ""}
                 />

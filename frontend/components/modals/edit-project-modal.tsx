@@ -25,6 +25,7 @@ import { Search, Plus, X } from "lucide-react";
 import { CustomFieldInputs } from "@/components/custom-fields/custom-field-inputs";
 import { RecurrencePicker } from "@/components/custom-fields/recurrence-picker";
 import { FieldHint, HelpHint } from "@/components/guidance";
+import { dateOnlyValue } from "@/lib/date-only";
 import {
   CustomFieldEntity,
   type CustomFieldValueMap,
@@ -173,24 +174,18 @@ export function EditProjectModal({
         priority: projectData.priority,
         category: projectData.category || "",
         tags: Array.isArray(projectData.tags) ? projectData.tags : [],
-        dueDate: projectData.dueDate
-          ? new Date(projectData.dueDate).toISOString().split("T")[0]
-          : "",
+        dueDate: projectData.dueDate ? dateOnlyValue(projectData.dueDate) ?? "" : "",
         invoiceNumber: projectData.invoiceNumber || "",
         billingAmount: projectData.billingAmount || null,
         flatFeeAmount: projectData.flatFeeAmount || null,
         amountPaid: projectData.amountPaid || null,
         paymentStatus: projectData.paymentStatus || "UNPAID",
-        billingDate: projectData.billingDate
-          ? new Date(projectData.billingDate).toISOString().split("T")[0]
-          : "",
+        billingDate: projectData.billingDate ? dateOnlyValue(projectData.billingDate) ?? "" : "",
         paymentDueDate: projectData.paymentDueDate
-          ? new Date(projectData.paymentDueDate).toISOString().split("T")[0]
+          ? dateOnlyValue(projectData.paymentDueDate) ?? ""
           : "",
         paymentReceivedDate: projectData.paymentReceivedDate
-          ? new Date(projectData.paymentReceivedDate)
-              .toISOString()
-              .split("T")[0]
+          ? dateOnlyValue(projectData.paymentReceivedDate) ?? ""
           : "",
         billingNotes: projectData.billingNotes || "",
       });

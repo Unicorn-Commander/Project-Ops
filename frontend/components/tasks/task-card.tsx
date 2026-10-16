@@ -9,6 +9,13 @@ import { Avatar } from "@/components/ui/avatar";
 import { taskTypeIcon } from "@/lib/task-types";
 import { TaskStatusUpdate } from "@/components/tasks/task-status-update";
 import {
+  addDateOnlyDays,
+  businessDateToday,
+  dateOnlyValue,
+  formatDateOnly,
+  isDateOnlyBeforeToday,
+} from "@/lib/date-only";
+import {
   Clock,
   AlertTriangle,
   CheckSquare as CheckSquareIcon,
@@ -34,7 +41,11 @@ interface TaskCardProps {
 // status update) would otherwise re-render every card. Props are primitives +
 // stable callbacks, so referential equality is a good bail-out signal.
 function TaskCardImpl({ task, onClick, onChange, selected, onToggleSelect, pinned, onTogglePin }: TaskCardProps) {
-  const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== TaskStatus.COMPLETED;
+  const isOverdue =
+    !!task.dueDate &&
+    isDateOnlyBeforeToday(task.dueDate) &&
+    task.status !== TaskStatus.COMPLETED &&
+    task.status !== TaskStatus.CANCELLED;
   const pc = projectColorClasses(task.projectId);
 
   const getPriorityColor = (priority: TaskPriority) => priorityTextClass(priority);
@@ -43,17 +54,16 @@ function TaskCardImpl({ task, onClick, onChange, selected, onToggleSelect, pinne
   const getTypeIcon = (type: TaskType) => taskTypeIcon(type);
 
   const formatDueDate = (date: string) => {
-    const dueDate = new Date(date);
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dueDate = dateOnlyValue(date);
+    const today = businessDateToday();
+    const tomorrow = addDateOnlyDays(today, 1);
 
-    if (dueDate.toDateString() === today.toDateString()) {
+    if (dueDate === today) {
       return "Due Today";
-    } else if (dueDate.toDateString() === tomorrow.toDateString()) {
+    } else if (dueDate === tomorrow) {
       return "Due Tomorrow";
     } else {
-      return `Due ${dueDate.toLocaleDateString()}`;
+      return `Due ${formatDateOnly(date)}`;
     }
   };
 

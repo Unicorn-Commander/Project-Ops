@@ -17,7 +17,7 @@ import api from "@/lib/api";
 import { statusBadgeClass, priorityBadgeClass } from "@/lib/badge-styles";
 import { getStoredWorkspaces } from "@/lib/workspace";
 import { useHydrated } from "@/lib/use-hydrated";
-import { format } from "date-fns";
+import { formatDateOnly } from "@/lib/date-only";
 import Link from "next/link";
 import {
   PortalHeader,
@@ -219,7 +219,7 @@ export default function ClientPortalDashboard() {
                           <Calendar className="h-4 w-4" />
                           Due{" "}
                           {hydrated
-                            ? format(new Date(project_.dueDate), "MMM d, yyyy")
+                            ? formatDateOnly(project_.dueDate)
                             : "—"}
                         </span>
                       )}

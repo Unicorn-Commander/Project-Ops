@@ -65,9 +65,9 @@ import {
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
-// Small date helpers (local-time; the backend computes week bounds in UTC but
-// only needs `periodStart` to land inside the target week, and from/to filter
-// on startedAt — passing the local week edges is what every sibling does).
+// Small date helpers. The backend owns the business-zone week boundaries;
+// request the selected week by its calendar date so browser timezone cannot
+// move the anchor into the prior week.
 // ---------------------------------------------------------------------------
 
 const WEEK_OPTS = { weekStartsOn: 1 as const }; // Monday — matches WEEK_START_DAY.
@@ -468,7 +468,7 @@ function MyTimesheet({ userId }: { userId: string }) {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const period = await submitTimesheet(weekStart.toISOString());
+      const period = await submitTimesheet(format(weekStart, "yyyy-MM-dd"));
       toast({
         title: "Timesheet submitted",
         description: `Submitted ${period.entryCount ?? 0} ${

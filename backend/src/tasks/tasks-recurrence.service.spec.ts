@@ -1,4 +1,5 @@
 import { TasksRecurrenceService } from './tasks-recurrence.service';
+import { BUSINESS_TIME_ZONE } from '../common/time/business-time';
 
 /**
  * Unit tests for the recurring-task materializer. `runInWorkspace` is stubbed to
@@ -124,6 +125,15 @@ describe('TasksRecurrenceService.materializeForWorkspace', () => {
 });
 
 describe('TasksRecurrenceService.materializeDueRecurrences (cron entry)', () => {
+  it('declares the business timezone on the cron decorator', () => {
+    const metadata = Reflect.getMetadata(
+      'SCHEDULE_CRON_OPTIONS',
+      TasksRecurrenceService.prototype.materializeDueRecurrences,
+    );
+
+    expect(metadata).toEqual(expect.objectContaining({ timeZone: BUSINESS_TIME_ZONE }));
+  });
+
   it('iterates active workspaces via the control-plane read', async () => {
     const { svc, prisma, workspaceContext } = makeService({
       workspaces: [{ id: 'wsA' }, { id: 'wsB' }],

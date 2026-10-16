@@ -9,6 +9,7 @@ import { MembershipStatus, TaskStatus, User } from '@prisma/client';
 import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { WithWorkspaceClaim } from '../common/workspace/workspace.util';
+import { businessCalendarDaysInclusive, businessWeekBoundsUtc } from '../common/time/business-time';
 
 /**
  * Capacity / resource planning (Wave 2).
@@ -85,8 +86,6 @@ export interface CapacityReport {
 /** Default weekly capacity when a user's column is null (matches the schema @default). */
 export const DEFAULT_WEEKLY_CAPACITY_HOURS = 40;
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
 @Injectable()
 export class CapacityService {
   private readonly logger = new Logger(CapacityService.name);
@@ -103,7 +102,7 @@ export class CapacityService {
   /**
    * Resolve the planning window from optional ISO `from`/`to`. When either is
    * omitted, default to the CURRENT WEEK: Monday 00:00:00.000 → Sunday
-   * 23:59:59.999 (local server time — correct on the backend). When both are
+   * 23:59:59.999 in America/New_York. When both are
    * supplied they are used verbatim. Validates `from <= to`.
    *
    * `now` is injectable so the default-week branch is deterministic in tests.
@@ -120,24 +119,13 @@ export class CapacityService {
       }
       return { from: f, to: t };
     }
-    // Default: the current week (Mon→Sun) in server-local time.
+    // Default: the current week (Mon→Sun) in the business zone.
     return CapacityService.currentWeek(now);
   }
 
-  /** Monday 00:00:00.000 → Sunday 23:59:59.999 of the week containing `now`. */
+  /** Monday 00:00:00.000 → Sunday 23:59:59.999 in the business zone. */
   static currentWeek(now: Date): CapacityWindow {
-    const start = new Date(now);
-    // JS getDay(): 0=Sun..6=Sat. Shift so Monday is the first day of the week.
-    const day = start.getDay();
-    const daysSinceMonday = (day + 6) % 7;
-    start.setDate(start.getDate() - daysSinceMonday);
-    start.setHours(0, 0, 0, 0);
-
-    const end = new Date(start);
-    end.setDate(start.getDate() + 6);
-    end.setHours(23, 59, 59, 999);
-
-    return { from: start, to: end };
+    return businessWeekBoundsUtc(now);
   }
 
   /**
@@ -147,18 +135,7 @@ export class CapacityService {
    * count.
    */
   static windowDays(window: CapacityWindow): number {
-    const startDay = new Date(
-      window.from.getFullYear(),
-      window.from.getMonth(),
-      window.from.getDate(),
-    ).getTime();
-    const endDay = new Date(
-      window.to.getFullYear(),
-      window.to.getMonth(),
-      window.to.getDate(),
-    ).getTime();
-    const days = Math.floor((endDay - startDay) / MS_PER_DAY) + 1;
-    return Math.max(1, days);
+    return businessCalendarDaysInclusive(window);
   }
 
   /**

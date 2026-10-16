@@ -5,6 +5,7 @@ import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { ProjectsService } from './projects.service';
 import { nextOccurrenceAfter, parseRecurrenceRule } from './recurrence.util';
+import { BUSINESS_TIME_ZONE } from '../common/time/business-time';
 
 /**
  * Materializes recurring-project instances on a schedule (Wave 2).
@@ -50,7 +51,7 @@ export class ProjectsRecurrenceService {
    * recurring project instances in each. Named so it can be triggered directly
    * in tests.
    */
-  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  @Cron(CronExpression.EVERY_DAY_AT_2AM, { timeZone: BUSINESS_TIME_ZONE })
   async materializeDueRecurrences(now: Date = new Date()): Promise<void> {
     // Control-plane read (NOT RLS-scoped): every active tenant workspace.
     const workspaces = await this.prisma.workspace.findMany({

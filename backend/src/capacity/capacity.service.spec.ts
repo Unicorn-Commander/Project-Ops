@@ -75,41 +75,35 @@ function makeService(opts: {
 
 describe('CapacityService.currentWeek', () => {
   it('returns Monday 00:00 → Sunday 23:59:59.999 for a mid-week date', () => {
-    // 2026-06-17 is a Wednesday.
-    const wed = new Date(2026, 5, 17, 14, 30, 0);
+    // 2026-06-17 is a Wednesday; the instant is 14:30 in New York.
+    const wed = new Date('2026-06-17T18:30:00.000Z');
     const { from, to } = CapacityService.currentWeek(wed);
-    expect(from.getFullYear()).toBe(2026);
-    expect(from.getMonth()).toBe(5);
-    expect(from.getDate()).toBe(15); // Monday
-    expect(from.getHours()).toBe(0);
-    expect(from.getMinutes()).toBe(0);
-    expect(to.getDate()).toBe(21); // Sunday
-    expect(to.getHours()).toBe(23);
-    expect(to.getMinutes()).toBe(59);
+    expect(from.toISOString()).toBe('2026-06-15T04:00:00.000Z');
+    expect(to.toISOString()).toBe('2026-06-22T03:59:59.999Z');
     expect(CapacityService.windowDays({ from, to })).toBe(7);
   });
 
   it('treats Sunday as the LAST day of the week (not the first)', () => {
-    const sun = new Date(2026, 5, 21, 9, 0, 0); // Sunday
+    const sun = new Date('2026-06-21T13:00:00.000Z'); // Sunday 09:00 in New York
     const { from, to } = CapacityService.currentWeek(sun);
-    expect(from.getDate()).toBe(15); // still the prior Monday
-    expect(to.getDate()).toBe(21);
+    expect(from.toISOString()).toBe('2026-06-15T04:00:00.000Z'); // still the prior Monday
+    expect(to.toISOString()).toBe('2026-06-22T03:59:59.999Z');
   });
 });
 
 describe('CapacityService.windowDays', () => {
   it('is inclusive: a same-day window is 1 day', () => {
     const d: CapacityWindow = {
-      from: new Date(2026, 5, 17, 0, 0, 0),
-      to: new Date(2026, 5, 17, 23, 59, 59),
+      from: new Date('2026-06-17T04:00:00.000Z'),
+      to: new Date('2026-06-18T03:59:59.000Z'),
     };
     expect(CapacityService.windowDays(d)).toBe(1);
   });
 
   it('counts a two-week window as 14 days', () => {
     const d: CapacityWindow = {
-      from: new Date(2026, 5, 1, 0, 0, 0),
-      to: new Date(2026, 5, 14, 23, 59, 59),
+      from: new Date('2026-06-01T04:00:00.000Z'),
+      to: new Date('2026-06-15T03:59:59.000Z'),
     };
     expect(CapacityService.windowDays(d)).toBe(14);
   });
@@ -244,10 +238,10 @@ describe('CapacityService.resolveWindow', () => {
 
   it('defaults to the current week when from/to omitted', () => {
     const svc = makeService({}).svc;
-    const now = new Date(2026, 5, 17, 12, 0, 0); // Wednesday
+    const now = new Date('2026-10-19T01:30:00.000Z'); // Sunday evening in New York
     const w = svc.resolveWindow(undefined, undefined, now);
-    expect(w.from.getDate()).toBe(15);
-    expect(w.to.getDate()).toBe(21);
+    expect(w.from.toISOString()).toBe('2026-10-12T04:00:00.000Z');
+    expect(w.to.toISOString()).toBe('2026-10-19T03:59:59.999Z');
   });
 });
 

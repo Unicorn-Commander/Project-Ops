@@ -1,4 +1,5 @@
 import { ProjectsRecurrenceService } from './projects-recurrence.service';
+import { BUSINESS_TIME_ZONE } from '../common/time/business-time';
 
 /**
  * Unit tests for the recurring-project materializer. Mirrors
@@ -149,6 +150,15 @@ describe('ProjectsRecurrenceService.materializeForWorkspace', () => {
 });
 
 describe('ProjectsRecurrenceService.materializeDueRecurrences (cron entry)', () => {
+  it('declares the business timezone on the cron decorator', () => {
+    const metadata = Reflect.getMetadata(
+      'SCHEDULE_CRON_OPTIONS',
+      ProjectsRecurrenceService.prototype.materializeDueRecurrences,
+    );
+
+    expect(metadata).toEqual(expect.objectContaining({ timeZone: BUSINESS_TIME_ZONE }));
+  });
+
   it('iterates active workspaces via the control-plane read', async () => {
     const { svc, prisma, workspaceContext } = makeService({
       workspaces: [{ id: 'wsA' }, { id: 'wsB' }],

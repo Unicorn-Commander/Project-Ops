@@ -37,6 +37,7 @@ import {
   type CustomFieldValueMap,
 } from "@/lib/custom-fields-api";
 import { FieldHint, HelpHint } from "@/components/guidance";
+import { businessDateToday, dateOnlyValue } from "@/lib/date-only";
 
 interface EditTaskModalProps {
   isOpen: boolean;
@@ -115,7 +116,7 @@ export function EditTaskModal({
         description: task.description,
         type: task.type,
         priority: task.priority,
-        dueDate: task.dueDate ? task.dueDate.split("T")[0] : "",
+        dueDate: task.dueDate ? dateOnlyValue(task.dueDate) ?? "" : "",
         assignedToId: task.assignedToId || "",
       });
       // Hydrate the non-form fields from the task.
@@ -352,7 +353,7 @@ export function EditTaskModal({
                   <Input
                     id="dueDate"
                     type="date"
-                    min={new Date().toISOString().split("T")[0]}
+                    min={businessDateToday()}
                     {...register("dueDate")}
                     className={errors.dueDate ? "border-red-500" : ""}
                   />
