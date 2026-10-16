@@ -3,7 +3,21 @@ import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { ProjectStatus, User, UserRole, Prisma } from '@prisma/client';
 import { withProjectQuote } from '../common/serializers/client-metadata';
-import { businessMonthBoundsUtc } from '../common/time/business-time';
+import {
+  addCalendarDays,
+  businessDateForInstant,
+  businessMonthBoundsUtc,
+  dateOnlyToUtcDate,
+} from '../common/time/business-time';
+
+function upcomingDueDateBounds(now: Date, days: number) {
+  const startDate = businessDateForInstant(now);
+  const endDate = addCalendarDays(startDate, days);
+  return {
+    gte: dateOnlyToUtcDate(startDate),
+    lt: dateOnlyToUtcDate(addCalendarDays(endDate, 1)),
+  };
+}
 
 /**
  * Dashboard aggregates: overview counts, project statistics, due-date lists,
@@ -37,6 +51,7 @@ export class DashboardService {
 
   async getOverview(workspaceId: string, user: User) {
     const roleWhere = this.buildRoleBasedWhere(user);
+    const dueDateBounds = upcomingDueDateBounds(new Date(), 7);
 
     return this.workspaceContext.runForUser(
       user,
@@ -69,10 +84,7 @@ export class DashboardService {
           tx.project.count({
             where: {
               ...roleWhere,
-              dueDate: {
-                gte: new Date(),
-                lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Next 7 days
-              },
+              dueDate: dueDateBounds,
               status: { not: ProjectStatus.COMPLETED },
             },
           }),
@@ -218,9 +230,7 @@ export class DashboardService {
 
   async getUpcomingDueDates(workspaceId: string, days: number = 7, user: User) {
     const roleWhere = this.buildRoleBasedWhere(user);
-    const today = new Date();
-    const futureDate = new Date();
-    futureDate.setDate(today.getDate() + days);
+    const dueDateBounds = upcomingDueDateBounds(new Date(), days);
 
     return this.workspaceContext.runForUser(
       user,
@@ -228,10 +238,7 @@ export class DashboardService {
         const projects = await tx.project.findMany({
           where: {
             ...roleWhere,
-            dueDate: {
-              gte: today,
-              lte: futureDate,
-            },
+            dueDate: dueDateBounds,
             status: { not: ProjectStatus.COMPLETED },
           },
           orderBy: { dueDate: 'asc' },

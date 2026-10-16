@@ -25,6 +25,60 @@ function makeService(groupByImpl: (args: any) => Promise<any[]>) {
 const admin = { id: 'u1', role: UserRole.ADMIN, email: 'a@x.co' } as any;
 const client = { id: 'c1', role: UserRole.CLIENT, email: 'c@x.co' } as any;
 
+describe('DashboardService — date-only upcoming bounds', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function makeOverviewService() {
+    const projectCount = jest.fn(async (..._args: any[]) => 0);
+    const documentCount = jest.fn(async (..._args: any[]) => 0);
+    const userCount = jest.fn(async (..._args: any[]) => 0);
+    const tx = {
+      project: { count: projectCount },
+      document: { count: documentCount },
+      user: { count: userCount },
+    };
+    const workspaceContext = {
+      runForUser: jest.fn(async (_u: any, fn: (t: any) => any) => fn(tx)),
+    };
+    const svc = new DashboardService({} as any, workspaceContext as any);
+    return { svc, projectCount };
+  }
+
+  it('keeps a project due today in the overview upcoming count', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-10-16T12:00:00.000Z')); // 08:00 ET
+    const { svc, projectCount } = makeOverviewService();
+
+    await svc.getOverview('ws1', admin);
+
+    const upcoming = projectCount.mock.calls.find(([args]) => args.where?.dueDate);
+    expect(upcoming?.[0].where.dueDate).toEqual({
+      gte: new Date('2026-10-16T00:00:00.000Z'),
+      lt: new Date('2026-10-24T00:00:00.000Z'),
+    });
+  });
+
+  it('keeps a project due today in the upcoming due-date list', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-10-16T12:00:00.000Z')); // 08:00 ET
+    const findMany = jest.fn(async (..._args: any[]) => []);
+    const tx = { project: { findMany } };
+    const workspaceContext = {
+      runForUser: jest.fn(async (_u: any, fn: (t: any) => any) => fn(tx)),
+    };
+    const svc = new DashboardService({} as any, workspaceContext as any);
+
+    await svc.getUpcomingDueDates('ws1', 7, admin);
+
+    expect(findMany.mock.calls[0][0].where.dueDate).toEqual({
+      gte: new Date('2026-10-16T00:00:00.000Z'),
+      lt: new Date('2026-10-24T00:00:00.000Z'),
+    });
+  });
+});
+
 describe('DashboardService.getProjectBreakdown', () => {
   it('returns counts grouped by status and priority', async () => {
     const { svc, groupBy } = makeService(async (args) => {
