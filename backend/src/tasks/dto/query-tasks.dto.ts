@@ -63,16 +63,18 @@ export class QueryTasksDto {
   search?: string;
 
   @ApiPropertyOptional({
-    description: 'Only tasks with dueDate strictly before this ISO timestamp',
-    example: '2026-12-31T00:00:00Z',
+    description:
+      'Only tasks with dueDate strictly before this date-only YYYY-MM-DD bound (or explicit ISO instant)',
+    example: '2026-12-31',
   })
   @IsDateString()
   @IsOptional()
   dueBefore?: string;
 
   @ApiPropertyOptional({
-    description: 'Only tasks with dueDate at or after this ISO timestamp',
-    example: '2026-01-01T00:00:00Z',
+    description:
+      'Only tasks with dueDate at or after this date-only YYYY-MM-DD bound (or explicit ISO instant)',
+    example: '2026-01-01',
   })
   @IsDateString()
   @IsOptional()

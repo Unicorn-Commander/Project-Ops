@@ -31,8 +31,8 @@ import { withTaskMetadataForRole } from '../common/serializers/client-metadata';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
   coerceDateOnly,
+  dateOnlyToUtcDate,
   overdueDateCutoffUtc,
-  parseBusinessDateInput,
 } from '../common/time/business-time';
 
 /**
@@ -338,12 +338,14 @@ export class TasksService {
       ];
     }
 
-    // Due-date window [dueAfter, dueBefore). Tasks with a null dueDate are
-    // naturally excluded once either bound is set (Prisma filters them out).
+    // Due-date window [dueAfter, dueBefore). Bare YYYY-MM-DD bounds use the
+    // UTC-midnight date-only storage convention; full timestamps remain
+    // explicit instants. Tasks with a null dueDate are naturally excluded once
+    // either bound is set (Prisma filters them out).
     if (dueBefore || dueAfter) {
       where.dueDate = {};
-      if (dueBefore) where.dueDate.lt = parseBusinessDateInput(dueBefore);
-      if (dueAfter) where.dueDate.gte = parseBusinessDateInput(dueAfter);
+      if (dueBefore) where.dueDate.lt = dateOnlyToUtcDate(dueBefore);
+      if (dueAfter) where.dueDate.gte = dateOnlyToUtcDate(dueAfter);
     }
 
     const orderBy = this.buildOrderBy(sortBy, sortDir);

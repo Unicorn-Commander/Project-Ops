@@ -767,18 +767,20 @@ describe('TasksService.getOverdueTasks — business-date cutoff', () => {
 });
 
 describe('TasksService.findAll — business-date filters', () => {
-  it('interprets bare due-date bounds in the business zone', async () => {
+  it('uses UTC-midnight storage bounds for bare due-date filters', async () => {
     const { svc, tx } = makeService({ taskFindMany: async () => [] });
 
     await svc.findAll('ws1', user, {
       dueAfter: '2026-10-16',
-      dueBefore: '2026-10-17',
     });
+    await svc.findAll('ws1', user, { dueBefore: '2026-10-16' });
 
-    const args = (tx.task.findMany as jest.Mock).mock.calls[0][0];
-    expect(args.where.dueDate).toEqual({
-      gte: new Date('2026-10-16T04:00:00.000Z'),
-      lt: new Date('2026-10-17T04:00:00.000Z'),
+    const findMany = tx.task.findMany as jest.Mock;
+    expect(findMany.mock.calls[0][0].where.dueDate).toEqual({
+      gte: new Date('2026-10-16T00:00:00.000Z'),
+    });
+    expect(findMany.mock.calls[1][0].where.dueDate).toEqual({
+      lt: new Date('2026-10-16T00:00:00.000Z'),
     });
   });
 });
