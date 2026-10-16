@@ -449,7 +449,11 @@ export default function MyTasksPage() {
             <ExportCsvButton
               data={filteredTasks}
               filenameStem="my-tasks"
-              dateField={{ label: "Due", get: (t) => t.dueDate ?? null }}
+              dateField={{
+                label: "Due",
+                mode: "date-only",
+                get: (t) => t.dueDate ?? null,
+              }}
               statusField={{
                 label: "Status",
                 options: STATUS_OPTIONS.filter((s) => s.value !== "ALL").map((s) => ({

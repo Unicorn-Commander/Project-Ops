@@ -11,7 +11,7 @@
  *   <ExportCsvButton
  *     data={filteredProjects}
  *     filenameStem="projects"
- *     dateField={{ key: "createdAt", label: "Created" }}
+ *     dateField={{ label: "Created", mode: "instant", get: (p) => p.createdAt }}
  *     statusField={{
  *       label: "Status",
  *       options: [{ value: "NEW", label: "New" }, ...],
@@ -26,12 +26,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Download as DownloadIcon, Calendar as CalendarIcon, Filter as FilterIcon, X as XIcon } from "lucide-react";
 import { downloadCsv, csvFilename } from "@/lib/csv-export";
+import {
+  exportDateWindow,
+  matchesExportDateWindow,
+  type ExportDateMode,
+  type ExportDatePreset,
+  type ExportDateValue,
+} from "@/lib/export-date-filter";
 
 export interface ExportCsvDateField<T> {
   /** Human label for the date column ("Created", "Due"). */
   label: string;
-  /** Pull the date out of one record. Anything Date-parseable. */
-  get: (item: T) => string | Date | number | null | undefined;
+  /** Compare as calendar keys for date-only values, or instants by default. */
+  mode?: ExportDateMode;
+  /** Pull the date out of one record. */
+  get: (item: T) => ExportDateValue;
 }
 
 export interface ExportCsvStatusField<T> {
@@ -53,24 +62,13 @@ export interface ExportCsvButtonProps<T> {
   className?: string;
 }
 
-type DatePreset = "ALL" | "7D" | "30D" | "90D" | "CUSTOM";
-
-const DATE_PRESETS: Array<{ value: DatePreset; label: string }> = [
+const DATE_PRESETS: Array<{ value: ExportDatePreset; label: string }> = [
   { value: "ALL", label: "All time" },
   { value: "7D", label: "Last 7 days" },
   { value: "30D", label: "Last 30 days" },
   { value: "90D", label: "Last 90 days" },
   { value: "CUSTOM", label: "Custom…" },
 ];
-
-function presetWindow(preset: DatePreset): { from?: Date; to?: Date } {
-  if (preset === "ALL" || preset === "CUSTOM") return {};
-  const days = preset === "7D" ? 7 : preset === "30D" ? 30 : 90;
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - days);
-  return { from, to };
-}
 
 export function ExportCsvButton<T>(props: ExportCsvButtonProps<T>) {
   const {
@@ -85,7 +83,7 @@ export function ExportCsvButton<T>(props: ExportCsvButtonProps<T>) {
   } = props;
 
   const [open, setOpen] = useState(false);
-  const [preset, setPreset] = useState<DatePreset>("ALL");
+  const [preset, setPreset] = useState<ExportDatePreset>("ALL");
   const [customFrom, setCustomFrom] = useState<string>("");
   const [customTo, setCustomTo] = useState<string>("");
   const [statusPicks, setStatusPicks] = useState<Set<string>>(new Set());
@@ -116,21 +114,11 @@ export function ExportCsvButton<T>(props: ExportCsvButtonProps<T>) {
     let out = data;
 
     if (dateField) {
-      const window = preset === "CUSTOM"
-        ? {
-            from: customFrom ? new Date(customFrom + "T00:00:00") : undefined,
-            to: customTo ? new Date(customTo + "T23:59:59") : undefined,
-          }
-        : presetWindow(preset);
+      const mode = dateField.mode ?? "instant";
+      const window = exportDateWindow(mode, preset, customFrom, customTo);
       if (window.from || window.to) {
         out = out.filter((item) => {
-          const raw = dateField.get(item);
-          if (!raw) return false;
-          const t = new Date(raw).getTime();
-          if (Number.isNaN(t)) return false;
-          if (window.from && t < window.from.getTime()) return false;
-          if (window.to && t > window.to.getTime()) return false;
-          return true;
+          return matchesExportDateWindow(dateField.get(item), window, mode);
         });
       }
     }
