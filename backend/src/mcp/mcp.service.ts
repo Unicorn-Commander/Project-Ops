@@ -468,16 +468,17 @@ export class McpService {
           'Free-text search across visible projects (title, description, ' +
           'project number, client name, organization name). Optional ' +
           'customerOpsCustomerId and contactOpsContactId filters are exact-match UUIDs ' +
-          'and can be combined with the text query.',
+          'and can be combined with the text query. query may be omitted when an id ' +
+          'filter is given (the Customer-Ops 360 panel looks projects up by id only).',
         inputSchema: {
-          query: z.string().min(1),
+          query: z.string().optional(),
           limit: z.number().int().min(1).max(50).optional(),
           customerOpsCustomerId: federatedUuid('customerOpsCustomerId').optional(),
           contactOpsContactId: federatedUuid('contactOpsContactId').optional(),
         },
       },
       async (args: {
-        query: string;
+        query?: string;
         limit?: number;
         customerOpsCustomerId?: string;
         contactOpsContactId?: string;
