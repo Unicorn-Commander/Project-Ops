@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
   Logger,
   Optional,
   Inject,
@@ -12,6 +13,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { EmailService } from '../email/email.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { CreateTaskCommentDto } from './dto/create-task-comment.dto';
@@ -23,6 +25,7 @@ import {
   TaskStatus,
   TaskPriority,
   TaskDependencyType,
+  AuditAction,
   UserRole,
   User,
   Prisma,
@@ -79,7 +82,125 @@ export class TasksService {
     @Optional()
     @Inject(CUSTOM_FIELDS_SERVICE)
     private readonly customFields?: CustomFieldsValidator,
+    // Optional keeps the hand-rolled service tests and minimal integrations
+    // compatible; the application module wires AuditModule for real writes.
+    @Optional()
+    private readonly auditService?: AuditService,
   ) {}
+
+  private async loadOpenBlockers(
+    tx: WorkspaceTxClient,
+    taskId: string,
+  ): Promise<Array<{ id: string; title: string; status: TaskStatus }>> {
+    const dependencies = await tx.taskDependency.findMany({
+      where: {
+        successorId: taskId,
+        type: TaskDependencyType.FINISH_TO_START,
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        predecessor: { select: { id: true, title: true, status: true } },
+      },
+    });
+
+    return dependencies
+      .filter(
+        (dependency) =>
+          dependency.predecessor.status !== TaskStatus.COMPLETED &&
+          dependency.predecessor.status !== TaskStatus.CANCELLED,
+      )
+      .map((dependency) => dependency.predecessor);
+  }
+
+  /**
+   * Compute blocked flags for a page with one dependency query, never one
+   * query per task. The dependency relation itself remains workspace-scoped
+   * by the surrounding transaction/RLS boundary.
+   */
+  private async loadBlockedTaskIds(tx: WorkspaceTxClient, taskIds: string[]): Promise<Set<string>> {
+    if (taskIds.length === 0) return new Set();
+
+    const dependencies = await tx.taskDependency.findMany({
+      where: {
+        successorId: { in: taskIds },
+        type: TaskDependencyType.FINISH_TO_START,
+      },
+      select: {
+        successorId: true,
+        predecessor: { select: { status: true } },
+      },
+    });
+
+    return new Set(
+      dependencies
+        .filter(
+          (dependency) =>
+            dependency.predecessor.status !== TaskStatus.COMPLETED &&
+            dependency.predecessor.status !== TaskStatus.CANCELLED,
+        )
+        .map((dependency) => dependency.successorId),
+    );
+  }
+
+  private async canOverrideDependencies(user: User, workspaceId: string): Promise<boolean> {
+    const context = this.workspaceContext as WorkspaceContextService & {
+      hasManagementRole?: (actingUser: User, activeWorkspaceId: string) => Promise<boolean>;
+    };
+    if (typeof context.hasManagementRole === 'function') {
+      return context.hasManagementRole(user, workspaceId);
+    }
+    // Minimal unit-test doubles predate the workspace-management helper. Keep
+    // their legacy app-role behavior without weakening the real path above.
+    return user.role === UserRole.ADMIN || user.role === UserRole.MANAGER;
+  }
+
+  private async assertCompletionAllowed(
+    tx: WorkspaceTxClient,
+    workspaceId: string,
+    user: User,
+    taskId: string,
+    overrideDependencies: boolean,
+  ): Promise<Array<{ id: string; title: string; status: TaskStatus }>> {
+    const blockers = await this.loadOpenBlockers(tx, taskId);
+    if (blockers.length === 0) return blockers;
+
+    if (!overrideDependencies) {
+      throw new ConflictException({
+        message: `Task ${taskId} cannot be completed while dependency blockers remain`,
+        openBlockers: blockers,
+      });
+    }
+
+    if (!(await this.canOverrideDependencies(user, workspaceId))) {
+      throw new ForbiddenException(
+        'Dependency completion overrides require a workspace OWNER, ADMIN, or MANAGER role',
+      );
+    }
+
+    return blockers;
+  }
+
+  private async auditDependencyOverride(
+    workspaceId: string,
+    user: User,
+    taskId: string,
+    projectId: string,
+    blockers: Array<{ id: string; title: string; status: TaskStatus }>,
+  ): Promise<void> {
+    if (!this.auditService) return;
+    await this.auditService.log({
+      workspaceId,
+      userId: user.id,
+      projectId,
+      action: AuditAction.UPDATE,
+      resource: 'Task',
+      resourceId: taskId,
+      details: {
+        event: 'dependency_completion_override',
+        blockers,
+      },
+    });
+  }
 
   /**
    * Validate + normalize a task's `customFields` against the workspace's TASK
@@ -395,8 +516,16 @@ export class TasksService {
           tx.task.count({ where }),
         ]);
 
+        const blockedTaskIds = await this.loadBlockedTaskIds(
+          tx,
+          tasks.map((task) => task.id),
+        );
+
         return {
-          data: tasks.map((t) => withTaskMetadataForRole(t, user)),
+          data: tasks.map((task) => ({
+            ...withTaskMetadataForRole(task, user),
+            isBlocked: blockedTaskIds.has(task.id),
+          })),
           total,
           skip,
           take,
@@ -464,7 +593,12 @@ export class TasksService {
           throw new NotFoundException(`Task with ID ${id} not found`);
         }
 
-        return withTaskMetadataForRole(task, user);
+        const openBlockers = await this.loadOpenBlockers(tx, task.id);
+        return {
+          ...withTaskMetadataForRole(task, user),
+          isBlocked: openBlockers.length > 0,
+          openBlockers,
+        };
       },
       workspaceId,
     );
@@ -483,118 +617,144 @@ export class TasksService {
     userRole: UserRole,
   ) {
     // `customFields` is derived (merged into metadata), not a Prisma column.
-    const { customFields, ...updateData } = updateTaskDto;
+    const { customFields, force, overrideDependencies, ...updateData } = updateTaskDto;
+    const dependencyOverrideRequested = force === true || overrideDependencies === true;
 
-    const { updatedTask, fromStatus, prevAssignedToId } = await this.workspaceContext.runForUser(
-      user,
-      async (tx) => {
-        const task = await tx.task.findUnique({
-          where: { id },
-        });
-
-        if (!task) {
-          throw new NotFoundException(`Task with ID ${id} not found`);
-        }
-
-        // Only creator, assignee, or admin can update
-        const canUpdate =
-          task.createdById === user.id ||
-          task.assignedToId === user.id ||
-          userRole === UserRole.ADMIN ||
-          userRole === UserRole.MANAGER;
-
-        if (!canUpdate) {
-          throw new ForbiddenException('You do not have permission to update this task');
-        }
-
-        if (updateData.fixedAmount !== undefined && task.invoicedAt) {
-          const next =
-            updateData.fixedAmount == null ? null : new Decimal(updateData.fixedAmount).toFixed(2);
-          const prev = task.fixedAmount == null ? null : new Decimal(task.fixedAmount).toFixed(2);
-          if (next !== prev) {
-            throw new BadRequestException(
-              'This flat fee was already invoiced and cannot be changed',
-            );
-          }
-        }
-
-        // Verify assignee exists if being updated
-        if (updateTaskDto.assignedToId) {
-          const assigneeExists = await tx.user.findUnique({
-            where: { id: updateTaskDto.assignedToId },
+    const { updatedTask, fromStatus, prevAssignedToId, dependencyOverrideBlockers } =
+      await this.workspaceContext.runForUser(
+        user,
+        async (tx) => {
+          const task = await tx.task.findUnique({
+            where: { id },
           });
 
-          if (!assigneeExists) {
-            throw new NotFoundException(`User with ID ${updateTaskDto.assignedToId} not found`);
+          if (!task) {
+            throw new NotFoundException(`Task with ID ${id} not found`);
           }
-        }
 
-        const metadata = await this.resolveMetadataWithCustomFields(
-          tx,
-          workspaceId,
-          updateTaskDto.metadata,
-          customFields,
-        );
+          // Only creator, assignee, or admin can update
+          const canUpdate =
+            task.createdById === user.id ||
+            task.assignedToId === user.id ||
+            userRole === UserRole.ADMIN ||
+            userRole === UserRole.MANAGER;
 
-        // When status transitions INTO COMPLETED, stamp completedAt; when it
-        // transitions OUT of COMPLETED, clear it. Mirrors updateStatus.
-        const statusChanging = updateData.status !== undefined && updateData.status !== task.status;
-        const completedAt = statusChanging
-          ? updateData.status === TaskStatus.COMPLETED
-            ? new Date()
-            : null
-          : undefined;
+          if (!canUpdate) {
+            throw new ForbiddenException('You do not have permission to update this task');
+          }
 
-        const result = await tx.task.update({
-          where: { id },
-          data: {
-            ...updateData,
-            ...(metadata !== undefined && { metadata }),
-            ...(completedAt !== undefined && { completedAt }),
-            dueDate: updateTaskDto.dueDate ? coerceDateOnly(updateTaskDto.dueDate) : undefined,
-          },
-          include: {
-            project: {
-              select: {
-                id: true,
-                projectNumber: true,
-                title: true,
-                status: true,
-                priority: true,
+          if (updateData.fixedAmount !== undefined && task.invoicedAt) {
+            const next =
+              updateData.fixedAmount == null
+                ? null
+                : new Decimal(updateData.fixedAmount).toFixed(2);
+            const prev = task.fixedAmount == null ? null : new Decimal(task.fixedAmount).toFixed(2);
+            if (next !== prev) {
+              throw new BadRequestException(
+                'This flat fee was already invoiced and cannot be changed',
+              );
+            }
+          }
+
+          // Verify assignee exists if being updated
+          if (updateTaskDto.assignedToId) {
+            const assigneeExists = await tx.user.findUnique({
+              where: { id: updateTaskDto.assignedToId },
+            });
+
+            if (!assigneeExists) {
+              throw new NotFoundException(`User with ID ${updateTaskDto.assignedToId} not found`);
+            }
+          }
+
+          const metadata = await this.resolveMetadataWithCustomFields(
+            tx,
+            workspaceId,
+            updateTaskDto.metadata,
+            customFields,
+          );
+
+          // When status transitions INTO COMPLETED, stamp completedAt; when it
+          // transitions OUT of COMPLETED, clear it. Mirrors updateStatus.
+          const statusChanging =
+            updateData.status !== undefined && updateData.status !== task.status;
+          const dependencyOverrideBlockers =
+            statusChanging && updateData.status === TaskStatus.COMPLETED
+              ? await this.assertCompletionAllowed(
+                  tx,
+                  workspaceId,
+                  user,
+                  id,
+                  dependencyOverrideRequested,
+                )
+              : [];
+          const completedAt = statusChanging
+            ? updateData.status === TaskStatus.COMPLETED
+              ? new Date()
+              : null
+            : undefined;
+
+          const result = await tx.task.update({
+            where: { id },
+            data: {
+              ...updateData,
+              ...(metadata !== undefined && { metadata }),
+              ...(completedAt !== undefined && { completedAt }),
+              dueDate: updateTaskDto.dueDate ? coerceDateOnly(updateTaskDto.dueDate) : undefined,
+            },
+            include: {
+              project: {
+                select: {
+                  id: true,
+                  projectNumber: true,
+                  title: true,
+                  status: true,
+                  priority: true,
+                },
+              },
+              createdBy: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
+                  role: true,
+                },
+              },
+              assignedTo: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
+                  role: true,
+                },
               },
             },
-            createdBy: {
-              select: {
-                id: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-                role: true,
-              },
-            },
-            assignedTo: {
-              select: {
-                id: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-                role: true,
-              },
-            },
-          },
-        });
+          });
 
-        this.logger.log(`Task ${id} updated by user ${user.id}`);
-        return {
-          updatedTask: result,
-          fromStatus: task.status,
-          prevAssignedToId: task.assignedToId,
-        };
-      },
-      workspaceId,
-    );
+          this.logger.log(`Task ${id} updated by user ${user.id}`);
+          return {
+            updatedTask: result,
+            fromStatus: task.status,
+            prevAssignedToId: task.assignedToId,
+            dependencyOverrideBlockers,
+          };
+        },
+        workspaceId,
+      );
 
     this.emitTaskStatusEvents(workspaceId, user.id, updatedTask, fromStatus);
+
+    if (dependencyOverrideBlockers.length > 0) {
+      await this.auditDependencyOverride(
+        workspaceId,
+        user,
+        updatedTask.id,
+        updatedTask.projectId,
+        dependencyOverrideBlockers,
+      );
+    }
 
     if (updatedTask.assignedToId && updatedTask.assignedToId !== prevAssignedToId) {
       this.eventEmitter.emit('task.assigned', {
@@ -657,62 +817,84 @@ export class TasksService {
    * Update task status. After commit, emits `task.status_changed` (and
    * `task.completed` when transitioning to COMPLETED) if the status changed.
    */
-  async updateStatus(workspaceId: string, user: User, id: string, status: TaskStatus) {
-    const { updatedTask, fromStatus } = await this.workspaceContext.runForUser(
-      user,
-      async (tx) => {
-        const task = await tx.task.findUnique({
-          where: { id },
-        });
+  async updateStatus(
+    workspaceId: string,
+    user: User,
+    id: string,
+    status: TaskStatus,
+    overrideDependencies = false,
+  ) {
+    const { updatedTask, fromStatus, dependencyOverrideBlockers } =
+      await this.workspaceContext.runForUser(
+        user,
+        async (tx) => {
+          const task = await tx.task.findUnique({
+            where: { id },
+          });
 
-        if (!task) {
-          throw new NotFoundException(`Task with ID ${id} not found`);
-        }
+          if (!task) {
+            throw new NotFoundException(`Task with ID ${id} not found`);
+          }
 
-        const result = await tx.task.update({
-          where: { id },
-          data: {
-            status,
-            completedAt: status === TaskStatus.COMPLETED ? new Date() : null,
-          },
-          include: {
-            project: {
-              select: {
-                id: true,
-                projectNumber: true,
-                title: true,
-                status: true,
-                priority: true,
+          const dependencyOverrideBlockers =
+            status === TaskStatus.COMPLETED && task.status !== TaskStatus.COMPLETED
+              ? await this.assertCompletionAllowed(tx, workspaceId, user, id, overrideDependencies)
+              : [];
+
+          const result = await tx.task.update({
+            where: { id },
+            data: {
+              status,
+              completedAt: status === TaskStatus.COMPLETED ? new Date() : null,
+            },
+            include: {
+              project: {
+                select: {
+                  id: true,
+                  projectNumber: true,
+                  title: true,
+                  status: true,
+                  priority: true,
+                },
+              },
+              assignedTo: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
+                  role: true,
+                },
+              },
+              createdBy: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
+                  role: true,
+                },
               },
             },
-            assignedTo: {
-              select: {
-                id: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-                role: true,
-              },
-            },
-            createdBy: {
-              select: {
-                id: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-                role: true,
-              },
-            },
-          },
-        });
+          });
 
-        this.logger.log(`Task ${id} status updated to ${status}`);
-        return { updatedTask: result, fromStatus: task.status };
-      },
-      workspaceId,
-    );
+          this.logger.log(`Task ${id} status updated to ${status}`);
+          return { updatedTask: result, fromStatus: task.status, dependencyOverrideBlockers };
+        },
+        workspaceId,
+      );
 
     this.emitTaskStatusEvents(workspaceId, user.id, updatedTask, fromStatus);
+
+    if (dependencyOverrideBlockers.length > 0) {
+      await this.auditDependencyOverride(
+        workspaceId,
+        user,
+        updatedTask.id,
+        updatedTask.projectId,
+        dependencyOverrideBlockers,
+      );
+    }
 
     return withTaskMetadataForRole(updatedTask, user);
   }
@@ -806,62 +988,78 @@ export class TasksService {
    * Mark task as completed. After commit, emits `task.status_changed` +
    * `task.completed` (only when the task was not already COMPLETED).
    */
-  async markComplete(workspaceId: string, user: User, id: string) {
-    const { updatedTask, fromStatus } = await this.workspaceContext.runForUser(
-      user,
-      async (tx) => {
-        const task = await tx.task.findUnique({
-          where: { id },
-        });
+  async markComplete(workspaceId: string, user: User, id: string, overrideDependencies = false) {
+    const { updatedTask, fromStatus, dependencyOverrideBlockers } =
+      await this.workspaceContext.runForUser(
+        user,
+        async (tx) => {
+          const task = await tx.task.findUnique({
+            where: { id },
+          });
 
-        if (!task) {
-          throw new NotFoundException(`Task with ID ${id} not found`);
-        }
+          if (!task) {
+            throw new NotFoundException(`Task with ID ${id} not found`);
+          }
 
-        const result = await tx.task.update({
-          where: { id },
-          data: {
-            status: TaskStatus.COMPLETED,
-            completedAt: new Date(),
-          },
-          include: {
-            project: {
-              select: {
-                id: true,
-                projectNumber: true,
-                title: true,
-                status: true,
-                priority: true,
+          const dependencyOverrideBlockers =
+            task.status !== TaskStatus.COMPLETED
+              ? await this.assertCompletionAllowed(tx, workspaceId, user, id, overrideDependencies)
+              : [];
+
+          const result = await tx.task.update({
+            where: { id },
+            data: {
+              status: TaskStatus.COMPLETED,
+              completedAt: new Date(),
+            },
+            include: {
+              project: {
+                select: {
+                  id: true,
+                  projectNumber: true,
+                  title: true,
+                  status: true,
+                  priority: true,
+                },
+              },
+              assignedTo: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
+                  role: true,
+                },
+              },
+              createdBy: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
+                  role: true,
+                },
               },
             },
-            assignedTo: {
-              select: {
-                id: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-                role: true,
-              },
-            },
-            createdBy: {
-              select: {
-                id: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-                role: true,
-              },
-            },
-          },
-        });
+          });
 
-        this.logger.log(`Task ${id} marked as completed by user ${user.id}`);
-        return { updatedTask: result, fromStatus: task.status };
-      },
-      workspaceId,
-    );
+          this.logger.log(`Task ${id} marked as completed by user ${user.id}`);
+          return { updatedTask: result, fromStatus: task.status, dependencyOverrideBlockers };
+        },
+        workspaceId,
+      );
 
     this.emitTaskStatusEvents(workspaceId, user.id, updatedTask, fromStatus);
+
+    if (dependencyOverrideBlockers.length > 0) {
+      await this.auditDependencyOverride(
+        workspaceId,
+        user,
+        updatedTask.id,
+        updatedTask.projectId,
+        dependencyOverrideBlockers,
+      );
+    }
 
     return withTaskMetadataForRole(updatedTask, user);
   }
@@ -1106,8 +1304,8 @@ export class TasksService {
   async getProjectTasks(workspaceId: string, user: User, projectId: string) {
     const tasks = await this.workspaceContext.runForUser(
       user,
-      (tx) =>
-        tx.task.findMany({
+      async (tx) => {
+        const taskRows = await tx.task.findMany({
           where: { projectId },
           orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
           include: {
@@ -1133,10 +1331,19 @@ export class TasksService {
               },
             },
           },
-        }),
+        });
+        const blockedTaskIds = await this.loadBlockedTaskIds(
+          tx,
+          taskRows.map((task) => task.id),
+        );
+        return taskRows.map((task) => ({
+          ...withTaskMetadataForRole(task, user),
+          isBlocked: blockedTaskIds.has(task.id),
+        }));
+      },
       workspaceId,
     );
-    return tasks.map((t) => withTaskMetadataForRole(t, user));
+    return tasks;
   }
 
   /**
@@ -1179,7 +1386,14 @@ export class TasksService {
             },
           },
         });
-        return tasks.map((t) => withTaskMetadataForRole(t, user));
+        const blockedTaskIds = await this.loadBlockedTaskIds(
+          tx,
+          tasks.map((task) => task.id),
+        );
+        return tasks.map((task) => ({
+          ...withTaskMetadataForRole(task, user),
+          isBlocked: blockedTaskIds.has(task.id),
+        }));
       },
       workspaceId,
     );
@@ -1230,7 +1444,14 @@ export class TasksService {
             },
           },
         });
-        return tasks.map((t) => withTaskMetadataForRole(t, user));
+        const blockedTaskIds = await this.loadBlockedTaskIds(
+          tx,
+          tasks.map((task) => task.id),
+        );
+        return tasks.map((task) => ({
+          ...withTaskMetadataForRole(task, user),
+          isBlocked: blockedTaskIds.has(task.id),
+        }));
       },
       workspaceId,
     );
@@ -1285,7 +1506,14 @@ export class TasksService {
             },
           },
         });
-        return tasks.map((t) => withTaskMetadataForRole(t, user));
+        const blockedTaskIds = await this.loadBlockedTaskIds(
+          tx,
+          tasks.map((task) => task.id),
+        );
+        return tasks.map((task) => ({
+          ...withTaskMetadataForRole(task, user),
+          isBlocked: blockedTaskIds.has(task.id),
+        }));
       },
       workspaceId,
     );
@@ -1385,13 +1613,19 @@ export class TasksService {
       async (tx) => {
         // Both endpoints must exist in this workspace (RLS fences the reads).
         const [predecessor, successor] = await Promise.all([
-          tx.task.findUnique({ where: { id: predecessorId }, select: { id: true } }),
-          tx.task.findUnique({ where: { id: successorId }, select: { id: true } }),
+          tx.task.findUnique({
+            where: { id: predecessorId },
+            select: { id: true, workspaceId: true },
+          }),
+          tx.task.findUnique({
+            where: { id: successorId },
+            select: { id: true, workspaceId: true },
+          }),
         ]);
-        if (!predecessor) {
+        if (!predecessor || (predecessor.workspaceId && predecessor.workspaceId !== workspaceId)) {
           throw new NotFoundException(`Task with ID ${predecessorId} not found`);
         }
-        if (!successor) {
+        if (!successor || (successor.workspaceId && successor.workspaceId !== workspaceId)) {
           throw new NotFoundException(`Task with ID ${successorId} not found`);
         }
 

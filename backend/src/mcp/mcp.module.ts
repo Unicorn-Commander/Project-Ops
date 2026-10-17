@@ -20,6 +20,7 @@ import { AgentsModule } from '../agents/agents.module';
 // WorkspacesModule exports WorkspacesService — the member-management spine the
 // member tools (invite / role / remove / list) delegate to.
 import { WorkspacesModule } from '../workspaces/workspaces.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { WorkspacesModule } from '../workspaces/workspaces.module';
     ClientPortalModule,
     AgentsModule,
     WorkspacesModule,
+    AuditModule,
   ],
   controllers: [McpController],
   providers: [McpService],

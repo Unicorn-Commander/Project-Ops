@@ -10,6 +10,7 @@ import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membersh
 import { CustomFieldsModule } from '../custom-fields/custom-fields.module';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import { CUSTOM_FIELDS_SERVICE } from './custom-fields.contract';
+import { AuditModule } from '../audit/audit.module';
 
 /**
  * Suite tenancy (Phase 2, B2): WorkspaceContextService + MembershipService are
@@ -28,7 +29,7 @@ import { CUSTOM_FIELDS_SERVICE } from './custom-fields.contract';
  * ./custom-fields.contract.ts.
  */
 @Module({
-  imports: [PrismaModule, EmailModule, CustomFieldsModule],
+  imports: [PrismaModule, EmailModule, CustomFieldsModule, AuditModule],
   controllers: [TasksController],
   providers: [
     TasksService,

@@ -49,6 +49,15 @@ export class MembershipService {
     return tenancyEnabled((k) => this.config.get<string>(k));
   }
 
+  /**
+   * Expose the feature flag to workspace-aware services that need to preserve
+   * the legacy app-role behavior while tenancy is disabled. Once tenancy is
+   * enabled, callers must use the active membership role instead.
+   */
+  isTenancyEnabled(): boolean {
+    return this.enabled;
+  }
+
   /** The single bootstrap/dogfood workspace id seeded by the RLS migration. */
   get bootstrapWorkspaceId(): string {
     return this.config.get<string>('DEFAULT_WORKSPACE_ID', DEFAULT_WORKSPACE_FALLBACK);

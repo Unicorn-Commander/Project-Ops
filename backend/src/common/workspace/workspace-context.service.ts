@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { User } from '@prisma/client';
+import { User, UserRole } from '@prisma/client';
 import { PrismaService, WorkspaceTxClient } from '../../prisma/prisma.service';
 import { MembershipService } from './membership.service';
 import {
@@ -69,6 +69,22 @@ export class WorkspaceContextService {
   ): Promise<void> {
     const workspaceId = await this.resolveAuthorized(user, requestedWorkspaceId);
     await this.membership.assertCanWrite(user, workspaceId);
+  }
+
+  /**
+   * Return whether the caller can override a task dependency completion gate.
+   * Under live tenancy this is derived only from the active workspace
+   * membership. With tenancy disabled there is no membership role to consult,
+   * so the existing app-wide ADMIN/MANAGER roles remain the authority.
+   */
+  async hasManagementRole(user: User, workspaceId: string): Promise<boolean> {
+    if (await this.membership.hasManagementRole(user, workspaceId)) {
+      return true;
+    }
+    return (
+      !this.membership.isTenancyEnabled() &&
+      (user.role === UserRole.ADMIN || user.role === UserRole.MANAGER)
+    );
   }
 
   /**

@@ -10,9 +10,16 @@ import { publicMcpUserPayload } from '../common/serialization/public-user';
  * runs with their identity / RBAC.
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { HttpException, Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { AgentVia, TaskPriority, TaskStatus, TaskType, User } from '@prisma/client';
+import {
+  AgentVia,
+  TaskDependencyType,
+  TaskPriority,
+  TaskStatus,
+  TaskType,
+  User,
+} from '@prisma/client';
 import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
 import { MinioService } from '../documents/minio.service';
@@ -38,6 +45,7 @@ import { AutomationsService } from '../automations/automations.service';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import { ApprovalsService } from '../client-portal/approvals/approvals.service';
 import { WorkspacesService } from '../workspaces/workspaces.service';
+import { AuditService } from '../audit/audit.service';
 // Agent activity capture (v1.11) — OPTIONAL: when AgentsModule is imported into
 // McpModule the recorder is injected and every successful tool call is logged
 // as an AgentEvent; if not wired, capture is silently skipped (app still boots).
@@ -48,6 +56,10 @@ import { recordMcpToolCall } from './mcp.metrics';
 const TASK_TYPE_VALUES = Object.values(TaskType) as [TaskType, ...TaskType[]];
 const TASK_PRIORITY_VALUES = Object.values(TaskPriority) as [TaskPriority, ...TaskPriority[]];
 const TASK_STATUS_VALUES = Object.values(TaskStatus) as [TaskStatus, ...TaskStatus[]];
+const TASK_DEPENDENCY_TYPE_VALUES = Object.values(TaskDependencyType) as [
+  TaskDependencyType,
+  ...TaskDependencyType[],
+];
 
 const federatedUuid = (field: string) => z.string().uuid({ message: `${field} must be a UUID` });
 
@@ -99,6 +111,8 @@ export class McpService {
     private readonly workspaceAdmin: WorkspacesService,
     // OPTIONAL: present only when AgentsModule is imported into McpModule.
     @Optional() private readonly agentEvents?: AgentEventsService,
+    // Optional so minimal MCP test harnesses can omit AuditModule.
+    @Optional() private readonly audit?: AuditService,
   ) {}
 
   /**
@@ -305,6 +319,17 @@ export class McpService {
           this.logger.warn(
             `MCP tool=${name} status=error durationMs=${durationMs} err=${safeMessage ?? (err as Error).message}`,
           );
+          if (err instanceof HttpException) {
+            const response = err.getResponse();
+            const payload =
+              typeof response === 'string'
+                ? { statusCode: err.getStatus(), error: response }
+                : { statusCode: err.getStatus(), ...(response as Record<string, unknown>) };
+            return {
+              isError: true,
+              content: [{ type: 'text' as const, text: JSON.stringify(payload) }],
+            };
+          }
           if (safeMessage) {
             return {
               isError: true,
@@ -344,6 +369,7 @@ export class McpService {
       wave2Deps,
       this.workspaceAdmin,
       addressedWorkspaceId,
+      this.audit,
     );
 
     server.registerTool(
@@ -380,8 +406,8 @@ export class McpService {
           'including recent tasks and comments. A project created from an ' +
           'accepted quote also carries `quote` / `metadata.quote` ' +
           '(Customer-Ops ids: customer_ops_quote_id, number, version, ' +
-          'share_url, schedule_ids); CLIENT callers see number, version and ' +
-          'share_url only.',
+          'share_url, schedule_ids); recent tasks include batched `isBlocked`; ' +
+          'CLIENT callers see number, version and share_url only.',
         inputSchema: {
           id: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -398,7 +424,8 @@ export class McpService {
         description:
           'Return tasks assigned to the calling user, sorted by due date. ' +
           "Optional 'status' filters by TaskStatus " +
-          `(TaskStatus: ${TASK_STATUS_VALUES.join(' / ')}).`,
+          `(TaskStatus: ${TASK_STATUS_VALUES.join(' / ')}). Each task includes ` +
+          '`isBlocked`, computed with one batched dependency query for the page.',
         inputSchema: {
           status: taskEnum(TASK_STATUS_VALUES).optional(),
           limit: z.number().int().min(1).max(100).optional(),
@@ -417,14 +444,45 @@ export class McpService {
           'parent project): description, status, priority, type, due/completed ' +
           'dates, estimatedHours, metadata, assignee, creator, parent task, ' +
           'comment/subtask counts, and dependency edges (dependsOn + blocks). ' +
-          'isBlocked is NOT computed here (deferred until dep-enforcement ' +
-          'merges); infer open blockers from dependencies.dependsOn predecessor ' +
-          'status. Requires taskId.',
+          'isBlocked and openBlockers (FINISH_TO_START predecessors that are ' +
+          'neither COMPLETED nor CANCELLED). Requires taskId.',
         inputSchema: {
           taskId: z.string().min(1),
         },
       },
       async (args: { taskId: string }) => wrap(await tools.getTask(user, args)),
+    );
+
+    server.registerTool(
+      'add_task_dependency',
+      {
+        title: 'Add a task dependency',
+        description:
+          'Make taskId depend on dependsOnTaskId. Both tasks must be visible in ' +
+          'the active workspace; self-dependencies, duplicate edges, and cycles ' +
+          'are rejected. The default type is FINISH_TO_START.',
+        inputSchema: {
+          taskId: z.string().min(1),
+          dependsOnTaskId: z.string().min(1),
+          type: taskEnum(TASK_DEPENDENCY_TYPE_VALUES).optional(),
+        },
+      },
+      async (args: { taskId: string; dependsOnTaskId: string; type?: string }) =>
+        wrap(await tools.addTaskDependency(user, args)),
+    );
+
+    server.registerTool(
+      'remove_task_dependency',
+      {
+        title: 'Remove a task dependency',
+        description:
+          'Remove a dependency by dependencyId. The dependency and both endpoint ' +
+          'tasks must belong to the active workspace and be visible to the caller.',
+        inputSchema: {
+          dependencyId: z.string().min(1),
+        },
+      },
+      async (args: { dependencyId: string }) => wrap(await tools.removeTaskDependency(user, args)),
     );
 
     server.registerTool(
@@ -440,7 +498,8 @@ export class McpService {
           `(TaskStatus: ${TASK_STATUS_VALUES.join(' / ')}) and priority ` +
           `(${TASK_PRIORITY_VALUES.join(' / ')}). Response: ` +
           '{ project, tasks, count, total, offset, limit } where count is the ' +
-          'page size and total is the full match count for paging.',
+          'page size and total is the full match count for paging. Each task ' +
+          'includes `isBlocked`, computed with one batched dependency query for the page.',
         inputSchema: {
           projectId: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -744,17 +803,21 @@ export class McpService {
           'project the caller can see. CLIENT-role users cannot call this. ' +
           `Allowed type values: ${TASK_TYPE_VALUES.join(' / ')}. ` +
           `Allowed priority values: ${TASK_PRIORITY_VALUES.join(' / ')}. ` +
+          `Allowed status values: ${TASK_STATUS_VALUES.join(' / ')}. ` +
           'Optional customFields (object keyed by the workspace TASK custom-field ' +
           'key — validated + merged into metadata.customFields, preserving other ' +
           'metadata), recurrenceRule (RRULE subset; null clears it), and ' +
           'estimatedHours (null clears it), and fixedAmount (a flat fee, ' +
-          'quantity 1; null clears it until the fee has been invoiced).',
+          'quantity 1; null clears it until the fee has been invoiced). ' +
+          'Setting status to COMPLETED enforces FINISH_TO_START blockers. ' +
+          'force or overrideDependencies may bypass them only for workspace OWNER, ADMIN, or MANAGER roles.',
         inputSchema: {
           taskId: z.string().min(1),
           title: z.string().min(1).max(200).optional(),
           description: z.string().optional(),
           type: taskEnum(TASK_TYPE_VALUES).optional(),
           priority: taskEnum(TASK_PRIORITY_VALUES).optional(),
+          status: taskEnum(TASK_STATUS_VALUES).optional(),
           dueDate: z.string().nullable().optional(),
           assignedToId: z.string().optional(),
           projectId: z.string().optional(),
@@ -763,6 +826,8 @@ export class McpService {
           recurrenceRule: z.string().nullable().optional(),
           estimatedHours: z.number().min(0).nullable().optional(),
           fixedAmount: moneyInput.nullable().optional(),
+          force: z.boolean().optional(),
+          overrideDependencies: z.boolean().optional(),
         },
       },
       async (args: any) => wrap(await tools.updateTask(user, args)),
@@ -812,7 +877,8 @@ export class McpService {
           'Return the direct children of a parent task the caller can see (via ' +
           'its project). Ordered by priority desc, dueDate asc, createdAt desc ' +
           '(matches REST getSubtasks). Response: { parent, subtasks, count } ' +
-          'with assignee/creator and nested comment/subtask counts on each child.',
+          'with assignee/creator, nested comment/subtask counts, and batched ' +
+          '`isBlocked` on each child.',
         inputSchema: {
           taskId: z.string().min(1),
         },
@@ -897,10 +963,14 @@ export class McpService {
         title: 'Update a task status',
         description:
           `Change a task's status. Allowed values: ${TASK_STATUS_VALUES.join(' / ')}. Setting COMPLETED ` +
-          'also stamps completedAt.',
+          'also stamps completedAt and is rejected with the open blockers when ' +
+          'FINISH_TO_START predecessors remain open. `force` or ' +
+          '`overrideDependencies` bypasses that gate only for workspace OWNER, ADMIN, or MANAGER roles.',
         inputSchema: {
           taskId: z.string().min(1),
           status: taskEnum(TASK_STATUS_VALUES),
+          force: z.boolean().optional(),
+          overrideDependencies: z.boolean().optional(),
         },
       },
       async (args: any) => wrap(await tools.updateTaskStatus(user, args)),
