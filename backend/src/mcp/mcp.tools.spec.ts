@@ -1996,6 +1996,36 @@ describe('ProjectOpsTools.searchProjects — visibility filter must survive the 
     );
   });
 
+  it('accepts an id filter without a text query and keeps visibility (Customer-Ops 360 panel)', async () => {
+    const findMany = jest.fn(async () => []);
+    const tools = makeTools(findMany);
+    const customerOpsCustomerId = '550e8400-e29b-41d4-a716-446655440000';
+
+    await tools.searchProjects(baseUser({ role: UserRole.STAFF, id: 'staff-1' }), {
+      customerOpsCustomerId,
+    });
+
+    const where = (findMany.mock.calls[0] as any[])[0].where;
+    expect(where.AND[0]).toEqual({
+      OR: [{ assignedToId: 'staff-1' }, { createdById: 'staff-1' }],
+    });
+    expect(where.AND[1]).toEqual({ customerOpsCustomerId });
+    expect(where.OR).toBeUndefined();
+  });
+
+  it('still requires a query when no id filter is given', async () => {
+    const findMany = jest.fn(async () => []);
+    const tools = makeTools(findMany);
+
+    await expect(
+      tools.searchProjects(baseUser({ role: UserRole.STAFF, id: 'staff-1' }), { query: '   ' }),
+    ).rejects.toThrow(/query is required/);
+    await expect(
+      tools.searchProjects(baseUser({ role: UserRole.STAFF, id: 'staff-1' }), {}),
+    ).rejects.toThrow(/query is required/);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
   it('adds exact federated id filters to list_my_projects', async () => {
     const findMany = jest.fn(async () => []);
     const tools = makeTools(findMany);

@@ -799,15 +799,19 @@ export class ProjectOpsTools {
   async searchProjects(
     user: User,
     args: {
-      query: string;
+      query?: string;
       limit?: number;
       customerOpsCustomerId?: string;
       contactOpsContactId?: string;
     },
   ) {
     const q = (args.query ?? '').trim();
-    if (!q) {
-      throw new Error('query is required');
+    const hasIdFilter =
+      args.customerOpsCustomerId !== undefined || args.contactOpsContactId !== undefined;
+    if (!q && !hasIdFilter) {
+      throw new Error(
+        'query is required unless customerOpsCustomerId or contactOpsContactId is given',
+      );
     }
     // SECURITY: AND-nest the text-search OR under the visibility filter —
     // never spread them into the same object. For STAFF/CLIENT the
@@ -827,13 +831,17 @@ export class ProjectOpsTools {
               ...(args.contactOpsContactId !== undefined
                 ? { contactOpsContactId: args.contactOpsContactId }
                 : {}),
-              OR: [
-                { title: { contains: q, mode: 'insensitive' } },
-                { description: { contains: q, mode: 'insensitive' } },
-                { projectNumber: { contains: q, mode: 'insensitive' } },
-                { clientName: { contains: q, mode: 'insensitive' } },
-                { organization: { name: { contains: q, mode: 'insensitive' } } },
-              ],
+              ...(q
+                ? {
+                    OR: [
+                      { title: { contains: q, mode: 'insensitive' } },
+                      { description: { contains: q, mode: 'insensitive' } },
+                      { projectNumber: { contains: q, mode: 'insensitive' } },
+                      { clientName: { contains: q, mode: 'insensitive' } },
+                      { organization: { name: { contains: q, mode: 'insensitive' } } },
+                    ],
+                  }
+                : {}),
             },
           ],
         },

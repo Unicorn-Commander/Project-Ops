@@ -101,6 +101,21 @@ describe('McpService tool gating (RBAC + workspace)', () => {
     expect(snap.totals.denied).toBeGreaterThanOrEqual(1);
   });
 
+  it('search_projects schema accepts an id-only lookup and still rejects a bad id', async () => {
+    const svc = makeService('ws-1');
+    await svc.createServerForUser(adminUser(), null, null, null);
+    const schema = z.object(registeredSchemas.get('search_projects').inputSchema);
+    expect(
+      schema.safeParse({ customerOpsCustomerId: '550e8400-e29b-41d4-a716-446655440000' }).success,
+    ).toBe(true);
+    expect(
+      schema.safeParse({ contactOpsContactId: '6ba7b810-9dad-41d1-80b4-00c04fd430c8', limit: 5 })
+        .success,
+    ).toBe(true);
+    expect(schema.safeParse({ query: 'corporal' }).success).toBe(true);
+    expect(schema.safeParse({ customerOpsCustomerId: 'not-a-uuid' }).success).toBe(false);
+  });
+
   it('validates every registered task enum input and keeps lowercase values working', async () => {
     const svc = makeService('ws-1');
     await svc.createServerForUser(adminUser(), null, null, null);
