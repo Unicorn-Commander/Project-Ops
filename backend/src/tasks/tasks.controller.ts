@@ -15,7 +15,7 @@ import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { CreateTaskCommentDto } from './dto/create-task-comment.dto';
 import { UpdateTaskCommentDto } from './dto/update-task-comment.dto';
-import { UpdateTaskStatusDto } from './dto/update-task-status.dto';
+import { TaskCompletionOverrideDto, UpdateTaskStatusDto } from './dto/update-task-status.dto';
 import { AssignTaskDto } from './dto/assign-task.dto';
 import { CreateTaskDependencyDto } from './dto/create-task-dependency.dto';
 import { QueryTasksDto } from './dto/query-tasks.dto';
@@ -139,6 +139,7 @@ export class TasksController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @ApiOperation({ summary: 'Update a task' })
   @ApiResponse({ status: 200, description: 'Task updated successfully' })
+  @ApiResponse({ status: 409, description: 'Task has open dependency blockers' })
   @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Task not found' })
   update(
@@ -154,6 +155,7 @@ export class TasksController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @ApiOperation({ summary: 'Update task status' })
   @ApiResponse({ status: 200, description: 'Task status updated successfully' })
+  @ApiResponse({ status: 409, description: 'Task has open dependency blockers' })
   @ApiResponse({ status: 404, description: 'Task not found' })
   updateStatus(
     @CurrentWorkspace() workspaceId: string,
@@ -161,7 +163,13 @@ export class TasksController {
     @Param('id') id: string,
     @Body() updateStatusDto: UpdateTaskStatusDto,
   ) {
-    return this.tasksService.updateStatus(workspaceId, user, id, updateStatusDto.status);
+    return this.tasksService.updateStatus(
+      workspaceId,
+      user,
+      id,
+      updateStatusDto.status,
+      updateStatusDto.force === true || updateStatusDto.overrideDependencies === true,
+    );
   }
 
   @Patch(':id/assign')
@@ -182,13 +190,20 @@ export class TasksController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @ApiOperation({ summary: 'Mark task as completed' })
   @ApiResponse({ status: 200, description: 'Task marked as completed' })
+  @ApiResponse({ status: 409, description: 'Task has open dependency blockers' })
   @ApiResponse({ status: 404, description: 'Task not found' })
   markComplete(
     @CurrentWorkspace() workspaceId: string,
     @CurrentUser() user: User,
     @Param('id') id: string,
+    @Body() overrideDto: TaskCompletionOverrideDto,
   ) {
-    return this.tasksService.markComplete(workspaceId, user, id);
+    return this.tasksService.markComplete(
+      workspaceId,
+      user,
+      id,
+      overrideDto?.force === true || overrideDto?.overrideDependencies === true,
+    );
   }
 
   @Delete(':id')

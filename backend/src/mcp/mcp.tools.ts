@@ -8,13 +8,16 @@
  */
 
 import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import {
   ApprovalEntityType,
   AutomationTrigger,
+  AuditAction,
   CustomFieldEntity,
   CustomFieldType,
   Prisma,
   ProjectStatus,
+  TaskDependencyType,
   TaskPriority,
   TaskStatus,
   TaskType,
@@ -48,6 +51,7 @@ import type { ApprovalsService } from '../client-portal/approvals/approvals.serv
 // Member-management spine (invite/role/remove/list). Type-only — erased at
 // compile time, so no runtime cycle. Control-plane (non-RLS) service.
 import type { WorkspacesService } from '../workspaces/workspaces.service';
+import type { AuditService } from '../audit/audit.service';
 import { clampLimit, clampOffset } from '../common/pagination/clamp';
 import { withProjectQuote, withTaskMetadataForRole } from '../common/serializers/client-metadata';
 import { coerceDateOnly, serializeDateOnlyFields } from '../common/time/business-time';
@@ -208,6 +212,18 @@ export function normalizeTaskType(value?: string): TaskType | undefined {
   throw new Error(`Invalid task type "${value}". Valid values: ${valid.join(', ')}.`);
 }
 
+function normalizeTaskDependencyType(value?: string): TaskDependencyType {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return TaskDependencyType.FINISH_TO_START;
+  }
+  const normalized = String(value).trim().toUpperCase();
+  const valid = Object.values(TaskDependencyType) as string[];
+  if (valid.includes(normalized)) {
+    return normalized as TaskDependencyType;
+  }
+  throw new Error(`Invalid task dependency type "${value}". Valid values: ${valid.join(', ')}.`);
+}
+
 export class ProjectOpsTools {
   constructor(
     private readonly prisma: PrismaService,
@@ -238,6 +254,9 @@ export class ProjectOpsTools {
     // exactly like REST's @CurrentWorkspace. Null preserves the prior
     // behavior: token claim → the user's default membership.
     private readonly requestWorkspaceId: string | null = null,
+    // Optional for pure MCP tool unit tests; the application wires AuditModule
+    // so dependency overrides are recorded in the workspace audit log.
+    private readonly audit?: AuditService,
   ) {}
 
   // ── Workspace (suite tenancy, Phase 2 G2) ────────────────
@@ -294,6 +313,135 @@ export class ProjectOpsTools {
     const workspaceId = await ws.resolveAuthorized(user, this.requestWorkspaceId);
     const result = await ws.runForUser(user, (tx) => fn(tx, workspaceId), workspaceId);
     return serializeDateOnlyFields(result);
+  }
+
+  private async loadOpenBlockers(
+    tx: WorkspaceTxClient,
+    taskId: string,
+  ): Promise<Array<{ id: string; title: string; status: TaskStatus }>> {
+    if (!tx.taskDependency?.findMany) return [];
+    const dependencies = await tx.taskDependency.findMany({
+      where: {
+        successorId: taskId,
+        type: TaskDependencyType.FINISH_TO_START,
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        predecessor: { select: { id: true, title: true, status: true } },
+      },
+    });
+
+    return dependencies
+      .filter(
+        (dependency: any) =>
+          dependency.predecessor.status !== TaskStatus.COMPLETED &&
+          dependency.predecessor.status !== TaskStatus.CANCELLED,
+      )
+      .map((dependency: any) => dependency.predecessor);
+  }
+
+  private async loadBlockedTaskIds(tx: WorkspaceTxClient, taskIds: string[]): Promise<Set<string>> {
+    if (taskIds.length === 0 || !tx.taskDependency?.findMany) return new Set();
+    const dependencies = await tx.taskDependency.findMany({
+      where: {
+        successorId: { in: taskIds },
+        type: TaskDependencyType.FINISH_TO_START,
+      },
+      select: {
+        successorId: true,
+        predecessor: { select: { status: true } },
+      },
+    });
+    return new Set(
+      dependencies
+        .filter(
+          (dependency: any) =>
+            dependency.predecessor.status !== TaskStatus.COMPLETED &&
+            dependency.predecessor.status !== TaskStatus.CANCELLED,
+        )
+        .map((dependency: any) => dependency.successorId),
+    );
+  }
+
+  private async canOverrideDependencies(user: User, workspaceId: string): Promise<boolean> {
+    const workspace = this.requireWorkspace() as WorkspaceContextService & {
+      hasManagementRole?: (actingUser: User, activeWorkspaceId: string) => Promise<boolean>;
+    };
+    if (typeof workspace.hasManagementRole === 'function') {
+      return workspace.hasManagementRole(user, workspaceId);
+    }
+    // Minimal test doubles do not carry the workspace role helper. Preserve the
+    // legacy app-role behavior only for that isolated fallback.
+    return user.role === UserRole.ADMIN || user.role === UserRole.MANAGER;
+  }
+
+  private async assertCompletionAllowed(
+    tx: WorkspaceTxClient,
+    workspaceId: string,
+    user: User,
+    taskId: string,
+    overrideDependencies: boolean,
+  ): Promise<Array<{ id: string; title: string; status: TaskStatus }>> {
+    const blockers = await this.loadOpenBlockers(tx, taskId);
+    if (blockers.length === 0) return blockers;
+
+    if (!overrideDependencies) {
+      throw new ConflictException({
+        message: `Task ${taskId} cannot be completed while dependency blockers remain`,
+        openBlockers: blockers,
+      });
+    }
+    if (!(await this.canOverrideDependencies(user, workspaceId))) {
+      throw new ForbiddenException(
+        'Dependency completion overrides require a workspace OWNER, ADMIN, or MANAGER role',
+      );
+    }
+    return blockers;
+  }
+
+  private async auditDependencyOverride(
+    workspaceId: string,
+    user: User,
+    taskId: string,
+    projectId: string,
+    blockers: Array<{ id: string; title: string; status: TaskStatus }>,
+  ): Promise<void> {
+    if (!this.audit) return;
+    await this.audit.log({
+      workspaceId,
+      userId: user.id,
+      projectId,
+      action: AuditAction.UPDATE,
+      resource: 'Task',
+      resourceId: taskId,
+      details: { event: 'dependency_completion_override', blockers },
+    });
+  }
+
+  private async wouldCreateDependencyCycle(
+    tx: WorkspaceTxClient,
+    predecessorId: string,
+    successorId: string,
+  ): Promise<boolean> {
+    if (predecessorId === successorId) return true;
+    const visited = new Set<string>();
+    let frontier = [predecessorId];
+    while (frontier.length > 0) {
+      const edges = await tx.taskDependency.findMany({
+        where: { successorId: { in: frontier } },
+        select: { predecessorId: true },
+      });
+      const next: string[] = [];
+      for (const edge of edges) {
+        if (edge.predecessorId === successorId) return true;
+        if (!visited.has(edge.predecessorId)) {
+          visited.add(edge.predecessorId);
+          next.push(edge.predecessorId);
+        }
+      }
+      frontier = next;
+    }
+    return false;
   }
 
   // ── Time tracking tools ──────────────────────────────────
@@ -476,8 +624,8 @@ export class ProjectOpsTools {
     // numbers never collide, so there's no ambiguity. AND-nest so this composes
     // with the visibility filter, which is itself an OR for STAFF/CLIENT.
     const key = (args.id ?? args.projectNumber)!;
-    const project = await this.runScoped(user, (tx) =>
-      tx.project.findFirst({
+    const project = await this.runScoped(user, async (tx) => {
+      const result = await tx.project.findFirst({
         where: {
           AND: [buildVisibilityFilter(user), { OR: [{ id: key }, { projectNumber: key }] }],
         },
@@ -514,8 +662,21 @@ export class ProjectOpsTools {
           },
           _count: { select: { tasks: true, comments: true, documents: true } },
         },
-      }),
-    );
+      });
+      if (!result || !result.tasks) return result;
+
+      const blockedTaskIds = await this.loadBlockedTaskIds(
+        tx,
+        result.tasks.map((task) => task.id),
+      );
+      return {
+        ...result,
+        tasks: result.tasks.map((task) => ({
+          ...task,
+          isBlocked: blockedTaskIds.has(task.id),
+        })),
+      };
+    });
     if (!project) {
       throw new Error(`Project not found or you don't have access`);
     }
@@ -524,8 +685,8 @@ export class ProjectOpsTools {
 
   async listMyTasks(user: User, args: { status?: string; limit?: number }) {
     const status = normalizeTaskStatus(args.status);
-    const tasks = await this.runScoped(user, (tx) =>
-      tx.task.findMany({
+    const tasks = await this.runScoped(user, async (tx) => {
+      const taskRows = await tx.task.findMany({
         where: {
           assignedToId: user.id,
           ...(status ? { status } : {}),
@@ -543,8 +704,16 @@ export class ProjectOpsTools {
             select: { id: true, projectNumber: true, title: true },
           },
         },
-      }),
-    );
+      });
+      const blockedTaskIds = await this.loadBlockedTaskIds(
+        tx,
+        taskRows.map((task) => task.id),
+      );
+      return taskRows.map((task) => ({
+        ...task,
+        isBlocked: blockedTaskIds.has(task.id),
+      }));
+    });
     return { tasks, count: tasks.length };
   }
 
@@ -555,10 +724,8 @@ export class ProjectOpsTools {
    * project summary, comment/subtask counts, and dependency edges
    * (dependsOn + blocks) when present.
    *
-   * Note: `isBlocked` / enforcement of incomplete predecessors is NOT
-   * computed here — that lands with feat/p00127-dep-enforcement-and-pats
-   * (TasksService.loadBlockedState). Until that merges, agents can infer
-   * open blockers from `dependencies.dependsOn` (predecessor status).
+   * `isBlocked` is true when a FINISH_TO_START predecessor is neither
+   * COMPLETED nor CANCELLED; `openBlockers` carries those predecessor summaries.
    */
   async getTask(user: User, args: { taskId: string }) {
     if (!args.taskId || !String(args.taskId).trim()) {
@@ -660,11 +827,26 @@ export class ProjectOpsTools {
         }),
       ]);
 
+      const openBlockers = dependsOn
+        .filter(
+          (dependency) =>
+            dependency.type === TaskDependencyType.FINISH_TO_START &&
+            dependency.predecessor.status !== TaskStatus.COMPLETED &&
+            dependency.predecessor.status !== TaskStatus.CANCELLED,
+        )
+        .map(({ predecessor }) => ({
+          id: predecessor.id,
+          title: predecessor.title,
+          status: predecessor.status,
+        }));
+
       return {
         ...task,
         commentsCount: task._count.comments,
         subtasksCount: task._count.subtasks,
         dependencies: { dependsOn, blocks },
+        isBlocked: openBlockers.length > 0,
+        openBlockers,
       };
     });
 
@@ -766,6 +948,11 @@ export class ProjectOpsTools {
         tx.task.count({ where }),
       ]);
 
+      const blockedTaskIds = await this.loadBlockedTaskIds(
+        tx,
+        tasks.map((task) => task.id),
+      );
+
       return {
         project,
         tasks: tasks.map(({ _count, ...t }) =>
@@ -774,6 +961,7 @@ export class ProjectOpsTools {
               ...t,
               commentsCount: _count.comments,
               subtasksCount: _count.subtasks,
+              isBlocked: blockedTaskIds.has(t.id),
             },
             user,
           ),
@@ -1548,6 +1736,7 @@ export class ProjectOpsTools {
       description?: string;
       type?: string;
       priority?: string;
+      status?: string;
       dueDate?: string | null;
       assignedToId?: string;
       projectId?: string;
@@ -1557,17 +1746,22 @@ export class ProjectOpsTools {
       recurrenceRule?: string | null;
       estimatedHours?: number | null;
       fixedAmount?: number | null;
+      force?: boolean;
+      overrideDependencies?: boolean;
     },
   ) {
     this.assertCanWrite(user);
 
     const type = args.type !== undefined ? normalizeTaskType(args.type) : undefined;
     const priority = args.priority !== undefined ? normalizeTaskPriority(args.priority) : undefined;
+    const status = args.status !== undefined ? normalizeTaskStatus(args.status) : undefined;
+    const dependencyOverrideRequested = args.force === true || args.overrideDependencies === true;
     const data: Prisma.TaskUpdateInput = {};
     if (args.title !== undefined) data.title = args.title;
     if (args.description !== undefined) data.description = args.description;
     if (type !== undefined) data.type = type;
     if (priority !== undefined) data.priority = priority;
+    if (status !== undefined) data.status = status;
     if (args.dueDate !== undefined) {
       data.dueDate = args.dueDate ? coerceDateOnly(args.dueDate) : null;
     }
@@ -1578,70 +1772,106 @@ export class ProjectOpsTools {
     if (args.estimatedHours !== undefined) data.estimatedHours = args.estimatedHours;
     if (args.fixedAmount !== undefined) data.fixedAmount = args.fixedAmount as any;
 
-    const updated = await this.runScoped(user, async (tx, workspaceId) => {
-      const found = await tx.task.findFirst({
-        where: {
-          id: args.taskId,
-          project: buildVisibilityFilter(user),
-        },
-        select: { id: true, projectId: true, metadata: true, fixedAmount: true, invoicedAt: true },
-      });
-      if (!found) {
-        throw new Error('Task not found or no access');
-      }
-      if (args.fixedAmount !== undefined && found.invoicedAt) {
-        const next = args.fixedAmount == null ? null : new Decimal(args.fixedAmount).toFixed(2);
-        const prev = found.fixedAmount == null ? null : new Decimal(found.fixedAmount).toFixed(2);
-        if (next !== prev) {
-          throw new Error('This flat fee was already invoiced and cannot be changed');
-        }
-      }
-
-      if (args.projectId || args.projectNumber) {
-        const target = await tx.project.findFirst({
+    const { updated, dependencyOverrideBlockers, activeWorkspaceId } = await this.runScoped(
+      user,
+      async (tx, workspaceId) => {
+        const found = await tx.task.findFirst({
           where: {
-            ...buildVisibilityFilter(user),
-            ...(args.projectId ? { id: args.projectId } : { projectNumber: args.projectNumber! }),
+            id: args.taskId,
+            project: buildVisibilityFilter(user),
           },
-          select: { id: true },
+          select: {
+            id: true,
+            projectId: true,
+            status: true,
+            metadata: true,
+            fixedAmount: true,
+            invoicedAt: true,
+          },
         });
-        if (!target) {
-          throw new Error('Target project not found or no access');
+        if (!found) {
+          throw new Error('Task not found or no access');
         }
-        data.project = { connect: { id: target.id } };
-      }
 
-      // Custom-field VALUES: validate on this tx and merge into the EXISTING
-      // metadata (read-modify-write) so other metadata keys are preserved.
-      if (args.customFields !== undefined) {
-        const merged = await this.resolveTaskMetadata(
-          tx,
-          workspaceId,
-          found.metadata,
-          args.customFields,
-        );
-        if (merged !== undefined) data.metadata = merged;
-      }
+        const statusChanging = status !== undefined && status !== found.status;
+        const dependencyOverrideBlockers =
+          statusChanging && status === TaskStatus.COMPLETED
+            ? await this.assertCompletionAllowed(
+                tx,
+                workspaceId,
+                user,
+                found.id,
+                dependencyOverrideRequested,
+              )
+            : [];
+        if (statusChanging) {
+          data.completedAt = status === TaskStatus.COMPLETED ? new Date() : null;
+        }
+        if (args.fixedAmount !== undefined && found.invoicedAt) {
+          const next = args.fixedAmount == null ? null : new Decimal(args.fixedAmount).toFixed(2);
+          const prev = found.fixedAmount == null ? null : new Decimal(found.fixedAmount).toFixed(2);
+          if (next !== prev) {
+            throw new Error('This flat fee was already invoiced and cannot be changed');
+          }
+        }
 
-      return tx.task.update({
-        where: { id: found.id },
-        data,
-        select: {
-          id: true,
-          title: true,
-          status: true,
-          priority: true,
-          dueDate: true,
-          recurrenceRule: true,
-          estimatedHours: true,
-          fixedAmount: true,
-          invoicedAt: true,
-          metadata: true,
-          project: { select: { id: true, projectNumber: true, title: true } },
-          assignedTo: { select: { id: true, firstName: true, lastName: true } },
-        },
-      });
-    });
+        if (args.projectId || args.projectNumber) {
+          const target = await tx.project.findFirst({
+            where: {
+              ...buildVisibilityFilter(user),
+              ...(args.projectId ? { id: args.projectId } : { projectNumber: args.projectNumber! }),
+            },
+            select: { id: true },
+          });
+          if (!target) {
+            throw new Error('Target project not found or no access');
+          }
+          data.project = { connect: { id: target.id } };
+        }
+
+        // Custom-field VALUES: validate on this tx and merge into the EXISTING
+        // metadata (read-modify-write) so other metadata keys are preserved.
+        if (args.customFields !== undefined) {
+          const merged = await this.resolveTaskMetadata(
+            tx,
+            workspaceId,
+            found.metadata,
+            args.customFields,
+          );
+          if (merged !== undefined) data.metadata = merged;
+        }
+
+        const updated = await tx.task.update({
+          where: { id: found.id },
+          data,
+          select: {
+            id: true,
+            projectId: true,
+            title: true,
+            status: true,
+            priority: true,
+            dueDate: true,
+            recurrenceRule: true,
+            estimatedHours: true,
+            fixedAmount: true,
+            invoicedAt: true,
+            metadata: true,
+            project: { select: { id: true, projectNumber: true, title: true } },
+            assignedTo: { select: { id: true, firstName: true, lastName: true } },
+          },
+        });
+        return { updated, dependencyOverrideBlockers, activeWorkspaceId: workspaceId };
+      },
+    );
+    if (dependencyOverrideBlockers.length > 0) {
+      await this.auditDependencyOverride(
+        activeWorkspaceId,
+        user,
+        updated.id,
+        updated.projectId,
+        dependencyOverrideBlockers,
+      );
+    }
     this.logger.log(
       `MCP update_task: user=${user.email} task=${updated.id} project=${updated.project.projectNumber}`,
     );
@@ -1825,6 +2055,10 @@ export class ProjectOpsTools {
           },
         },
       });
+      const blockedTaskIds = await this.loadBlockedTaskIds(
+        tx,
+        subtasks.map((task) => task.id),
+      );
 
       return {
         parent: {
@@ -1837,6 +2071,7 @@ export class ProjectOpsTools {
           ...t,
           commentsCount: _count.comments,
           subtasksCount: _count.subtasks,
+          isBlocked: blockedTaskIds.has(t.id),
         })),
       };
     });
@@ -1919,36 +2154,164 @@ export class ProjectOpsTools {
     return this.triage.applyDecisions(workspaceId, user, args.decisions);
   }
 
-  async updateTaskStatus(user: User, args: { taskId: string; status: string }) {
+  async updateTaskStatus(
+    user: User,
+    args: {
+      taskId: string;
+      status: string;
+      force?: boolean;
+      overrideDependencies?: boolean;
+    },
+  ) {
     this.assertCanWrite(user);
     const status = normalizeTaskStatus(args.status);
     if (!status) {
       throw new Error('status is required');
     }
-    const updated = await this.runScoped(user, async (tx) => {
-      const found = await tx.task.findFirst({
-        where: {
-          id: args.taskId,
-          project: buildVisibilityFilter(user),
-        },
-        select: { id: true },
-      });
-      if (!found) {
-        throw new Error('Task not found or no access');
-      }
-      return tx.task.update({
-        where: { id: found.id },
-        data: {
-          status,
-          ...(status === 'COMPLETED' ? { completedAt: new Date() } : {}),
-        },
-        select: { id: true, title: true, status: true, completedAt: true },
-      });
-    });
+    const dependencyOverrideRequested = args.force === true || args.overrideDependencies === true;
+    const { updated, dependencyOverrideBlockers, activeWorkspaceId } = await this.runScoped(
+      user,
+      async (tx, workspaceId) => {
+        const found = await tx.task.findFirst({
+          where: {
+            id: args.taskId,
+            project: buildVisibilityFilter(user),
+          },
+          select: { id: true, projectId: true, status: true },
+        });
+        if (!found) {
+          throw new Error('Task not found or no access');
+        }
+
+        const dependencyOverrideBlockers =
+          status === TaskStatus.COMPLETED && found.status !== TaskStatus.COMPLETED
+            ? await this.assertCompletionAllowed(
+                tx,
+                workspaceId,
+                user,
+                found.id,
+                dependencyOverrideRequested,
+              )
+            : [];
+        const updated = await tx.task.update({
+          where: { id: found.id },
+          data: {
+            status,
+            ...(status === TaskStatus.COMPLETED
+              ? { completedAt: new Date() }
+              : { completedAt: null }),
+          },
+          select: { id: true, projectId: true, title: true, status: true, completedAt: true },
+        });
+        return { updated, dependencyOverrideBlockers, activeWorkspaceId: workspaceId };
+      },
+    );
+    if (dependencyOverrideBlockers.length > 0) {
+      await this.auditDependencyOverride(
+        activeWorkspaceId,
+        user,
+        updated.id,
+        updated.projectId,
+        dependencyOverrideBlockers,
+      );
+    }
     this.logger.log(
       `MCP update_task_status: user=${user.email} task=${updated.id} → ${updated.status}`,
     );
     return updated;
+  }
+
+  /** Add a FINISH_TO_START dependency: taskId depends on dependsOnTaskId. */
+  async addTaskDependency(
+    user: User,
+    args: { taskId: string; dependsOnTaskId: string; type?: string },
+  ) {
+    this.assertCanWrite(user);
+    if (!args?.taskId || !args?.dependsOnTaskId) {
+      throw new Error('taskId and dependsOnTaskId are required');
+    }
+    const type = normalizeTaskDependencyType(args.type);
+
+    return this.runScoped(user, async (tx, workspaceId) => {
+      const [successor, predecessor] = await Promise.all([
+        tx.task.findFirst({
+          where: { id: args.taskId, project: buildVisibilityFilter(user) },
+          select: { id: true, workspaceId: true },
+        }),
+        tx.task.findFirst({
+          where: { id: args.dependsOnTaskId, project: buildVisibilityFilter(user) },
+          select: { id: true, workspaceId: true },
+        }),
+      ]);
+      if (!successor || (successor.workspaceId && successor.workspaceId !== workspaceId)) {
+        throw new Error('Task not found or no access');
+      }
+      if (!predecessor || (predecessor.workspaceId && predecessor.workspaceId !== workspaceId)) {
+        throw new Error('Task not found or no access');
+      }
+      if (args.taskId === args.dependsOnTaskId) {
+        throw new BadRequestException('A task cannot depend on itself');
+      }
+      if (await this.wouldCreateDependencyCycle(tx, predecessor.id, successor.id)) {
+        throw new BadRequestException('This dependency would create a cycle in the task graph');
+      }
+
+      try {
+        return await tx.taskDependency.create({
+          data: {
+            workspaceId,
+            predecessorId: predecessor.id,
+            successorId: successor.id,
+            type,
+            createdById: user.id,
+          },
+          include: {
+            predecessor: { select: { id: true, title: true, status: true } },
+            successor: { select: { id: true, title: true, status: true } },
+          },
+        });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          throw new BadRequestException('This dependency already exists between these two tasks');
+        }
+        throw error;
+      }
+    });
+  }
+
+  /** Remove a dependency after re-checking both endpoint visibility/workspace. */
+  async removeTaskDependency(user: User, args: { dependencyId: string }) {
+    this.assertCanWrite(user);
+    if (!args?.dependencyId) {
+      throw new Error('dependencyId is required');
+    }
+
+    return this.runScoped(user, async (tx, workspaceId) => {
+      const dependency = await tx.taskDependency.findUnique({
+        where: { id: args.dependencyId },
+        select: { id: true, workspaceId: true, predecessorId: true, successorId: true },
+      });
+      if (!dependency || dependency.workspaceId !== workspaceId) {
+        throw new Error('Dependency not found or no access');
+      }
+
+      const [predecessor, successor] = await Promise.all([
+        tx.task.findFirst({
+          where: { id: dependency.predecessorId, project: buildVisibilityFilter(user) },
+          select: { id: true },
+        }),
+        tx.task.findFirst({
+          where: { id: dependency.successorId, project: buildVisibilityFilter(user) },
+          select: { id: true },
+        }),
+      ]);
+      if (!predecessor || !successor) {
+        throw new Error('Dependency not found or no access');
+      }
+
+      await tx.taskDependency.delete({ where: { id: dependency.id } });
+      return { deleted: true, dependencyId: dependency.id };
+    });
   }
 
   /**

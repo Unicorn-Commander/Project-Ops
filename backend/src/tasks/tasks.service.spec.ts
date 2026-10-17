@@ -1,6 +1,11 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { TasksService } from './tasks.service';
-import { TaskDependencyType, UserRole } from '@prisma/client';
+import { TaskDependencyType, TaskStatus, UserRole } from '@prisma/client';
 import { DependencyDirection } from './dto/create-task-dependency.dto';
 import { TaskSortBy, TaskSortDir } from './dto/query-tasks.dto';
 import { resolveField } from '../automations/automation-conditions';
@@ -40,6 +45,8 @@ function makeService(opts: {
   depCreate?: (args: any) => Promise<any>;
   depDelete?: (args: any) => Promise<any>;
   validateValues?: (tx: any, ws: string, entity: string, incoming: any) => Promise<any>;
+  hasManagementRole?: (user: any, workspaceId: string) => Promise<boolean>;
+  auditLog?: (args: any) => Promise<any>;
 }) {
   const tx = {
     project: {
@@ -76,10 +83,14 @@ function makeService(opts: {
     },
   };
 
-  const workspaceContext = {
+  const workspaceContext: any = {
     runForUser: jest.fn(async (_u: any, fn: (t: any) => any) => fn(tx)),
   };
+  if (opts.hasManagementRole) {
+    workspaceContext.hasManagementRole = jest.fn(opts.hasManagementRole);
+  }
   const emit = jest.fn();
+  const audit = { log: jest.fn(opts.auditLog ?? (async () => null)) };
   const customFields = opts.validateValues
     ? { validateValues: jest.fn(opts.validateValues) }
     : undefined;
@@ -91,9 +102,10 @@ function makeService(opts: {
     { get: (_k: string, d: any) => d } as any, // configService
     { emit } as any, // eventEmitter
     customFields as any, // CustomFieldsValidator (optional)
+    audit as any, // AuditService (optional)
   );
 
-  return { svc, tx, emit, customFields };
+  return { svc, tx, emit, customFields, audit, workspaceContext };
 }
 
 describe('TasksService.createInTx — subtask parent validation', () => {
@@ -182,6 +194,36 @@ describe('TasksService.findAll — search / window / sort', () => {
     expect(args.where.parentTaskId).toBe('parent-1');
     expect(args.include._count.select.subtasks).toBe(true);
   });
+
+  it('computes isBlocked for a page with one batched dependency query', async () => {
+    const { svc, tx } = makeService({
+      taskFindMany: async () => [{ id: 't1', title: 'Successor', status: TaskStatus.PENDING }],
+      depFindMany: async (args: any) =>
+        args.where?.successorId?.in
+          ? [{ successorId: 't1', predecessor: { status: TaskStatus.PENDING } }]
+          : [],
+    });
+
+    const result: any = await svc.findAll('ws1', user, {});
+
+    expect(result.data[0].isBlocked).toBe(true);
+    expect((tx.taskDependency.findMany as jest.Mock).mock.calls).toHaveLength(1);
+  });
+
+  it('returns openBlockers and isBlocked on REST task detail', async () => {
+    const { svc } = makeService({
+      taskFindUnique: async () => ({ id: 't1', title: 'Successor', status: TaskStatus.PENDING }),
+      depFindMany: async (args: any) =>
+        args.where?.successorId === 't1'
+          ? [{ predecessor: { id: 'p1', title: 'Predecessor', status: TaskStatus.IN_PROGRESS } }]
+          : [],
+    });
+
+    await expect(svc.findOne('ws1', user, 't1')).resolves.toMatchObject({
+      isBlocked: true,
+      openBlockers: [{ id: 'p1', title: 'Predecessor', status: TaskStatus.IN_PROGRESS }],
+    });
+  });
 });
 
 describe('TasksService.addDependency — cycle prevention', () => {
@@ -236,6 +278,22 @@ describe('TasksService.addDependency — cycle prevention', () => {
     expect(createArgs.data.workspaceId).toBe('ws1');
     expect(createArgs.data.createdById).toBe('u1');
     expect(createArgs.data.type).toBe(TaskDependencyType.START_TO_START);
+  });
+
+  it('rejects an endpoint from another workspace', async () => {
+    const { svc } = makeService({
+      taskFindUnique: async (args: any) =>
+        args.where.id === 'foreign'
+          ? { id: 'foreign', workspaceId: 'ws-other' }
+          : { id: 'local', workspaceId: 'ws1' },
+    });
+
+    await expect(
+      svc.addDependency('ws1', user, 'local', {
+        taskId: 'foreign',
+        direction: DependencyDirection.DEPENDS_ON,
+      } as any),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('maps BLOCKS direction to (predecessor=urlTask, successor=other)', async () => {
@@ -482,6 +540,110 @@ describe('TasksService.updateStatus — status_changed / completed events', () =
     });
     await svc.updateStatus('ws1', user, 't1', 'IN_PROGRESS' as any);
     expect(emit).not.toHaveBeenCalled();
+  });
+});
+
+describe('TasksService dependency blocking and completion overrides', () => {
+  const blocker = {
+    predecessor: { id: 'pred-1', title: 'Finish the predecessor', status: TaskStatus.PENDING },
+  };
+
+  function blockedService(overrides: Parameters<typeof makeService>[0] = {}) {
+    return makeService({
+      taskFindUnique: async () => ({
+        id: 't1',
+        status: TaskStatus.IN_PROGRESS,
+        projectId: 'p1',
+        createdById: 'u1',
+        assignedToId: null,
+      }),
+      taskUpdate: async (args: any) => ({
+        id: 't1',
+        projectId: 'p1',
+        assignedToId: null,
+        ...args.data,
+      }),
+      depFindMany: async (args: any) => (args.where?.successorId === 't1' ? [blocker] : []),
+      ...overrides,
+    });
+  }
+
+  it('returns 409 with the open blockers instead of completing', async () => {
+    const { svc, tx } = blockedService();
+
+    let error: any;
+    try {
+      await svc.updateStatus('ws1', user, 't1', TaskStatus.COMPLETED);
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect(error.getStatus()).toBe(409);
+    expect(error.getResponse()).toMatchObject({
+      openBlockers: [{ id: 'pred-1', title: 'Finish the predecessor', status: TaskStatus.PENDING }],
+    });
+    expect(tx.task.update).not.toHaveBeenCalled();
+  });
+
+  it('does not treat a CANCELLED predecessor as an open blocker', async () => {
+    const { svc, tx } = blockedService({
+      depFindMany: async (args: any) =>
+        args.where?.successorId === 't1'
+          ? [{ predecessor: { id: 'pred-1', title: 'Cancelled', status: TaskStatus.CANCELLED } }]
+          : [],
+    });
+
+    await expect(svc.updateStatus('ws1', user, 't1', TaskStatus.COMPLETED)).resolves.toBeDefined();
+    expect(tx.task.update).toHaveBeenCalled();
+  });
+
+  it('allows a workspace MANAGER override and audits the named blockers', async () => {
+    const manager = { ...user, role: UserRole.MANAGER } as any;
+    const { svc, audit } = blockedService({
+      hasManagementRole: async () => true,
+    });
+
+    await svc.updateStatus('ws1', manager, 't1', TaskStatus.COMPLETED, true);
+
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: 'ws1',
+        userId: manager.id,
+        resource: 'Task',
+        resourceId: 't1',
+        details: expect.objectContaining({
+          event: 'dependency_completion_override',
+          blockers: [{ id: 'pred-1', title: 'Finish the predecessor', status: TaskStatus.PENDING }],
+        }),
+      }),
+    );
+  });
+
+  it('refuses an override from a workspace MEMBER', async () => {
+    const member = { ...user, role: UserRole.STAFF } as any;
+    const { svc, tx } = blockedService({
+      hasManagementRole: async () => false,
+    });
+
+    await expect(
+      svc.updateStatus('ws1', member, 't1', TaskStatus.COMPLETED, true),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(tx.task.update).not.toHaveBeenCalled();
+  });
+
+  it('applies the same gate to the generic REST update path', async () => {
+    const { svc, tx } = blockedService();
+    await expect(
+      svc.update('ws1', user, 't1', { status: TaskStatus.COMPLETED } as any, UserRole.ADMIN),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.task.update).not.toHaveBeenCalled();
+  });
+
+  it('applies the same gate to markComplete', async () => {
+    const { svc, tx } = blockedService();
+    await expect(svc.markComplete('ws1', user, 't1')).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.task.update).not.toHaveBeenCalled();
   });
 });
 

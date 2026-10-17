@@ -12,8 +12,8 @@
  * to prevent.
  */
 
-import { ForbiddenException } from '@nestjs/common';
-import { User, UserRole } from '@prisma/client';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { TaskStatus, User, UserRole } from '@prisma/client';
 import {
   ProjectOpsTools,
   buildVisibilityFilter,
@@ -104,11 +104,11 @@ describe('normalizeProjectStatus — forgiving status filter', () => {
 describe('ProjectOpsTools.getProject — project-number-in-id forgiveness', () => {
   const WS_ID = 'ws-1';
 
-  function makeTools(findFirst: jest.Mock) {
+  function makeTools(findFirst: jest.Mock, depFindMany: jest.Mock = jest.fn(async () => [])) {
     const workspace = {
       resolveAuthorized: async () => WS_ID,
       runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) =>
-        fn({ project: { findFirst } }, WS_ID),
+        fn({ project: { findFirst }, taskDependency: { findMany: depFindMany } }, WS_ID),
     } as any;
     return new ProjectOpsTools(
       {} as any,
@@ -145,6 +145,25 @@ describe('ProjectOpsTools.getProject — project-number-in-id forgiveness', () =
       /Either id or projectNumber/,
     );
     expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  it('adds a batched isBlocked flag to recent project tasks', async () => {
+    const findFirst = jest.fn(async () => ({
+      id: 'p1',
+      projectNumber: 'P-00110',
+      tasks: [{ id: 't1', title: 'Successor', status: TaskStatus.PENDING }],
+    }));
+    const depFindMany = jest.fn(async () => [
+      { successorId: 't1', predecessor: { status: TaskStatus.IN_PROGRESS } },
+    ]);
+    const tools = makeTools(findFirst, depFindMany);
+
+    const result: any = await tools.getProject(baseUser({ role: UserRole.STAFF }), {
+      id: 'P-00110',
+    });
+
+    expect(result.tasks[0].isBlocked).toBe(true);
+    expect(depFindMany).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -956,6 +975,10 @@ describe('ProjectOpsTools.getTask — full detail + visibility', () => {
     expect(result.subtasksCount).toBe(1);
     expect(result.dependencies.dependsOn).toHaveLength(1);
     expect(result.dependencies.blocks).toEqual([]);
+    expect(result.isBlocked).toBe(true);
+    expect(result.openBlockers).toEqual([
+      { id: 'pred1', title: 'Predecessor', status: TaskStatus.PENDING },
+    ]);
     expect(result.description).toBe('full body');
     expect(result.project.projectNumber).toBe('P-00110');
     expect(result.assignedTo?.id).toBe('u2');
@@ -1154,6 +1177,235 @@ describe('ProjectOpsTools.listProjectTasks — filters + pagination window', () 
         projectId: 'missing',
       }),
     ).rejects.toThrow(/Project not found or you don't have access/);
+  });
+});
+
+describe('ProjectOpsTools dependency enforcement', () => {
+  const WS_ID = 'ws-1';
+
+  function makeTools(overrides?: {
+    taskFindFirst?: jest.Mock;
+    taskUpdate?: jest.Mock;
+    depFindMany?: jest.Mock;
+    depFindUnique?: jest.Mock;
+    hasManagementRole?: jest.Mock;
+  }) {
+    const taskFindFirst =
+      overrides?.taskFindFirst ??
+      jest.fn(async () => ({
+        id: 't1',
+        workspaceId: WS_ID,
+        projectId: 'p1',
+        status: TaskStatus.IN_PROGRESS,
+      }));
+    const taskUpdate =
+      overrides?.taskUpdate ??
+      jest.fn(async (args: any) => ({
+        id: 't1',
+        projectId: 'p1',
+        title: 'Successor',
+        ...args.data,
+      }));
+    const depFindMany = overrides?.depFindMany ?? jest.fn(async () => []);
+    const depFindUnique =
+      overrides?.depFindUnique ??
+      jest.fn(async () => ({
+        id: 'dep-1',
+        workspaceId: WS_ID,
+        predecessorId: 'pred-1',
+        successorId: 't1',
+      }));
+    const taskDependency = {
+      findMany: depFindMany,
+      findUnique: depFindUnique,
+      create: jest.fn(async (args: any) => ({ id: 'dep-1', ...args.data })),
+      delete: jest.fn(async () => undefined),
+    };
+    const tx = {
+      task: { findFirst: taskFindFirst, update: taskUpdate },
+      taskDependency,
+    };
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) => fn(tx, WS_ID),
+      hasManagementRole: overrides?.hasManagementRole ?? jest.fn(async () => false),
+    } as any;
+    const audit = { log: jest.fn(async () => null) };
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      audit as any,
+    );
+    return { tools, tx, taskFindFirst, taskUpdate, depFindMany, audit, workspace };
+  }
+
+  it('rejects self-dependencies and cycles', async () => {
+    const self = makeTools();
+    await expect(
+      self.tools.addTaskDependency(baseUser({ role: UserRole.STAFF }), {
+        taskId: 't1',
+        dependsOnTaskId: 't1',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    const cycle = makeTools({
+      taskFindFirst: jest.fn(async (args: any) => ({
+        id: args.where.id,
+        workspaceId: WS_ID,
+        projectId: 'p1',
+        status: TaskStatus.PENDING,
+      })),
+      depFindMany: jest.fn(async (args: any) =>
+        args.where?.successorId?.in?.includes('A') ? [{ predecessorId: 'B' }] : [],
+      ),
+    });
+    await expect(
+      cycle.tools.addTaskDependency(baseUser({ role: UserRole.STAFF }), {
+        taskId: 'B',
+        dependsOnTaskId: 'A',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects a cross-workspace dependency endpoint', async () => {
+    const tools = makeTools({
+      taskFindFirst: jest.fn(async (args: any) => ({
+        id: args.where.id,
+        workspaceId: args.where.id === 'foreign' ? 'ws-other' : WS_ID,
+        projectId: 'p1',
+        status: TaskStatus.PENDING,
+      })),
+    });
+
+    await expect(
+      tools.tools.addTaskDependency(baseUser({ role: UserRole.STAFF }), {
+        taskId: 't1',
+        dependsOnTaskId: 'foreign',
+      }),
+    ).rejects.toThrow(/Task not found or no access/);
+  });
+
+  it('returns 409 with open blockers from update_task_status', async () => {
+    const tools = makeTools({
+      depFindMany: jest.fn(async (args: any) =>
+        args.where?.successorId === 't1'
+          ? [
+              {
+                predecessor: {
+                  id: 'pred-1',
+                  title: 'Finish predecessor',
+                  status: TaskStatus.IN_PROGRESS,
+                },
+              },
+            ]
+          : [],
+      ),
+    });
+
+    let error: any;
+    try {
+      await tools.tools.updateTaskStatus(baseUser({ role: UserRole.STAFF }), {
+        taskId: 't1',
+        status: TaskStatus.COMPLETED,
+      });
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(ConflictException);
+    expect(error.getStatus()).toBe(409);
+    expect(error.getResponse()).toMatchObject({
+      openBlockers: [{ id: 'pred-1', title: 'Finish predecessor', status: TaskStatus.IN_PROGRESS }],
+    });
+    expect(tools.taskUpdate).not.toHaveBeenCalled();
+  });
+
+  it('allows a MANAGER override and audits blockers, but refuses a MEMBER', async () => {
+    const blockers = jest.fn(async (args: any) =>
+      args.where?.successorId === 't1'
+        ? [{ predecessor: { id: 'pred-1', title: 'Open', status: TaskStatus.PENDING } }]
+        : [],
+    );
+    const managerTools = makeTools({
+      depFindMany: blockers,
+      hasManagementRole: jest.fn(async () => true),
+    });
+    const manager = baseUser({ role: UserRole.MANAGER });
+    await managerTools.tools.updateTaskStatus(manager, {
+      taskId: 't1',
+      status: TaskStatus.COMPLETED,
+      force: true,
+    });
+    expect(managerTools.audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        details: expect.objectContaining({
+          blockers: [{ id: 'pred-1', title: 'Open', status: TaskStatus.PENDING }],
+        }),
+      }),
+    );
+
+    const memberTools = makeTools({
+      depFindMany: blockers,
+      hasManagementRole: jest.fn(async () => false),
+    });
+    await expect(
+      memberTools.tools.updateTaskStatus(baseUser({ role: UserRole.STAFF }), {
+        taskId: 't1',
+        status: TaskStatus.COMPLETED,
+        overrideDependencies: true,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(memberTools.taskUpdate).not.toHaveBeenCalled();
+  });
+
+  it('does not block completion when the FINISH_TO_START predecessor is CANCELLED', async () => {
+    const tools = makeTools({
+      depFindMany: jest.fn(async (args: any) =>
+        args.where?.successorId === 't1'
+          ? [{ predecessor: { id: 'pred-1', title: 'Cancelled', status: TaskStatus.CANCELLED } }]
+          : [],
+      ),
+    });
+    await expect(
+      tools.tools.updateTaskStatus(baseUser({ role: UserRole.STAFF }), {
+        taskId: 't1',
+        status: TaskStatus.COMPLETED,
+      }),
+    ).resolves.toMatchObject({ status: TaskStatus.COMPLETED });
+  });
+
+  it('applies the completion gate to update_task too', async () => {
+    const tools = makeTools({
+      depFindMany: jest.fn(async (args: any) =>
+        args.where?.successorId === 't1'
+          ? [{ predecessor: { id: 'pred-1', title: 'Open', status: TaskStatus.PENDING } }]
+          : [],
+      ),
+    });
+    await expect(
+      tools.tools.updateTask(baseUser({ role: UserRole.STAFF }), {
+        taskId: 't1',
+        status: TaskStatus.COMPLETED,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('removes a dependency only when both endpoints are visible in the workspace', async () => {
+    const tools = makeTools();
+    await expect(
+      tools.tools.removeTaskDependency(baseUser({ role: UserRole.STAFF }), {
+        dependencyId: 'dep-1',
+      }),
+    ).resolves.toEqual({ deleted: true, dependencyId: 'dep-1' });
+    expect(tools.tx.taskDependency.delete).toHaveBeenCalledWith({ where: { id: 'dep-1' } });
   });
 });
 
