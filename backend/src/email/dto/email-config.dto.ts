@@ -23,7 +23,7 @@ export class CreateEmailConfigDto {
   smtpSecure: boolean;
 
   // Accept both 'smtpUser' (backend) and 'email' (frontend)
-  @IsEmail()
+  @IsString()
   @Transform(({ obj }) => obj.smtpUser ?? obj.email)
   smtpUser: string;
 
@@ -84,7 +84,7 @@ export class UpdateEmailConfigDto {
   @IsOptional()
   smtpSecure?: boolean;
 
-  @IsEmail()
+  @IsString()
   @IsOptional()
   smtpUser?: string;
 
