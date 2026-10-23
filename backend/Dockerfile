@@ -5,6 +5,8 @@ FROM node:20-alpine3.19 AS dependencies
 
 WORKDIR /app
 
+RUN apk add --no-cache openssl
+
 COPY package*.json ./
 COPY prisma ./prisma/
 
@@ -16,8 +18,11 @@ FROM node:20-alpine3.19 AS build
 
 WORKDIR /app
 
+RUN apk add --no-cache openssl
+
 COPY package*.json ./
 COPY tsconfig*.json ./
+COPY nest-cli.json ./
 COPY prisma ./prisma/
 
 RUN npm ci
@@ -27,6 +32,18 @@ COPY src ./src
 RUN npm run build && \
     npx prisma generate
 
+# Self-host needs the pinned Prisma CLI to initialize a fresh database.
+# Keep the hosted production target unchanged.
+FROM build AS selfhost
+ENV NODE_ENV=production
+RUN apk add --no-cache dumb-init openssl && \
+    addgroup -g 1001 -S nodejs && adduser -S nestjs -u 1001 && \
+    mkdir -p logs && chown nestjs:nodejs logs
+USER nestjs
+EXPOSE 3201
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "dist/selfhost/start.js"]
+
 # Stage 3: Production
 FROM node:20-alpine3.19 AS production
 
@@ -34,8 +51,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+# Install the runtime used by Prisma's generated OpenSSL 3 engine.
+RUN apk add --no-cache dumb-init openssl
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \

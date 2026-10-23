@@ -7,7 +7,13 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuthStore } from "@/lib/store";
 import api from "@/lib/api";
@@ -35,7 +41,6 @@ export default function LoginPage() {
     try {
       logger.log("🔐 Attempting login with:", { email });
       const response = await api.post("/auth/login", { email, password });
-      logger.log("✅ Login response:", response.data);
 
       const { access_token, user } = response.data;
 
@@ -44,7 +49,6 @@ export default function LoginPage() {
       localStorage.setItem("access_token", access_token);
       localStorage.setItem("user", JSON.stringify(user));
       localStorage.setItem("userRole", user.role || "CLIENT");
-      logger.log("✅ LocalStorage saved. Token:", access_token.substring(0, 20) + "...");
 
       // Update auth store
       setUser(user);
@@ -55,10 +59,13 @@ export default function LoginPage() {
       });
 
       // Check if user must change password
-      logger.log("🔄 Redirecting to:", user.forcePasswordChange ? "/auth/change-password" : "/dashboard");
+      logger.log(
+        "🔄 Redirecting to:",
+        user.forcePasswordChange ? "/auth/change-password" : "/dashboard",
+      );
 
       // Use router.replace with a longer delay to ensure localStorage is available
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       if (user.forcePasswordChange === true) {
         router.replace("/auth/change-password");
@@ -66,7 +73,7 @@ export default function LoginPage() {
         router.replace("/dashboard");
       }
     } catch (error: any) {
-      logger.error("❌ Login error:", error);
+      logger.error("Login failed", error.response?.status);
       toast({
         title: "Error",
         description: error.response?.data?.message || "Invalid credentials",
@@ -108,7 +115,9 @@ export default function LoginPage() {
               className="drop-shadow-md"
             />
             <div className="leading-tight">
-              <div className="text-xl font-semibold tracking-tight">Project Ops</div>
+              <div className="text-xl font-semibold tracking-tight">
+                Project Ops
+              </div>
               <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                 by Magic Unicorn
               </div>
@@ -118,37 +127,41 @@ export default function LoginPage() {
           <CardDescription>Sign in to continue.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button
-            asChild
-            variant="outline"
-            className="w-full"
-            disabled={isLoading}
-          >
-            <a
-              href={`${process.env.NEXT_PUBLIC_API_URL || "/api/v1"}/auth/keycloak`}
-              className="flex items-center justify-center gap-2"
-            >
-              <Image
-                src="/the-colonel.png"
-                alt=""
-                width={22}
-                height={22}
-                className="h-[22px] w-[22px] shrink-0"
-              />
-              <span>Sign in with Unicorn Commander</span>
-            </a>
-          </Button>
+          {process.env.NEXT_PUBLIC_AUTH_MODE !== "local" && (
+            <>
+              <Button
+                asChild
+                variant="outline"
+                className="w-full"
+                disabled={isLoading}
+              >
+                <a
+                  href={`${process.env.NEXT_PUBLIC_API_URL || "/api/v1"}/auth/keycloak`}
+                  className="flex items-center justify-center gap-2"
+                >
+                  <Image
+                    src="/the-colonel.png"
+                    alt=""
+                    width={22}
+                    height={22}
+                    className="h-[22px] w-[22px] shrink-0"
+                  />
+                  <span>Sign in with SSO</span>
+                </a>
+              </Button>
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">
-                Or for client portal accounts
-              </span>
-            </div>
-          </div>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">
+                    Or sign in with email and password
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
@@ -193,7 +206,10 @@ export default function LoginPage() {
 
           <div className="text-center text-sm">
             Client portal access?{" "}
-            <Link href="/auth/register" className="text-primary hover:underline">
+            <Link
+              href="/auth/register"
+              className="text-primary hover:underline"
+            >
               Request an invitation
             </Link>
           </div>

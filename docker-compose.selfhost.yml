@@ -1,0 +1,133 @@
+# Local admin + optional OIDC. No external networks or hosted control plane.
+# Runtime secrets live in a named volume; the admin password is never written there.
+services:
+  init:
+    build:
+      context: ./backend
+      target: selfhost
+    user: "0:0"
+    command: ["node", "dist/selfhost/runtime.js"]
+    environment:
+      PROJECT_OPS_SELFHOST_CONFIG: /var/lib/project-ops/runtime.json
+    volumes:
+      - selfhost_config:/var/lib/project-ops
+    restart: "no"
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: project_ops
+      POSTGRES_USER: project_ops_admin
+      POSTGRES_PASSWORD_FILE: /var/lib/project-ops/postgres-password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - selfhost_config:/var/lib/project-ops:ro
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U project_ops_admin -d project_ops"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    # Only reachable on this compose network; no host port.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+      target: selfhost
+    environment:
+      NODE_ENV: production
+      PORT: "3201"
+      PROJECT_OPS_SELFHOST_CONFIG: /var/lib/project-ops/runtime.json
+      PROJECT_OPS_AUTH_MODE: ${PROJECT_OPS_AUTH_MODE:-local}
+      # The fresh install is one workspace. Hosted tenancy migrations are separate.
+      PROJECT_OPS_TENANCY_ENABLED: "false"
+      PROJECT_OPS_ENTITLEMENTS_ENABLED: "false"
+      PROJECT_OPS_ACCESS_LIST: ${PROJECT_OPS_ACCESS_LIST:-}
+      KEYCLOAK_URL: ${KEYCLOAK_URL:-}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
+      KEYCLOAK_CALLBACK_URL: http://127.0.0.1:3201/api/v1/auth/keycloak/callback
+      KEYCLOAK_ENFORCE_AUDIENCE: "true"
+      CORS_ORIGIN: http://127.0.0.1:3200
+      FRONTEND_URL: http://127.0.0.1:3200
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-127.0.0.1}
+      MINIO_PORT: ${MINIO_PORT:-9000}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-}
+      MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME:-project-ops-documents}
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-127.0.0.1}
+      MINIO_PUBLIC_PORT: ${MINIO_PUBLIC_PORT:-9000}
+      MINIO_PUBLIC_USE_SSL: ${MINIO_PUBLIC_USE_SSL:-false}
+      BRIGADE_URL: ""
+      UC_REGISTRY_URL: ""
+      ENABLE_SWAGGER: "true"
+    volumes:
+      - selfhost_config:/var/lib/project-ops:ro
+    ports:
+      - "127.0.0.1:3201:3201"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://127.0.0.1:3201/api/v1/health/live',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  frontend:
+    build:
+      context: ./frontend
+      target: production
+      args:
+        NEXT_PUBLIC_API_URL: http://127.0.0.1:3201/api/v1
+        NEXT_PUBLIC_AUTH_MODE: ${PROJECT_OPS_AUTH_MODE:-local}
+    environment:
+      NODE_ENV: production
+      PORT: "3200"
+    ports:
+      - "127.0.0.1:3200:3200"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://127.0.0.1:3200/auth/login',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  selfhost_config:
+  postgres_data:
+  redis_data:
