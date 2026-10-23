@@ -30,6 +30,24 @@ describe('email config SMTP credentials validation', () => {
   });
 
   it.each([
+    ['create', createConfig({ smtpUser: '' })],
+    ['update', plainToInstance(UpdateEmailConfigDto, { smtpUser: '' })],
+  ])('rejects an empty smtpUser on %s', async (_label, dto) => {
+    const errors = await validate(dto);
+
+    expect(errors.find((error) => error.property === 'smtpUser')?.constraints).toHaveProperty(
+      'minLength',
+    );
+  });
+
+  it('accepts a token-style smtpUser through the email alias', async () => {
+    const dto = createConfig({ smtpUser: undefined, email: 'postmark-server-token' });
+
+    expect(dto.smtpUser).toBe('postmark-server-token');
+    expect(await validate(dto)).toEqual([]);
+  });
+
+  it.each([
     ['create', createConfig({ fromEmail: 'not-an-email' })],
     ['update', plainToInstance(UpdateEmailConfigDto, { fromEmail: 'not-an-email' })],
   ])('still rejects a non-email fromEmail on %s', async (_label, dto) => {
