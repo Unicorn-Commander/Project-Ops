@@ -86,6 +86,8 @@ export class UsersService {
       async (tx) => {
         const target = await tx.user.findUnique({ where: { id } });
         if (!target) throw new NotFoundException('User not found');
+        // GET /users/:id is restricted to ADMIN/MANAGER. Retain this check for
+        // any non-ADMIN internal callers; STAFF/CLIENT cannot reach it over HTTP.
         if (caller.role !== UserRole.ADMIN && caller.id !== id) {
           const member = await tx.membership.findUnique({
             where: {
