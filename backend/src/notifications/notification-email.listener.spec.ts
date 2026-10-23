@@ -38,6 +38,7 @@ function makeListener(opts: {
   const send = opts.send ?? jest.fn(async () => ({ success: true, message: 'ok' }));
   const email = {
     isConfigured: jest.fn(async () => opts.configured ?? true),
+    canSend: jest.fn(async () => opts.configured ?? true),
     sendNotificationEmail: send,
   } as any;
 
@@ -70,6 +71,23 @@ describe('NotificationEmailListener — task.assigned gate', () => {
     expect(content.cta).toBe('View task');
   });
 
+  it('passes the Email-Ops routing idempotency key when workspace + entity are known', async () => {
+    const { listener, send } = makeListener({});
+    await listener.onTaskAssigned(taskAssigned());
+
+    const [, , , routing] = send.mock.calls[0];
+    expect(routing).toEqual({
+      workspaceId: 'ws1',
+      externalRef: 'task.assigned:t1:u-assignee',
+    });
+  });
+
+  it('omits routing when the workspace is unknown (falls back to SMTP)', async () => {
+    const { listener, send } = makeListener({});
+    await listener.onTaskAssigned(taskAssigned({ workspaceId: undefined }));
+    expect(send.mock.calls[0][3]).toBeUndefined();
+  });
+
   it('does NOT send when the recipient IS the actor (self-assignment)', async () => {
     const { listener, send } = makeListener({});
     await listener.onTaskAssigned(taskAssigned({ actorId: 'u-assignee' }));
@@ -96,14 +114,14 @@ describe('NotificationEmailListener — task.assigned gate', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it('does NOT send (and never calls isConfigured) when prefs gate fails first', async () => {
+  it('does NOT send (and never calls canSend) when prefs gate fails first', async () => {
     const off = applyPreferencePatch(mergePreferences(null), { email: false });
     const { listener, email, send } = makeListener({
       recipients: { 'u-assignee': { email: 'a@x.co', name: 'A', preferences: off } },
     });
     await listener.onTaskAssigned(taskAssigned());
     expect(send).not.toHaveBeenCalled();
-    expect(email.isConfigured).not.toHaveBeenCalled();
+    expect(email.canSend).not.toHaveBeenCalled();
   });
 
   it('does NOT send when email is not configured for the deployment', async () => {
@@ -173,6 +191,12 @@ describe('NotificationEmailListener — mentions + status', () => {
     });
     expect(send).toHaveBeenCalledTimes(2);
     expect(send.mock.calls[0][2].url).toContain('/dashboard/tasks/t9');
+    // The idempotency ref is disambiguated by the comment id so a second comment
+    // on the same task to the same user is a DIFFERENT key.
+    expect(send.mock.calls[0][3]).toEqual({
+      workspaceId: 'ws1',
+      externalRef: 'task.comment.created:t9:u-bob:c1',
+    });
   });
 
   it('no @mentions => no email work', async () => {

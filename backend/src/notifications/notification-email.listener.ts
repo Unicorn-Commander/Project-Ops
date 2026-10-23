@@ -58,6 +58,8 @@ export class NotificationEmailListener {
         eventName: 'task.assigned',
         recipientUserId: payload.assignedToId,
         actorUserId: payload.actorId ?? null,
+        workspaceId: payload.workspaceId ?? null,
+        entityId: payload.taskId ?? null,
         content: (actorName) => ({
           subject: `New task assigned: ${title}`,
           headline: 'New task assigned',
@@ -98,6 +100,9 @@ export class NotificationEmailListener {
             eventName: 'task.comment.created',
             recipientUserId,
             actorUserId: payload.authorId ?? null,
+            workspaceId: payload.workspaceId ?? null,
+            entityId: payload.taskId ?? null,
+            instanceId: payload.commentId ?? null,
             content: (actorName) => ({
               subject: `${actorName} mentioned you in a comment`,
               headline: 'You were mentioned',
@@ -113,6 +118,7 @@ export class NotificationEmailListener {
 
   @OnEvent('task.status_changed')
   async onTaskStatusChanged(payload: {
+    workspaceId?: string;
     taskId?: string;
     fromStatus?: string;
     toStatus?: string;
@@ -127,6 +133,9 @@ export class NotificationEmailListener {
         eventName: 'task.status_changed',
         recipientUserId: recipient,
         actorUserId: payload.actorId ?? null,
+        workspaceId: payload.workspaceId ?? null,
+        entityId: payload.taskId ?? null,
+        instanceId: payload.fromStatus && payload.toStatus ? `${payload.fromStatus}->${payload.toStatus}` : null,
         content: (actorName) => ({
           subject: `Task status updated: ${title}`,
           headline: 'Task status updated',
@@ -140,6 +149,7 @@ export class NotificationEmailListener {
 
   @OnEvent('task.completed')
   async onTaskCompleted(payload: {
+    workspaceId?: string;
     taskId?: string;
     actorId?: string | null;
     task?: { title?: string | null; assignedToId?: string | null; projectId?: string | null };
@@ -152,6 +162,8 @@ export class NotificationEmailListener {
         eventName: 'task.completed',
         recipientUserId: recipient,
         actorUserId: payload.actorId ?? null,
+        workspaceId: payload.workspaceId ?? null,
+        entityId: payload.taskId ?? null,
         content: (actorName) => ({
           subject: `Task completed: ${title}`,
           headline: 'Task completed',
@@ -165,6 +177,7 @@ export class NotificationEmailListener {
 
   @OnEvent('task.created')
   async onTaskCreated(payload: {
+    workspaceId?: string;
     taskId?: string;
     actorId?: string | null;
     task?: { title?: string | null; assignedToId?: string | null; projectId?: string | null };
@@ -179,6 +192,8 @@ export class NotificationEmailListener {
         eventName: 'task.created',
         recipientUserId: recipient,
         actorUserId: payload.actorId ?? null,
+        workspaceId: payload.workspaceId ?? null,
+        entityId: payload.taskId ?? null,
         content: (actorName) => ({
           subject: `New task: ${title}`,
           headline: 'New task created',
@@ -192,6 +207,7 @@ export class NotificationEmailListener {
 
   @OnEvent('project.status_changed')
   async onProjectStatusChanged(payload: {
+    workspaceId?: string;
     projectId?: string;
     fromStatus?: string;
     toStatus?: string;
@@ -206,6 +222,8 @@ export class NotificationEmailListener {
         eventName: 'project.status_changed',
         recipientUserId: recipient,
         actorUserId: payload.actorId ?? null,
+        workspaceId: payload.workspaceId ?? null,
+        entityId: payload.projectId ?? null,
         content: (actorName) => ({
           subject: `Project status updated: ${title}`,
           headline: 'Project status updated',
@@ -219,6 +237,7 @@ export class NotificationEmailListener {
 
   @OnEvent('project.created')
   async onProjectCreated(payload: {
+    workspaceId?: string;
     projectId?: string;
     actorId?: string | null;
     project?: { title?: string | null; assignedToId?: string | null };
@@ -231,6 +250,8 @@ export class NotificationEmailListener {
         eventName: 'project.created',
         recipientUserId: recipient,
         actorUserId: payload.actorId ?? null,
+        workspaceId: payload.workspaceId ?? null,
+        entityId: payload.projectId ?? null,
         content: (actorName) => ({
           subject: `New project: ${title}`,
           headline: 'New project created',
@@ -285,6 +306,12 @@ export class NotificationEmailListener {
     eventName: string;
     recipientUserId: string;
     actorUserId: string | null;
+    workspaceId?: string | null;
+    entityId?: string | null;
+    /** Per-occurrence discriminator (e.g. comment id, status transition) so two
+     *  DISTINCT emails of the same type on the same entity to the same recipient
+     *  never share an idempotency key. Omitted for once-per-entity events. */
+    instanceId?: string | null;
     content: (actorName: string) => NotificationEmailContent;
   }): Promise<void> {
     const { eventName, recipientUserId, actorUserId } = params;
@@ -306,17 +333,35 @@ export class NotificationEmailListener {
       return;
     }
 
-    // Only hit SMTP config once the prefs gate passes.
-    if (!(await this.email.isConfigured())) return;
+    // Only hit mail config once the prefs gate passes. `canSend` is true when
+    // EITHER the local SMTP config OR the Email-Ops port is available, so a
+    // deployment routing exclusively through Email-Ops still delivers.
+    if (!(await this.email.canSend())) return;
 
     const actorName = actorUserId
       ? ((await this.notifications.resolveEmailRecipient(actorUserId))?.name ?? 'Someone')
       : 'Project Ops';
 
+    // Email-Ops routing: internal notifications go in `send` mode with an
+    // idempotency key of (workspaceId, 'project-ops', externalRef). The ref
+    // disambiguates distinct occurrences via `instanceId` (comment id / status
+    // transition) so a second comment or status change on the same task is a
+    // DIFFERENT key and still delivers. When workspace/entity are unknown, routing
+    // is omitted and sendNotificationEmail keeps its local SMTP path.
+    const routing =
+      params.workspaceId && params.entityId
+        ? {
+            workspaceId: params.workspaceId,
+            externalRef: `${eventName}:${params.entityId}:${recipientUserId}` +
+              (params.instanceId ? `:${params.instanceId}` : ''),
+          }
+        : undefined;
+
     const result = await this.email.sendNotificationEmail(
       recipient.email,
       recipient.name,
       params.content(actorName),
+      routing,
     );
     if (!result.success) {
       // sendNotificationEmail already logged; record the gated-but-failed send.
