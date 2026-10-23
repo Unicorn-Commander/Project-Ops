@@ -1,31 +1,9 @@
 /**
- * SSO access list — single source of truth for "who can sign into
- * Project-Ops at all" + "what role do they get on first JIT".
- *
- * Sourced from the `PROJECT_OPS_ACCESS_LIST` env var, parsed once at
- * startup. Format is comma-separated `email-or-pattern:role` pairs:
- *
- *   PROJECT_OPS_ACCESS_LIST="
- *     aaron@magicunicorn.tech:ADMIN,
- *     shafenkhan@users.noreply.github.com:ADMIN,
- *     *@magicunicorn.tech:STAFF,
- *     *@partner.example.com:STAFF
- *   "
- *
- * Resolution order:
- *   1. Exact email match wins.
- *   2. Domain wildcard (`*@domain.tld`) matches if no exact entry.
- *   3. If neither matches, the user is NOT authorized — JIT
- *      provisioning is rejected with 401. This is the intentional
- *      gate: just because someone has a Keycloak account in the
- *      shared `uchub` realm doesn't mean they get a Project-Ops
- *      account. Project-Ops is single-tenant internal; the
- *      allowlist defines the tenant.
- *
- * If the env var is unset, falls back to the legacy hard-coded map
- * (Aaron + Shafen as ADMIN, everyone else CLIENT) so a misconfigured
- * deploy doesn't lock everyone out — but logs a warning so it's
- * obvious in the boot logs.
+ * SSO first-login access list: exact email rules precede domain wildcards.
+ * Example: PROJECT_OPS_ACCESS_LIST="owner@example.com:ADMIN,*@example.com:STAFF"
+ * Unset means deny all. The self-host entrypoint replaces this empty bootstrap
+ * placeholder with the generated local admin identity; OIDC operators can set
+ * an explicit list. Password login uses the stored user and bcrypt hash.
  */
 
 import { UserRole } from '@prisma/client';
@@ -45,10 +23,7 @@ interface AccessRule {
 
 const VALID_ROLES = new Set<string>(Object.values(UserRole));
 
-const LEGACY_FALLBACK: AccessRule[] = [
-  { pattern: 'aaron@magicunicorn.tech', isDomain: false, domain: null, role: UserRole.ADMIN },
-  { pattern: 'shafenkhan@users.noreply.github.com', isDomain: false, domain: null, role: UserRole.ADMIN },
-];
+const BOOTSTRAP_PLACEHOLDER: AccessRule[] = [];
 
 let cachedRules: AccessRule[] | null = null;
 let cachedSource: string | null = null;
@@ -83,8 +58,8 @@ function getRules(): { rules: AccessRule[]; source: string } {
     cachedRules = parseAccessList(raw);
     cachedSource = 'env:PROJECT_OPS_ACCESS_LIST';
   } else {
-    cachedRules = LEGACY_FALLBACK;
-    cachedSource = 'legacy fallback (PROJECT_OPS_ACCESS_LIST not set)';
+    cachedRules = BOOTSTRAP_PLACEHOLDER;
+    cachedSource = 'empty bootstrap placeholder (PROJECT_OPS_ACCESS_LIST not set)';
   }
   return { rules: cachedRules, source: cachedSource };
 }
