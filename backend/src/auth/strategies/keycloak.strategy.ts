@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { Request } from 'express';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-oauth2';
 import { ConfigService } from '@nestjs/config';
@@ -13,7 +14,10 @@ export class KeycloakStrategy extends PassportStrategy(Strategy, 'keycloak') {
     private configService: ConfigService,
     private authService: AuthService,
   ) {
-    const keycloakUrl = configService.get('KEYCLOAK_URL', 'http://uchub-keycloak:8080');
+    const localMode = configService.get('PROJECT_OPS_AUTH_MODE') === 'local';
+    const keycloakUrl = localMode
+      ? 'http://127.0.0.1/disabled'
+      : configService.get('KEYCLOAK_URL', 'http://uchub-keycloak:8080');
     const realm = configService.get('KEYCLOAK_REALM', 'uchub');
     const callbackURL = configService.get(
       'KEYCLOAK_CALLBACK_URL',
@@ -23,13 +27,20 @@ export class KeycloakStrategy extends PassportStrategy(Strategy, 'keycloak') {
     super({
       authorizationURL: `${keycloakUrl}/realms/${realm}/protocol/openid-connect/auth`,
       tokenURL: `${keycloakUrl}/realms/${realm}/protocol/openid-connect/token`,
-      clientID: configService.get('KEYCLOAK_CLIENT_ID'),
+      clientID: localMode ? 'local-auth-disabled' : configService.get('KEYCLOAK_CLIENT_ID'),
       clientSecret: configService.get('KEYCLOAK_CLIENT_SECRET'),
       callbackURL,
       scope: ['openid', 'profile', 'email'],
     });
 
     this.userinfoURL = `${keycloakUrl}/realms/${realm}/protocol/openid-connect/userinfo`;
+  }
+
+  authenticate(req: Request, options?: any): void {
+    if (this.configService.get('PROJECT_OPS_AUTH_MODE') === 'local') {
+      throw new ServiceUnavailableException('OIDC is disabled; sign in with email and password');
+    }
+    super.authenticate(req, options);
   }
 
   async validate(accessToken: string, refreshToken: string, profile: any): Promise<any> {

@@ -5,6 +5,8 @@ import { MembershipService } from './membership.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { __resetAccessListCacheForTests } from '../../auth/access-list';
 
+const ORIGINAL_ACCESS_LIST = process.env.PROJECT_OPS_ACCESS_LIST;
+
 const BOOTSTRAP = '0190a000-7e57-7000-8000-00000000b007';
 
 /**
@@ -17,15 +19,15 @@ const BOOTSTRAP = '0190a000-7e57-7000-8000-00000000b007';
  *     must be one the user belongs to.
  */
 describe('MembershipService', () => {
-  const aaron = {
-    id: 'local-aaron',
-    email: 'aaron@magicunicorn.tech',
-    keycloakId: 'kc-aaron-sub',
+  const owner = {
+    id: 'local-owner',
+    email: 'owner@example.com',
+    keycloakId: 'kc-owner-sub',
   } as User;
 
   const stranger = {
     id: 'local-stranger',
-    email: 'nobody@example.com',
+    email: 'stranger@example.net',
     keycloakId: 'kc-stranger-sub',
   } as User;
 
@@ -38,7 +40,13 @@ describe('MembershipService', () => {
 
   beforeEach(() => {
     __resetAccessListCacheForTests();
-    delete process.env.PROJECT_OPS_ACCESS_LIST; // use legacy fallback (Aaron+Shafen ADMIN)
+    process.env.PROJECT_OPS_ACCESS_LIST = 'owner@example.com:ADMIN';
+  });
+
+  afterEach(() => {
+    if (ORIGINAL_ACCESS_LIST === undefined) delete process.env.PROJECT_OPS_ACCESS_LIST;
+    else process.env.PROJECT_OPS_ACCESS_LIST = ORIGINAL_ACCESS_LIST;
+    __resetAccessListCacheForTests();
   });
 
   describe('flag OFF (default)', () => {
@@ -46,12 +54,12 @@ describe('MembershipService', () => {
 
     it('resolveAndAuthorize returns the requested workspace without a membership check', async () => {
       const svc = make({ DEFAULT_WORKSPACE_ID: BOOTSTRAP }, prisma);
-      await expect(svc.resolveAndAuthorize(aaron, 'W-requested')).resolves.toBe('W-requested');
+      await expect(svc.resolveAndAuthorize(owner, 'W-requested')).resolves.toBe('W-requested');
     });
 
     it('resolveAndAuthorize falls back to the default workspace when none requested', async () => {
       const svc = make({ DEFAULT_WORKSPACE_ID: BOOTSTRAP }, prisma);
-      await expect(svc.resolveAndAuthorize(aaron, null)).resolves.toBe(BOOTSTRAP);
+      await expect(svc.resolveAndAuthorize(owner, null)).resolves.toBe(BOOTSTRAP);
     });
 
     it('never throws for a non-allow-listed user when the flag is off', async () => {
@@ -77,9 +85,25 @@ describe('MembershipService', () => {
       expect(prisma.membership.findMany).toHaveBeenCalled();
     });
 
+    it('does not bootstrap an owner when the access list is missing', async () => {
+      delete process.env.PROJECT_OPS_ACCESS_LIST;
+      const prisma = {
+        membership: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          findMany: jest.fn().mockResolvedValue([]),
+          upsert: jest.fn(),
+        },
+        workspace: { findUnique: jest.fn().mockResolvedValue({ id: BOOTSTRAP }) },
+      };
+      await expect(make(ON, prisma).resolveAndAuthorize(owner, null)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prisma.membership.upsert).not.toHaveBeenCalled();
+    });
+
     it('seeds an allow-listed user JIT, then resolves their default workspace', async () => {
       const created = {
-        userKey: 'kc-aaron-sub',
+        userKey: 'kc-owner-sub',
         workspaceId: BOOTSTRAP,
         role: WorkspaceRole.OWNER,
         status: MembershipStatus.ACTIVE,
@@ -95,16 +119,16 @@ describe('MembershipService', () => {
         workspace: { findUnique: jest.fn().mockResolvedValue({ id: BOOTSTRAP }) },
       };
       const svc = make(ON, prisma);
-      await expect(svc.resolveAndAuthorize(aaron, null)).resolves.toBe(BOOTSTRAP);
+      await expect(svc.resolveAndAuthorize(owner, null)).resolves.toBe(BOOTSTRAP);
       expect(prisma.membership.upsert).toHaveBeenCalledTimes(1);
       const arg = prisma.membership.upsert.mock.calls[0][0];
       expect(arg.create.role).toBe(WorkspaceRole.OWNER); // ADMIN -> OWNER
-      expect(arg.create.userKey).toBe('kc-aaron-sub'); // keyed by keycloakId/sub
+      expect(arg.create.userKey).toBe('kc-owner-sub'); // keyed by keycloakId/sub
     });
 
     it('403s when the requested workspace is not one the user belongs to', async () => {
       const member = {
-        userKey: 'kc-aaron-sub',
+        userKey: 'kc-owner-sub',
         workspaceId: BOOTSTRAP,
         status: MembershipStatus.ACTIVE,
         isDefault: true,
@@ -117,14 +141,14 @@ describe('MembershipService', () => {
         workspace: { findUnique: jest.fn().mockResolvedValue({ id: BOOTSTRAP }) },
       };
       const svc = make(ON, prisma);
-      await expect(svc.resolveAndAuthorize(aaron, 'SOME-OTHER-WS')).rejects.toThrow(
+      await expect(svc.resolveAndAuthorize(owner, 'SOME-OTHER-WS')).rejects.toThrow(
         ForbiddenException,
       );
     });
 
     it('allows the requested workspace when the user is a member of it', async () => {
       const member = {
-        userKey: 'kc-aaron-sub',
+        userKey: 'kc-owner-sub',
         workspaceId: BOOTSTRAP,
         status: MembershipStatus.ACTIVE,
         isDefault: true,
@@ -137,7 +161,7 @@ describe('MembershipService', () => {
         workspace: { findUnique: jest.fn().mockResolvedValue({ id: BOOTSTRAP }) },
       };
       const svc = make(ON, prisma);
-      await expect(svc.resolveAndAuthorize(aaron, BOOTSTRAP)).resolves.toBe(BOOTSTRAP);
+      await expect(svc.resolveAndAuthorize(owner, BOOTSTRAP)).resolves.toBe(BOOTSTRAP);
     });
   });
 
@@ -146,14 +170,14 @@ describe('MembershipService', () => {
       // listActiveMemberships already orders isDefault desc, createdAt asc.
       const memberships = [
         {
-          userKey: 'kc-aaron-sub',
+          userKey: 'kc-owner-sub',
           workspaceId: 'ws-mu',
           role: WorkspaceRole.OWNER,
           status: MembershipStatus.ACTIVE,
           isDefault: true,
         },
         {
-          userKey: 'kc-aaron-sub',
+          userKey: 'kc-owner-sub',
           workspaceId: 'ws-gfl',
           role: WorkspaceRole.MANAGER,
           status: MembershipStatus.ACTIVE,
@@ -173,7 +197,7 @@ describe('MembershipService', () => {
         workspace: { findMany },
       };
       const svc = make({ DEFAULT_WORKSPACE_ID: BOOTSTRAP }, prisma);
-      const result = await svc.listActiveWorkspaces(aaron);
+      const result = await svc.listActiveWorkspaces(owner);
       expect(result).toEqual([
         {
           workspaceId: 'ws-mu',
@@ -196,7 +220,7 @@ describe('MembershipService', () => {
       const findMany = jest.fn().mockResolvedValue([]);
       const prisma = { membership: { findMany }, workspace: { findMany: jest.fn() } };
       const svc = make({ DEFAULT_WORKSPACE_ID: BOOTSTRAP }, prisma);
-      await expect(svc.listActiveWorkspaces(aaron)).resolves.toEqual([]);
+      await expect(svc.listActiveWorkspaces(owner)).resolves.toEqual([]);
       // no membership rows => never queries workspaces.
       expect(prisma.workspace.findMany).not.toHaveBeenCalled();
     });
@@ -204,14 +228,14 @@ describe('MembershipService', () => {
     it('drops a membership whose workspace row is not present locally (cannot render a switcher entry)', async () => {
       const membershipFindMany = jest.fn().mockResolvedValue([
         {
-          userKey: 'kc-aaron-sub',
+          userKey: 'kc-owner-sub',
           workspaceId: 'ws-present',
           role: WorkspaceRole.MEMBER,
           status: MembershipStatus.ACTIVE,
           isDefault: false,
         },
         {
-          userKey: 'kc-aaron-sub',
+          userKey: 'kc-owner-sub',
           workspaceId: 'ws-orphan',
           role: WorkspaceRole.MEMBER,
           status: MembershipStatus.ACTIVE,
@@ -226,7 +250,7 @@ describe('MembershipService', () => {
         workspace: { findMany: workspaceFindMany },
       };
       const svc = make({ DEFAULT_WORKSPACE_ID: BOOTSTRAP }, prisma);
-      const result = await svc.listActiveWorkspaces(aaron);
+      const result = await svc.listActiveWorkspaces(owner);
       expect(result).toEqual([
         {
           workspaceId: 'ws-present',

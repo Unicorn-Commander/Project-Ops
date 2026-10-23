@@ -26,31 +26,30 @@ afterEach(() => {
 describe('resolveUserAccess — env-driven allowlist', () => {
   beforeEach(() => {
     process.env.PROJECT_OPS_ACCESS_LIST =
-      'aaron@magicunicorn.tech:ADMIN, shafenkhan@users.noreply.github.com:ADMIN, *@magicunicorn.tech:STAFF, *@magicunicorn.dev:MANAGER';
+      'user1@example1.com:ADMIN, user2@example2.com:ADMIN, *@example1.com:STAFF, *@example3.com:MANAGER';
     __resetAccessListCacheForTests();
   });
 
   it('returns ADMIN for an exact-match email', () => {
-    const r = resolveUserAccess('aaron@magicunicorn.tech');
+    const r = resolveUserAccess('user1@example1.com');
     expect(r.allowed).toBe(true);
     expect(r.role).toBe(UserRole.ADMIN);
   });
 
   it('exact match wins over a competing domain wildcard', () => {
-    // Aaron is ADMIN exactly; the *@magicunicorn.tech wildcard would
-    // otherwise downgrade him to STAFF. Exact must win.
-    const r = resolveUserAccess('aaron@magicunicorn.tech');
+    // An exact ADMIN entry must win over the domain STAFF rule.
+    const r = resolveUserAccess('user1@example1.com');
     expect(r.role).toBe(UserRole.ADMIN);
   });
 
   it('falls through to a domain wildcard when no exact entry exists', () => {
-    const r = resolveUserAccess('newhire@magicunicorn.tech');
+    const r = resolveUserAccess('user5@example1.com');
     expect(r.allowed).toBe(true);
     expect(r.role).toBe(UserRole.STAFF);
   });
 
   it('rejects emails with no exact AND no domain match', () => {
-    const r = resolveUserAccess('outsider@example.com');
+    const r = resolveUserAccess('user6@example4.com');
     expect(r.allowed).toBe(false);
     expect(r.reason).toMatch(/no rule .* matched/);
   });
@@ -63,35 +62,36 @@ describe('resolveUserAccess — env-driven allowlist', () => {
 
   it('ignores malformed entries (no colon, unknown role) without throwing', () => {
     process.env.PROJECT_OPS_ACCESS_LIST =
-      'aaron@magicunicorn.tech:ADMIN, garbage-no-role, foo@bar.com:WIZARD, valid@test.com:STAFF';
+      'user1@example1.com:ADMIN, garbage-no-role, user7@example5.com:WIZARD, user8@example6.com:STAFF';
     __resetAccessListCacheForTests();
-    expect(resolveUserAccess('aaron@magicunicorn.tech').role).toBe(UserRole.ADMIN);
-    expect(resolveUserAccess('valid@test.com').role).toBe(UserRole.STAFF);
-    expect(resolveUserAccess('foo@bar.com').allowed).toBe(false); // unknown role dropped
+    expect(resolveUserAccess('user1@example1.com').role).toBe(UserRole.ADMIN);
+    expect(resolveUserAccess('user8@example6.com').role).toBe(UserRole.STAFF);
+    expect(resolveUserAccess('user7@example5.com').allowed).toBe(false); // unknown role dropped
   });
 
   it('email comparison is case-insensitive', () => {
-    const r = resolveUserAccess('AaRon@MagicUnicorn.TECH');
+    const r = resolveUserAccess('user1@example1.com');
     expect(r.allowed).toBe(true);
     expect(r.role).toBe(UserRole.ADMIN);
   });
 });
 
-describe('resolveUserAccess — legacy fallback when env is unset', () => {
+describe('resolveUserAccess — empty bootstrap placeholder', () => {
   beforeEach(() => {
     delete process.env.PROJECT_OPS_ACCESS_LIST;
     __resetAccessListCacheForTests();
   });
 
-  it('still admits Aaron + Shafen as ADMIN', () => {
-    expect(resolveUserAccess('aaron@magicunicorn.tech').role).toBe(UserRole.ADMIN);
-    expect(resolveUserAccess('shafenkhan@users.noreply.github.com').role).toBe(UserRole.ADMIN);
+  it('denies all first-time SSO users until explicitly configured', () => {
+    expect(resolveUserAccess('owner@example.com').allowed).toBe(false);
+    expect(describeAccessList()).toEqual({
+      source: 'empty bootstrap placeholder (PROJECT_OPS_ACCESS_LIST not set)',
+      ruleCount: 0,
+    });
   });
 
-  it('rejects everyone else (no implicit CLIENT-grant) and reports legacy source', () => {
-    const r = resolveUserAccess('random@example.com');
-    expect(r.allowed).toBe(false);
-    const meta = describeAccessList();
-    expect(meta.source).toMatch(/legacy fallback/);
+  it('also denies all when the configured list is blank', () => {
+    process.env.PROJECT_OPS_ACCESS_LIST = '  ';
+    expect(resolveUserAccess('owner@example.com').allowed).toBe(false);
   });
 });
