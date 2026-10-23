@@ -275,5 +275,35 @@ describe('MembershipService', () => {
       expect(MembershipService.suiteRoleForAccess('STAFF')).toBe(WorkspaceRole.MEMBER);
       expect(MembershipService.suiteRoleForAccess('CLIENT')).toBe(WorkspaceRole.VIEWER);
     });
+
+    it('returns an active workspace role using the canonical membership key', async () => {
+      const findUnique = jest.fn().mockResolvedValue({
+        role: WorkspaceRole.MANAGER,
+        status: MembershipStatus.ACTIVE,
+      });
+      const svc = make({}, { membership: { findUnique } });
+
+      await expect(svc.getActiveMembershipRole(aaron, 'ws-1')).resolves.toBe(WorkspaceRole.MANAGER);
+      expect(findUnique).toHaveBeenCalledWith({
+        where: { userKey_workspaceId: { userKey: 'kc-aaron-sub', workspaceId: 'ws-1' } },
+        select: { role: true, status: true },
+      });
+    });
+
+    it('returns null for an inactive workspace membership', async () => {
+      const svc = make(
+        {},
+        {
+          membership: {
+            findUnique: jest.fn().mockResolvedValue({
+              role: WorkspaceRole.MEMBER,
+              status: MembershipStatus.SUSPENDED,
+            }),
+          },
+        },
+      );
+
+      await expect(svc.getActiveMembershipRole(aaron, 'ws-1')).resolves.toBeNull();
+    });
   });
 });

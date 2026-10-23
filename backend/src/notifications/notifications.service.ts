@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Notification, Prisma, User } from '@prisma/client';
+import { Notification, Prisma, User, UserRole } from '@prisma/client';
 import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { MembershipService } from '../common/workspace/membership.service';
@@ -265,20 +265,30 @@ export class NotificationsService {
     email: string;
     name: string;
     preferences: NotificationPreferences;
+    keycloakId: string | null;
+    role: UserRole;
   } | null> {
     const u = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
+        keycloakId: true,
         email: true,
         firstName: true,
         lastName: true,
+        role: true,
         isActive: true,
         notificationPreferences: true,
       },
     });
     if (!u || !u.isActive || !u.email) return null;
     const name = `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.email;
-    return { email: u.email, name, preferences: mergePreferences(u.notificationPreferences) };
+    return {
+      email: u.email,
+      name,
+      preferences: mergePreferences(u.notificationPreferences),
+      keycloakId: u.keycloakId,
+      role: u.role,
+    };
   }
 
   // ── Reads ────────────────────────────────────────────────────────────────
