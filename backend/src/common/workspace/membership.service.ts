@@ -137,6 +137,19 @@ export class MembershipService {
     return !!m && m.status === MembershipStatus.ACTIVE;
   }
 
+  /** Return the active workspace role for a user, or null when membership is absent/inactive. */
+  async getActiveMembershipRole(
+    user: Pick<User, 'id' | 'keycloakId'>,
+    workspaceId: string,
+  ): Promise<WorkspaceRole | null> {
+    const userKey = MembershipService.membershipKey(user);
+    const membership = await this.prisma.membership.findUnique({
+      where: { userKey_workspaceId: { userKey, workspaceId } },
+      select: { role: true, status: true },
+    });
+    return membership?.status === MembershipStatus.ACTIVE ? membership.role : null;
+  }
+
   /**
    * Resolve the workspace a request should run in for `user`, and ensure the
    * user is an active member of it.

@@ -20,15 +20,19 @@ Email-Ops `compose_email` takes a `mode`:
 
 | Mode | Meaning | Project-Ops uses it for |
 |---|---|---|
-| `send` | deliver immediately (no human hop) | **internal notifications** — task assigned, mentions, status changes, timesheet approvals |
+| `send` | deliver immediately (no human hop) | **proven internal notifications** — task assigned, mentions, status changes, timesheet approvals for non-CLIENT workspace members |
 | `draft` | stage into the **agent inbox** for a human to approve | **client-facing mail** — proposals, client status updates, invoice notes, anything a customer reads |
 
 Routing rule:
 
-- **Internal notifications** → `mode = send`. These are the per-event emails
-  `NotificationEmailListener` produces today (`sendNotificationEmail`). When
-  `EMAIL_OPS_BASE_URL` is set, `EmailService.sendNotificationEmail` composes them
-  through Email-Ops in `send` mode instead of the local SMTP transporter.
+- **Internal notifications** → `mode = send` only after the recipient's active
+  workspace membership is resolved and the recipient's application role is
+  proven non-`CLIENT`. Missing membership or a `CLIENT` recipient uses
+  `mode = draft`, preserving the approval gate for unproven recipients. These
+  are the per-event emails `NotificationEmailListener` produces today
+  (`sendNotificationEmail`). When `EMAIL_OPS_BASE_URL` is set,
+  `EmailService.sendNotificationEmail` composes them through Email-Ops instead
+  of the local SMTP transporter.
   `EmailService.canSend()` gates the listener on *either* SMTP *or* Email-Ops, so
   a deployment routing exclusively through Email-Ops still delivers.
 - **Client-facing mail** → `mode = draft`. The individual client-facing send
@@ -53,9 +57,10 @@ Email-Ops de-dupes `compose_email` on the tuple
 - `external_ref` — a stable, caller-chosen ref. Project-Ops uses
   `<eventName>:<entityId>:<recipientUserId>[:<instanceId>]` for notifications,
   where `<instanceId>` disambiguates distinct occurrences of the same event type
-  on the same entity (a comment id, a status transition) so a second comment or
-  status change is a DIFFERENT key and still delivers — while a true retry of the
-  same occurrence returns the SAME message and sends nothing twice.
+  on the same entity (a comment id, event id, or persisted `updatedAt`) so a
+  second comment or status flip is a DIFFERENT key and still delivers — while
+  a true retry of the same occurrence returns the SAME message and sends
+  nothing twice.
 
 The client (`HttpEmailOpsClient.compose`) POSTs these as the MCP `compose_email`
 tool arguments over the suite M2M rail
@@ -99,7 +104,8 @@ Nothing in this task touches `.env`, Keycloak, secrets, DNS, ssh or deploys.
 - `backend/src/email-ops/` client (`EmailOpsPort`, `HttpEmailOpsClient`) behind the
   `EMAIL_OPS_BASE_URL` / `EMAIL_OPS_SERVICE_TOKEN` flag, with mocked-fetch tests.
 - Wiring of **internal notifications** (`EmailService.sendNotificationEmail` →
-  `compose_email(mode: 'send')`) with the idempotency key, plus listener tests.
+  role-gated `compose_email(mode: 'send' | 'draft')`) with the idempotency key,
+  plus listener tests.
 - Email-Ops side accepts `external_source = 'project-ops'` (entitlement + trusted
   compose source) with tests.
 - This doc.

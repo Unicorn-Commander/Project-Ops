@@ -5,8 +5,9 @@
  * When Project-Ops needs to send a CLIENT-facing email (proposal, invoice note,
  * status update to a customer) it composes through Email-Ops in `draft` mode —
  * the message lands in the agent inbox for a human to approve. INTERNAL
- * notification emails (task assigned / mentioned) compose in `send` mode so they
- * deliver without a human hop.
+ * notification emails (task assigned / mentioned) compose in `send` mode only
+ * after Project-Ops proves the recipient is a non-CLIENT workspace member;
+ * unproven recipients compose in `draft` mode.
  *
  * The default implementation (HttpEmailOpsClient) POSTs to the Email-Ops MCP
  * `compose_email` tool over the suite M2M rail, mirroring the Customer-Ops

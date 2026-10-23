@@ -1,7 +1,15 @@
-import { Inject, Injectable, Logger, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  Optional,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { EMAIL_OPS_PORT, EmailOpsPort } from '../email-ops/email-ops.port';
+import type { EmailOpsMode } from '../email-ops/email-ops.port';
 import * as nodemailer from 'nodemailer';
 import { Transporter } from 'nodemailer';
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
@@ -643,12 +651,13 @@ export class EmailService {
     to: string,
     recipientName: string,
     content: NotificationEmailContent,
-    routing?: { workspaceId: string; externalRef: string },
+    routing?: { workspaceId: string; externalRef: string; mode?: EmailOpsMode },
   ): Promise<{ success: boolean; message: string }> {
-    // Email-Ops routing (internal notifications = mode `send`). When the port
-    // is configured AND the caller supplied the workspace idempotency key, route
-    // through Email-Ops instead of the local SMTP transporter. Otherwise this
-    // method is byte-identical to today's behaviour.
+    // Email-Ops routing. When the port is configured AND the caller supplied
+    // the workspace idempotency key, route through Email-Ops instead of the
+    // local SMTP transporter. The caller supplies `send` only after proving
+    // that the recipient is an internal workspace member; the fail-closed
+    // default is `draft`.
     if (this.emailOps?.isConfigured() && routing?.workspaceId && routing?.externalRef) {
       // Resolve the same from-name the SMTP path uses (cosmetic in the body
       // copy; Email-Ops owns the actual envelope sender).
@@ -662,11 +671,16 @@ export class EmailService {
         toAddress: to,
         subject: content.subject,
         body: getNotificationEmailText(content, recipientName, fromName),
-        mode: 'send',
+        mode: routing.mode ?? 'draft',
       });
       if (result.ok) {
-        this.logger.log(`Notification email routed through Email-Ops (${result.messageId}) to ${to}`);
-        return { success: true, message: `Notification email composed in Email-Ops (${result.messageId})` };
+        this.logger.log(
+          `Notification email routed through Email-Ops (${result.messageId}) to ${to}`,
+        );
+        return {
+          success: true,
+          message: `Notification email composed in Email-Ops (${result.messageId})`,
+        };
       }
       this.logger.warn(`Email-Ops route failed (${result.reason}): ${result.message}`);
       return { success: false, message: `Email-Ops route failed: ${result.message}` };
@@ -728,6 +742,11 @@ export class EmailService {
    */
   async canSend(): Promise<boolean> {
     if (await this.isConfigured()) return true;
+    return !!this.emailOps?.isConfigured();
+  }
+
+  /** True when the Email-Ops flag is fully configured; does not touch SMTP or the DB. */
+  isEmailOpsConfigured(): boolean {
     return !!this.emailOps?.isConfigured();
   }
 }

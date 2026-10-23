@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
+import { UserRole } from '@prisma/client';
 import { EmailService } from '../email/email.service';
+import type { EmailOpsMode } from '../email-ops/email-ops.port';
+import { MembershipService } from '../common/workspace/membership.service';
 import { NotificationsService } from './notifications.service';
 import { NotificationEmailContent } from '../email/templates/notification.template';
 import { shouldEmail } from './notification-preferences';
@@ -39,6 +42,7 @@ export class NotificationEmailListener {
     private readonly notifications: NotificationsService,
     private readonly email: EmailService,
     private readonly config: ConfigService,
+    private readonly membership: MembershipService,
   ) {}
 
   // ── Event handlers ─────────────────────────────────────────────────────────
@@ -120,10 +124,16 @@ export class NotificationEmailListener {
   async onTaskStatusChanged(payload: {
     workspaceId?: string;
     taskId?: string;
+    eventId?: string | null;
     fromStatus?: string;
     toStatus?: string;
     actorId?: string | null;
-    task?: { title?: string | null; assignedToId?: string | null; projectId?: string | null };
+    task?: {
+      title?: string | null;
+      assignedToId?: string | null;
+      projectId?: string | null;
+      updatedAt?: Date | string | null;
+    };
   }): Promise<void> {
     await this.guard('task.status_changed', async () => {
       const recipient = payload.task?.assignedToId;
@@ -135,7 +145,7 @@ export class NotificationEmailListener {
         actorUserId: payload.actorId ?? null,
         workspaceId: payload.workspaceId ?? null,
         entityId: payload.taskId ?? null,
-        instanceId: payload.fromStatus && payload.toStatus ? `${payload.fromStatus}->${payload.toStatus}` : null,
+        instanceId: this.occurrenceId(payload.eventId, payload.task?.updatedAt),
         content: (actorName) => ({
           subject: `Task status updated: ${title}`,
           headline: 'Task status updated',
@@ -209,10 +219,15 @@ export class NotificationEmailListener {
   async onProjectStatusChanged(payload: {
     workspaceId?: string;
     projectId?: string;
+    eventId?: string | null;
     fromStatus?: string;
     toStatus?: string;
     actorId?: string | null;
-    project?: { title?: string | null; assignedToId?: string | null };
+    project?: {
+      title?: string | null;
+      assignedToId?: string | null;
+      updatedAt?: Date | string | null;
+    };
   }): Promise<void> {
     await this.guard('project.status_changed', async () => {
       const recipient = payload.project?.assignedToId;
@@ -224,6 +239,7 @@ export class NotificationEmailListener {
         actorUserId: payload.actorId ?? null,
         workspaceId: payload.workspaceId ?? null,
         entityId: payload.projectId ?? null,
+        instanceId: this.occurrenceId(payload.eventId, payload.project?.updatedAt),
         content: (actorName) => ({
           subject: `Project status updated: ${title}`,
           headline: 'Project status updated',
@@ -342,18 +358,22 @@ export class NotificationEmailListener {
       ? ((await this.notifications.resolveEmailRecipient(actorUserId))?.name ?? 'Someone')
       : 'Project Ops';
 
-    // Email-Ops routing: internal notifications go in `send` mode with an
-    // idempotency key of (workspaceId, 'project-ops', externalRef). The ref
-    // disambiguates distinct occurrences via `instanceId` (comment id / status
-    // transition) so a second comment or status change on the same task is a
-    // DIFFERENT key and still delivers. When workspace/entity are unknown, routing
-    // is omitted and sendNotificationEmail keeps its local SMTP path.
+    // Email-Ops routing uses an idempotency key of
+    // (workspaceId, 'project-ops', externalRef). The ref
+    // disambiguates distinct occurrences via `instanceId` (comment id or
+    // event/updatedAt) so a later status flip is a DIFFERENT key and still
+    // delivers. `send` is only allowed for a proven non-CLIENT member; a
+    // missing membership or CLIENT recipient is staged as `draft`. When the
+    // flag or workspace/entity is unknown, routing is omitted and
+    // sendNotificationEmail keeps its local SMTP path.
     const routing =
-      params.workspaceId && params.entityId
+      this.email.isEmailOpsConfigured() && params.workspaceId && params.entityId
         ? {
             workspaceId: params.workspaceId,
-            externalRef: `${eventName}:${params.entityId}:${recipientUserId}` +
+            externalRef:
+              `${eventName}:${params.entityId}:${recipientUserId}` +
               (params.instanceId ? `:${params.instanceId}` : ''),
+            mode: await this.emailOpsMode(recipientUserId, recipient, params.workspaceId),
           }
         : undefined;
 
@@ -415,5 +435,26 @@ export class NotificationEmailListener {
   private snippet(content: string, max = 120): string {
     const oneLine = content.replace(/\s+/g, ' ').trim();
     return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine;
+  }
+
+  private async emailOpsMode(
+    recipientUserId: string,
+    recipient: { keycloakId: string | null; role: UserRole },
+    workspaceId: string,
+  ): Promise<EmailOpsMode> {
+    const workspaceRole = await this.membership.getActiveMembershipRole(
+      { id: recipientUserId, keycloakId: recipient.keycloakId },
+      workspaceId,
+    );
+    return recipient.role !== undefined && recipient.role !== UserRole.CLIENT && workspaceRole
+      ? 'send'
+      : 'draft';
+  }
+
+  private occurrenceId(eventId?: string | null, updatedAt?: Date | string | null): string | null {
+    if (eventId?.trim()) return eventId.trim();
+    if (updatedAt instanceof Date) return updatedAt.toISOString();
+    if (updatedAt?.trim()) return updatedAt.trim();
+    return null;
   }
 }
