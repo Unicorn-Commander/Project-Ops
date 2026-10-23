@@ -1,10 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  EmailOpsComposeRequest,
-  EmailOpsComposeResult,
-  EmailOpsPort,
-} from './email-ops.port';
+import { EmailOpsComposeRequest, EmailOpsComposeResult, EmailOpsPort } from './email-ops.port';
 
 /** Default per-request timeout (ms). Override via EMAIL_OPS_TIMEOUT_MS. */
 export const EMAIL_OPS_DEFAULT_TIMEOUT_MS = 10_000;
@@ -133,7 +129,8 @@ export class HttpEmailOpsClient extends EmailOpsPort {
       return {
         ok: false,
         reason: 'DENIED',
-        message: 'Email-Ops declined the compose (service token not entitled, or the workspace is not federated).',
+        message:
+          'Email-Ops declined the compose (service token not entitled, or the workspace is not federated).',
       };
     }
     if (!res.ok) {
@@ -157,7 +154,11 @@ export class HttpEmailOpsClient extends EmailOpsPort {
       | undefined;
     const id = structured?.id ?? this.textResultId(result?.content);
     if (!id) {
-      return { ok: false, reason: 'ERROR', message: 'Email-Ops returned an unreadable compose result.' };
+      return {
+        ok: false,
+        reason: 'ERROR',
+        message: 'Email-Ops returned an unreadable compose result.',
+      };
     }
     return {
       ok: true,

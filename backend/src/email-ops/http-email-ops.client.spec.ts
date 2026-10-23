@@ -37,7 +37,11 @@ describe('HttpEmailOpsClient', () => {
     const client = makeClient({}, fetchImpl);
     expect(client.isConfigured()).toBe(false);
     const r = await client.compose(req);
-    expect(r).toEqual({ ok: false, reason: 'UNCONFIGURED', message: expect.stringMatching(/Connect Email-Ops/) });
+    expect(r).toEqual({
+      ok: false,
+      reason: 'UNCONFIGURED',
+      message: expect.stringMatching(/Connect Email-Ops/),
+    });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -45,7 +49,10 @@ describe('HttpEmailOpsClient', () => {
     expect(makeClient({ EMAIL_OPS_BASE_URL: 'https://m.test' }).isConfigured()).toBe(false);
     expect(makeClient({ EMAIL_OPS_SERVICE_TOKEN: 'tok' }).isConfigured()).toBe(false);
     expect(
-      makeClient({ EMAIL_OPS_BASE_URL: 'https://m.test/', EMAIL_OPS_SERVICE_TOKEN: 'tok' }).isConfigured(),
+      makeClient({
+        EMAIL_OPS_BASE_URL: 'https://m.test/',
+        EMAIL_OPS_SERVICE_TOKEN: 'tok',
+      }).isConfigured(),
     ).toBe(true);
   });
 
@@ -58,7 +65,10 @@ describe('HttpEmailOpsClient', () => {
       }),
     );
     const client = makeClient(
-      { EMAIL_OPS_BASE_URL: 'https://mail.example.dev/', EMAIL_OPS_SERVICE_TOKEN: 'svc-token-value' },
+      {
+        EMAIL_OPS_BASE_URL: 'https://mail.example.dev/',
+        EMAIL_OPS_SERVICE_TOKEN: 'svc-token-value',
+      },
       fetchImpl,
     );
 
@@ -87,7 +97,9 @@ describe('HttpEmailOpsClient', () => {
 
   it('maps a client-facing email to mode=draft and passes contact_id for thread linking', async () => {
     const fetchImpl = jest.fn(async () =>
-      response(200, { result: { structuredContent: { id: 'msg-2', thread_id: null, status: 'draft' } } }),
+      response(200, {
+        result: { structuredContent: { id: 'msg-2', thread_id: null, status: 'draft' } },
+      }),
     );
     const client = makeClient(
       { EMAIL_OPS_BASE_URL: 'https://mail.example.dev', EMAIL_OPS_SERVICE_TOKEN: 'tok' },
@@ -114,7 +126,10 @@ describe('HttpEmailOpsClient', () => {
   it('types a 401/403 as DENIED and does not log the token', async () => {
     const fetchImpl = jest.fn(async () => response(403, { detail: 'nope' }));
     const client = makeClient(
-      { EMAIL_OPS_BASE_URL: 'https://mail.example.dev', EMAIL_OPS_SERVICE_TOKEN: 'svc-token-value' },
+      {
+        EMAIL_OPS_BASE_URL: 'https://mail.example.dev',
+        EMAIL_OPS_SERVICE_TOKEN: 'svc-token-value',
+      },
       fetchImpl,
     );
     const r = await client.compose(req);
