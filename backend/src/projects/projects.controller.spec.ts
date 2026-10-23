@@ -7,6 +7,8 @@ import { ROLES_KEY } from '../common/decorators/roles.decorator';
 import { Reflector } from '@nestjs/core';
 import { UserRole } from '@prisma/client';
 
+const unsupportedViewerRole = 'VIEWER' as UserRole;
+
 /**
  * Gate tests for the project create route. `RolesGuard` returns true when a
  * route carries no `@Roles` metadata, so `POST /projects` was previously
@@ -35,6 +37,43 @@ describe('ProjectsController gating', () => {
 
     expect(c.create('ws', user, dto)).toBe('created');
     expect(projects.create).toHaveBeenCalledWith('ws', user, dto);
+  });
+});
+
+describe('ProjectsController item route role gates', () => {
+  const routes = ['findOne', 'getBudget', 'update', 'updateStatus'] as const;
+  const requiredRoles = [UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF];
+
+  function canActivate(method: (typeof routes)[number], role: UserRole): boolean {
+    const reflector = {
+      getAllAndOverride: (key: string, targets: unknown[]) => {
+        const [handler, controller] = targets as [object, object];
+        return Reflect.getMetadata(key, handler) ?? Reflect.getMetadata(key, controller);
+      },
+    } as unknown as Reflector;
+    const context = {
+      getHandler: () => ProjectsController.prototype[method],
+      getClass: () => ProjectsController,
+      switchToHttp: () => ({ getRequest: () => ({ user: { role } }) }),
+    } as any;
+    return new RolesGuard(reflector).canActivate(context);
+  }
+
+  it.each(routes)('requires ADMIN/MANAGER/STAFF on %s', (method) => {
+    expect(Reflect.getMetadata(ROLES_KEY, ProjectsController.prototype[method])).toEqual(
+      requiredRoles,
+    );
+  });
+
+  it.each(routes)('denies CLIENT and unsupported VIEWER on %s', (method) => {
+    expect(canActivate(method, UserRole.CLIENT)).toBe(false);
+    expect(canActivate(method, unsupportedViewerRole)).toBe(false);
+  });
+
+  it.each(routes)('allows staff roles on %s', (method) => {
+    for (const role of [UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF]) {
+      expect(canActivate(method, role)).toBe(true);
+    }
   });
 });
 

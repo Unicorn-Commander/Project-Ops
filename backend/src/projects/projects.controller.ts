@@ -180,6 +180,7 @@ export class ProjectsController {
   }
 
   @Get(':id')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @ApiOperation({ summary: 'Get project by ID' })
   @ApiResponse({ status: 200, description: 'Returns project details' })
   @ApiResponse({ status: 404, description: 'Project not found' })
