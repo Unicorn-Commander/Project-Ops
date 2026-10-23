@@ -1,4 +1,13 @@
-import { IsString, IsInt, IsBoolean, IsEmail, IsOptional, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsInt,
+  IsBoolean,
+  IsEmail,
+  IsOptional,
+  Min,
+  Max,
+  MinLength,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class CreateEmailConfigDto {
@@ -23,7 +32,8 @@ export class CreateEmailConfigDto {
   smtpSecure: boolean;
 
   // Accept both 'smtpUser' (backend) and 'email' (frontend)
-  @IsEmail()
+  @IsString()
+  @MinLength(1)
   @Transform(({ obj }) => obj.smtpUser ?? obj.email)
   smtpUser: string;
 
@@ -56,7 +66,8 @@ export class CreateEmailConfigDto {
   @IsOptional()
   useTLS?: boolean;
 
-  @IsEmail()
+  @IsString()
+  @MinLength(1)
   @IsOptional()
   email?: string;
 
@@ -84,7 +95,8 @@ export class UpdateEmailConfigDto {
   @IsOptional()
   smtpSecure?: boolean;
 
-  @IsEmail()
+  @IsString()
+  @MinLength(1)
   @IsOptional()
   smtpUser?: string;
 
