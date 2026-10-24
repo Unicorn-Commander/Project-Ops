@@ -16,6 +16,8 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { McpService } from './mcp.service';
+import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
+import { readDelegationHeader } from '../common/workspace/federation-delegation';
 import { THROTTLER_MCP } from '../config/throttler.config';
 import { User, UserRole, PersonalAccessToken } from '@prisma/client';
 
@@ -34,7 +36,10 @@ import { User, UserRole, PersonalAccessToken } from '@prisma/client';
 export class McpController {
   private readonly logger = new Logger(McpController.name);
 
-  constructor(private readonly mcp: McpService) {}
+  constructor(
+    private readonly mcp: McpService,
+    private readonly workspace: WorkspaceContextService,
+  ) {}
 
   @All()
   @WorkspaceWriteException('mcp')
@@ -102,15 +107,47 @@ export class McpController {
       transport.close().catch(() => undefined);
     });
 
-    try {
-      const server = await this.mcp.createServerForUser(
-        user,
-        grantedScopes,
-        bearerToken,
-        patWorkspaceId,
-        undefined, // patIdentity — unchanged (label enrichment not wired here)
-        requestWorkspaceId,
+    // ON-BEHALF-OF federation read (task 092b2902). A verified, allow-listed
+    // federation actor that names the acting user (X-Uc-Uid) runs AS that
+    // member, capped to read scopes and bound to the token's workspace — never
+    // more than the user's own session would see. A machine call without the
+    // header keeps the unchanged federation path; a header that cannot be
+    // honoured is refused outright rather than silently ignored.
+    const delegation = await this.workspace.resolveFederationDelegation(
+      user as any,
+      readDelegationHeader(req.headers as any),
+      requestWorkspaceId,
+    );
+    if (delegation.kind === 'denied') {
+      this.logger.warn(
+        `MCP federation delegation refused (user=${user.username}): ${delegation.reason}`,
       );
+      res.status(403).json({ error: 'federation_delegation_denied', reason: delegation.reason });
+      return;
+    }
+
+    try {
+      const server =
+        delegation.kind === 'delegated'
+          ? await this.mcp.createServerForUser(
+              delegation.user,
+              delegation.scopes,
+              null, // never forward the machine bearer to cross-app tools
+              delegation.workspaceId,
+              {
+                id: `federation:${delegation.actor}`,
+                name: `${delegation.actor} on behalf of ${delegation.user.email}`,
+              },
+              delegation.workspaceId,
+            )
+          : await this.mcp.createServerForUser(
+              user,
+              grantedScopes,
+              bearerToken,
+              patWorkspaceId,
+              undefined, // patIdentity — unchanged (label enrichment not wired here)
+              requestWorkspaceId,
+            );
       await server.connect(transport);
       // body has already been parsed by express.json — pass it through.
       await transport.handleRequest(req, res, (req as any).body);
