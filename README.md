@@ -56,17 +56,9 @@ Keep tasks, a timeline, budget progress, documents and activity beside the proje
 
 ### Triage before commitment
 
-<p align="center">
-  <img src="docs/screenshots/triage.webp" width="1120" alt="AI-proposed action items waiting for review and approval in the triage inbox">
-</p>
-
 AI-proposed action items wait here for review: approve, reject, change the destination project or create a project from unassigned proposals. Ingest creates proposals, not tasks; applying an approval creates the task. Human review is the UI workflow, and authorized MCP clients can also record approval decisions through `rule_triage_proposals`.
 
 ### Agent work you can inspect
-
-<p align="center">
-  <img src="docs/screenshots/agents.webp" width="1120" alt="Agent activity ledger showing recorded actions, token usage and costs">
-</p>
 
 The ledger records successful MCP actions with project context and duration. Those events leave token counts empty. Assistant turns record reported token usage, and their cost comes from model pricing: a configured free model is $0, and a missing or unpriced model is unknown. External agents' own inference bills are not measured by an MCP tool call, and event capture is best effort.
 
@@ -149,7 +141,7 @@ Suite applications can submit candidate work to `POST /api/v1/triage/ingest` thr
 
 ## Quick start
 
-**Prerequisites:** Docker with Compose v2, and an interactive terminal. Run these commands from the root of this repository. This profile builds the application from this checkout and uses local email/password sign-in; it does not require Keycloak or a suite account. The published [project-ops-community](https://github.com/Unicorn-Commander/project-ops-community) repository is a separate community edition under AGPL-3.0; it is not this Apache-2.0 tree.
+**Prerequisites:** Docker with Compose v2, and an interactive terminal. Run these commands from the root of this repository. This profile builds the application from this checkout and uses local email/password sign-in; it does not require Keycloak or a suite account.
 
 ```bash
 cp .env.example .env
@@ -312,12 +304,12 @@ Health endpoints distinguish process liveness, database readiness and integratio
 |---|---|
 | Unicorn-Brigade | Ask chat, when `BRIGADE_URL`, `BRIGADE_API_KEY` and `BRIGADE_AGENT_ID` are set. The self-host profile leaves `BRIGADE_URL` empty. |
 | Ops-Center | Optional entitlement check on interactive SSO, when `PROJECT_OPS_ENTITLEMENTS_ENABLED` and `UC_ENTITLEMENTS_URL` are set. |
-| [Accounting-Ops](https://github.com/Unicorn-Commander/accounting-ops-oss) | Invoice issue and status sync when live billing is enabled. Also published as [accounting-ops-community](https://github.com/Unicorn-Commander/accounting-ops-community). |
-| [Contact-Ops](https://github.com/Unicorn-Commander/contact-ops-community) | Optional `contactOpsContactId` on a project. The published repository describes the suite's shared contact and identity layer. |
-| [Customer-Ops](https://github.com/Unicorn-Commander/customer-ops-community) | Accepted quotes from the allowlisted `customer-ops` actor, plus `customerOpsCustomerId` on a project. The published repository describes the customer relationship and pipeline layer. |
-| [Email-Ops](https://github.com/Unicorn-Commander/email-ops-community) | Optional notification delivery. The published repository describes agent-governed email with a human approval inbox. |
-| **Project-Ops** | **This repository: projects, tasks, time and invoices, under Apache-2.0.** The published [project-ops-community](https://github.com/Unicorn-Commander/project-ops-community) repository is a separate AGPL-3.0 community edition. |
-| [Meeting-Ops](https://github.com/Unicorn-Commander/Meeting-Ops-OSS) | Documented triage-ingest actor (`meeting-ops`). The published repository describes browser recording, live transcription and meeting search. |
+| [Accounting-Ops](https://github.com/Unicorn-Commander/Accounting-Ops) | Invoice issue and status sync when live billing is enabled. Also published as [Accounting-Ops](https://github.com/Unicorn-Commander/Accounting-Ops). |
+| [Contact-Ops](https://github.com/Unicorn-Commander/Contact-Ops) | Optional `contactOpsContactId` on a project. The published repository describes the suite's shared contact and identity layer. |
+| [Customer-Ops](https://github.com/Unicorn-Commander/Customer-Ops) | Accepted quotes from the allowlisted `customer-ops` actor, plus `customerOpsCustomerId` on a project. The published repository describes the customer relationship and pipeline layer. |
+| [Email-Ops](https://github.com/Unicorn-Commander/Email-Ops) | Optional notification delivery. The published repository describes agent-governed email with a human approval inbox. |
+| **Project-Ops** | **This repository: projects, tasks, time and invoices, under Apache-2.0.** |
+| [Meeting-Ops](https://github.com/Unicorn-Commander/Meeting-Ops) | Documented triage-ingest actor (`meeting-ops`). The published repository describes browser recording, live transcription and meeting search. |
 | Brand-Ops | Optional color tokens from `BRAND_OPS_URL`. The UI keeps its own stylesheet when that service is unset. |
 
 Ask chat goes to Brigade when that connection is configured. Federation is a separate allowlisted machine actor: triage ingest accepts any actor on `PROJECT_OPS_FEDERATION_ACTORS`, and accepted quotes accept only `customer-ops`. Ops-Center is the optional SSO entitlement check. Accounting-Ops issues and syncs invoices when live billing is configured. Email-Ops can deliver notifications. Projects can store Contact-Ops and Customer-Ops ids. Brand-Ops can override color tokens.
