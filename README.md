@@ -369,7 +369,7 @@ Rate limiting separates the `short`, `long` and `mcp` tiers. Authenticated reque
 
 ## Licence
 
-Project-Ops is licensed under the **[Apache License 2.0](LICENSE)**. The frontend and backend package metadata both declare `Apache-2.0`. See the licence for its permissions, conditions and warranty disclaimer.
+Project-Ops is licensed under the **[Apache License 2.0](LICENSE)**. The frontend and backend package metadata both declare `Apache-2.0`. See the licence for its permissions, conditions and warranty disclaimer. Our names and logos are covered by [TRADEMARKS.md](TRADEMARKS.md).
 
 © 2026 Magic Unicorn Unconventional Technology & Stuff Inc.
 
