@@ -283,9 +283,9 @@ describe('MembershipService', () => {
       });
       const svc = make({}, { membership: { findUnique } });
 
-      await expect(svc.getActiveMembershipRole(aaron, 'ws-1')).resolves.toBe(WorkspaceRole.MANAGER);
+      await expect(svc.getActiveMembershipRole(owner, 'ws-1')).resolves.toBe(WorkspaceRole.MANAGER);
       expect(findUnique).toHaveBeenCalledWith({
-        where: { userKey_workspaceId: { userKey: 'kc-aaron-sub', workspaceId: 'ws-1' } },
+        where: { userKey_workspaceId: { userKey: 'kc-owner-sub', workspaceId: 'ws-1' } },
         select: { role: true, status: true },
       });
     });
@@ -303,7 +303,7 @@ describe('MembershipService', () => {
         },
       );
 
-      await expect(svc.getActiveMembershipRole(aaron, 'ws-1')).resolves.toBeNull();
+      await expect(svc.getActiveMembershipRole(owner, 'ws-1')).resolves.toBeNull();
     });
   });
 });
