@@ -49,6 +49,26 @@ export class DashboardService {
     private readonly workspaceContext: WorkspaceContextService,
   ) {}
 
+  /**
+   * Number of users holding an ACTIVE membership in `workspaceId`.
+   *
+   * `users` has no workspaceId column and no RLS policy, so it is the one
+   * table in this aggregate that the workspace-pinned `tx` does NOT fence.
+   * Tenancy for users lives in `memberships` (userKey == keycloakId, or the
+   * local id for non-SSO users), so the count goes through that join.
+   */
+  private async countWorkspaceUsers(tx: WorkspaceTxClient, workspaceId: string): Promise<number> {
+    const members = await tx.membership.findMany({
+      where: { workspaceId, status: 'ACTIVE' },
+      select: { userKey: true },
+    });
+    if (members.length === 0) return 0;
+    const keys = members.map((m) => m.userKey);
+    return tx.user.count({
+      where: { OR: [{ keycloakId: { in: keys } }, { id: { in: keys } }] },
+    });
+  }
+
   async getOverview(workspaceId: string, user: User) {
     const roleWhere = this.buildRoleBasedWhere(user);
     const dueDateBounds = upcomingDueDateBounds(new Date(), 7);
@@ -65,9 +85,13 @@ export class DashboardService {
           upcomingDeadlines,
         ] = await Promise.all([
           tx.project.count({ where: roleWhere }),
-          // Only admins and managers see user count (users are not workspace-scoped)
+          // Only admins and managers see the user count. The `users` table is
+          // NOT workspace-scoped and carries no RLS policy, so a bare
+          // `tx.user.count()` returns the INSTANCE-WIDE total and leaks the
+          // size of every other tenant. Count through the memberships join for
+          // the workspace this request already resolved.
           user.role === UserRole.ADMIN || user.role === UserRole.MANAGER
-            ? tx.user.count()
+            ? this.countWorkspaceUsers(tx, workspaceId)
             : Promise.resolve(0),
           tx.document.count({ where: { project: roleWhere } }),
           tx.project.count({

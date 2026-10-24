@@ -12,13 +12,28 @@ import { EmailService } from './email.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { InstanceOperatorGuard } from '../common/guards/instance-operator.guard';
 import { UserRole } from '@prisma/client';
 import { CreateEmailConfigDto, EmailConfigResponseDto } from './dto/email-config.dto';
 import { TestEmailDto } from './dto/test-email.dto';
 import { TestTemplateEmailDto, EmailTemplateType } from './dto/test-template-email.dto';
 
+/**
+ * Shared SMTP relay administration.
+ *
+ * TENANCY: `email_config` is a SINGLE un-tenanted row — no workspaceId column,
+ * no RLS — and `saveConfig()` calls `deleteMany()` before every write. Gated on
+ * the global `UserRole.ADMIN` alone, any tenant's admin could destroy the
+ * deployment's shared mail credentials and, via `test` / `test-template`, relay
+ * arbitrary mail to arbitrary recipients through our domain.
+ *
+ * `InstanceOperatorGuard` therefore restricts this ENTIRE controller (config
+ * read/write/delete AND the test-send routes) to an admin acting inside the
+ * operator workspace. Applied at class level so a route added later inherits
+ * the restriction by default rather than opting into it.
+ */
 @Controller('email')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, InstanceOperatorGuard)
 export class EmailController {
   constructor(private readonly emailService: EmailService) {}
 

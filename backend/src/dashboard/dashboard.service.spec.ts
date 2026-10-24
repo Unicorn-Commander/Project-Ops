@@ -38,6 +38,8 @@ describe('DashboardService — date-only upcoming bounds', () => {
       project: { count: projectCount },
       document: { count: documentCount },
       user: { count: userCount },
+      // admin/manager user count goes through the memberships join (bc94a66)
+      membership: { findMany: jest.fn(async (..._args: any[]) => []) },
     };
     const workspaceContext = {
       runForUser: jest.fn(async (_u: any, fn: (t: any) => any) => fn(tx)),
