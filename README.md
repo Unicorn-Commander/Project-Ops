@@ -33,7 +33,7 @@ Project-Ops is a self-hosted workspace for teams managing projects, client work 
 - **Turn work into billable records.** Timers, manual entries, rates and timesheet approvals feed invoice previews and optional Accounting-Ops invoicing.
 - **Review incoming action items.** Triage proposes a project and priority, checks for duplicates and keeps candidates separate from tasks until an approval action.
 - **Give agents useful access.** MCP tools operate as the authenticated user, with workspace binding, token scopes and role checks on mutations.
-- **Bring clients into the work.** A scoped portal supports approvals, comments, shared documents and read-only invoices with payment links when available.
+- **Bring clients into the work.** A scoped portal supports approvals, comments, shared documents and read-only invoices. A due balance sets `payUrl` to a local portal path; that path is a checkout stub, not a payment URL from Accounting-Ops.
 - **Start with infrastructure you control.** Docker provides local sign-in and a database; add your own Keycloak, object storage and agent services as needed.
 
 ## Feature tour
@@ -44,7 +44,7 @@ Project-Ops is a self-hosted workspace for teams managing projects, client work 
   <img src="docs/screenshots/kanban.webp" width="1120" alt="Kanban board showing tasks grouped by status in a demo workspace">
 </p>
 
-Drag tasks between statuses and narrow the board by organization, project, assignee or priority. **My Tasks** gathers assigned work by due date and highlights overdue items. Task details carry subtasks, comments and dependencies; completion checks expose unfinished blockers, with explicit overrides for authorized workspace roles.
+Drag tasks between statuses and narrow the board by organization, project, assignee or priority. **My Tasks** gathers assigned work by due date and highlights overdue items. Task details carry subtasks, comments and dependencies; completion checks expose unfinished blockers, and a workspace OWNER, ADMIN, or MANAGER can override them.
 
 ### The project, with its tasks, time and documents
 
@@ -68,7 +68,7 @@ AI-proposed action items wait here for review: approve, reject, change the desti
   <img src="docs/screenshots/agents.webp" width="1120" alt="Agent activity ledger showing recorded actions, token usage and costs">
 </p>
 
-The ledger records successful MCP actions and assistant turns, with project context, duration and reported token usage. Assistant costs are calculated from model pricing; an unpriced model has an unknown cost. External agents' own inference bills are not measured by an MCP tool call, and event capture is best effort.
+The ledger records successful MCP actions with project context and duration. Those events leave token counts empty. Assistant turns record reported token usage, and their cost comes from model pricing: a configured free model is $0, and a missing or unpriced model is unknown. External agents' own inference bills are not measured by an MCP tool call, and event capture is best effort.
 
 ### The master schedule
 
@@ -76,7 +76,7 @@ The ledger records successful MCP actions and assistant turns, with project cont
   <img src="docs/screenshots/schedule.webp" width="1120" alt="Master schedule with project swimlanes, progress bars and due-date markers">
 </p>
 
-See projects on a shared timeline, grouped by customer, product, owner or status. Progress bars and due-date diamonds show what is moving and what is due; drag a project bar to reschedule. Portfolio, Profitability and Throughput reports add delivery and financial context, while capacity planning compares estimated commitments with available hours.
+See projects on a shared timeline, grouped by customer, product, owner or status. Progress bars and due-date diamonds show what is moving and what is due; drag a project bar to reschedule. Portfolio, Profitability and Throughput reports add delivery and financial context, while capacity planning compares estimated committed hours with pro-rated weekly capacity and shows utilization bands.
 
 ### More of the operation, in the same workspace
 
@@ -84,9 +84,9 @@ See projects on a shared timeline, grouped by customer, product, owner or status
 |---|---|
 | Planning | Set status, priority, categories and tags; use subtasks and dependencies with self-link and cycle guards. Schedule recurring tasks and projects using the supported daily, weekly and monthly RRULE subset, materialized by daily jobs. |
 | Custom fields | Define workspace fields for projects and tasks: text, number, date, select, multiselect and boolean. |
-| Time and billing | Start and stop timers, enter time manually, resolve bill and cost rates, submit timesheets and approve time. Combine approved, unbilled time and fixed fees into a draft invoice and PDF preview; connect Accounting-Ops for issuance and status synchronization. Previews need object storage. |
+| Time and billing | Start and stop timers, enter time manually, resolve bill and cost rates, submit timesheets and approve time. Combine approved, unbilled time and flat fees into a draft invoice and PDF preview. Issue and sync invoices in Accounting-Ops when `BILLABLE_ROLLUP_LIVE` is on and `ACCOUNTING_OPS_BASE_URL`, `ACCOUNTING_OPS_WORKSPACE_ID` and `ACCOUNTING_OPS_ENTITY_ID` are set. Previews need object storage. |
 | Organizations and contacts | Maintain contacts, parent/child organizations and rollups alongside their projects. Customer-Ops and Contact-Ops reference fields let projects retain suite identifiers. |
-| Client portal | Give authenticated client users access to their projects, explicitly shared documents, approvals and non-internal comments. Invoice views are read-only and expose payment links supplied by the billing integration. |
+| Client portal | Give authenticated client users access to their projects, explicitly shared documents, approvals and non-internal comments. Invoice views are read-only. When a balance is due and the invoice is not cancelled, the API sets `payUrl` to `/client-portal/invoices/:projectId/pay`. That value is a local checkout stub, not a URL from Accounting-Ops, and the portal has no page at that path. |
 | Automation and webhooks | Build When → If → Then rules to assign tasks, change status, add comments, create tasks or notify users. Send HMAC-SHA256-signed webhooks with retries and a delivery log. |
 | Everyday work | Use notifications, @mentions, WebSocket updates and the activity feed. Save views, star projects, pin tasks, apply bulk actions and export scoped CSV data. Choose light, dark, vibrant or system theme. |
 
@@ -121,7 +121,7 @@ These are real read and write operations. Task creation, status changes and auth
 
 ### Connect an MCP client
 
-Complete the [local quick start](#quick-start), then follow the [PAT creation recipe](docs/MCP_FOR_CODING_AGENTS.md#create-an-expiring-pat-on-localhost). It uses a signed-in session with `POST /api/v1/auth/pats`; a PAT cannot mint another PAT. Set `expiresAt` explicitly, save the returned `plaintext` token when it is shown, and keep it in your client's private configuration or secret store.
+Complete the [local quick start](#quick-start), then follow the [PAT creation recipe](docs/MCP_FOR_CODING_AGENTS.md#create-an-expiring-pat-on-localhost). It uses a signed-in session with `POST /api/v1/auth/pats`; a PAT cannot mint another PAT. Tokens use the `po_pat_` prefix. Set `expiresAt` explicitly: omitting it creates a non-expiring token. Save the returned `plaintext` token when it is shown, and keep it in your client's private configuration or secret store.
 
 For clients accepting an `mcpServers` configuration with HTTP transport:
 
@@ -149,11 +149,9 @@ Suite applications can submit candidate work to `POST /api/v1/triage/ingest` thr
 
 ## Quick start
 
-**Prerequisites:** Git, Docker with Compose v2, and an interactive terminal. Run these commands from a fresh clone. This profile builds the application from this checkout and uses local email/password sign-in; it does not require Keycloak or a suite account.
+**Prerequisites:** Docker with Compose v2, and an interactive terminal. Run these commands from the root of this repository. This profile builds the application from this checkout and uses local email/password sign-in; it does not require Keycloak or a suite account. The published [project-ops-community](https://github.com/Unicorn-Commander/project-ops-community) repository is a separate community edition under AGPL-3.0; it is not this Apache-2.0 tree.
 
 ```bash
-git clone https://github.com/Unicorn-Commander/Project-Ops.git
-cd Project-Ops
 cp .env.example .env
 docker compose -f docker-compose.selfhost.yml up -d --build
 curl --retry 60 --retry-delay 2 --retry-connrefused -fsS http://127.0.0.1:3201/api/v1/health/live
@@ -166,7 +164,7 @@ After readiness succeeds, run the bootstrap in a private interactive terminal. *
 docker compose -f docker-compose.selfhost.yml exec backend node dist/selfhost/bootstrap.js
 ```
 
-The bootstrap creates a local `ADMIN`, a workspace and an active `OWNER` membership. It displays a generated login email, password and bcrypt hash once. Save the email and password in your password manager, then open **[Project-Ops on localhost](http://127.0.0.1:3200/auth/login)** and use the email/password form. The generated address is a login identifier, not a mailbox; sign in with the password, not its hash. Change the password at `/auth/change-password` after signing in.
+The bootstrap creates a local `ADMIN`, a workspace and an active `OWNER` membership. It displays a generated login email, password and bcrypt hash once. The address is `admin-` plus 24 hex characters at `example.invalid`. That address is a login identifier, not a mailbox. Save the email and password in your password manager, then open **[Project-Ops on localhost](http://127.0.0.1:3200/auth/login)** and use the email/password form. Sign in with the password, not its hash. Change the password at `/auth/change-password` after signing in.
 
 Create a project and a task, then open the board and schedule to explore. The [local API documentation](http://127.0.0.1:3201/api/v1/docs) describes the REST surface. First-build time depends on image downloads and available resources.
 
@@ -179,7 +177,7 @@ Create a project and a task, then open the board and schedule to explore. The [l
 | Authenticated MCP tools and workspace-bound PATs | Brigade for the Ask assistant; inference endpoints for AI triage routing |
 | Local records and application notifications | SMTP or Email-Ops for email; Accounting-Ops for live invoicing; registry and entitlement services for suite deployment |
 
-The UI and API bind only to loopback. PostgreSQL and Redis have no published host ports. The Compose profile is for **a single workspace on a single machine**: it uses a non-superuser runtime database role, but does **not** install the multi-workspace RLS policies and sets `PROJECT_OPS_TENANCY_ENABLED=false`. Database tenant isolation requires a separately configured deployment.
+Docker publishes the UI on `127.0.0.1:3200` and the API on `127.0.0.1:3201`. The processes listen on `0.0.0.0` inside their containers. PostgreSQL and Redis have no published host ports. The Compose profile is for **a single workspace on a single machine**: the runtime role is non-superuser `project_ops_app` with `NOBYPASSRLS`, but this profile does **not** install the multi-workspace RLS policies and sets `PROJECT_OPS_TENANCY_ENABLED=false`. Database tenant isolation requires a separately configured deployment.
 
 Attachments require a reachable S3-compatible service, such as Garage, configured through `MINIO_*`. `MINIO_ENDPOINT` must be reachable from the backend container, and `MINIO_PUBLIC_*` must be reachable from the browser; container loopback is not the host's storage service. Without storage, its initialization and integration checks can report unavailable while API liveness and database readiness remain usable.
 
@@ -187,7 +185,7 @@ Attachments require a reachable S3-compatible service, such as Garage, configure
 
 The init service creates database passwords, `JWT_SECRET`, a persistent `EMAIL_ENCRYPTION_KEY`, a workspace ID and the local admin identity in the `selfhost_config` Docker volume. Database and Redis data have their own named volumes. `.env` contains optional settings and is ignored by Git. **Back up the configuration and database volumes together**; losing the configuration volume loses encryption keys and database access.
 
-Bootstrap refuses an unrelated existing installation. Repeating it does not reset or reveal the admin password, and only its hash is stored in the database. If the terminal closes after the transaction commits but before you save the password, recovery requires a deliberate database-admin password reset.
+Bootstrap refuses an unrelated existing installation. Repeating it does not reset or reveal the admin password, and only its hash is stored in the database. Bootstrap writes no admin password file. A failure prints a generic error and does not log the credentials. If the terminal closes after the transaction commits but before you save the password, recovery requires a deliberate database-admin password reset.
 
 Schema initialization uses the repository's `prisma db push` workflow, without accepting destructive changes automatically or running legacy seed data. Review schema changes before upgrading an existing installation. The [schema](backend/prisma/schema.prisma), [startup code](backend/src/selfhost/start.ts) and [release history](CHANGELOG.md) are the relevant references.
 
@@ -272,7 +270,7 @@ The [backend template](backend/.env.example) also documents settings for custom 
 | `CUSTOMER_OPS_BASE_URL`, `CUSTOMER_OPS_SERVICE_TOKEN`, `CUSTOMER_OPS_TIMEOUT_MS` | Read-through connection for accepted-quote summaries. |
 | `QUOTES_PDF_ALLOWED_ORIGINS` | Additional origins from which accepted quote PDFs may be fetched. |
 
-Some integration controls live in code rather than the templates. [Feature flags](backend/src/common/workspace/feature-flags.ts) define `TIME_TRACKING_ENABLED`, `BILLABLE_ROLLUP_LIVE` and `PROJECT_OPS_TENANCY_ENABLED`. The [Accounting-Ops client](backend/src/time-tracking/billing/http-accounting-ops.client.ts) requires its base URL, workspace and entity configuration for live invoicing; the [Email-Ops client](backend/src/email-ops/http-email-ops.client.ts) documents its optional mail route. [Assistant pricing](backend/src/assistant/assistant-pricing.ts) supports `ASSISTANT_TOKEN_PRICES` for model cost attribution.
+Some integration controls live in code rather than the templates. [Feature flags](backend/src/common/workspace/feature-flags.ts) define `TIME_TRACKING_ENABLED` (default on), `BILLABLE_ROLLUP_LIVE` (default off) and `PROJECT_OPS_TENANCY_ENABLED` (default off). Live invoicing in the [Accounting-Ops client](backend/src/time-tracking/billing/http-accounting-ops.client.ts) needs `BILLABLE_ROLLUP_LIVE` plus `ACCOUNTING_OPS_BASE_URL`, `ACCOUNTING_OPS_WORKSPACE_ID` and `ACCOUNTING_OPS_ENTITY_ID`. The [Email-Ops client](backend/src/email-ops/http-email-ops.client.ts) delivers notification mail when `EMAIL_OPS_BASE_URL` and `EMAIL_OPS_SERVICE_TOKEN` are set: `send` for a non-CLIENT workspace member, and `draft` otherwise. When those settings are unset, notification mail stays on SMTP. [Assistant pricing](backend/src/assistant/assistant-pricing.ts) supports `ASSISTANT_TOKEN_PRICES` for model cost attribution. `BRAND_OPS_URL` optionally supplies UI color tokens.
 
 ## Architecture
 
@@ -312,24 +310,17 @@ Health endpoints distinguish process liveness, database readiness and integratio
 
 | App | What it does |
 |---|---|
-| [Ops-Center](https://github.com/Unicorn-Commander/Ops-Center) | The control plane: tenants, billing, federation, API keys, model routing |
-| [Unicorn-Brigade](https://github.com/Unicorn-Commander/Unicorn-Brigade) | The agent layer: agents, tools, memory, orchestration |
-| [Unicorn-Stable](https://github.com/Unicorn-Commander/Unicorn-Stable) | Humans and agents in the same room: chat, voice, video |
-| [Accounting-Ops](https://github.com/Unicorn-Commander/Accounting-Ops) | Agent-native accounting and books |
-| [Contact-Ops](https://github.com/Unicorn-Commander/Contact-Ops) | The shared contact and identity graph |
-| [Customer-Ops](https://github.com/Unicorn-Commander/Customer-Ops) | Customers, pipeline, quotes and outreach |
-| [Email-Ops](https://github.com/Unicorn-Commander/Email-Ops) | Agent-drafted email with a human approval inbox |
-| **[Project-Ops](https://github.com/Unicorn-Commander/Project-Ops)** | **Projects, tasks, time and invoices** |
-| [Meeting-Ops](https://github.com/Unicorn-Commander/Meeting-Ops) | Recordings, transcripts, summaries and action items |
-| [Knowledge-Ops](https://github.com/Unicorn-Commander/Knowledge-Ops) | The wiki and memory your agents ground on |
-| [Security-Ops](https://github.com/Unicorn-Commander/Security-Ops) | Authorized security scanning with engagement and attestation gates |
-| [Tax-Planning-Ops](https://github.com/Unicorn-Commander/Tax-Planning-Ops) | Tax plans, scenarios and statutory deadlines |
-| [Brand-Ops](https://github.com/Unicorn-Commander/Brand-Ops) | Brand kits, marks, voices and rules |
-| [Podcast-Ops](https://github.com/Unicorn-Commander/Podcast-Ops) | Episodes, audio QA and publishing |
-| [UUDA](https://github.com/Unicorn-Commander/UUDA) | The device agent for your fleet |
-| [fleet-map](https://github.com/Unicorn-Commander/fleet-map) | Fleet inventory and topology map |
+| Unicorn-Brigade | Ask chat, when `BRIGADE_URL`, `BRIGADE_API_KEY` and `BRIGADE_AGENT_ID` are set. The self-host profile leaves `BRIGADE_URL` empty. |
+| Ops-Center | Optional entitlement check on interactive SSO, when `PROJECT_OPS_ENTITLEMENTS_ENABLED` and `UC_ENTITLEMENTS_URL` are set. |
+| [Accounting-Ops](https://github.com/Unicorn-Commander/accounting-ops-oss) | Invoice issue and status sync when live billing is enabled. Also published as [accounting-ops-community](https://github.com/Unicorn-Commander/accounting-ops-community). |
+| [Contact-Ops](https://github.com/Unicorn-Commander/contact-ops-community) | Optional `contactOpsContactId` on a project. The published repository describes the suite's shared contact and identity layer. |
+| [Customer-Ops](https://github.com/Unicorn-Commander/customer-ops-community) | Accepted quotes from the allowlisted `customer-ops` actor, plus `customerOpsCustomerId` on a project. The published repository describes the customer relationship and pipeline layer. |
+| [Email-Ops](https://github.com/Unicorn-Commander/email-ops-community) | Optional notification delivery. The published repository describes agent-governed email with a human approval inbox. |
+| **Project-Ops** | **This repository: projects, tasks, time and invoices, under Apache-2.0.** The published [project-ops-community](https://github.com/Unicorn-Commander/project-ops-community) repository is a separate AGPL-3.0 community edition. |
+| [Meeting-Ops](https://github.com/Unicorn-Commander/Meeting-Ops-OSS) | Documented triage-ingest actor (`meeting-ops`). The published repository describes browser recording, live transcription and meeting search. |
+| Brand-Ops | Optional color tokens from `BRAND_OPS_URL`. The UI keeps its own stylesheet when that service is unset. |
 
-When configured, Project-Ops uses Brigade for assistant chat and federation, Ops-Center for sign-in entitlements, Customer-Ops for accepted quotes, Accounting-Ops for invoices, Email-Ops for notification delivery, and the triage ingress for action items from trusted sources such as Meeting-Ops; it also retains Contact-Ops reference IDs on projects.
+Ask chat goes to Brigade when that connection is configured. Federation is a separate allowlisted machine actor: triage ingest accepts any actor on `PROJECT_OPS_FEDERATION_ACTORS`, and accepted quotes accept only `customer-ops`. Ops-Center is the optional SSO entitlement check. Accounting-Ops issues and syncs invoices when live billing is configured. Email-Ops can deliver notifications. Projects can store Contact-Ops and Customer-Ops ids. Brand-Ops can override color tokens.
 
 ## Development
 
@@ -362,6 +353,8 @@ npm run lint
 npm run build
 ```
 
+CI runs those two scripts and then `npx tsc --noEmit`.
+
 ### Documentation and release history
 
 | Reference | Contents |
@@ -380,7 +373,7 @@ Report vulnerabilities privately using the process in [SECURITY.md](SECURITY.md)
 
 The backend uses authenticated role and workspace checks, scoped MCP operations and audit records. Multi-workspace database isolation also depends on the deployed RLS policies and runtime role; the local quick start does not enable it. Agent activity capture complements the audit log and is not a complete record of every attempted operation.
 
-Rate limiting separates the `short`, `long` and `mcp` tiers. Authenticated requests are bucketed by verified PAT or user identity. For unauthenticated traffic, forwarded client headers are used only when the immediate peer is trusted. `TRUSTED_PROXY_CIDRS` can override the default private-network and loopback proxy ranges; configure it for your actual reverse proxies, never an unbounded range. See the [throttler guard](backend/src/common/guards/principal-throttler.guard.ts).
+Rate limiting separates the `short`, `long` and `mcp` tiers. Authenticated requests are bucketed by verified PAT id, or by the user's `__ucUid`, Keycloak id, or user id. For unauthenticated traffic, `CF-Connecting-IP` is used, and otherwise the first `X-Forwarded-For` address, only when the immediate peer is a trusted proxy. `TRUSTED_PROXY_CIDRS` overrides the default ranges `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8`, `::1/128` and `fc00::/7`. A CIDR in that setting is trusted as written, including an unbounded one; forwarded headers from an untrusted peer are ignored. See the [throttler guard](backend/src/common/guards/principal-throttler.guard.ts).
 
 ## Licence
 
