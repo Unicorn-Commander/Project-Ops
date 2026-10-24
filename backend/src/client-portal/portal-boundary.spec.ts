@@ -11,6 +11,7 @@ import { CommentsService } from '../comments/comments.service';
 import { DocumentsController } from '../documents/documents.controller';
 import { DocumentsService } from '../documents/documents.service';
 import { McpController } from '../mcp/mcp.controller';
+import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { McpService } from '../mcp/mcp.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
@@ -38,6 +39,10 @@ describe('Client portal boundary over HTTP', () => {
           useValue: internal,
         })),
         { provide: McpService, useValue: mcp },
+        {
+          provide: WorkspaceContextService,
+          useValue: { resolveFederationDelegation: async () => ({ kind: 'none' }) },
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)

@@ -41,6 +41,10 @@ export type WithWorkspaceClaim = User & {
   __ucUid?: string | null;
   __isFederationActor?: boolean;
   __federationActor?: string | null;
+  // The scopes the federation broker granted on the verified token (Brigade
+  // `scopes[]` / `scope`). Request-scoped; read only by the on-behalf-of
+  // delegation seam (mcp/federation-delegation.ts).
+  __federationScopes?: readonly string[];
 };
 
 /**

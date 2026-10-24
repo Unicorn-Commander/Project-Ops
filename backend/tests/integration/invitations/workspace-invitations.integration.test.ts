@@ -809,6 +809,88 @@ suite('manual workspace invitations: real HTTP guards and non-BYPASSRLS PostgreS
       ).status,
     ).toBe(403);
   });
+  it('federation on-behalf-of read (092b2902): scoped to the named member, never the service identity', async () => {
+    const f = await fixture();
+    const other = await fixture();
+    const outsider = await fixture();
+    const customerId = randomUUID();
+    // The federation principal's own membership, exactly as dogfood seeds it.
+    for (const ws of [f.ws.id, other.ws.id]) {
+      await admin.membership.create({
+        data: { userKey: 'federation:customer-ops', workspaceId: ws, role: 'MEMBER', status: 'ACTIVE' },
+      });
+    }
+    await admin.project.createMany({
+      data: [
+        // visible to f.owner (STAFF, creator)
+        { title: 'Mine', clientName: 'Synthetic', projectNumber: randomUUID(), workspaceId: f.ws.id, createdById: f.owner.id, customerOpsCustomerId: customerId },
+        // same workspace, same customer, not f.owner's: STAFF visibility hides it
+        { title: 'Theirs', clientName: 'Synthetic', projectNumber: randomUUID(), workspaceId: f.ws.id, createdById: outsider.owner.id, customerOpsCustomerId: customerId },
+        // f.owner's own project in ANOTHER workspace: the token workspace hides it
+        { title: 'Elsewhere', clientName: 'Synthetic', projectNumber: randomUUID(), workspaceId: other.ws.id, createdById: f.owner.id, customerOpsCustomerId: customerId },
+      ],
+    });
+    await admin.membership.create({
+      data: { userKey: f.owner.keycloakId!, workspaceId: other.ws.id, role: 'MEMBER', status: 'ACTIVE' },
+    });
+    const base = {
+      sub: 'service-account-customer-ops', workspace_id: f.ws.id, iss: brigadeIssuer,
+      aud: 'project-ops', act: { client_id: 'customer-ops' }, scopes: ['projects:read'],
+    };
+    async function call(claims: Record<string, unknown>, ucUid: string | null, name: string, args: any, ws: string | null = f.ws.id) {
+      let r = request(app.getHttpServer())
+        .post('/mcp')
+        .set('Authorization', 'Bearer ' + signMachine(claims))
+        .set('Accept', 'application/json, text/event-stream');
+      if (ws) r = r.set('X-Workspace-Id', ws);
+      if (ucUid) r = r.set('X-Uc-Uid', ucUid);
+      const res = await r.send({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
+      const row = res.text.split('\n').find((x) => x.startsWith('data: '));
+      return { status: res.status, result: row ? JSON.parse(row.slice(6)).result : res.body.result, body: res.body };
+    }
+    const titles = (r: any) =>
+      (r.result.structuredContent ?? JSON.parse(r.result.content[0].text)).projects.map((p: any) => p.title).sort();
+    try {
+      config.set('PROJECT_OPS_FEDERATION_ACTORS', 'meeting-ops,customer-ops');
+      // No acting user: the service identity alone still sees nothing (no widening).
+      const bare = await call(base, null, 'search_projects', { customerOpsCustomerId: customerId });
+      expect(bare.status).toBe(200);
+      expect(titles(bare)).toEqual([]);
+      // On behalf of f.owner: exactly what f.owner may see in the token workspace.
+      const mine = await call(base, f.owner.keycloakId!, 'search_projects', { customerOpsCustomerId: customerId });
+      expect(mine.status).toBe(200);
+      expect(titles(mine)).toEqual(['Mine']);
+      // Read-only: a write tool is scope-denied and writes nothing.
+      const write = await call(base, f.owner.keycloakId!, 'create_project', { title: 'Nope', clientName: 'X' });
+      expect(write.result.isError).toBe(true);
+      expect(await admin.project.count({ where: { workspaceId: f.ws.id, title: 'Nope' } })).toBe(0);
+      // Refusals: non-member, unknown user, missing scope, other actor, other workspace.
+      const refused = [
+        await call(base, outsider.owner.keycloakId!, 'search_projects', { customerOpsCustomerId: customerId }),
+        await call(base, randomUUID(), 'search_projects', { customerOpsCustomerId: customerId }),
+        await call({ ...base, scopes: ['contacts:read'] }, f.owner.keycloakId!, 'search_projects', { customerOpsCustomerId: customerId }),
+        await call({ ...base, act: { client_id: 'meeting-ops' } }, f.owner.keycloakId!, 'search_projects', { customerOpsCustomerId: customerId }),
+        await call(base, f.owner.keycloakId!, 'search_projects', { customerOpsCustomerId: customerId }, other.ws.id),
+      ];
+      for (const r of refused) expect(r.status).toBe(403);
+      // A suspended membership is honoured fresh.
+      await admin.membership.update({
+        where: { userKey_workspaceId: { userKey: f.owner.keycloakId!, workspaceId: f.ws.id } },
+        data: { status: 'SUSPENDED' },
+      });
+      expect((await call(base, f.owner.keycloakId!, 'search_projects', { customerOpsCustomerId: customerId })).status).toBe(403);
+      // Actor off the allow-list: refused even with a valid member.
+      await admin.membership.update({
+        where: { userKey_workspaceId: { userKey: f.owner.keycloakId!, workspaceId: f.ws.id } },
+        data: { status: 'ACTIVE' },
+      });
+      config.set('PROJECT_OPS_FEDERATION_ACTORS', 'meeting-ops');
+      expect((await call(base, f.owner.keycloakId!, 'search_projects', { customerOpsCustomerId: customerId })).status).toBe(403);
+    } finally {
+      config.set('PROJECT_OPS_FEDERATION_ACTORS', '');
+      await admin.membership.deleteMany({ where: { userKey: 'federation:customer-ops', workspaceId: { in: [f.ws.id, other.ws.id] } } });
+    }
+  });
   it('actual triage guard order preserves only an allow-listed federation principal', async () => {
     const f = await fixture();
     const payload = {

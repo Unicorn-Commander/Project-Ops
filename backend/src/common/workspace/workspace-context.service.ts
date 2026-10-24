@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { User, UserRole } from '@prisma/client';
 import { PrismaService, WorkspaceTxClient } from '../../prisma/prisma.service';
 import { MembershipService } from './membership.service';
+import { FederationDelegation, resolveFederationDelegation } from './federation-delegation';
+import { FEDERATION_ACTORS_ENV } from './federation-token';
 import {
   DEFAULT_WORKSPACE_FALLBACK,
   resolveWorkspaceId,
@@ -69,6 +71,30 @@ export class WorkspaceContextService {
   ): Promise<void> {
     const workspaceId = await this.resolveAuthorized(user, requestedWorkspaceId);
     await this.membership.assertCanWrite(user, workspaceId);
+  }
+
+  /**
+   * Resolve an on-behalf-of delegate for a federation READ (see
+   * federation-delegation.ts for the full rule set). `none` = not a federation
+   * call naming a user (unchanged path); `denied` = refuse; `delegated` = run as
+   * that member, capped to the actor's read scopes and the token's workspace.
+   */
+  async resolveFederationDelegation(
+    principal: Partial<WithWorkspaceClaim> | null | undefined,
+    delegateUcUid: string | null,
+    requestWorkspaceId: string | null,
+  ): Promise<FederationDelegation> {
+    return resolveFederationDelegation(
+      {
+        federationActors: this.config.get<string>(FEDERATION_ACTORS_ENV, ''),
+        findActiveUserByKeycloakId: (keycloakId) =>
+          this.prisma.user.findFirst({ where: { keycloakId, isActive: true } }),
+        isActiveMember: (user, workspaceId) => this.membership.isActiveMember(user, workspaceId),
+      },
+      principal,
+      delegateUcUid,
+      requestWorkspaceId,
+    );
   }
 
   /**

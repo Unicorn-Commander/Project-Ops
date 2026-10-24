@@ -26,7 +26,11 @@ import {
   MembershipService,
   ActiveWorkspaceMembership,
 } from '../common/workspace/membership.service';
-import { isHumanSessionPayload, readActorClientId } from '../common/workspace/federation-token';
+import {
+  isHumanSessionPayload,
+  readActorClientId,
+  readTokenScopes,
+} from '../common/workspace/federation-token';
 
 export interface JwtPayload {
   sub: string;
@@ -420,7 +424,7 @@ export class AuthService {
     if (isBrigadeFederationToken || isKeycloakRealmToken) {
       const actorClientId = readActorClientId(payload);
       if (actorClientId && !isHumanSessionPayload(payload)) {
-        return AuthService.buildFederationPrincipal(actorClientId);
+        return AuthService.buildFederationPrincipal(actorClientId, readTokenScopes(payload));
       }
     }
 
@@ -480,7 +484,7 @@ export class AuthService {
    * `TriageProposal.createdById` attribution and `app.uc_uid`. The marker
    * fields are read via the WithWorkspaceClaim cast downstream.
    */
-  static buildFederationPrincipal(actorClientId: string): User {
+  static buildFederationPrincipal(actorClientId: string, scopes: readonly string[] = []): User {
     const now = new Date();
     return {
       id: `federation:${actorClientId}`,
@@ -496,6 +500,7 @@ export class AuthService {
       updatedAt: now,
       __isFederationActor: true,
       __federationActor: actorClientId,
+      __federationScopes: [...scopes],
     } as unknown as User;
   }
 

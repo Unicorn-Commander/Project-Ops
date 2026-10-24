@@ -121,3 +121,21 @@ export function readActorClientId(payload: unknown): string | null {
 export function isMachineFederationPayload(payload: unknown): boolean {
   return !isHumanSessionPayload(payload) && readActorClientId(payload) !== null;
 }
+
+/**
+ * The scopes a verified token was granted: Brigade mints `scopes` as an array;
+ * Keycloak and RFC-8693 responses use a space-separated `scope` string. Both
+ * are read; anything else yields []. Used only to gate on-behalf-of reads.
+ */
+export function readTokenScopes(payload: unknown): string[] {
+  if (!payload || typeof payload !== 'object') return [];
+  const p = payload as Record<string, unknown>;
+  const out = new Set<string>();
+  if (Array.isArray(p.scopes)) {
+    for (const s of p.scopes) if (typeof s === 'string' && s.trim()) out.add(s.trim());
+  }
+  if (typeof p.scope === 'string') {
+    for (const s of p.scope.split(/\s+/)) if (s) out.add(s);
+  }
+  return [...out];
+}
