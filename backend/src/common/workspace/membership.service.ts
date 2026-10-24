@@ -1,10 +1,13 @@
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Membership, MembershipStatus, User, WorkspaceRole } from '@prisma/client';
+import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { resolveUserAccess } from '../../auth/access-list';
 import { tenancyEnabled } from './feature-flags';
 import { DEFAULT_WORKSPACE_FALLBACK } from './workspace.util';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * A single switcher-ready entry describing one workspace the caller actively
@@ -280,6 +283,110 @@ export class MembershipService {
     this.logger.log(
       `Seeded ${role} membership for ${user.email} in workspace ${workspaceId} (allow-list)`,
     );
+  }
+
+  /**
+   * Provision (idempotently) the workspace that belongs to an ENTITLED customer
+   * org, and make `user` an active member of it.
+   *
+   * This is the self-serve onboarding path. Previously the ONLY way to get a
+   * membership was `ensureSeededMembership`, which seeds from the static
+   * PROJECT_OPS_ACCESS_LIST into the BOOTSTRAP workspace. That meant a paying
+   * Suite customer — Project-Ops is advertised in both paid tiers — could pass
+   * the entitlements gate, authenticate, and then be 403'd on every workspace
+   * route because no membership existed. Onboarding required a human editing
+   * the container env and restarting.
+   *
+   * It also means the bootstrap workspace is the WRONG destination for a new
+   * customer: seeding them there would drop them into Magic Unicorn's own
+   * tenant. Each org gets its own workspace instead.
+   *
+   * Idempotency is keyed on the Ops-Center `org_id`, so every user from the
+   * same org lands in the SAME workspace:
+   *   - org_id that is already a UUID  -> used directly as the workspace id,
+   *     matching the "Workspace.id == uc-registry workspace_id" contract.
+   *   - anything else -> a stable `org-<sanitized>` slug is the lookup key and
+   *     the id is minted locally.
+   *
+   * Returns the workspace id, or null when it cannot provision (no org id, or
+   * tenancy disabled) so the caller can fall back to existing behavior.
+   */
+  async ensureEntitledWorkspace(
+    user: User,
+    orgId: string | null | undefined,
+    appRole: string,
+    displayNameHint?: string | null,
+  ): Promise<string | null> {
+    if (!this.enabled) return null;
+    const org = orgId?.trim();
+    if (!org) return null;
+
+    // NEVER route an entitled customer into the operator's bootstrap tenant.
+    if (org === this.bootstrapWorkspaceId) {
+      return this.bootstrapWorkspaceId;
+    }
+
+    const userKey = MembershipService.membershipKey(user);
+    const isUuid = UUID_RE.test(org);
+    const slug = isUuid
+      ? `org-${org.slice(0, 8)}`
+      : `org-${
+          org
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 40) || 'tenant'
+        }`;
+    const displayName = displayNameHint?.trim() || `Organization ${org.slice(0, 8)}`;
+    const role = MembershipService.suiteRoleForAccess(appRole);
+
+    // Find an existing workspace for this org: by id when the org id IS the
+    // workspace id, else by the deterministic slug.
+    let workspace = isUuid
+      ? await this.prisma.workspace.findUnique({ where: { id: org } })
+      : await this.prisma.workspace.findUnique({ where: { slug } });
+
+    if (!workspace) {
+      const id = isUuid ? org : uuidv4();
+      try {
+        workspace = await this.prisma.workspace.create({
+          data: { id, slug, displayName },
+        });
+        this.logger.log(`Provisioned workspace ${workspace.id} (${slug}) for entitled org ${org}`);
+      } catch (err) {
+        // Concurrent first-login from two users of the same org: one create
+        // wins, the other re-reads rather than failing the login.
+        workspace = isUuid
+          ? await this.prisma.workspace.findUnique({ where: { id: org } })
+          : await this.prisma.workspace.findUnique({ where: { slug } });
+        if (!workspace) {
+          this.logger.error(
+            `Failed to provision workspace for org ${org}: ${(err as Error).message}`,
+          );
+          return null;
+        }
+      }
+    }
+
+    // The user's FIRST workspace becomes their default; a user who already
+    // belongs somewhere keeps their existing default.
+    const hasAny = await this.prisma.membership.findFirst({ where: { userKey } });
+    await this.prisma.membership.upsert({
+      where: { userKey_workspaceId: { userKey, workspaceId: workspace.id } },
+      update: { status: MembershipStatus.ACTIVE },
+      create: {
+        userKey,
+        workspaceId: workspace.id,
+        role,
+        status: MembershipStatus.ACTIVE,
+        isDefault: !hasAny,
+      },
+    });
+
+    this.logger.log(
+      `Entitled membership ensured: ${user.email} -> workspace ${workspace.id} as ${role}`,
+    );
+    return workspace.id;
   }
 
   /**
