@@ -238,7 +238,9 @@ export class ProjectsService {
    *
    * The project-number count runs in the SAME `tx` as the insert so the
    * sequence is computed against the workspace-scoped row set (under live RLS)
-   * and is consistent with the row being created.
+   * and is consistent with the row being created. The CREATE audit row is
+   * written on this same `tx`: it references the new project id, which a
+   * second connection cannot see until commit.
    */
   async createInTx(
     tx: WorkspaceTxClient,
@@ -303,15 +305,21 @@ export class ProjectsService {
       },
     });
 
-    await this.auditService.log({
-      workspaceId,
-      userId: user.id,
-      projectId: projectData.id,
-      action: 'CREATE',
-      resource: 'Project',
-      resourceId: projectData.id,
-      details: { projectNumber: projectData.projectNumber },
-    });
+    // Same transaction as the insert. log() otherwise opens a second
+    // connection; the new project is not committed yet, and
+    // audit_logs_projectId_fkey cannot see it.
+    await this.auditService.log(
+      {
+        workspaceId,
+        userId: user.id,
+        projectId: projectData.id,
+        action: 'CREATE',
+        resource: 'Project',
+        resourceId: projectData.id,
+        details: { projectNumber: projectData.projectNumber },
+      },
+      tx,
+    );
 
     this.logger.log(
       `Project created: ${projectData.projectNumber} by user ${user.id} ws=${workspaceId}`,

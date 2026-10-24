@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
 import { CreateAuditLogDto } from './dto/create-audit-log.dto';
 import { AuditLog, Prisma, User } from '@prisma/client';
@@ -13,16 +13,29 @@ import { AuditLog, Prisma, User } from '@prisma/client';
  * passed `tx`, never `this.prisma`. `audit_logs` is one of the 9 RLS-scoped
  * wire-through tables (workspaceId column + index + workspace_isolation policy).
  *
- * The `log()` WRITE path: callers pass `workspaceId` in the DTO (every caller
- * does — grep-verified) and the create runs inside that workspace's GUC via
- * `runInWorkspace`, so the row satisfies the RLS WITH CHECK under the
- * NOBYPASSRLS runtime role. (The original A1 note assumed a BYPASSRLS owner
- * connection — the runtime flipped to project_ops_app on 2026-06-09 and bare
- * creates were silently rejected by WITH CHECK until this fix; the catch's
- * never-throw contract hid it. 0 rows landed 06-09→06-10.) A DTO without a
- * workspaceId falls back to a bare create: correct while tenancy is off
- * (owner connection), and correctly fail-closed (logged, never thrown) if a
- * future unstamped caller appears under RLS.
+ * The `log()` WRITE path has two shapes.
+ *
+ * - The caller already holds the workspace transaction (`tx`). The insert runs
+ *   on that `tx`. This is required when `projectId` or `userId` was inserted
+ *   in the same transaction and is not committed yet. `runInWorkspace` checks
+ *   out a second pooled connection; Postgres then rejects the row with
+ *   `audit_logs_projectId_fkey` / `audit_logs_userId_fkey` because the parent
+ *   is invisible. The caller's `withWorkspace` already set the RLS GUCs, so a
+ *   second transaction is neither needed nor safe. A failure on `tx` is
+ *   rethrown: a failed statement aborts that transaction, and returning null
+ *   would leave the caller running on a dead tx.
+ *
+ * - No `tx`. The create runs inside the DTO's workspace GUC via
+ *   `runInWorkspace`, so the row satisfies the RLS WITH CHECK under the
+ *   NOBYPASSRLS runtime role. (The original A1 note assumed a BYPASSRLS owner
+ *   connection — the runtime flipped to project_ops_app on 2026-06-09 and bare
+ *   creates were silently rejected by WITH CHECK until this fix; the catch's
+ *   never-throw contract hid it. 0 rows landed 06-09→06-10.) A DTO without a
+ *   workspaceId falls back to a bare create: correct while tenancy is off
+ *   (owner connection), and correctly fail-closed (logged, never thrown) if a
+ *   future unstamped caller appears under RLS. Callers that audit after their
+ *   own commit (comments, approvals) use this shape; the parent row is already
+ *   visible, so the foreign key holds.
  */
 @Injectable()
 export class AuditService {
@@ -33,19 +46,26 @@ export class AuditService {
     private readonly workspaceContext: WorkspaceContextService,
   ) {}
 
-  async log(createAuditLogDto: CreateAuditLogDto): Promise<AuditLog | null> {
+  async log(
+    createAuditLogDto: CreateAuditLogDto,
+    tx?: WorkspaceTxClient,
+  ): Promise<AuditLog | null> {
     try {
       // Under the NOBYPASSRLS runtime role the WITH CHECK policy requires the
-      // row's workspaceId to equal the GUC — so the write must run inside the
-      // DTO's workspace context. runInWorkspace performs no membership check
-      // (audit is a system write, already authorized by the calling request).
-      const auditLog = createAuditLogDto.workspaceId
-        ? await this.workspaceContext.runInWorkspace(
-            createAuditLogDto.workspaceId,
-            createAuditLogDto.userId ?? '',
-            (tx) => tx.auditLog.create({ data: createAuditLogDto }),
-          )
-        : await this.prisma.auditLog.create({ data: createAuditLogDto });
+      // row's workspaceId to equal the GUC. A caller-supplied `tx` already has
+      // that GUC (withWorkspace set it) and can see rows this transaction has
+      // inserted but not committed. Otherwise runInWorkspace opens that scope
+      // on a new connection. It performs no membership check: audit is a
+      // system write, already authorized by the calling request.
+      const auditLog = tx
+        ? await tx.auditLog.create({ data: createAuditLogDto })
+        : createAuditLogDto.workspaceId
+          ? await this.workspaceContext.runInWorkspace(
+              createAuditLogDto.workspaceId,
+              createAuditLogDto.userId ?? '',
+              (inner) => inner.auditLog.create({ data: createAuditLogDto }),
+            )
+          : await this.prisma.auditLog.create({ data: createAuditLogDto });
 
       this.logger.debug(
         `Audit log created: ${createAuditLogDto.action} on ${createAuditLogDto.resource}`,
@@ -54,7 +74,11 @@ export class AuditService {
       return auditLog;
     } catch (error) {
       this.logger.error('Failed to create audit log', error);
-      // Don't throw - audit logging should not break application flow
+      // A failed statement aborts `tx`. Swallowing it would let the caller
+      // continue and then fail with "current transaction is aborted".
+      if (tx) throw error;
+      // Standalone writes must not break a request whose own work already
+      // committed (or never shared this transaction).
       return null;
     }
   }

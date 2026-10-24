@@ -111,6 +111,32 @@ describe('ProjectsService.create — custom fields + project.created event', () 
       expect.objectContaining({ projectId: 'p2', actorId: 'u1' }),
     );
   });
+
+  // The CREATE audit references the project row this transaction just inserted.
+  // It has to run on that same tx. A second connection cannot see the
+  // uncommitted row, and Postgres rejects it with audit_logs_projectId_fkey.
+  it('writes the CREATE audit on the same transaction as the project insert', async () => {
+    const created = { id: 'p-new', projectNumber: 'PROJ-2026-000001' };
+    const tx = {
+      project: { count: jest.fn(async () => 0), create: jest.fn(async () => created) },
+    };
+    const { svc, auditService } = makeService({ tx });
+
+    await svc.create('ws1', user, { title: 'T', clientName: 'Acme' } as any);
+
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: 'ws1',
+        userId: 'u1',
+        projectId: 'p-new',
+        action: 'CREATE',
+        resource: 'Project',
+        resourceId: 'p-new',
+        details: { projectNumber: 'PROJ-2026-000001' },
+      }),
+      tx,
+    );
+  });
 });
 
 describe('ProjectsService.updateStatus — project.status_changed event', () => {

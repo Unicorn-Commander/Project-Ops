@@ -388,7 +388,8 @@ describe('QuotesFederationService.acceptQuote — first acceptance', () => {
     // Serialised per (workspace, quote, version) with a pg advisory lock inside the write tx.
     expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
 
-    // Audit + domain events (after commit), like the interactive create paths.
+    // Audit is written on the same tx as the new project (the row is not
+    // committed yet). Domain events fire after that tx commits.
     expect(audit.log).toHaveBeenCalledWith(
       expect.objectContaining({
         workspaceId: WS,
@@ -396,7 +397,9 @@ describe('QuotesFederationService.acceptQuote — first acceptance', () => {
         action: 'CREATE',
         resource: 'Project',
         resourceId: 'p1',
+        projectId: 'p1',
       }),
+      tx,
     );
     expect(emitter.emit).toHaveBeenCalledWith(
       PROJECT_CREATED_EVENT,

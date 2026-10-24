@@ -412,26 +412,32 @@ export class QuotesFederationService {
       ? (await this.createDocument(tx, workspaceId, project.id, creatorId, dto, stored)).id
       : null;
 
-    await this.auditService.log({
-      workspaceId,
-      userId: creatorId,
-      projectId: project.id,
-      action: 'CREATE',
-      resource: 'Project',
-      resourceId: project.id,
-      details: {
-        projectNumber,
-        source: 'customer-ops',
-        federationActor: opts.federationActor,
-        quote: {
-          customer_ops_quote_id: dto.customer_ops_quote_id,
-          number: dto.number,
-          version: dto.version,
+    // Same tx as the project insert and, on the federation-actor path, the
+    // service-user upsert. Both are uncommitted parents of this audit row
+    // (projectId, and userId when the user was just created).
+    await this.auditService.log(
+      {
+        workspaceId,
+        userId: creatorId,
+        projectId: project.id,
+        action: 'CREATE',
+        resource: 'Project',
+        resourceId: project.id,
+        details: {
+          projectNumber,
+          source: 'customer-ops',
+          federationActor: opts.federationActor,
+          quote: {
+            customer_ops_quote_id: dto.customer_ops_quote_id,
+            number: dto.number,
+            version: dto.version,
+          },
+          tasks: tasks.length,
+          documentId,
         },
-        tasks: tasks.length,
-        documentId,
       },
-    });
+      tx,
+    );
 
     return {
       created: true,
