@@ -36,8 +36,8 @@ done
 docker compose ps
 
 echo ""
-echo "3. Applying Prisma schema (db push) ..."
-docker exec project-ops-backend npx prisma db push --skip-generate --accept-data-loss
+echo "3. Applying Prisma schema (db push; stops instead of dropping data) ..."
+docker exec project-ops-backend npx prisma db push --skip-generate
 
 echo ""
 echo "=== Deployment Complete ==="

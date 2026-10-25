@@ -94,11 +94,11 @@ fi
 # Ensure test database is ready
 echo -e "${BLUE}🔧 Preparing test environment...${NC}"
 
-# Run Prisma migrations on test database
-echo "Running Prisma migrations..."
+# Apply the schema to the test database (db push-managed; see prisma/migrations/README.md)
+echo "Applying Prisma schema..."
 export DATABASE_URL=$(grep DATABASE_URL .env.test | cut -d '=' -f2-)
-npx prisma migrate deploy || {
-  echo -e "${RED}✗ Failed to run migrations${NC}"
+npx prisma db push --skip-generate || {
+  echo -e "${RED}✗ Failed to apply schema${NC}"
   exit 1
 }
 

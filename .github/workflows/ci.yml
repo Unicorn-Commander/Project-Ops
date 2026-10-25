@@ -123,6 +123,7 @@ jobs:
             "20260609120000_phase2_workspace_seed"
             "20260610090000_mu_canonical_rekey"
             "20260916040000_manual_workspace_invitations"
+            "20261025000000_rls_for_db_push_tables"
           )
           for m in "${MIGRATIONS[@]}"; do
             file="prisma/migrations/${m}/migration.sql"

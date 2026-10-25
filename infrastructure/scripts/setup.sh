@@ -130,8 +130,9 @@ init_database() {
     if [ -f "package.json" ]; then
         npm install
         npx prisma generate
-        npx prisma migrate deploy
-        log_success "Database initialized with Prisma migrations"
+        # db push-managed: see backend/prisma/migrations/README.md
+        npx prisma db push --skip-generate
+        log_success "Database initialized with prisma db push"
     else
         log_warning "Prisma not configured yet. Skipping database initialization."
     fi
@@ -185,7 +186,7 @@ show_urls() {
     echo -e "${BLUE}Next Steps:${NC}"
     echo "  1. Access Keycloak and configure realm"
     echo "  2. Create initial users in Keycloak"
-    echo "  3. Run database migrations: cd prisma && npx prisma migrate deploy"
+    echo "  3. Apply the schema: cd prisma && npx prisma db push --skip-generate (hosted RLS: backend/prisma/migrations/README.md)"
     echo "  4. Access frontend and log in"
     echo ""
     echo -e "${GREEN}For logs, run:${NC} docker-compose -f $INFRA_DIR/docker/docker-compose.yml logs -f"

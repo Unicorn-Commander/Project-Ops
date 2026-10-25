@@ -38,6 +38,7 @@ MIGRATIONS=(
   "20260610090000_mu_canonical_rekey"        # re-key MU bootstrap uuid -> suite-canonical (MO/CO-shared)
   "20260617000000_phase3_workspace_not_null" # tenanted workspaceId -> NOT NULL (PAT + audit_logs stay nullable)
   "20260916040000_manual_workspace_invitations" # invitation grants and constraints, also applied in CI
+  "20261025000000_rls_for_db_push_tables"     # RLS for the 9 tables whose migrations also CREATE TABLE
 )
 
 # --- Teardown trap: always remove the throwaway container ---------------------
