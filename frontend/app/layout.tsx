@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { DM_Sans, JetBrains_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { ClientProviders } from "@/components/client-providers";
 import { fetchBrandCss } from "@/lib/brand-tokens";
+import { ANALYTICS_ENABLED, SITE_URL, UMAMI_SCRIPT_URL, UMAMI_WEBSITE_ID } from "@/lib/site";
 
 // Brand fonts (docs/branding/PROJECT-OPS-BRAND.md): DM Sans for display +
 // body, JetBrains Mono for code / identifiers / P-XXXXX project numbers.
@@ -21,6 +23,13 @@ const jetBrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  // Canonical + metadataBase come from NEXT_PUBLIC_SITE_URL per environment.
+  // Prod is served on two spellings (projectops / project-ops), so the
+  // canonical pins one; metadataBase stops Next resolving relative OG images
+  // against http://localhost:3000. Unset = neither is emitted.
+  ...(SITE_URL
+    ? { metadataBase: new URL(SITE_URL), alternates: { canonical: `${SITE_URL}/` } }
+    : {}),
   title: {
     default: "Project-Ops · Magic Unicorn",
     template: "%s · Project-Ops",
@@ -36,6 +45,7 @@ export const metadata: Metadata = {
     description:
       "Turn conversations into completed work across meetings, projects, people, AI agents, clients, documents, and billing.",
     siteName: "Project-Ops",
+    ...(SITE_URL ? { url: `${SITE_URL}/` } : {}),
     type: "website",
   },
 };
@@ -71,6 +81,18 @@ export default async function RootLayout({
         <ClientProviders>
           {children}
         </ClientProviders>
+        {/* Umami (self-hosted, cookieless) product analytics, per environment.
+            Mounted in <body>, not the <head> above: that <head> only renders
+            when Brand-Ops returns tokens, so a tag there would silently drop
+            analytics whenever Brand-Ops is unset or unreachable. */}
+        {ANALYTICS_ENABLED ? (
+          <Script
+            defer
+            src={UMAMI_SCRIPT_URL}
+            data-website-id={UMAMI_WEBSITE_ID}
+            strategy="afterInteractive"
+          />
+        ) : null}
       </body>
     </html>
   );

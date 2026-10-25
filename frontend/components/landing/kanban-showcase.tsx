@@ -10,6 +10,7 @@
  * projects from memory, so anyone landing on the page sees what an actual
  * Project Ops board looks like in flight rather than placeholder text.
  */
+import { SITE_HOST } from "@/lib/site";
 import {
   statusBadgeClass,
   priorityTextClass,
@@ -113,7 +114,7 @@ export function KanbanShowcase() {
           <span className="h-2.5 w-2.5 rounded-full bg-foreground/15" />
         </div>
         <div className="flex-1 truncate rounded-md bg-background px-3 py-1 text-center text-[11px] font-mono text-muted-foreground">
-          projectops.magicunicorn.dev/dashboard/kanban
+          {SITE_HOST}/dashboard/kanban
         </div>
         <div className="hidden items-center gap-1 text-[11px] text-muted-foreground sm:flex">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
