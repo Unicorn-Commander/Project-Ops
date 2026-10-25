@@ -11,6 +11,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { setUser, logout } = useAuthStore();
 
   useEffect(() => {
+    // The SSO callback stores the token, then fetches the profile and stores
+    // the user itself. Checking here in between sees "token, no user" and the
+    // logout() below would wipe the fresh token whenever the profile round
+    // trip takes longer than the 50 ms timer (every internet-facing ring).
+    if (pathname?.startsWith("/auth/sso-callback")) return;
+
     // Small delay to ensure localStorage is fully available after navigation
     const timeoutId = setTimeout(() => {
       // Check if user is authenticated
