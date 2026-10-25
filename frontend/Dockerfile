@@ -26,6 +26,11 @@ ARG NEXT_PUBLIC_KEYCLOAK_CLIENT_ID
 ARG NEXT_PUBLIC_SENTRY_DSN
 ARG NEXT_PUBLIC_SENTRY_RELEASE
 ARG NEXT_PUBLIC_SENTRY_ENVIRONMENT
+# Per-environment public site config (frontend/lib/site.ts). All optional:
+# unset = no canonical/metadataBase, no analytics, committed mcps.json hosts.
+ARG NEXT_PUBLIC_SITE_URL
+ARG NEXT_PUBLIC_UMAMI_SCRIPT_URL
+ARG NEXT_PUBLIC_UMAMI_WEBSITE_ID
 # Source-map upload to self-hosted Glitchtip. Build-time only; the token
 # is *not* baked into the runtime image (it's a build ARG that ENV-leaks
 # only into this stage's RUN npm run build, then drops). Without it the
@@ -41,13 +46,17 @@ ENV NEXT_PUBLIC_KEYCLOAK_CLIENT_ID=${NEXT_PUBLIC_KEYCLOAK_CLIENT_ID}
 ENV NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
 ENV NEXT_PUBLIC_SENTRY_RELEASE=${NEXT_PUBLIC_SENTRY_RELEASE}
 ENV NEXT_PUBLIC_SENTRY_ENVIRONMENT=${NEXT_PUBLIC_SENTRY_ENVIRONMENT}
+ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
+ENV NEXT_PUBLIC_UMAMI_SCRIPT_URL=${NEXT_PUBLIC_UMAMI_SCRIPT_URL}
+ENV NEXT_PUBLIC_UMAMI_WEBSITE_ID=${NEXT_PUBLIC_UMAMI_WEBSITE_ID}
 ENV SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
 ENV SENTRY_URL=${SENTRY_URL:-https://glitchtip.magicunicorn.dev}
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
-# Build the application
+# Point the MCP discovery manifest at this environment's hosts, then build.
+RUN node scripts/render-mcps-manifest.mjs
 RUN npm run build
 
 # Production image, copy all the files and run next
@@ -65,7 +74,10 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-RUN chown -R nextjs:nodejs /app
+# The app tree stays root-owned and read-only to the runtime user; only the
+# Next cache (image optimisation, ISR) is writable. A chown of all of /app let
+# a compromised server process plant files beside server.js (2026-10-25).
+RUN mkdir -p .next/cache && chown -R nextjs:nodejs .next/cache
 
 USER nextjs
 

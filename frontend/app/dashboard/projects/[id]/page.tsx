@@ -28,6 +28,7 @@ import { EditProjectModal } from "@/components/modals/edit-project-modal";
 import { StatusUpdate } from "@/components/project/status-update";
 import { AssignProject } from "@/components/project/assign-project";
 import { CommentThread } from "@/components/comments/comment-thread";
+import { SITE_HOST } from "@/lib/site";
 import { DocumentList } from "@/components/documents/document-list";
 import { TaskList } from "@/components/tasks/task-list";
 import { ProjectSnapshot } from "@/components/project/project-snapshot";
@@ -434,7 +435,7 @@ export default function ProjectDetailPage() {
             {projectData.title}
           </h1>
           <div style={{ fontSize: "9pt", color: "#71717a", marginTop: "0.25rem" }}>
-            Printed {format(new Date(), "MMM d, yyyy 'at' h:mm a")} · projectops.magicunicorn.dev
+            Printed {format(new Date(), "MMM d, yyyy 'at' h:mm a")} · {SITE_HOST}
           </div>
         </div>
       </div>
