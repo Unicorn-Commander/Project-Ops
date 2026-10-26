@@ -113,6 +113,14 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
         ]),
       );
       expect(response.body.resource).toMatch(/\/api\/v1\/mcp$/);
+      // Clients request exactly these; Keycloak's DCR policy refuses any other scope, and `mcp` carries the audience.
+      expect(response.body.scopes_supported).toEqual([
+        'openid',
+        'profile',
+        'email',
+        'offline_access',
+        'mcp',
+      ]);
     }
   });
 
