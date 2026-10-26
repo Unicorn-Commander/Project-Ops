@@ -96,7 +96,7 @@ jobs:
       # Replicates run.sh against the Postgres service container:
       #   1. prisma db push as superuser (the repo deploys via db push, NOT
       #      `migrate deploy`; there is no _prisma_migrations history).
-      #   2. apply the four tenancy migrations' SQL BY HAND, in apply order, via
+      #   2. apply the tenancy migrations' SQL BY HAND, in apply order, via
       #      psql -v ON_ERROR_STOP=1. These create the project_ops_app
       #      NOBYPASSRLS role + grant it, install the GUC chokepoint
       #      current_workspace_id(), and ENABLE+FORCE the workspace_isolation
@@ -122,6 +122,7 @@ jobs:
             "20260609000000_phase2_tenancy_cols"
             "20260609120000_phase2_workspace_seed"
             "20260610090000_mu_canonical_rekey"
+            "20260617000000_phase3_workspace_not_null"
             "20260916040000_manual_workspace_invitations"
             "20261025000000_rls_for_db_push_tables"
           )
