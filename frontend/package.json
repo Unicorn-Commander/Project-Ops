@@ -7,7 +7,8 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --experimental-strip-types --test lib/*.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -26,15 +27,15 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-toast": "^1.2.15",
-    "@sentry/nextjs": "^10.51.0",
-    "axios": "^1.12.2",
+    "@sentry/nextjs": "^10.75.2",
+    "axios": "^1.20.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.544.0",
     "next": "15.5.28",
     "next-themes": "^0.4.6",
-    "pdfjs-dist": "^3.11.174",
+    "pdfjs-dist": "^6.2.108",
     "react": "19.1.10",
     "react-dom": "19.1.10",
     "react-dropzone": "^14.3.8",
@@ -43,9 +44,9 @@
     "react-pdf": "^10.1.0",
     "recharts": "^3.8.1",
     "remark-gfm": "^4.0.1",
-    "socket.io-client": "^4.8.1",
+    "socket.io-client": "^4.8.4",
     "tailwind-merge": "^3.3.1",
-    "zod": "^4.1.11",
+    "zod": "^4.6.6",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
@@ -56,7 +57,15 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.5.28",
+    "postcss": "8.5.31",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "follow-redirects": "1.16.2",
+    "postcss": "8.5.31",
+    "sharp": "0.35.5",
+    "socket.io-parser": "4.2.7",
+    "ws": "8.21.0"
   }
 }
