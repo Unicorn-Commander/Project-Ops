@@ -1,4 +1,4 @@
-import { ConfigReader } from './oauth-discovery.service';
+import { ConfigReader, MCP_PATH, PROTECTED_RESOURCE_PATH } from './oauth-discovery.service';
 import { isMcpRequest } from './mcp-auth-header';
 
 const MCP_ALLOWED_HEADERS = [
@@ -20,6 +20,19 @@ export function createMcpCorsMiddleware(config: ConfigReader) {
   const allowedOrigins = readAllowedOrigins(config);
 
   return (request: any, response: any, next: () => void): void => {
+    if (isProtectedResourceRequest(request)) {
+      response.setHeader('Access-Control-Allow-Origin', '*');
+      response.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      response.setHeader('Access-Control-Allow-Headers', 'Accept, Content-Type');
+      response.setHeader('Cache-Control', 'public, max-age=3600');
+      if (String(request.method || '').toUpperCase() === 'OPTIONS') {
+        response.status(204).send();
+        return;
+      }
+      next();
+      return;
+    }
+
     if (!isMcpRequest(request)) {
       next();
       return;
@@ -45,6 +58,20 @@ export function createMcpCorsMiddleware(config: ConfigReader) {
 
     next();
   };
+}
+
+function isProtectedResourceRequest(request: any): boolean {
+  const path =
+    (typeof request.path === 'string' && request.path) ||
+    request.originalUrl?.split('?', 1)[0] ||
+    request.url?.split('?', 1)[0] ||
+    '';
+  return (
+    path === PROTECTED_RESOURCE_PATH ||
+    path === `${PROTECTED_RESOURCE_PATH}${MCP_PATH}` ||
+    path === `${PROTECTED_RESOURCE_PATH}/` ||
+    path === `${PROTECTED_RESOURCE_PATH}${MCP_PATH}/`
+  );
 }
 
 export function readAllowedOrigins(config: ConfigReader): Set<string> {

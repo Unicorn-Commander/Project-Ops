@@ -74,6 +74,7 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
     }).compile();
     app = module.createNestApplication();
     app.use(createMcpCorsMiddleware(config));
+    app.enableCors({ origin: 'https://portal.example.com', credentials: true });
     app.setGlobalPrefix('api/v1', {
       exclude: [
         '.well-known/oauth-protected-resource',
@@ -119,7 +120,10 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
       '/.well-known/oauth-protected-resource',
       '/.well-known/oauth-protected-resource/api/v1/mcp',
     ]) {
-      const response = await request(app.getHttpServer()).options(path).expect(204);
+      const response = await request(app.getHttpServer())
+        .options(path)
+        .set('Origin', 'https://outside.example.com')
+        .expect(204);
       expect(response.headers['access-control-allow-origin']).toBe('*');
       expect(response.headers['cache-control']).toBe('public, max-age=3600');
     }
