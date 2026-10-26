@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import * as jsonwebtoken from 'jsonwebtoken';
+import type { Algorithm, VerifyOptions } from 'jsonwebtoken';
 import jwksClient, { JwksClient } from 'jwks-rsa';
 import { AuthService, JwtPayload } from '../auth.service';
 import { User } from '@prisma/client';
@@ -95,6 +96,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
+      // The hybrid strategy supports the legacy local HS256 path and the
+      // external RS256 paths. Each branch below performs a second,
+      // branch-specific verification with a pinned algorithm before Passport
+      // receives the key; the local secret is never used for a realm token.
+      algorithms: ['HS256', 'RS256'],
       // secretOrKeyProvider runs per-request; we inspect the JWT header
       // + payload and resolve the right key on the fly. Provider must
       // call done(err, key).
@@ -111,6 +117,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           const kid = decoded?.header?.kid;
           const iss: string | undefined = decoded?.payload?.iss;
 
+          // A token claiming to be from Keycloak must be asymmetric. This is
+          // the algorithm-confusion fence between the local HS256 secret and
+          // the realm's RS256 JWKS.
+          if (realmIssuer && iss === realmIssuer && alg !== 'RS256') {
+            done(new Error('Keycloak tokens must use RS256'));
+            return;
+          }
+
           // RS256 + Brigade-trusted-issuer -> per-issuer Brigade JWKS
           if (alg === 'RS256' && kid && iss && brigadeJwksByIss.has(iss)) {
             const client = brigadeJwksByIss.get(iss)!;
@@ -119,24 +133,40 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
                 done(err || new Error('Brigade signing key not found'));
                 return;
               }
-              done(null, key.getPublicKey());
+              JwtStrategy.verifyPinned(token, key.getPublicKey(), ['RS256'], undefined, done);
             });
             return;
           }
 
           // RS256 + valid kid -> Keycloak realm JWKS (default RS256 branch)
           if (alg === 'RS256' && kid && jwks) {
+            if (!iss || (realmIssuer && iss !== realmIssuer)) {
+              done(new Error('Untrusted JWT issuer'));
+              return;
+            }
             jwks.getSigningKey(kid, (err, key) => {
               if (err || !key) {
                 done(err || new Error('signing key not found'));
                 return;
               }
-              done(null, key.getPublicKey());
+              JwtStrategy.verifyPinned(
+                token,
+                key.getPublicKey(),
+                ['RS256'],
+                realmIssuer || undefined,
+                done,
+              );
             });
             return;
           }
-          // Default: locally-signed HS256 JWT
-          done(null, localSecret);
+
+          // Default: locally-signed HS256 JWT. Any other algorithm is refused
+          // before Passport sees a key.
+          if (alg !== 'HS256') {
+            done(new Error('Unsupported JWT algorithm'));
+            return;
+          }
+          JwtStrategy.verifyPinned(token, localSecret, ['HS256'], undefined, done);
         } catch (err) {
           done(err);
         }
@@ -184,6 +214,33 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const realm = config.get<string>('KEYCLOAK_REALM');
     if (!base || !realm) return null;
     return `${base}/realms/${encodeURIComponent(realm)}/protocol/openid-connect/certs`;
+  }
+
+  /**
+   * Verify with a branch-specific algorithm before Passport's shared hybrid
+   * verifier runs. This keeps the existing local-session and Brigade paths
+   * compatible while pinning Keycloak access tokens to RS256.
+   */
+  private static verifyPinned(
+    token: string,
+    secretOrKey: string | Buffer,
+    algorithms: Algorithm[],
+    issuer: string | undefined,
+    done: (err: any, secretOrKey?: string | Buffer) => void,
+  ): void {
+    const options: VerifyOptions = { algorithms };
+    if (issuer) options.issuer = issuer;
+    try {
+      jsonwebtoken.verify(token, secretOrKey, options, (error) => {
+        if (error) {
+          done(error);
+          return;
+        }
+        done(null, secretOrKey);
+      });
+    } catch (error) {
+      done(error);
+    }
   }
 
   /**
