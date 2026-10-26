@@ -100,6 +100,7 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
       const response = await request(app.getHttpServer()).get(path).expect(200);
       expect(response.headers['content-type']).toMatch(/application\/json/);
       expect(response.headers['access-control-allow-origin']).toBe('*');
+      expect(response.headers['access-control-allow-credentials']).toBeUndefined();
       expect(response.headers['cache-control']).toBe('public, max-age=3600');
       expect(Object.keys(response.body)).toEqual(
         expect.arrayContaining([
@@ -125,6 +126,7 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
         .set('Origin', 'https://outside.example.com')
         .expect(204);
       expect(response.headers['access-control-allow-origin']).toBe('*');
+      expect(response.headers['access-control-allow-credentials']).toBeUndefined();
       expect(response.headers['cache-control']).toBe('public, max-age=3600');
     }
   });

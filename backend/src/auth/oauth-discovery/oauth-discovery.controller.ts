@@ -34,12 +34,14 @@ export class OAuthDiscoveryController {
 
   private sendMetadata(request: Request, response: Response): void {
     response.setHeader('Access-Control-Allow-Origin', '*');
+    response.removeHeader('Access-Control-Allow-Credentials');
     response.setHeader('Cache-Control', 'public, max-age=3600');
     response.json(this.discovery.getMetadata(request));
   }
 
   private sendOptions(response: Response): void {
     response.setHeader('Access-Control-Allow-Origin', '*');
+    response.removeHeader('Access-Control-Allow-Credentials');
     response.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     response.setHeader('Access-Control-Allow-Headers', 'Accept, Content-Type');
     response.setHeader('Cache-Control', 'public, max-age=3600');
