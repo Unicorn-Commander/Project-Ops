@@ -86,8 +86,13 @@ export class AuthController {
       'https://projectops.unicorncommander.ai',
     );
 
-    // Redirect to frontend with token as query parameter
-    return res.redirect(`${frontendUrl}/auth/sso-callback?token=${tokenData.access_token}`);
+    // Hand the token to the frontend in the URL FRAGMENT. Browsers never send a
+    // fragment to any server, so it stays out of proxy access logs and Referer
+    // headers, and the analytics tag is told to ignore it. The callback page reads
+    // it and strips it from the address bar at once (PO ef606ec9).
+    return res.redirect(
+      `${frontendUrl}/auth/sso-callback#token=${encodeURIComponent(tokenData.access_token)}`,
+    );
   }
 
   @Post('client-signup/:token')

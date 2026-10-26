@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/lib/store";
 import api from "@/lib/api";
@@ -11,9 +11,22 @@ function SsoCallbackInner() {
   const searchParams = useSearchParams();
   const setUser = useAuthStore((state) => state.setUser);
   const [error, setError] = useState<string | null>(null);
+  // Run the hand-off exactly once: stripping the URL below changes searchParams,
+  // which would otherwise re-run this effect with no token and show an error.
+  const handled = useRef(false);
 
   useEffect(() => {
-    const token = searchParams.get("token");
+    if (handled.current) return;
+    handled.current = true;
+    // The backend hands the token over in the URL fragment (#token=); older
+    // backends used the query string (?token=). Read either, then strip both from
+    // the address bar before anything else runs, so the token does not linger in
+    // the URL, the history entry, or anything that reports the page URL.
+    const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const token = fragment.get("token") || searchParams.get("token");
+    if (window.location.hash || window.location.search) {
+      window.history.replaceState(window.history.state, "", window.location.pathname);
+    }
 
     if (!token) {
       setError("No authentication token returned from SSO.");

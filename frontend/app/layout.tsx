@@ -90,6 +90,9 @@ export default async function RootLayout({
             defer
             src={UMAMI_SCRIPT_URL}
             data-website-id={UMAMI_WEBSITE_ID}
+            // Page URLs only: query strings and fragments can carry tokens.
+            data-exclude-search="true"
+            data-exclude-hash="true"
             strategy="afterInteractive"
           />
         ) : null}
