@@ -16,6 +16,7 @@ import { PrincipalThrottlerGuard } from './common/guards/principal-throttler.gua
 import { PrismaModule } from './prisma/prisma.module';
 import { RegistryModule } from './common/registry/registry.module';
 import { AuthModule } from './auth/auth.module';
+import { OAuthDiscoveryModule } from './auth/oauth-discovery/oauth-discovery.module';
 import { UsersModule } from './users/users.module';
 import { ProjectsModule } from './projects/projects.module';
 import { ContactsModule } from './contacts/contacts.module';
@@ -75,6 +76,7 @@ import { QuotesModule } from './quotes/quotes.module';
     // uc-registry client (Phase E). @Global, inert while UC_REGISTRY_URL unset.
     RegistryModule,
     AuthModule,
+    OAuthDiscoveryModule,
     UsersModule,
     ProjectsModule,
     ContactsModule,

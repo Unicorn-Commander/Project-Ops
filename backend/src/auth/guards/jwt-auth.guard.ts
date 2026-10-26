@@ -3,14 +3,17 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ModuleRef, Reflector } from '@nestjs/core';
+import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { isPatToken } from '../pat/pat.util';
 import { PatService } from '../pat/pat.service';
 import { explicitRequestedWorkspaceId } from '../../common/workspace/workspace.util';
+import { hasBearerToken, setMcpUnauthorizedHeader } from '../oauth-discovery/mcp-auth-header';
 
 /**
  * Auth chokepoint for every protected route.
@@ -55,6 +58,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   constructor(
     private reflector: Reflector,
     private moduleRef: ModuleRef,
+    @Optional() private readonly configService?: ConfigService,
   ) {
     super();
   }
@@ -96,6 +100,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       const pats = await this.resolvePatService();
       const resolved = await pats.findByPlaintext(token);
       if (!resolved) {
+        const response = context.switchToHttp().getResponse?.();
+        if (response) {
+          setMcpUnauthorizedHeader(request, response, this.configService, true);
+        }
         throw new UnauthorizedException('Invalid token');
       }
 
@@ -129,6 +137,22 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     const result = await super.canActivate(context);
     return result instanceof Promise ? await result : (result as boolean);
+  }
+
+  /**
+   * Passport owns the failure path for missing, expired, malformed, and
+   * wrong-audience JWTs. Add the MCP discovery challenge before preserving
+   * Passport/Nest's original exception and status behavior.
+   */
+  handleRequest(err: any, user: any, info: any, context: ExecutionContext, status?: any): any {
+    if (err || !user) {
+      const request = context.switchToHttp().getRequest<Request>();
+      const response = context.switchToHttp().getResponse?.();
+      if (response) {
+        setMcpUnauthorizedHeader(request, response, this.configService, hasBearerToken(request));
+      }
+    }
+    return super.handleRequest(err, user, info, context, status);
   }
 
   private async resolvePatService(): Promise<PatService> {
