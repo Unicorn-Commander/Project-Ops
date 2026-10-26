@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { ApiTokensCard } from "./api-tokens-card";
+import { ConnectYourAiCard } from "./connect-your-ai-card";
 import { WorkspacesCard } from "./workspaces-card";
 import { NotificationPreferencesCard } from "@/components/settings/notification-preferences-card";
 import { GuidanceControlsCard } from "@/components/settings/guidance-controls-card";
@@ -178,6 +179,9 @@ export default function SettingsPage() {
 
       {/* Workspaces — create + manage members ("easy sharing"). */}
       <WorkspacesCard />
+
+      {/* Bring-your-own-AI MCP connection instructions. */}
+      <ConnectYourAiCard />
 
       {/* API tokens — Personal Access Tokens for the customer's own MCP clients. */}
       <ApiTokensCard />
