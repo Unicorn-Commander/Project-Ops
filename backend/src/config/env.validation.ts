@@ -128,6 +128,18 @@ export class EnvironmentVariables {
   @IsString()
   TRUSTED_PROXY_CIDRS?: string;
 
+  // Public API origin used in MCP OAuth protected-resource metadata. When
+  // unset, metadata falls back to the request's forwarded proto/host.
+  @IsOptional()
+  @IsString()
+  PUBLIC_API_BASE_URL?: string;
+
+  // Additional browser origins allowed to call the MCP bearer endpoint.
+  // CORS_ORIGIN and FRONTEND_URL remain allowed automatically.
+  @IsOptional()
+  @IsString()
+  MCP_CORS_ORIGINS?: string;
+
   // --- Tenancy master switch (item 2) — optional, type-checked. ---
   @IsOptional()
   @Transform(toBool)

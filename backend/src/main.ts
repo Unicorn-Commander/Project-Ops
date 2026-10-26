@@ -14,6 +14,7 @@ import { WinstonModule } from 'nest-winston';
 import { createLogger } from './common/logger/winston.config';
 import { SentryFilter } from './common/filters/sentry.filter';
 import { PublicUserInterceptor } from './common/serialization/public-user.interceptor';
+import { createMcpCorsMiddleware } from './auth/oauth-discovery/mcp-cors';
 
 async function bootstrap() {
   // Initialize OpenTelemetry
@@ -39,6 +40,11 @@ async function bootstrap() {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   app.use(require('express').urlencoded({ limit: '100mb', extended: true }));
 
+  // MCP is a bearer-only browser surface. This middleware runs before Nest's
+  // guards so preflight can answer without authentication and disallowed
+  // browser origins are rejected without revealing auth state.
+  app.use(createMcpCorsMiddleware(configService));
+
   // CORS
   app.enableCors({
     origin: configService.get('CORS_ORIGIN', 'http://localhost:3001'),
@@ -47,7 +53,13 @@ async function bootstrap() {
 
   // Global prefix
   const apiPrefix = configService.get('API_PREFIX', 'api/v1');
-  app.setGlobalPrefix(apiPrefix);
+  app.setGlobalPrefix(apiPrefix, {
+    // RFC 9728 metadata is served at the origin root, not under /api/v1.
+    exclude: [
+      '.well-known/oauth-protected-resource',
+      '.well-known/oauth-protected-resource/api/v1/mcp',
+    ],
+  });
 
   // Global validation pipe
   app.useGlobalPipes(

@@ -5,6 +5,25 @@ A self-host instance exposes Streamable HTTP MCP at
 owned by a signed-in user. Complete the local admin bootstrap in
 [README.md](../README.md) first.
 
+## Connect a hosted AI client
+
+The Project-Ops MCP URL on the customer ring is
+`https://api.projectops.unicorncommander.ai/api/v1/mcp`. Sign in with your
+Unicorn Commander account (OAuth), or paste a scoped `po_pat_` token from the
+Project-Ops API.
+
+For Claude Code, the OAuth path has no header:
+
+```bash
+claude mcp add --transport http project-ops https://api.projectops.unicorncommander.ai/api/v1/mcp
+```
+
+For a pasted PAT, use the existing header form:
+
+```bash
+claude mcp add --transport http project-ops https://api.projectops.unicorncommander.ai/api/v1/mcp --header "Authorization: Bearer <po_pat_value>"
+```
+
 ## Create an expiring PAT on localhost
 
 The single mint route is `POST /api/v1/auth/pats`. Authenticate it with the
