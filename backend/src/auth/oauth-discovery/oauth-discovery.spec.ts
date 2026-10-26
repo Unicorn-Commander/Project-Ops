@@ -114,6 +114,17 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
     }
   });
 
+  it('serves OPTIONS for both RFC 9728 metadata paths without auth', async () => {
+    for (const path of [
+      '/.well-known/oauth-protected-resource',
+      '/.well-known/oauth-protected-resource/api/v1/mcp',
+    ]) {
+      const response = await request(app.getHttpServer()).options(path).expect(204);
+      expect(response.headers['access-control-allow-origin']).toBe('*');
+      expect(response.headers['cache-control']).toBe('public, max-age=3600');
+    }
+  });
+
   it('answers MCP preflight before auth and carries the Streamable HTTP header contract', async () => {
     const response = await request(app.getHttpServer())
       .options('/api/v1/mcp')
