@@ -2,8 +2,8 @@
  * Help-center content — the single source of truth for the in-app Help center
  * at `/dashboard/help`.
  *
- * This is intentionally plain data (no JSX, no imports) so it stays trivial to
- * extend, easy to search over client-side, and safe to import from anywhere.
+ * This is intentionally plain data (no JSX) so it stays trivial to extend,
+ * easy to search over client-side, and safe to import from anywhere.
  * The Help center renders categories → articles, and the search box filters
  * across every article's title, summary, keywords, and section text.
  *
@@ -23,6 +23,8 @@
  *   - { code }     a fenced monospace block (verbatim — e.g. a signature)
  *   - { kbd }      a row of keyboard-shortcut rows ([keys, label])
  */
+
+import { MCP_URL } from "./mcp-url";
 
 /** A lucide icon name — resolved to a component in the Help UI's icon map. */
 export type HelpIconName =
@@ -1117,15 +1119,21 @@ const ok = timingSafeEqual(
           },
           {
             type: "p",
-            text: "A Personal Access Token lets an MCP client (Claude Code, ChatGPT, a custom script) talk to Project Ops as you. Create one under Settings → API tokens: give it a name, pick the scopes it's allowed to use (read/write for projects, tasks, documents, organizations, billing, and activity), and choose an expiry.",
+            text: `Connect Claude Code, Claude Desktop, ChatGPT, Cursor, Codex, or another MCP client to ${MCP_URL}. OAuth sign-in opens in your browser; a Personal Access Token is available below when you need a token-based connection.`,
+          },
+          {
+            type: "code",
+            caption: "Claude Code — OAuth sign-in",
+            text: `claude mcp add --transport http project-ops ${MCP_URL}`,
           },
           {
             type: "steps",
             items: [
+              "Open Settings → Connect your AI and choose your client.",
               "Go to Settings → API tokens and click Create token.",
-              "Name it (e.g. 'Claude Code on my Mac'), select the least-privilege scopes it needs, and pick an expiry.",
+              "Name it, select the least-privilege scopes it needs, and pick an expiry.",
               "Copy the token when it's shown — it appears exactly once.",
-              "Paste it into your MCP client's configuration.",
+              "Paste it into your MCP client's Authorization: Bearer header.",
             ],
           },
           {
