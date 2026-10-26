@@ -8,7 +8,7 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --experimental-strip-types --test lib/*.test.ts"
+    "test": "node --experimental-strip-types --test lib/*.test.ts lib/*.test.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -35,7 +35,7 @@
     "lucide-react": "^0.544.0",
     "next": "15.5.28",
     "next-themes": "^0.4.6",
-    "pdfjs-dist": "^6.2.108",
+    "pdfjs-dist": "5.4.296",
     "react": "19.1.10",
     "react-dom": "19.1.10",
     "react-dropzone": "^14.3.8",
