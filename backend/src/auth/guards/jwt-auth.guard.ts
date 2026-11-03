@@ -13,7 +13,12 @@ import { Request } from 'express';
 import { isPatToken } from '../pat/pat.util';
 import { PatService } from '../pat/pat.service';
 import { explicitRequestedWorkspaceId } from '../../common/workspace/workspace.util';
-import { hasBearerToken, setMcpUnauthorizedHeader } from '../oauth-discovery/mcp-auth-header';
+import {
+  hasBearerToken,
+  setInsufficientScopeHeader,
+  setMcpUnauthorizedHeader,
+} from '../oauth-discovery/mcp-auth-header';
+import { NoWorkspaceAccessException } from '../no-workspace-access.exception';
 
 /**
  * Auth chokepoint for every protected route.
@@ -149,7 +154,11 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       const request = context.switchToHttp().getRequest<Request>();
       const response = context.switchToHttp().getResponse?.();
       if (response) {
-        setMcpUnauthorizedHeader(request, response, this.configService, hasBearerToken(request));
+        if (err instanceof NoWorkspaceAccessException) {
+          setInsufficientScopeHeader(response);
+        } else {
+          setMcpUnauthorizedHeader(request, response, this.configService, hasBearerToken(request));
+        }
       }
     }
     return super.handleRequest(err, user, info, context, status);

@@ -24,6 +24,8 @@ For a pasted PAT, use the existing header form:
 claude mcp add --transport http project-ops https://api.projectops.unicorncommander.ai/api/v1/mcp --header "Authorization: Bearer <po_pat_value>"
 ```
 
+If you see 'no workspace access', your sign-in worked; ask your admin for an invite.
+
 ## Create an expiring PAT on localhost
 
 The single mint route is `POST /api/v1/auth/pats`. Authenticate it with the

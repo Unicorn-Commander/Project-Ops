@@ -7,6 +7,8 @@ import {
 } from './oauth-discovery.service';
 
 export const MCP_REALM = 'project-ops-mcp';
+export const MCP_INSUFFICIENT_SCOPE_HEADER =
+  'Bearer error="insufficient_scope", error_description="no workspace access"';
 
 /** True when the request carries a non-empty Bearer credential. */
 export function hasBearerToken(request: Request): boolean {
@@ -43,4 +45,9 @@ export function setMcpUnauthorizedHeader(
     'WWW-Authenticate',
     `Bearer realm="${MCP_REALM}", resource_metadata="${metadataUrl}"${error}`,
   );
+}
+
+/** Add the RFC 6750 challenge for a verified identity without workspace access. */
+export function setInsufficientScopeHeader(response: Response): void {
+  response.setHeader('WWW-Authenticate', MCP_INSUFFICIENT_SCOPE_HEADER);
 }
