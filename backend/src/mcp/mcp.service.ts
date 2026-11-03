@@ -422,16 +422,20 @@ export class McpService {
       {
         title: 'List tasks assigned to me',
         description:
-          'Return tasks assigned to the calling user, sorted by due date. ' +
+          'Return tasks assigned to the calling user, sorted by due date. Window (explicit): ' +
+          'offset/limit pagination — limit defaults to 25 (max 100), offset defaults to 0. ' +
           "Optional 'status' filters by TaskStatus " +
           `(TaskStatus: ${TASK_STATUS_VALUES.join(' / ')}). Each task includes ` +
-          '`isBlocked`, computed with one batched dependency query for the page.',
+          '`isBlocked`, computed with one batched dependency query for the page. Response: ' +
+          '{ tasks, count, total, offset, limit }; page with `offset += count` until ' +
+          '`offset >= total`.',
         inputSchema: {
           status: taskEnum(TASK_STATUS_VALUES).optional(),
           limit: z.number().int().min(1).max(100).optional(),
+          offset: z.number().int().min(0).optional(),
         },
       },
-      async (args: { status?: string; limit?: number }) =>
+      async (args: { status?: string; limit?: number; offset?: number }) =>
         wrap(await tools.listMyTasks(user, args)),
     );
 
@@ -499,7 +503,8 @@ export class McpService {
           `(${TASK_PRIORITY_VALUES.join(' / ')}). Response: ` +
           '{ project, tasks, count, total, offset, limit } where count is the ' +
           'page size and total is the full match count for paging. Each task ' +
-          'includes `isBlocked`, computed with one batched dependency query for the page.',
+          'includes `isBlocked`, computed with one batched dependency query for the page. ' +
+          'Page with `offset += count` until `offset >= total`.',
         inputSchema: {
           projectId: z.string().optional(),
           projectNumber: z.string().optional(),

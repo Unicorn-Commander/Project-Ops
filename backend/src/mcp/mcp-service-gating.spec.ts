@@ -153,6 +153,12 @@ describe('McpService tool gating (RBAC + workspace)', () => {
     expect(projectTasks.data.status).toBe('IN_PROGRESS');
     expect(projectTasks.data.priority).toBe('URGENT');
 
+    const myTasks = schemaFor('list_my_tasks').safeParse({ limit: 100, offset: 100 });
+    expect(myTasks.success).toBe(true);
+    expect(schemaFor('list_my_tasks').safeParse({ offset: -1 }).success).toBe(false);
+    expect(registeredSchemas.get('list_my_tasks').description).toContain('offset += count');
+    expect(registeredSchemas.get('list_project_tasks').description).toContain('offset += count');
+
     const status = schemaFor('update_task_status').safeParse({
       taskId: 'task-1',
       status: 'completed',

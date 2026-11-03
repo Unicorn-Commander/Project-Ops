@@ -683,38 +683,54 @@ export class ProjectOpsTools {
     return withProjectQuote(project, user);
   }
 
-  async listMyTasks(user: User, args: { status?: string; limit?: number }) {
+  async listMyTasks(user: User, args: { status?: string; limit?: number; offset?: number }) {
     const status = normalizeTaskStatus(args.status);
-    const tasks = await this.runScoped(user, async (tx) => {
-      const taskRows = await tx.task.findMany({
-        where: {
-          assignedToId: user.id,
-          ...(status ? { status } : {}),
-        },
-        take: Math.min(args.limit ?? 25, 100),
-        orderBy: [{ dueDate: 'asc' }, { priority: 'desc' }],
-        select: {
-          id: true,
-          title: true,
-          status: true,
-          priority: true,
-          dueDate: true,
-          type: true,
-          project: {
-            select: { id: true, projectNumber: true, title: true },
+    const limit = Math.min(Math.max(1, Math.floor(args.limit ?? 25)), 100);
+    const offset = Math.max(0, Math.floor(args.offset ?? 0));
+    const result = await this.runScoped(user, async (tx) => {
+      const where: Prisma.TaskWhereInput = {
+        assignedToId: user.id,
+        ...(status ? { status } : {}),
+      };
+      const [taskRows, total] = await Promise.all([
+        tx.task.findMany({
+          where,
+          skip: offset,
+          take: limit,
+          orderBy: [{ dueDate: 'asc' }, { priority: 'desc' }],
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            priority: true,
+            dueDate: true,
+            type: true,
+            project: {
+              select: { id: true, projectNumber: true, title: true },
+            },
           },
-        },
-      });
+        }),
+        tx.task.count({ where }),
+      ]);
       const blockedTaskIds = await this.loadBlockedTaskIds(
         tx,
         taskRows.map((task) => task.id),
       );
-      return taskRows.map((task) => ({
-        ...task,
-        isBlocked: blockedTaskIds.has(task.id),
-      }));
+      return {
+        tasks: taskRows.map((task) => ({
+          ...task,
+          isBlocked: blockedTaskIds.has(task.id),
+        })),
+        total,
+      };
     });
-    return { tasks, count: tasks.length };
+    return {
+      tasks: result.tasks,
+      count: result.tasks.length,
+      total: result.total,
+      offset,
+      limit,
+    };
   }
 
   /**

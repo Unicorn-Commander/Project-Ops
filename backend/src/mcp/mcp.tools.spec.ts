@@ -183,6 +183,106 @@ describe('ProjectOpsTools.assertCanWrite', () => {
   });
 });
 
+describe('ProjectOpsTools.listMyTasks — filters + pagination window', () => {
+  const WS_ID = 'ws-1';
+
+  const task = (id: string) => ({
+    id,
+    title: `Task ${id}`,
+    status: TaskStatus.PENDING,
+    priority: 'HIGH',
+    dueDate: null,
+    type: 'TASK',
+    project: { id: 'project-1', projectNumber: 'P-00110', title: 'Fictional Project' },
+  });
+
+  function makeTools(overrides?: {
+    taskFindMany?: jest.Mock;
+    taskCount?: jest.Mock;
+    depFindMany?: jest.Mock;
+  }) {
+    const taskFindMany = overrides?.taskFindMany ?? jest.fn(async () => []);
+    const taskCount = overrides?.taskCount ?? jest.fn(async () => 0);
+    const depFindMany = overrides?.depFindMany ?? jest.fn(async () => []);
+    const tx = {
+      task: { findMany: taskFindMany, count: taskCount },
+      taskDependency: { findMany: depFindMany },
+    };
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) => fn(tx, WS_ID),
+    } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+    );
+    return { tools, taskFindMany, taskCount, depFindMany };
+  }
+
+  it('keeps total stable across pages and batches isBlocked per page', async () => {
+    const rows = [task('task-1'), task('task-2')];
+    const taskFindMany = jest.fn(async ({ skip, take }: { skip: number; take: number }) =>
+      rows.slice(skip, skip + take),
+    );
+    const taskCount = jest.fn(async () => rows.length);
+    const depFindMany = jest.fn(async ({ where }: any) => [
+      {
+        successorId: where.successorId.in[0],
+        predecessor: { status: TaskStatus.IN_PROGRESS },
+      },
+    ]);
+    const {
+      tools,
+      taskFindMany: findMany,
+      taskCount: count,
+      depFindMany: dependencies,
+    } = makeTools({
+      taskFindMany,
+      taskCount,
+      depFindMany,
+    });
+    const user = baseUser({ id: 'staff-1', role: UserRole.STAFF });
+
+    const firstPage = await tools.listMyTasks(user, { limit: 1, offset: 0 });
+    const secondPage = await tools.listMyTasks(user, { limit: 1, offset: 1 });
+
+    expect(firstPage).toMatchObject({ count: 1, total: 2, offset: 0, limit: 1 });
+    expect(secondPage).toMatchObject({ count: 1, total: 2, offset: 1, limit: 1 });
+    expect(firstPage.tasks[0].id).toBe('task-1');
+    expect(secondPage.tasks[0].id).toBe('task-2');
+    expect(firstPage.tasks[0].isBlocked).toBe(true);
+    expect(secondPage.tasks[0].isBlocked).toBe(true);
+    expect(findMany.mock.calls.map(([args]) => ({ skip: args.skip, take: args.take }))).toEqual([
+      { skip: 0, take: 1 },
+      { skip: 1, take: 1 },
+    ]);
+    expect(count).toHaveBeenCalledTimes(2);
+    expect(dependencies).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns an empty page with total when offset is beyond the matches', async () => {
+    const taskFindMany = jest.fn(async () => []);
+    const taskCount = jest.fn(async () => 3);
+    const depFindMany = jest.fn();
+    const { tools } = makeTools({ taskFindMany, taskCount, depFindMany });
+
+    const result = await tools.listMyTasks(baseUser({ id: 'staff-1' }), {
+      limit: 2,
+      offset: 10,
+    });
+
+    expect(result).toEqual({ tasks: [], count: 0, total: 3, offset: 10, limit: 2 });
+    expect((taskFindMany.mock.calls[0] as any[])[0]).toMatchObject({ skip: 10, take: 2 });
+    expect(taskCount).toHaveBeenCalledWith({ where: { assignedToId: 'staff-1' } });
+    expect(depFindMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('ProjectOpsTools — Wave 2 role gates', () => {
   // Each Wave 2 service is a jest stub; we assert the role GATE fires (or
   // doesn't) and, when it passes, that the tool delegates to the right service
@@ -1155,6 +1255,21 @@ describe('ProjectOpsTools.listProjectTasks — filters + pagination window', () 
     const taskArgs = (taskFindMany.mock.calls[0] as any[])[0];
     expect(taskArgs.take).toBe(100);
     expect(taskArgs.skip).toBe(0);
+  });
+
+  it('returns an empty page with total when offset is beyond the matches', async () => {
+    const taskFindMany = jest.fn(async () => []);
+    const taskCount = jest.fn(async () => 2);
+    const { tools } = makeTools({ taskFindMany, taskCount });
+
+    const result = await tools.listProjectTasks(baseUser({ role: UserRole.ADMIN }), {
+      projectId: 'p1',
+      limit: 2,
+      offset: 10,
+    });
+
+    expect(result).toMatchObject({ tasks: [], count: 0, total: 2, offset: 10, limit: 2 });
+    expect((taskFindMany.mock.calls[0] as any[])[0]).toMatchObject({ skip: 10, take: 2 });
   });
 
   it('rejects unknown status before hitting the DB', async () => {
