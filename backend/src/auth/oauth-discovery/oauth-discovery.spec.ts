@@ -1,4 +1,11 @@
-import { All, Controller, INestApplication, Req, UseGuards } from '@nestjs/common';
+import {
+  All,
+  Controller,
+  ForbiddenException,
+  INestApplication,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
@@ -9,8 +16,14 @@ import request from 'supertest';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { JwtStrategy } from '../strategies/jwt.strategy';
 import { AuthService } from '../auth.service';
+import {
+  NO_WORKSPACE_ACCESS_RESPONSE,
+  NoWorkspaceAccessException,
+} from '../no-workspace-access.exception';
 import { PatService } from '../pat/pat.service';
 import { McpController } from '../../mcp/mcp.controller';
+import { WorkspaceMembershipGuard } from '../../common/workspace/workspace-membership.guard';
+import { MembershipService } from '../../common/workspace/membership.service';
 import { createMcpCorsMiddleware } from './mcp-cors';
 import { OAuthDiscoveryController } from './oauth-discovery.controller';
 import { OAuthDiscoveryService } from './oauth-discovery.service';
@@ -57,6 +70,16 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
   const patService = {
     findByPlaintext: jest.fn(async () => null),
   } as unknown as PatService;
+  const validateJwtPayload = jest.fn();
+  const resolveAndAuthorize = jest.fn();
+  const assertCanWrite = jest.fn();
+  const verifiedUser = {
+    id: 'synthetic-user',
+    email: 'member@example.com',
+    username: 'synthetic-member',
+    role: UserRole.STAFF,
+    isActive: true,
+  } as any;
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
@@ -66,10 +89,16 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
         OAuthDiscoveryService,
         JwtStrategy,
         JwtAuthGuard,
+        WorkspaceMembershipGuard,
         { provide: APP_GUARD, useClass: JwtAuthGuard },
+        { provide: APP_GUARD, useClass: WorkspaceMembershipGuard },
         { provide: ConfigService, useValue: config },
         { provide: PatService, useValue: patService },
-        { provide: AuthService, useValue: { validateJwtPayload: jest.fn() } },
+        { provide: AuthService, useValue: { validateJwtPayload } },
+        {
+          provide: MembershipService,
+          useValue: { resolveAndAuthorize, assertCanWrite },
+        },
       ],
     }).compile();
     app = module.createNestApplication();
@@ -90,6 +119,9 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    validateJwtPayload.mockResolvedValue(verifiedUser);
+    resolveAndAuthorize.mockResolvedValue('workspace-synthetic');
+    assertCanWrite.mockResolvedValue(undefined);
   });
 
   it('serves both RFC 9728 metadata paths without auth and with cache/CORS headers', async () => {
@@ -176,6 +208,7 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
       /^Bearer realm="project-ops-mcp", resource_metadata="http:\/\/[^\"]+\/.well-known\/oauth-protected-resource\/api\/v1\/mcp"$/,
     );
     expect(response.headers['www-authenticate']).not.toContain('invalid_token');
+    expect(response.body).toEqual({ statusCode: 401, message: 'Unauthorized' });
     expect(JSON.stringify(response.body)).not.toContain('po_pat_');
   });
 
@@ -187,6 +220,11 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
       .expect(401);
 
     expect(response.headers['www-authenticate']).toContain('error="invalid_token"');
+    expect(response.body).toEqual({
+      statusCode: 401,
+      message: 'Invalid token',
+      error: 'Unauthorized',
+    });
     expect(patService.findByPlaintext).toHaveBeenCalledWith('po_pat_synthetic_invalid');
     expect(JSON.stringify(response.body)).not.toContain('po_pat_synthetic_invalid');
   });
@@ -200,6 +238,68 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
       .expect(401);
 
     expect(response.headers['www-authenticate']).toContain('error="invalid_token"');
+    expect(response.body).toEqual({
+      statusCode: 401,
+      message: 'Unauthorized',
+    });
+  });
+
+  it('returns insufficient_scope for a verified token rejected before workspace provisioning', async () => {
+    const token = jwt.sign(
+      { sub: 'synthetic-unprovisioned', email: 'unprovisioned@example.com' },
+      localSecret,
+      { expiresIn: 300 },
+    );
+    validateJwtPayload.mockRejectedValueOnce(new NoWorkspaceAccessException());
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/mcp')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })
+      .expect(403);
+
+    expect(response.headers['www-authenticate']).toBe(
+      'Bearer error="insufficient_scope", error_description="no workspace access"',
+    );
+    expect(response.body).toEqual(NO_WORKSPACE_ACCESS_RESPONSE);
+    expect(resolveAndAuthorize).not.toHaveBeenCalled();
+  });
+
+  it('returns insufficient_scope for a verified token whose user has no active membership', async () => {
+    const token = jwt.sign(
+      { sub: 'synthetic-unprovisioned', email: 'unprovisioned@example.com' },
+      localSecret,
+      { expiresIn: 300 },
+    );
+    resolveAndAuthorize.mockRejectedValueOnce(
+      new ForbiddenException('No workspace access for this user.'),
+    );
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/mcp')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })
+      .expect(403);
+
+    expect(response.headers['www-authenticate']).toBe(
+      'Bearer error="insufficient_scope", error_description="no workspace access"',
+    );
+    expect(response.body).toEqual(NO_WORKSPACE_ACCESS_RESPONSE);
+  });
+
+  it('returns 200 for a verified token with an active membership', async () => {
+    const token = jwt.sign({ sub: 'synthetic-member', email: 'member@example.com' }, localSecret, {
+      expiresIn: 300,
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/mcp')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })
+      .expect(200);
+
+    expect(response.body).toEqual({ ok: true });
+    expect(resolveAndAuthorize).toHaveBeenCalledWith(verifiedUser, null);
   });
 
   it('returns invalid_token discovery for an expired signed Keycloak token', async () => {
@@ -223,6 +323,7 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
       .expect(401);
 
     expect(response.headers['www-authenticate']).toContain('error="invalid_token"');
+    expect(response.body).toEqual({ statusCode: 401, message: 'Unauthorized' });
   });
 
   it('returns invalid_token discovery for a signed Keycloak token with the wrong audience', async () => {
@@ -246,6 +347,11 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
       .expect(401);
 
     expect(response.headers['www-authenticate']).toContain('error="invalid_token"');
+    expect(response.body).toEqual({
+      statusCode: 401,
+      message: 'Token is not authorized for project-ops',
+      error: 'Unauthorized',
+    });
   });
 
   it('does not use a browser cookie/session to authenticate the MCP path', async () => {

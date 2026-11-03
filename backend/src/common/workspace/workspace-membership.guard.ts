@@ -11,6 +11,8 @@ import { WORKSPACE_WRITE_POLICY, WorkspaceWritePolicy } from './workspace-write-
 import { MembershipService } from './membership.service';
 import { explicitRequestedWorkspaceId, WithWorkspaceClaim } from './workspace.util';
 import { SKIP_WORKSPACE_MEMBERSHIP_KEY } from './skip-workspace-membership.decorator';
+import { setInsufficientScopeHeader } from '../../auth/oauth-discovery/mcp-auth-header';
+import { NoWorkspaceAccessException } from '../../auth/no-workspace-access.exception';
 
 /**
  * Gate for workspace-scoped routes (SUITE-IDENTITY §D4/§D5).
@@ -94,7 +96,22 @@ export class WorkspaceMembershipGuard implements CanActivate {
     // portal CLIENT → their workspace), which previously 403'd.
     const requested = explicitRequestedWorkspaceId(req) ?? user.__workspaceClaim ?? null;
 
-    const resolved = await this.membership.resolveAndAuthorize(user, requested);
+    let resolved: string;
+    try {
+      resolved = await this.membership.resolveAndAuthorize(user, requested);
+    } catch (error) {
+      // MembershipService predates the verified/no-workspace response contract;
+      // translate only its unprovisioned-user branch and leave other workspace
+      // authorization failures (for example, a wrong explicit target) intact.
+      const response = error instanceof ForbiddenException ? error.getResponse() : null;
+      const message = typeof response === 'string' ? response : (response as any)?.message;
+      if (message === 'No workspace access for this user.') {
+        const httpResponse = context.switchToHttp().getResponse?.();
+        if (httpResponse) setInsufficientScopeHeader(httpResponse);
+        throw new NoWorkspaceAccessException();
+      }
+      throw error;
+    }
     const method = String(req.method || 'GET').toUpperCase();
     if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
       const policy = this.reflector?.getAllAndOverride<WorkspaceWritePolicy>(

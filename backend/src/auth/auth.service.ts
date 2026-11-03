@@ -26,6 +26,7 @@ import {
   MembershipService,
   ActiveWorkspaceMembership,
 } from '../common/workspace/membership.service';
+import { NoWorkspaceAccessException } from './no-workspace-access.exception';
 import {
   isHumanSessionPayload,
   readActorClientId,
@@ -173,9 +174,7 @@ export class AuthService {
       resolvedAccess = await this.resolveSsoAccess(email, accessToken);
       if (!resolvedAccess.allowed) {
         this.logger.warn(`Rejected SSO for ${email || '(no email)'} — ${resolvedAccess.reason}`);
-        throw new UnauthorizedException(
-          'You are not authorized for Project-Ops. Contact your administrator.',
-        );
+        throw new NoWorkspaceAccessException();
       }
     }
 
@@ -235,9 +234,7 @@ export class AuthService {
         }));
       if (!access.allowed && !invited) {
         this.logger.warn(`Rejected SSO JIT for ${email || '(no email)'} — ${access.reason}`);
-        throw new UnauthorizedException(
-          'You are not authorized for Project-Ops. Contact your administrator.',
-        );
+        throw new NoWorkspaceAccessException();
       }
 
       // Auto-create from the Keycloak profile with the resolved role. The role
