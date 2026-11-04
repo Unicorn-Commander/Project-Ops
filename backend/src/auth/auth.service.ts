@@ -15,6 +15,7 @@ import { LoginDto } from './dto/login.dto';
 import { ClientSignupDto } from './dto/client-signup.dto';
 import { User, UserRole, WorkspaceRole, MembershipStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { createHash } from 'crypto';
 import { resolveUserAccess, describeAccessList } from './access-list';
 import {
   resolveEntitlement,
@@ -55,11 +56,18 @@ type CachedSsoAccess = {
 };
 
 const ENTITLEMENT_CACHE_TTL_MS = 900_000;
+const ENTITLEMENT_CACHE_PRUNE_MS = 60_000;
+
+/** Cache key for a bearer: the map holds digests, never raw tokens. */
+function entitlementCacheKey(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly entitlementCache = new Map<string, CachedSsoAccess>();
+  private entitlementCacheNextPruneAt = 0;
 
   constructor(
     private usersService: UsersService,
@@ -343,9 +351,10 @@ export class AuthService {
       };
     }
 
-    const cached = this.entitlementCache.get(token);
+    const cacheKey = entitlementCacheKey(token);
+    const cached = this.entitlementCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.result;
-    if (cached) this.entitlementCache.delete(token);
+    if (cached) this.entitlementCache.delete(cacheKey);
 
     const result = (async (): Promise<SsoAccessResolution> => {
       const ent = await resolveEntitlement(token, {
@@ -428,15 +437,26 @@ export class AuthService {
       };
     })();
 
-    this.entitlementCache.set(token, {
+    this.pruneEntitlementCache();
+    this.entitlementCache.set(cacheKey, {
       expiresAt: Date.now() + ENTITLEMENT_CACHE_TTL_MS,
       result,
     });
     void result.catch(() => {
-      const current = this.entitlementCache.get(token);
-      if (current?.result === result) this.entitlementCache.delete(token);
+      const current = this.entitlementCache.get(cacheKey);
+      if (current?.result === result) this.entitlementCache.delete(cacheKey);
     });
     return result;
+  }
+
+  /** Drop expired entitlement decisions at most once a minute, so bearers that
+   *  never return cannot grow the map without bound. */
+  private pruneEntitlementCache(now = Date.now()): void {
+    if (now < this.entitlementCacheNextPruneAt) return;
+    this.entitlementCacheNextPruneAt = now + ENTITLEMENT_CACHE_PRUNE_MS;
+    for (const [key, entry] of this.entitlementCache) {
+      if (entry.expiresAt <= now) this.entitlementCache.delete(key);
+    }
   }
 
   async generateTokenForUser(user: User) {
