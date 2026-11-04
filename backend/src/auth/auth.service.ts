@@ -15,6 +15,7 @@ import { LoginDto } from './dto/login.dto';
 import { ClientSignupDto } from './dto/client-signup.dto';
 import { User, UserRole, WorkspaceRole, MembershipStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { createHash } from 'crypto';
 import { resolveUserAccess, describeAccessList } from './access-list';
 import {
   resolveEntitlement,
@@ -41,9 +42,32 @@ export interface JwtPayload {
   email_verified?: boolean;
 }
 
+type SsoAccessResolution = {
+  allowed: boolean;
+  role: UserRole;
+  reason: string;
+  orgId: string | null;
+  displayNameHint: string | null;
+};
+
+type CachedSsoAccess = {
+  expiresAt: number;
+  result: Promise<SsoAccessResolution>;
+};
+
+const ENTITLEMENT_CACHE_TTL_MS = 900_000;
+const ENTITLEMENT_CACHE_PRUNE_MS = 60_000;
+
+/** Cache key for a bearer: the map holds digests, never raw tokens. */
+function entitlementCacheKey(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private readonly entitlementCache = new Map<string, CachedSsoAccess>();
+  private entitlementCacheNextPruneAt = 0;
 
   constructor(
     private usersService: UsersService,
@@ -157,19 +181,12 @@ export class AuthService {
     const getEnv = (k: string) => this.configService.get<string>(k);
 
     // When the Ops-Center entitlements gate is ARMED (flag + URL + a forwarded
-    // uchub Bearer), it governs and is RE-CHECKED on EVERY interactive SSO
-    // login, so a revoked entitlement (plan change / cancellation) locks a
-    // previously-provisioned user out. We therefore evaluate it BEFORE the
-    // find/link so it covers existing users too. The legacy allowlist path
-    // keeps today's exact semantics (gate only on first JIT, below), so the
-    // flag-OFF default is byte-for-byte unchanged.
-    const armed = entitlementsEnabled(getEnv) && !!accessToken;
-    let resolvedAccess: {
-      allowed: boolean;
-      role: UserRole;
-      reason: string;
-      orgId?: string | null;
-    } | null = null;
+    // uchub Bearer), it governs the login and is cached per verified bearer for
+    // the token's 900-second lifetime. We evaluate it BEFORE the find/link so
+    // it covers existing users too. The legacy allowlist path keeps today's
+    // exact semantics when the gate is disabled.
+    const armed = entitlementsEnabled(getEnv) && !!accessToken?.trim();
+    let resolvedAccess: SsoAccessResolution | null = null;
     if (armed) {
       resolvedAccess = await this.resolveSsoAccess(email, accessToken);
       if (!resolvedAccess.allowed) {
@@ -280,7 +297,13 @@ export class AuthService {
           user,
           resolvedAccess.orgId,
           resolvedAccess.role,
-          profile.organization || profile.org_name || null,
+          resolvedAccess.displayNameHint ??
+            profile.organization ??
+            profile.org_name ??
+            profile.display_name ??
+            profile.displayName ??
+            profile.slug ??
+            null,
         );
       } catch (err) {
         this.logger.error(
@@ -313,79 +336,127 @@ export class AuthService {
   private async resolveSsoAccess(
     email: string | undefined,
     accessToken?: string,
-  ): Promise<{ allowed: boolean; role: UserRole; reason: string; orgId?: string | null }> {
+  ): Promise<SsoAccessResolution> {
     const getEnv = (k: string) => this.configService.get<string>(k);
 
-    if (!entitlementsEnabled(getEnv) || !accessToken) {
-      const a = resolveUserAccess(email);
-      return { allowed: a.allowed, role: a.role, reason: a.reason, orgId: null };
-    }
-
-    const ent = await resolveEntitlement(accessToken, {
-      getEnv,
-      logger: {
-        log: (m) => this.logger.log(m),
-        warn: (m) => this.logger.warn(m),
-        error: (m) => this.logger.error(m),
-      },
-    });
-
-    if (ent.outcome === 'allowed') {
-      // orgId is carried through so the caller can provision THAT org's
-      // workspace on first login (self-serve onboarding) instead of requiring
-      // a human to edit PROJECT_OPS_ACCESS_LIST and restart the container.
-      return {
-        allowed: true,
-        role: ent.role ?? UserRole.STAFF,
-        reason: ent.reason,
-        orgId: ent.orgId,
-      };
-    }
-    if (ent.outcome === 'denied') {
-      // "Soft enforce" migration aid: while Ops-Center orgs are still being
-      // seeded with entitlements, an allowlisted (known-good) user must not be
-      // locked out by an unseeded org. When the fallback is on, a DEFINITIVE
-      // deny degrades to the allowlist — the gate still hard-denies anyone NOT
-      // on the allowlist. Set the flag false to land on pure enforcement once
-      // every intended org is seeded.
-      if (entitlementsAllowlistFallback(getEnv)) {
-        const a = resolveUserAccess(email);
-        if (a.allowed) {
-          this.logger.warn(
-            `Entitlements denied (${ent.reason}) but ${email || '(no email)'} is allowlisted — ` +
-              `granting via soft-enforce allowlist fallback`,
-          );
-          return {
-            allowed: true,
-            role: a.role,
-            reason: `entitlement-denied→allowlist-fallback: ${a.reason}`,
-          };
-        }
-      }
-      return { allowed: false, role: UserRole.STAFF, reason: ent.reason };
-    }
-
-    // indeterminate: an Ops-Center outage/timeout. Fail CLOSED by default (this
-    // is a security gate); only degrade to the allowlist when explicitly opted in.
-    if (entitlementsFailOpen(getEnv)) {
-      this.logger.warn(
-        `Entitlements indeterminate (${ent.reason}); failing OPEN to the allowlist for ${email || '(no email)'}`,
-      );
+    const token = accessToken?.trim();
+    if (!entitlementsEnabled(getEnv) || !token) {
       const a = resolveUserAccess(email);
       return {
         allowed: a.allowed,
         role: a.role,
-        reason: `entitlements-indeterminate→allowlist: ${a.reason}`,
+        reason: a.reason,
+        orgId: null,
+        displayNameHint: null,
       };
     }
-    this.logger.error(
-      `Entitlements indeterminate (${ent.reason}); failing CLOSED (deny) for ${email || '(no email)'}`,
-    );
-    return {
-      allowed: false,
-      role: UserRole.STAFF,
-      reason: `entitlements-indeterminate→deny: ${ent.reason}`,
-    };
+
+    const cacheKey = entitlementCacheKey(token);
+    const cached = this.entitlementCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.result;
+    if (cached) this.entitlementCache.delete(cacheKey);
+
+    const result = (async (): Promise<SsoAccessResolution> => {
+      const ent = await resolveEntitlement(token, {
+        getEnv,
+        logger: {
+          log: (m) => this.logger.log(m),
+          warn: (m) => this.logger.warn(m),
+          error: (m) => this.logger.error(m),
+        },
+      });
+
+      if (ent.outcome === 'allowed') {
+        // orgId is carried through so the caller can provision THAT org's
+        // workspace on first login (self-serve onboarding) instead of requiring
+        // a human to edit PROJECT_OPS_ACCESS_LIST and restart the container.
+        return {
+          allowed: true,
+          role: ent.role ?? UserRole.STAFF,
+          reason: ent.reason,
+          orgId: ent.orgId,
+          displayNameHint: ent.displayNameHint,
+        };
+      }
+      if (ent.outcome === 'denied') {
+        // "Soft enforce" migration aid: while Ops-Center orgs are still being
+        // seeded with entitlements, an allowlisted (known-good) user must not
+        // be locked out by an unseeded org. When the fallback is on, a DEFINITIVE
+        // deny degrades to the allowlist — the gate still hard-denies anyone NOT
+        // on the allowlist. Set the flag false to land on pure enforcement once
+        // every intended org is seeded.
+        if (entitlementsAllowlistFallback(getEnv)) {
+          const a = resolveUserAccess(email);
+          if (a.allowed) {
+            this.logger.warn(
+              `Entitlements denied (${ent.reason}) but ${email || '(no email)'} is allowlisted — ` +
+                `granting via soft-enforce allowlist fallback`,
+            );
+            return {
+              allowed: true,
+              role: a.role,
+              reason: `entitlement-denied→allowlist-fallback: ${a.reason}`,
+              orgId: null,
+              displayNameHint: null,
+            };
+          }
+        }
+        return {
+          allowed: false,
+          role: UserRole.STAFF,
+          reason: ent.reason,
+          orgId: ent.orgId,
+          displayNameHint: ent.displayNameHint,
+        };
+      }
+
+      // indeterminate: an Ops-Center outage/timeout. Fail CLOSED by default (this
+      // is a security gate); only degrade to the allowlist when explicitly opted in.
+      if (entitlementsFailOpen(getEnv)) {
+        this.logger.warn(
+          `Entitlements indeterminate (${ent.reason}); failing OPEN to the allowlist for ${email || '(no email)'}`,
+        );
+        const a = resolveUserAccess(email);
+        return {
+          allowed: a.allowed,
+          role: a.role,
+          reason: `entitlements-indeterminate→allowlist: ${a.reason}`,
+          orgId: null,
+          displayNameHint: null,
+        };
+      }
+      this.logger.error(
+        `Entitlements indeterminate (${ent.reason}); failing CLOSED (deny) for ${email || '(no email)'}`,
+      );
+      return {
+        allowed: false,
+        role: UserRole.STAFF,
+        reason: `entitlements-indeterminate→deny: ${ent.reason}`,
+        orgId: null,
+        displayNameHint: null,
+      };
+    })();
+
+    this.pruneEntitlementCache();
+    this.entitlementCache.set(cacheKey, {
+      expiresAt: Date.now() + ENTITLEMENT_CACHE_TTL_MS,
+      result,
+    });
+    void result.catch(() => {
+      const current = this.entitlementCache.get(cacheKey);
+      if (current?.result === result) this.entitlementCache.delete(cacheKey);
+    });
+    return result;
+  }
+
+  /** Drop expired entitlement decisions at most once a minute, so bearers that
+   *  never return cannot grow the map without bound. */
+  private pruneEntitlementCache(now = Date.now()): void {
+    if (now < this.entitlementCacheNextPruneAt) return;
+    this.entitlementCacheNextPruneAt = now + ENTITLEMENT_CACHE_PRUNE_MS;
+    for (const [key, entry] of this.entitlementCache) {
+      if (entry.expiresAt <= now) this.entitlementCache.delete(key);
+    }
   }
 
   async generateTokenForUser(user: User) {
@@ -412,7 +483,7 @@ export class AuthService {
     };
   }
 
-  async validateJwtPayload(payload: any): Promise<User> {
+  async validateJwtPayload(payload: any, accessToken?: string): Promise<User> {
     // Disambiguate by `iss` claim across three branches:
     //
     //   1. Keycloak realm-signed (uchub SSO browser flow):
@@ -496,8 +567,13 @@ export class AuthService {
         preferred_username: payload.preferred_username,
         given_name: payload.given_name,
         family_name: payload.family_name,
+        organization: payload.organization,
+        org_name: payload.org_name,
+        display_name: payload.display_name,
+        displayName: payload.displayName,
+        slug: payload.slug,
       };
-      return this.validateKeycloakUser(payload.sub, profile);
+      return this.validateKeycloakUser(payload.sub, profile, accessToken);
     }
 
     // Locally-signed token: existing behavior.

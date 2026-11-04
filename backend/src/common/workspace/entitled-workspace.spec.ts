@@ -135,6 +135,15 @@ describe('MembershipService.ensureEntitledWorkspace', () => {
     expect(prisma._memberships.some((m: any) => m.workspaceId === BOOTSTRAP)).toBe(false);
   });
 
+  it('uses the entitlement org name as the workspace display name when present', async () => {
+    const prisma = fakePrisma();
+    const svc = make(ENV_ON, prisma);
+
+    await svc.ensureEntitledWorkspace(customer, CUSTOMER_ORG, 'STAFF', 'Fictional Acme Studio');
+
+    expect(prisma._workspaces[0].displayName).toBe('Fictional Acme Studio');
+  });
+
   it('is idempotent: a second login does not mint a second workspace', async () => {
     const prisma = fakePrisma();
     const svc = make(ENV_ON, prisma);

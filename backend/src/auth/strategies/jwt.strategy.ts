@@ -95,6 +95,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      // The verified request is needed to forward the same raw bearer to the
+      // Ops-Center entitlement gate. Passport still verifies the token before
+      // invoking validate; this option only exposes the request alongside the
+      // verified payload.
+      passReqToCallback: true,
       ignoreExpiration: false,
       // The hybrid strategy supports the legacy local HS256 path and the
       // external RS256 paths. Each branch below performs a second,
@@ -368,8 +373,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return aud === expected;
   }
 
-  async validate(payload: any): Promise<User> {
+  async validate(requestOrPayload: any, payloadMaybe?: any): Promise<User> {
     try {
+      // Keep direct/unit callers compatible with the historical validate(payload)
+      // shape while Passport calls validate(request, payload) when
+      // passReqToCallback is enabled.
+      const request = payloadMaybe === undefined ? undefined : requestOrPayload;
+      const payload = payloadMaybe === undefined ? requestOrPayload : payloadMaybe;
       // Brigade federation tokens are bound to a single app by `aud`. We only
       // reach validate() after the signature + issuer already verified, so any
       // token whose `iss` is a trusted Brigade broker is a federation token:
@@ -431,7 +441,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         }
       }
 
-      const user = await this.authService.validateJwtPayload(payload as JwtPayload);
+      const user = await this.authService.validateJwtPayload(
+        payload as JwtPayload,
+        extractBearerToken(request),
+      );
       // Surface the suite-canonical workspace/tenant claim (if any) on the
       // resolved user so the tenancy seam (WorkspaceContextService /
       // @CurrentWorkspace) can scope rows without trusting an HTTP header.
@@ -469,4 +482,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Invalid token');
     }
   }
+}
+
+function extractBearerToken(request: any): string | undefined {
+  const header = request?.headers?.authorization ?? request?.headers?.Authorization;
+  if (typeof header !== 'string') return undefined;
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || undefined;
 }

@@ -300,6 +300,110 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
 
     expect(response.body).toEqual({ ok: true });
     expect(resolveAndAuthorize).toHaveBeenCalledWith(verifiedUser, null);
+    expect(validateJwtPayload).toHaveBeenCalledWith(
+      expect.objectContaining({ sub: 'synthetic-member' }),
+      token,
+    );
+  });
+
+  it('returns 200 on the first entitled bearer call after provisioning its org workspace', async () => {
+    const entitlementKeys = [
+      'PROJECT_OPS_ENTITLEMENTS_ENABLED',
+      'UC_ENTITLEMENTS_URL',
+      'PROJECT_OPS_TENANCY_ENABLED',
+    ];
+    const previousConfig = entitlementKeys.map((key) => [key, configValues[key]] as const);
+    Object.assign(configValues, {
+      PROJECT_OPS_ENTITLEMENTS_ENABLED: 'true',
+      UC_ENTITLEMENTS_URL: 'https://ops.fictional.example/api/v1/entitlements',
+      PROJECT_OPS_TENANCY_ENABLED: 'true',
+    });
+
+    const firstLoginUser = {
+      id: 'fictional-entitled-user',
+      email: 'owner@fictional.example',
+      username: 'fictional-owner',
+      firstName: 'Fictional',
+      lastName: 'Owner',
+      keycloakId: 'fictional-keycloak-sub',
+      role: UserRole.STAFF,
+      isActive: true,
+    } as any;
+    const users = {
+      findByKeycloakId: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue(firstLoginUser),
+    };
+    const membership = {
+      ensureEntitledWorkspace: jest.fn().mockResolvedValue('01924a3c-0000-7000-8000-000000000123'),
+    };
+    const actualAuth = new AuthService(
+      users as any,
+      {} as any,
+      config,
+      { user: { findMany: jest.fn().mockResolvedValue([]) } } as any,
+      {} as any,
+      membership as any,
+    );
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        org_id: '01924a3c-0000-7000-8000-000000000123',
+        org_name: 'Fictional Acme Studio',
+        tier: 'byok',
+        role: 'member',
+        entitlements: ['project_ops_access'],
+      }),
+    } as Response);
+    validateJwtPayload.mockImplementation((payload: any, accessToken?: string) =>
+      actualAuth.validateJwtPayload(payload, accessToken),
+    );
+
+    const now = Math.floor(Date.now() / 1000);
+    const token = jwt.sign(
+      {
+        sub: 'fictional-keycloak-sub',
+        email: 'owner@fictional.example',
+        email_verified: true,
+        preferred_username: 'fictional-owner',
+        iss: realmIssuer,
+        azp: 'project-ops',
+        aud: 'account',
+        sid: 'fictional-session',
+        iat: now - 10,
+        exp: now + 300,
+      },
+      keyPair.privateKey,
+      { algorithm: 'RS256', keyid: 'canary-jwks-key' },
+    );
+
+    try {
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/mcp')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })
+        .expect(200);
+
+      expect(response.body).toEqual({ ok: true });
+      expect(membership.ensureEntitledWorkspace).toHaveBeenCalledWith(
+        firstLoginUser,
+        '01924a3c-0000-7000-8000-000000000123',
+        UserRole.STAFF,
+        'Fictional Acme Studio',
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][1]).toEqual(
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: `Bearer ${token}` }),
+        }),
+      );
+    } finally {
+      fetchMock.mockRestore();
+      for (const [key, value] of previousConfig) {
+        if (value === undefined) delete configValues[key];
+        else configValues[key] = value;
+      }
+    }
   });
 
   it('returns invalid_token discovery for an expired signed Keycloak token', async () => {
