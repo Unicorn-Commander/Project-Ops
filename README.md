@@ -256,7 +256,7 @@ The [backend template](backend/.env.example) also documents settings for custom 
 | `BRIGADE_URL`, `BRIGADE_API_KEY`, `BRIGADE_AGENT_ID` | Assistant service, authentication and agent selection. |
 | `INFINITY_EMBEDDINGS_URL`, `INFINITY_RERANK_URL`, `INFINITY_EMBED_MODEL`, `INFINITY_RERANK_MODEL`, `QWEN_URL`, `QWEN_MODEL` | Embedding, reranking and chat inference used to route triage proposals. |
 | `UC_REGISTRY_URL`, `UC_REGISTRY_TIMEOUT_MS` | Optional shared workspace registry and request timeout. |
-| `PROJECT_OPS_ENTITLEMENTS_ENABLED`, `UC_ENTITLEMENTS_URL`, `PROJECT_OPS_FEATURE_KEY` | Optional Ops-Center entitlement check for interactive SSO login. |
+| `PROJECT_OPS_ENTITLEMENTS_ENABLED`, `UC_ENTITLEMENTS_URL`, `PROJECT_OPS_FEATURE_KEY` | Optional Ops-Center entitlement check for interactive SSO and bearer/MCP auth; decisions are cached per bearer for 900 seconds. |
 | `PROJECT_OPS_ENTITLEMENTS_FAIL_OPEN`, `PROJECT_OPS_ENTITLEMENTS_ALLOWLIST_FALLBACK`, `UC_ENTITLEMENTS_TIMEOUT_MS` | Entitlement failure handling, allowlist fallback and timeout. |
 | `PROJECT_OPS_FEDERATION_ACTORS` | Machine actors permitted on designated federation ingress routes. |
 | `CUSTOMER_OPS_BASE_URL`, `CUSTOMER_OPS_SERVICE_TOKEN`, `CUSTOMER_OPS_TIMEOUT_MS` | Read-through connection for accepted-quote summaries. |

@@ -22,11 +22,9 @@
  * and a misconfigured "enabled-but-no-URL" deploy fails safe to the allowlist
  * rather than locking everyone out.
  *
- * Per the UC dev (2026-06-25): re-check on EVERY interactive SSO login (this is
- * invoked from KeycloakStrategy.validate, the browser login, with that login's
- * fresh uchub Bearer), so a revoked entitlement (plan change / cancellation)
- * actually locks a previously-provisioned user out. A short per-user cache
- * (~60s) collapses duplicate checks within a single login burst.
+ * The caller caches the decision per verified uchub Bearer for that token's
+ * 900-second lifetime. This collapses the repeated stateless MCP requests for a
+ * token without turning entitlement changes into a permanent grant.
  *
  * FAILURE POLICY: a DEFINITIVE endpoint verdict governs — 200 allows/denies by
  * key presence; 401/403 denies. An INDETERMINATE failure (network / timeout /
@@ -76,6 +74,8 @@ export interface EntitlementResolution {
   role: UserRole | null;
   orgId: string | null;
   tier: string | null;
+  /** Preferred display name for a just-in-time workspace, when supplied. */
+  displayNameHint: string | null;
   reason: string;
 }
 
@@ -169,6 +169,7 @@ export async function resolveEntitlement(
       role: null,
       orgId: null,
       tier: null,
+      displayNameHint: null,
       reason: 'UC_ENTITLEMENTS_URL unset',
     };
   }
@@ -180,6 +181,7 @@ export async function resolveEntitlement(
       role: null,
       orgId: null,
       tier: null,
+      displayNameHint: null,
       reason: 'no bearer token to forward',
     };
   }
@@ -197,7 +199,14 @@ export async function resolveEntitlement(
   } catch (err) {
     const reason = `entitlements endpoint unreachable at ${url}: ${(err as Error).message}`;
     logger.warn(reason);
-    return { outcome: 'indeterminate', role: null, orgId: null, tier: null, reason };
+    return {
+      outcome: 'indeterminate',
+      role: null,
+      orgId: null,
+      tier: null,
+      displayNameHint: null,
+      reason,
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -209,13 +218,21 @@ export async function resolveEntitlement(
       role: null,
       orgId: null,
       tier: null,
+      displayNameHint: null,
       reason: `entitlements endpoint rejected token (status ${res.status})`,
     };
   }
   if (!res.ok) {
     const reason = `entitlements endpoint error (status ${res.status})`;
     logger.warn(reason);
-    return { outcome: 'indeterminate', role: null, orgId: null, tier: null, reason };
+    return {
+      outcome: 'indeterminate',
+      role: null,
+      orgId: null,
+      tier: null,
+      displayNameHint: null,
+      reason,
+    };
   }
 
   let body: any;
@@ -224,7 +241,14 @@ export async function resolveEntitlement(
   } catch (err) {
     const reason = `entitlements response not JSON: ${(err as Error).message}`;
     logger.warn(reason);
-    return { outcome: 'indeterminate', role: null, orgId: null, tier: null, reason };
+    return {
+      outcome: 'indeterminate',
+      role: null,
+      orgId: null,
+      tier: null,
+      displayNameHint: null,
+      reason,
+    };
   }
 
   // Tolerant extraction — the spec described the list as both `feature_keys`
@@ -255,6 +279,18 @@ export async function resolveEntitlement(
       : typeof body?.data?.tier === 'string'
         ? body.data.tier
         : null;
+  const displayNameHint = firstNonBlankString(
+    body?.org_name,
+    body?.display_name,
+    body?.displayName,
+    body?.org_slug,
+    body?.slug,
+    body?.data?.org_name,
+    body?.data?.display_name,
+    body?.data?.displayName,
+    body?.data?.org_slug,
+    body?.data?.slug,
+  );
 
   if (!entitlements.includes(featureKey)) {
     // Diagnostic: surface the status + which top-level keys the endpoint
@@ -264,7 +300,7 @@ export async function resolveEntitlement(
       body ?? {},
     ).join(',')}]; found=[${entitlements.join(',') || 'none'}])`;
     logger.warn(reason);
-    return { outcome: 'denied', role: null, orgId, tier, reason };
+    return { outcome: 'denied', role: null, orgId, tier, displayNameHint, reason };
   }
 
   return {
@@ -272,8 +308,16 @@ export async function resolveEntitlement(
     role: mapEntitlementRole(role),
     orgId,
     tier,
+    displayNameHint,
     reason: `entitled via '${featureKey}' (org role=${role ?? 'n/a'}, tier=${tier ?? 'n/a'})`,
   };
+}
+
+function firstNonBlankString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return null;
 }
 
 /**

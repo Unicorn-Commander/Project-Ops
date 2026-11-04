@@ -71,6 +71,24 @@ describe('JwtStrategy.validate', () => {
     });
     await expect(strategy.validate(fakePayload)).rejects.toThrow(UnauthorizedException);
   });
+
+  it('forwards the verified raw bearer from Passport to AuthService', async () => {
+    const validate = jest.fn(async () => fakeUser);
+    const strategy = makeStrategy(validate as unknown as AuthService['validateJwtPayload']);
+    const payload = {
+      sub: 'fictional-user-id',
+      email: 'member@fictional.example',
+      role: 'STAFF',
+      username: 'fictional-member',
+    };
+    const bearer = 'fictional-bearer-for-test';
+
+    await expect(
+      strategy.validate({ headers: { authorization: `Bearer ${bearer}` } }, payload),
+    ).resolves.toEqual(fakeUser);
+
+    expect(validate).toHaveBeenCalledWith(payload, bearer);
+  });
 });
 
 /**

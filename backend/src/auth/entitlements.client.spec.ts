@@ -112,6 +112,7 @@ describe('resolveEntitlement', () => {
     const fetchImpl = jest.fn().mockResolvedValue(
       resp(200, {
         org_id: 'org-123',
+        org_name: 'Fictional Acme Studio',
         tier: 'managed',
         role: 'owner',
         entitlements: ['project_ops_access', 'contact_ops_access'],
@@ -127,6 +128,7 @@ describe('resolveEntitlement', () => {
     expect(r.role).toBe(UserRole.ADMIN);
     expect(r.orgId).toBe('org-123');
     expect(r.tier).toBe('managed');
+    expect(r.displayNameHint).toBe('Fictional Acme Studio');
 
     // Forwards the uchub Bearer on a GET to the configured URL.
     expect(fetchImpl).toHaveBeenCalledTimes(1);
