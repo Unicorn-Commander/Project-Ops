@@ -23,7 +23,7 @@ import {
 import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
 import { MinioService } from '../documents/minio.service';
-import { ProjectOpsTools, TimeTrackingDeps, Wave2Deps } from './mcp.tools';
+import { MCP_ID_PREFIX_HINT, ProjectOpsTools, TimeTrackingDeps, Wave2Deps } from './mcp.tools';
 import { MCP_TOOL_SCOPE_MAP } from '../auth/pat/pat.constants';
 import { TriageService } from '../triage/triage.service';
 import {
@@ -407,7 +407,8 @@ export class McpService {
           'accepted quote also carries `quote` / `metadata.quote` ' +
           '(Customer-Ops ids: customer_ops_quote_id, number, version, ' +
           'share_url, schedule_ids); recent tasks include batched `isBlocked`; ' +
-          'CLIENT callers see number, version and share_url only.',
+          'CLIENT callers see number, version and share_url only. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           id: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -449,7 +450,8 @@ export class McpService {
           'dates, estimatedHours, metadata, assignee, creator, parent task, ' +
           'comment/subtask counts, and dependency edges (dependsOn + blocks). ' +
           'isBlocked and openBlockers (FINISH_TO_START predecessors that are ' +
-          'neither COMPLETED nor CANCELLED). Requires taskId.',
+          'neither COMPLETED nor CANCELLED). Requires taskId. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           taskId: z.string().min(1),
         },
@@ -464,7 +466,8 @@ export class McpService {
         description:
           'Make taskId depend on dependsOnTaskId. Both tasks must be visible in ' +
           'the active workspace; self-dependencies, duplicate edges, and cycles ' +
-          'are rejected. The default type is FINISH_TO_START.',
+          'are rejected. The default type is FINISH_TO_START. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           taskId: z.string().min(1),
           dependsOnTaskId: z.string().min(1),
@@ -481,7 +484,8 @@ export class McpService {
         title: 'Remove a task dependency',
         description:
           'Remove a dependency by dependencyId. The dependency and both endpoint ' +
-          'tasks must belong to the active workspace and be visible to the caller.',
+          'tasks must belong to the active workspace and be visible to the caller. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           dependencyId: z.string().min(1),
         },
@@ -504,7 +508,8 @@ export class McpService {
           '{ project, tasks, count, total, offset, limit } where count is the ' +
           'page size and total is the full match count for paging. Each task ' +
           'includes `isBlocked`, computed with one batched dependency query for the page. ' +
-          'Page with `offset += count` until `offset >= total`.',
+          'Page with `offset += count` until `offset >= total`. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           projectId: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -570,7 +575,8 @@ export class McpService {
         description:
           "Post a comment (maximum 5,000 characters) to a task on the user's behalf. Use sparingly — " +
           'only when the user has explicitly asked the assistant to log ' +
-          'something, not for ambient narration.',
+          'something, not for ambient narration. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           taskId: z.string().min(1),
           content: z.string().min(1).max(5000),
@@ -587,7 +593,8 @@ export class McpService {
         description:
           'Return the comment thread for a task the caller can see, oldest first. ' +
           'Optional limit (default 50, max 100) and offset for pagination. ' +
-          'Requires read:tasks when called with a PAT.',
+          'Requires read:tasks when called with a PAT. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           taskId: z.string().min(1),
           limit: z.number().int().min(1).max(100).optional(),
@@ -605,7 +612,8 @@ export class McpService {
         description:
           'Edit a task comment by id. Only the author or an ADMIN may update. ' +
           'Same ownership rule as the REST TasksService / project-comment UI. ' +
-          'Does not re-fan-out @mentions (matches REST update).',
+          'Does not re-fan-out @mentions (matches REST update). ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           commentId: z.string().min(1),
           content: z.string().min(1).max(5000),
@@ -621,7 +629,8 @@ export class McpService {
         title: 'Delete a task comment',
         description:
           'Delete a task comment by id. Only the author, ADMIN, or MANAGER may ' +
-          'delete — same ownership rule as the REST TasksService / project-comment UI.',
+          'delete — same ownership rule as the REST TasksService / project-comment UI. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           commentId: z.string().min(1),
         },
@@ -654,7 +663,8 @@ export class McpService {
         title: 'Get an organization by id',
         description:
           'Return full detail for one organization, including parent, ' +
-          'children, and counts of projects + contacts.',
+          'children, and counts of projects + contacts. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           id: z.string().min(1),
         },
@@ -670,7 +680,8 @@ export class McpService {
           'Patch an organization. Required: id. Only the fields you pass are ' +
           'updated. Set isActive=false to soft-delete (hides from default ' +
           'listings). parentOrgId reassigns hierarchy (pass null to detach). ' +
-          'ADMIN/MANAGER only.',
+          'ADMIN/MANAGER only. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           id: z.string().min(1),
           name: z.string().min(1).max(200).optional(),
@@ -757,7 +768,8 @@ export class McpService {
         description:
           "Change a project's status. Identify by id or projectNumber. " +
           'Status: NEW / IN_PROGRESS / UNDER_REVIEW / COMPLETED / ARCHIVED / ' +
-          'ON_HOLD. Setting COMPLETED also stamps completedAt.',
+          'ON_HOLD. Setting COMPLETED also stamps completedAt. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           id: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -778,7 +790,8 @@ export class McpService {
           'cannot call this. Optional customFields (object keyed by the workspace ' +
           'PROJECT custom-field key — validated + merged into metadata.customFields, ' +
           'preserving other metadata) and recurrenceRule (RRULE subset; null clears it). ' +
-          'customerOpsCustomerId and contactOpsContactId must be UUIDs; null clears them.',
+          'customerOpsCustomerId and contactOpsContactId must be UUIDs; null clears them. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           id: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -815,7 +828,8 @@ export class McpService {
           'estimatedHours (null clears it), and fixedAmount (a flat fee, ' +
           'quantity 1; null clears it until the fee has been invoiced). ' +
           'Setting status to COMPLETED enforces FINISH_TO_START blockers. ' +
-          'force or overrideDependencies may bypass them only for workspace OWNER, ADMIN, or MANAGER roles.',
+          'force or overrideDependencies may bypass them only for workspace OWNER, ADMIN, or MANAGER roles. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           taskId: z.string().min(1),
           title: z.string().min(1).max(200).optional(),
@@ -854,7 +868,8 @@ export class McpService {
           'metadata.customFields), recurrenceRule (an RRULE subset, e.g. ' +
           '"FREQ=WEEKLY;INTERVAL=1", makes this a recurrence template), and ' +
           'estimatedHours (effort estimate used by capacity planning), and ' +
-          'fixedAmount (a flat fee for this task, quantity 1).',
+          'fixedAmount (a flat fee for this task, quantity 1). ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           projectId: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -883,7 +898,8 @@ export class McpService {
           'its project). Ordered by priority desc, dueDate asc, createdAt desc ' +
           '(matches REST getSubtasks). Response: { parent, subtasks, count } ' +
           'with assignee/creator, nested comment/subtask counts, and batched ' +
-          '`isBlocked` on each child.',
+          '`isBlocked` on each child. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           taskId: z.string().min(1),
         },
@@ -970,7 +986,8 @@ export class McpService {
           `Change a task's status. Allowed values: ${TASK_STATUS_VALUES.join(' / ')}. Setting COMPLETED ` +
           'also stamps completedAt and is rejected with the open blockers when ' +
           'FINISH_TO_START predecessors remain open. `force` or ' +
-          '`overrideDependencies` bypasses that gate only for workspace OWNER, ADMIN, or MANAGER roles.',
+          '`overrideDependencies` bypasses that gate only for workspace OWNER, ADMIN, or MANAGER roles. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           taskId: z.string().min(1),
           status: taskEnum(TASK_STATUS_VALUES),
@@ -993,7 +1010,8 @@ export class McpService {
           'DELETE /tasks/:id. Not available to MANAGER/STAFF/CLIENT. This is a ' +
           'hard delete (unlike archive_project, which is the safe reversible ' +
           'alternative for projects; project hard-delete is intentionally not ' +
-          'exposed to agents).',
+          'exposed to agents). ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           taskId: z.string().min(1),
         },
@@ -1008,7 +1026,8 @@ export class McpService {
         description:
           'Return the file metadata (name, size, mime, uploader, uploaded date) ' +
           'for every document attached to a project the caller can see. Identify ' +
-          'by projectId or projectNumber.',
+          'by projectId or projectNumber. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           projectId: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -1028,7 +1047,8 @@ export class McpService {
           'come back as up to 50KB of extracted text. Other mime types return ' +
           '{ supported: false, downloadUrl } so the assistant can hand the user ' +
           'a link instead. PDFs are extracted via pdf-parse when installed; if ' +
-          'unavailable the tool falls back to a download URL.',
+          'unavailable the tool falls back to a download URL. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           documentId: z.string().optional(),
           fileName: z.string().optional(),
@@ -1049,7 +1069,8 @@ export class McpService {
           '(plain text for text/* and application/json, base64-encoded bytes ' +
           'otherwise). Cap: 25MB after decoding. CLIENT-role users cannot call ' +
           'this. Bypasses the staged presigned-URL flow — use when the agent ' +
-          'already has the bytes in memory.',
+          'already has the bytes in memory. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           projectId: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -1080,7 +1101,8 @@ export class McpService {
           '(display name rename — does not move storage). Does not allow rewriting ' +
           'storage fields (s3Key / fileSize / mimeType / projectId / status). ' +
           'CLIENT-role users cannot call this. Mirrors REST PATCH /documents/:id ' +
-          'for the safe metadata surface.',
+          'for the safe metadata surface. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           documentId: z.string().min(1),
           description: z.string().nullable().optional(),
@@ -1103,7 +1125,8 @@ export class McpService {
         description:
           'Permanently delete a document the caller can see (DB row + MinIO object ' +
           'when uploaded). Required: documentId. CLIENT-role users cannot call this. ' +
-          'Mirrors REST DELETE /documents/:id. Irreversible — prefer careful use.',
+          'Mirrors REST DELETE /documents/:id. Irreversible — prefer careful use. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           documentId: z.string().min(1),
         },
@@ -1121,7 +1144,8 @@ export class McpService {
           'CANCELLED), billingDate, paymentDueDate, paymentReceivedDate, ' +
           'billingNotes, flatFeeAmount (the project flat fee; not billingAmount), ' +
           'customerOpsCustomerId and contactOpsContactId (both UUIDs; null clears them). ' +
-          'Only the fields you pass are updated. CLIENT-role users cannot call this.',
+          'Only the fields you pass are updated. CLIENT-role users cannot call this. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           id: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -1315,7 +1339,8 @@ export class McpService {
         description:
           "List ALL client approvals on a project — the requesting staff's view of " +
           'live client decisions (pending first). Requires projectId. Staff only ' +
-          '(CLIENT-role users cannot call this).',
+          '(CLIENT-role users cannot call this). ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           projectId: z.string().min(1),
         },
@@ -1333,7 +1358,8 @@ export class McpService {
           'entityId is the id of the thing being submitted. Optional projectId ' +
           '(drives client scoping), approverContactId (a specific contact; else ' +
           "any portal client on the linked project's contact may act), and note. " +
-          'Staff only (CLIENT-role users cannot call this).',
+          'Staff only (CLIENT-role users cannot call this). ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           entityType: z.string().min(1),
           entityId: z.string().min(1),
@@ -1378,7 +1404,8 @@ export class McpService {
           'Archive a project — sets status to ARCHIVED, the safe + reversible alternative to ' +
           'deletion. Project-Ops does NOT expose permanent project deletion to agents; archived ' +
           'projects are hidden from active views but preserved. Identify by id or projectNumber. ' +
-          'Un-archive with update_project_status. CLIENT users cannot.',
+          'Un-archive with update_project_status. CLIENT users cannot. ' +
+          MCP_ID_PREFIX_HINT,
         inputSchema: {
           id: z.string().optional(),
           projectNumber: z.string().optional(),
@@ -1456,7 +1483,8 @@ export class McpService {
           title: 'Start a work timer',
           description:
             'Start a running timer for the caller against a project or task. Any existing ' +
-            'running timer is stopped first. Provide projectId or taskId. CLIENT users cannot.',
+            'running timer is stopped first. Provide projectId or taskId. CLIENT users cannot. ' +
+            MCP_ID_PREFIX_HINT,
           inputSchema: {
             projectId: z.string().optional(),
             taskId: z.string().optional(),
@@ -1485,7 +1513,8 @@ export class McpService {
           description:
             'Create a manual time entry. Provide startedAt+endedAt, startedAt+durationMinutes, ' +
             'endedAt+durationMinutes, or just durationMinutes. Identify work by projectId or taskId. ' +
-            'billable defaults to the task/project policy. CLIENT users cannot.',
+            'billable defaults to the task/project policy. CLIENT users cannot. ' +
+            MCP_ID_PREFIX_HINT,
           inputSchema: {
             projectId: z.string().optional(),
             taskId: z.string().optional(),
@@ -1505,7 +1534,8 @@ export class McpService {
           title: 'Update a time entry',
           description:
             'Patch a DRAFT, unlocked, unbilled time entry (id required). Locked or billed entries ' +
-            'are immutable. Only supplied fields change.',
+            'are immutable. Only supplied fields change. ' +
+            MCP_ID_PREFIX_HINT,
           inputSchema: {
             id: z.string().min(1),
             description: z.string().optional(),
@@ -1526,7 +1556,8 @@ export class McpService {
           description:
             'Delete a DRAFT, unlocked, unbilled time entry (id required). Locked, billed, or ' +
             'non-DRAFT (SUBMITTED/APPROVED/REJECTED) entries cannot be deleted. Owner or ' +
-            'ADMIN/MANAGER; CLIENT users cannot. Mirrors REST DELETE /time-entries/:id.',
+            'ADMIN/MANAGER; CLIENT users cannot. Mirrors REST DELETE /time-entries/:id. ' +
+            MCP_ID_PREFIX_HINT,
           inputSchema: {
             id: z.string().min(1),
           },
@@ -1541,7 +1572,8 @@ export class McpService {
           description:
             'List the caller-visible time entries, newest first, paginated. Filters: userId, ' +
             'projectId, taskId, from, to (ISO dates), billable, billed, approvalStatus ' +
-            '(DRAFT/SUBMITTED/APPROVED/REJECTED). CLIENT callers never see cost rates.',
+            '(DRAFT/SUBMITTED/APPROVED/REJECTED). CLIENT callers never see cost rates. ' +
+            MCP_ID_PREFIX_HINT,
           inputSchema: {
             userId: z.string().optional(),
             projectId: z.string().optional(),
@@ -1576,7 +1608,8 @@ export class McpService {
           title: 'Approve submitted time',
           description:
             'Approve a whole submitted period (timesheetPeriodId) or specific entries ' +
-            '(timeEntryIds). Approved entries lock against edits. MANAGER/ADMIN only.',
+            '(timeEntryIds). Approved entries lock against edits. MANAGER/ADMIN only. ' +
+            MCP_ID_PREFIX_HINT,
           inputSchema: {
             timesheetPeriodId: z.string().optional(),
             timeEntryIds: z.array(z.string()).optional(),
@@ -1609,7 +1642,8 @@ export class McpService {
             'Preview an invoice for a projectId or clientId: approved unbilled time plus ' +
             'uninvoiced flat fees (groupBy TASK/ROLE/DAY/NONE). When Accounting-Ops is connected ' +
             'this stores a draft and does not post the journal or stamp the fee. Pass issue=true ' +
-            'to post it. MANAGER/ADMIN only.',
+            'to post it. MANAGER/ADMIN only. ' +
+            MCP_ID_PREFIX_HINT,
           inputSchema: {
             projectId: z.string().optional(),
             clientId: z.string().optional(),
@@ -1631,7 +1665,8 @@ export class McpService {
             'Roll up approved time and uninvoiced flat fees for a projectId or clientId and ' +
             'ISSUE the invoice in Accounting-Ops (post the journal, stage the email draft). ' +
             'Optional periodStart/periodEnd + groupBy (TASK/ROLE/DAY/NONE). When Accounting-Ops ' +
-            "isn't connected this returns a preview and does not stamp the fee. MANAGER/ADMIN only.",
+            "isn't connected this returns a preview and does not stamp the fee. MANAGER/ADMIN only. " +
+            MCP_ID_PREFIX_HINT,
           inputSchema: {
             projectId: z.string().optional(),
             clientId: z.string().optional(),

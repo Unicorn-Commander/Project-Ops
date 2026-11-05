@@ -17,6 +17,7 @@ import { TaskStatus, User, UserRole } from '@prisma/client';
 import {
   ProjectOpsTools,
   buildVisibilityFilter,
+  classifyMcpId,
   normalizeProjectStatus,
   normalizeTaskPriority,
   normalizeTaskStatus,
@@ -2627,5 +2628,261 @@ describe('ProjectOpsTools.getProject — metadata.quote exposure (QUOTES-CONTRAC
     );
     expect(out.quote).toBeNull();
     expect(out.metadata).toEqual({ keep: true });
+  });
+});
+
+describe('classifyMcpId — prefix contract', () => {
+  it('passes a full dashed UUID through unchanged', () => {
+    const id = '10d4736f-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    expect(classifyMcpId(id)).toEqual({ kind: 'uuid', value: id });
+    expect(classifyMcpId(id.toUpperCase())).toEqual({ kind: 'uuid', value: id.toUpperCase() });
+  });
+
+  it('treats 8–31 hex (dashes ignored) as a prefix', () => {
+    expect(classifyMcpId('10d4736f')).toEqual({
+      kind: 'prefix',
+      hex: '10d4736f',
+      display: '10d4736f',
+    });
+    expect(classifyMcpId('10D4736F-AA')).toEqual({
+      kind: 'prefix',
+      hex: '10d4736faa',
+      display: '10D4736F-AA',
+    });
+  });
+
+  it('classifies 7-char hex, non-hex, and empty as not a prefix', () => {
+    expect(classifyMcpId('abcdef0').kind).toBe('other');
+    expect(classifyMcpId('zzzzzzzz').kind).toBe('other');
+    expect(classifyMcpId('P-00110').kind).toBe('other');
+    expect(classifyMcpId('').kind).toBe('empty');
+    expect(classifyMcpId('   ').kind).toBe('empty');
+  });
+});
+
+describe('ProjectOpsTools — unambiguous id prefixes', () => {
+  const WS_ID = 'ws-prefix';
+  // Fictional UUIDs only — never real tasks/customers.
+  const VISIBLE = '10d4736f-aaaa-4aaa-8aaa-111111111111';
+  const HIDDEN = '10d4736f-bbbb-4bbb-8bbb-222222222222';
+  const OTHER = '5fd7d469-cccc-4ccc-8ccc-333333333333';
+  const PREFIX = '10d4736f';
+
+  const taskRow = (id: string) => ({
+    id,
+    title: 'Fictional Task',
+    description: 'body',
+    type: 'TASK',
+    status: 'PENDING',
+    priority: 'MEDIUM',
+    dueDate: null,
+    completedAt: null,
+    parentTaskId: null,
+    recurrenceRule: null,
+    estimatedHours: null,
+    metadata: {},
+    billable: null,
+    createdAt: new Date('2026-01-01'),
+    updatedAt: new Date('2026-01-02'),
+    project: {
+      id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+      projectNumber: 'P-00999',
+      title: 'Fictional Project',
+      status: 'IN_PROGRESS',
+      priority: 'HIGH',
+    },
+    createdBy: {
+      id: 'u1',
+      email: 'a@example.com',
+      firstName: 'Ada',
+      lastName: 'Example',
+      role: UserRole.STAFF,
+    },
+    assignedTo: null,
+    parentTask: null,
+    _count: { comments: 0, subtasks: 0 },
+  });
+
+  function makePrefixTools(opts?: {
+    queryRaw?: jest.Mock;
+    findMany?: jest.Mock;
+    findFirst?: jest.Mock;
+    projectFindMany?: jest.Mock;
+    projectFindFirst?: jest.Mock;
+  }) {
+    const queryRaw = opts?.queryRaw ?? jest.fn(async () => [{ id: VISIBLE }]);
+    const findMany = opts?.findMany ?? jest.fn(async () => [{ id: VISIBLE }]);
+    const findFirst = opts?.findFirst ?? jest.fn(async () => taskRow(VISIBLE));
+    const projectFindMany = opts?.projectFindMany ?? jest.fn(async () => [{ id: VISIBLE }]);
+    const projectFindFirst =
+      opts?.projectFindFirst ??
+      jest.fn(async () => ({
+        id: VISIBLE,
+        projectNumber: 'P-00999',
+        title: 'Fictional Project',
+        status: 'IN_PROGRESS',
+        tasks: [],
+      }));
+    const depFindMany = jest.fn().mockResolvedValue([]);
+    const tx = {
+      $queryRaw: queryRaw,
+      task: { findFirst, findMany },
+      project: { findFirst: projectFindFirst, findMany: projectFindMany },
+      taskDependency: { findMany: depFindMany },
+    };
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_u: User, fn: (t: any, ws: string) => Promise<any>) => fn(tx, WS_ID),
+    } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+    );
+    return { tools, queryRaw, findMany, findFirst, projectFindMany, projectFindFirst, tx };
+  }
+
+  const staff = baseUser({ id: 'staff-1', role: UserRole.STAFF });
+
+  it('full UUID is passed through unchanged (no prefix query)', async () => {
+    const { tools, queryRaw, findFirst } = makePrefixTools();
+    const result: any = await tools.getTask(staff, { taskId: VISIBLE });
+    expect(result.id).toBe(VISIBLE);
+    expect(queryRaw).not.toHaveBeenCalled();
+    expect(findFirst.mock.calls[0][0].where.id).toBe(VISIBLE);
+    expect(findFirst.mock.calls[0][0].where.project).toEqual({
+      OR: [{ assignedToId: 'staff-1' }, { createdById: 'staff-1' }],
+    });
+  });
+
+  it('8-char prefix with one visible match resolves and is parameterized', async () => {
+    const { tools, queryRaw, findMany, findFirst } = makePrefixTools();
+    const result: any = await tools.getTask(staff, { taskId: PREFIX });
+    expect(result.id).toBe(VISIBLE);
+    expect(queryRaw).toHaveBeenCalled();
+    expect(queryRaw.mock.calls[0][1]).toBe(`${PREFIX}%`);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { in: [VISIBLE] },
+          project: { OR: [{ assignedToId: 'staff-1' }, { createdById: 'staff-1' }] },
+        }),
+      }),
+    );
+    expect(findFirst.mock.calls[0][0].where.id).toBe(VISIBLE);
+  });
+
+  it('two visible matches throw the ambiguous-prefix error', async () => {
+    const { tools, queryRaw } = makePrefixTools({
+      queryRaw: jest.fn(async () => [{ id: VISIBLE }, { id: HIDDEN }]),
+      findMany: jest.fn(async () => [{ id: VISIBLE }, { id: HIDDEN }]),
+    });
+    await expect(tools.getTask(staff, { taskId: PREFIX })).rejects.toThrow(
+      /ambiguous id prefix "10d4736f": 2 matches, give more characters/,
+    );
+    expect(queryRaw).toHaveBeenCalled();
+  });
+
+  it('zero matches take the existing not-found path', async () => {
+    const { tools, findFirst } = makePrefixTools({
+      queryRaw: jest.fn(async () => []),
+      findMany: jest.fn(async () => []),
+    });
+    await expect(tools.getTask(staff, { taskId: PREFIX })).rejects.toThrow(
+      /Task not found or you don't have access/,
+    );
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  it('7-char hex and non-hex skip the prefix query and take not-found', async () => {
+    const { tools, queryRaw, findFirst } = makePrefixTools({
+      findFirst: jest.fn(async () => null),
+    });
+    await expect(tools.getTask(staff, { taskId: 'abcdef0' })).rejects.toThrow(
+      /Task not found or you don't have access/,
+    );
+    await expect(tools.getTask(staff, { taskId: 'zzzzzzzz' })).rejects.toThrow(
+      /Task not found or you don't have access/,
+    );
+    expect(queryRaw).not.toHaveBeenCalled();
+    expect(findFirst).toHaveBeenCalled();
+  });
+
+  it('prefix lookup is fenced: a matching row the caller cannot see is not returned', async () => {
+    const { tools, findMany, findFirst } = makePrefixTools({
+      queryRaw: jest.fn(async () => [{ id: VISIBLE }, { id: HIDDEN }]),
+      findMany: jest.fn(async () => [{ id: VISIBLE }]),
+    });
+    const result: any = await tools.getTask(staff, { taskId: PREFIX });
+    expect(result.id).toBe(VISIBLE);
+    expect(findMany.mock.calls[0][0].where.id).toEqual({ in: [VISIBLE, HIDDEN] });
+    expect(findMany.mock.calls[0][0].where.project).toEqual({
+      OR: [{ assignedToId: 'staff-1' }, { createdById: 'staff-1' }],
+    });
+    expect(findFirst.mock.calls[0][0].where.id).toBe(VISIBLE);
+    expect(findFirst.mock.calls[0][0].where.id).not.toBe(HIDDEN);
+  });
+
+  it('get_project resolves an 8-char prefix and does not dual-key the prefix as a projectNumber', async () => {
+    const { tools, queryRaw, projectFindMany, projectFindFirst } = makePrefixTools();
+    await tools.getProject(staff, { id: PREFIX });
+    expect(queryRaw).toHaveBeenCalled();
+    expect(queryRaw.mock.calls[0][1]).toBe(`${PREFIX}%`);
+    expect(projectFindMany).toHaveBeenCalled();
+    const where = projectFindFirst.mock.calls[0][0].where;
+    expect(where.AND).toEqual([
+      { OR: [{ assignedToId: 'staff-1' }, { createdById: 'staff-1' }] },
+      { id: VISIBLE },
+    ]);
+  });
+
+  it('get_project still dual-keys a human project number (non-hex)', async () => {
+    const { tools, queryRaw, projectFindFirst } = makePrefixTools();
+    await tools.getProject(staff, { id: 'P-00999' });
+    expect(queryRaw).not.toHaveBeenCalled();
+    expect(projectFindFirst.mock.calls[0][0].where.AND[1]).toEqual({
+      OR: [{ id: 'P-00999' }, { projectNumber: 'P-00999' }],
+    });
+  });
+
+  it('add_task_comment emits the resolved UUID, not the prefix', async () => {
+    const emit = jest.fn();
+    const queryRaw = jest.fn(async () => [{ id: VISIBLE }]);
+    const findMany = jest.fn(async () => [{ id: VISIBLE }]);
+    const findFirst = jest.fn(async () => ({ id: VISIBLE, projectId: OTHER }));
+    const create = jest.fn(async () => ({
+      id: 'cccccccc-dddd-4eee-8fff-000000000001',
+      content: 'note',
+      createdAt: new Date(),
+      author: { firstName: 'Ada', lastName: 'Example' },
+    }));
+    const tx = {
+      $queryRaw: queryRaw,
+      task: { findFirst, findMany },
+      taskComment: { create },
+    };
+    const workspace = {
+      resolveAuthorized: async () => WS_ID,
+      runForUser: async (_u: User, fn: (t: any) => Promise<any>) => fn(tx),
+    } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+      { emit } as any,
+    );
+    await tools.addTaskComment(staff, { taskId: PREFIX, content: 'note' });
+    expect(emit).toHaveBeenCalledWith(
+      'task.comment.created',
+      expect.objectContaining({ taskId: VISIBLE }),
+    );
   });
 });

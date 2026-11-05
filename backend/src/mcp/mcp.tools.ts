@@ -224,6 +224,52 @@ function normalizeTaskDependencyType(value?: string): TaskDependencyType {
   throw new Error(`Invalid task dependency type "${value}". Valid values: ${valid.join(', ')}.`);
 }
 
+/** Canonical dashed UUID (8-4-4-4-12). Full ids pass through unchanged. */
+const MCP_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Prefix candidates: hex + optional dashes, validated before any SQL. */
+const MCP_PREFIX_CHAR_RE = /^[0-9a-f-]+$/;
+
+export const MCP_ID_PREFIX_HINT =
+  'Accepts the full UUID or an unambiguous prefix of 8+ characters.';
+
+export type McpIdClass =
+  | { kind: 'empty' }
+  | { kind: 'uuid'; value: string }
+  | { kind: 'prefix'; hex: string; display: string }
+  | { kind: 'other'; value: string };
+
+/**
+ * Classify a task/project/document/comment id from an MCP tool argument.
+ * Dashes are allowed and ignored when counting hex characters.
+ */
+export function classifyMcpId(raw: unknown): McpIdClass {
+  const value = String(raw ?? '').trim();
+  if (!value) return { kind: 'empty' };
+  if (MCP_UUID_RE.test(value)) return { kind: 'uuid', value };
+  const lower = value.toLowerCase();
+  if (!MCP_PREFIX_CHAR_RE.test(lower)) return { kind: 'other', value };
+  const hex = lower.replace(/-/g, '');
+  if (hex.length >= 8 && hex.length <= 31) {
+    return { kind: 'prefix', hex, display: value };
+  }
+  return { kind: 'other', value };
+}
+
+export function ambiguousIdPrefixError(prefix: string, n: number): Error {
+  return new Error(`ambiguous id prefix "${prefix}": ${n} matches, give more characters`);
+}
+
+type PrefixTable =
+  | 'tasks'
+  | 'projects'
+  | 'documents'
+  | 'task_comments'
+  | 'task_dependencies'
+  | 'time_entries'
+  | 'organizations'
+  | 'triage_proposals'
+  | 'automation_rules';
+
 export class ProjectOpsTools {
   constructor(
     private readonly prisma: PrismaService,
@@ -313,6 +359,288 @@ export class ProjectOpsTools {
     const workspaceId = await ws.resolveAuthorized(user, this.requestWorkspaceId);
     const result = await ws.runForUser(user, (tx) => fn(tx, workspaceId), workspaceId);
     return serializeDateOnlyFields(result);
+  }
+
+  /**
+   * Prefix lookup for UUID columns. Parameterized LIKE only — the hex prefix is
+   * validated to [0-9a-f] before interpolation as a bound value, never
+   * concatenated into the SQL string. Runs on the workspace tx so RLS applies.
+   * Visibility fencing happens in the Prisma follow-up (same filter as exact-id).
+   */
+  private async lookupPrefixIds(
+    tx: WorkspaceTxClient,
+    table: PrefixTable,
+    hex: string,
+  ): Promise<string[]> {
+    if (typeof tx.$queryRaw !== 'function') return [];
+    const like = `${hex}%`;
+    let rows: Array<{ id: string }> = [];
+    switch (table) {
+      case 'tasks':
+        rows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM tasks WHERE REPLACE(id::text, '-', '') LIKE ${like} LIMIT 50`;
+        break;
+      case 'projects':
+        rows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM projects WHERE REPLACE(id::text, '-', '') LIKE ${like} LIMIT 50`;
+        break;
+      case 'documents':
+        rows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM documents WHERE REPLACE(id::text, '-', '') LIKE ${like} LIMIT 50`;
+        break;
+      case 'task_comments':
+        rows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM task_comments WHERE REPLACE(id::text, '-', '') LIKE ${like} LIMIT 50`;
+        break;
+      case 'task_dependencies':
+        rows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM task_dependencies WHERE REPLACE(id::text, '-', '') LIKE ${like} LIMIT 50`;
+        break;
+      case 'time_entries':
+        rows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM time_entries WHERE REPLACE(id::text, '-', '') LIKE ${like} LIMIT 50`;
+        break;
+      case 'organizations':
+        rows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM organizations WHERE REPLACE(id::text, '-', '') LIKE ${like} LIMIT 50`;
+        break;
+      case 'triage_proposals':
+        rows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM triage_proposals WHERE REPLACE(id::text, '-', '') LIKE ${like} LIMIT 50`;
+        break;
+      case 'automation_rules':
+        rows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM automation_rules WHERE REPLACE(id::text, '-', '') LIKE ${like} LIMIT 50`;
+        break;
+    }
+    return (rows ?? []).map((row) => row.id).filter((id): id is string => !!id);
+  }
+
+  private async pickUniquePrefixMatch(
+    display: string,
+    visible: Array<{ id: string }>,
+  ): Promise<string | null> {
+    if (visible.length === 0) return null;
+    if (visible.length > 1) throw ambiguousIdPrefixError(display, visible.length);
+    return visible[0].id;
+  }
+
+  /**
+   * Full UUID → returned unchanged (no prefix query). 8–31 hex (dashes ignored)
+   * → unique visible row. Anything else → original value so existing exact-id
+   * / projectNumber paths keep working. Zero prefix matches → null (caller's
+   * not-found). Multiple visible matches → ambiguous error.
+   */
+  private async resolveClassifiedId(
+    value: string,
+    lookupPrefix: (classified: Extract<McpIdClass, { kind: 'prefix' }>) => Promise<string | null>,
+  ): Promise<string | null> {
+    const classified = classifyMcpId(value);
+    if (classified.kind === 'empty') return null;
+    if (classified.kind === 'uuid') return classified.value;
+    if (classified.kind === 'other') return classified.value;
+    return lookupPrefix(classified);
+  }
+
+  private async resolveTaskId(
+    tx: WorkspaceTxClient,
+    user: User,
+    value: string,
+  ): Promise<string | null> {
+    return this.resolveClassifiedId(value, async (classified) => {
+      const ids = await this.lookupPrefixIds(tx, 'tasks', classified.hex);
+      if (ids.length === 0) return null;
+      const visible = await tx.task.findMany({
+        where: { id: { in: ids }, project: buildVisibilityFilter(user) },
+        select: { id: true },
+      });
+      return this.pickUniquePrefixMatch(classified.display, visible);
+    });
+  }
+
+  private async resolveProjectId(
+    tx: WorkspaceTxClient,
+    user: User,
+    value: string,
+  ): Promise<string | null> {
+    return this.resolveClassifiedId(value, async (classified) => {
+      const ids = await this.lookupPrefixIds(tx, 'projects', classified.hex);
+      if (ids.length === 0) return null;
+      const visible = await tx.project.findMany({
+        where: { id: { in: ids }, ...buildVisibilityFilter(user) },
+        select: { id: true },
+      });
+      return this.pickUniquePrefixMatch(classified.display, visible);
+    });
+  }
+
+  private documentVisibilityWhere(user: User): Prisma.DocumentWhereInput {
+    return {
+      OR: [
+        { project: { is: buildVisibilityFilter(user) }, projectId: { not: null } },
+        ...(user.role === UserRole.ADMIN || user.role === UserRole.MANAGER
+          ? [{ projectId: null }]
+          : []),
+      ],
+    };
+  }
+
+  private async resolveDocumentId(
+    tx: WorkspaceTxClient,
+    user: User,
+    value: string,
+  ): Promise<string | null> {
+    return this.resolveClassifiedId(value, async (classified) => {
+      const ids = await this.lookupPrefixIds(tx, 'documents', classified.hex);
+      if (ids.length === 0) return null;
+      const visible = await tx.document.findMany({
+        where: { id: { in: ids }, ...this.documentVisibilityWhere(user) },
+        select: { id: true },
+      });
+      return this.pickUniquePrefixMatch(classified.display, visible);
+    });
+  }
+
+  private async resolveCommentId(
+    tx: WorkspaceTxClient,
+    user: User,
+    value: string,
+  ): Promise<string | null> {
+    return this.resolveClassifiedId(value, async (classified) => {
+      const ids = await this.lookupPrefixIds(tx, 'task_comments', classified.hex);
+      if (ids.length === 0) return null;
+      const visible = await tx.taskComment.findMany({
+        where: { id: { in: ids }, task: { project: buildVisibilityFilter(user) } },
+        select: { id: true },
+      });
+      return this.pickUniquePrefixMatch(classified.display, visible);
+    });
+  }
+
+  private async resolveDependencyId(
+    tx: WorkspaceTxClient,
+    user: User,
+    value: string,
+  ): Promise<string | null> {
+    return this.resolveClassifiedId(value, async (classified) => {
+      const ids = await this.lookupPrefixIds(tx, 'task_dependencies', classified.hex);
+      if (ids.length === 0) return null;
+      const visible = await tx.taskDependency.findMany({
+        where: {
+          id: { in: ids },
+          predecessor: { project: buildVisibilityFilter(user) },
+          successor: { project: buildVisibilityFilter(user) },
+        },
+        select: { id: true },
+      });
+      return this.pickUniquePrefixMatch(classified.display, visible);
+    });
+  }
+
+  private async resolveTimeEntryId(
+    tx: WorkspaceTxClient,
+    _user: User,
+    value: string,
+  ): Promise<string | null> {
+    return this.resolveClassifiedId(value, async (classified) => {
+      const ids = await this.lookupPrefixIds(tx, 'time_entries', classified.hex);
+      if (ids.length === 0) return null;
+      const visible = await tx.timeEntry.findMany({
+        where: { id: { in: ids } },
+        select: { id: true },
+      });
+      return this.pickUniquePrefixMatch(classified.display, visible);
+    });
+  }
+
+  private async resolveOrganizationId(
+    tx: WorkspaceTxClient,
+    user: User,
+    value: string,
+  ): Promise<string | null> {
+    return this.resolveClassifiedId(value, async (classified) => {
+      const ids = await this.lookupPrefixIds(tx, 'organizations', classified.hex);
+      if (ids.length === 0) return null;
+      if (user.role === UserRole.CLIENT) {
+        const contact = await tx.contact.findFirst({
+          where: { userId: user.id, organizationId: { in: ids } },
+          select: { organizationId: true },
+        });
+        const visible = ids.filter((id) => id === contact?.organizationId).map((id) => ({ id }));
+        return this.pickUniquePrefixMatch(classified.display, visible);
+      }
+      const visible = await tx.organization.findMany({
+        where: { id: { in: ids } },
+        select: { id: true },
+      });
+      return this.pickUniquePrefixMatch(classified.display, visible);
+    });
+  }
+
+  private async resolveTriageProposalId(
+    tx: WorkspaceTxClient,
+    _user: User,
+    value: string,
+  ): Promise<string | null> {
+    return this.resolveClassifiedId(value, async (classified) => {
+      const ids = await this.lookupPrefixIds(tx, 'triage_proposals', classified.hex);
+      if (ids.length === 0) return null;
+      const visible = await tx.triageProposal.findMany({
+        where: { id: { in: ids } },
+        select: { id: true },
+      });
+      return this.pickUniquePrefixMatch(classified.display, visible);
+    });
+  }
+
+  private async resolveAutomationId(
+    tx: WorkspaceTxClient,
+    _user: User,
+    value: string,
+  ): Promise<string | null> {
+    return this.resolveClassifiedId(value, async (classified) => {
+      const ids = await this.lookupPrefixIds(tx, 'automation_rules', classified.hex);
+      if (ids.length === 0) return null;
+      const visible = await tx.automationRule.findMany({
+        where: { id: { in: ids } },
+        select: { id: true },
+      });
+      return this.pickUniquePrefixMatch(classified.display, visible);
+    });
+  }
+
+  /** Exclusive id vs projectNumber lookup, with prefix resolution on the id. */
+  private async exclusiveProjectWhere(
+    tx: WorkspaceTxClient,
+    user: User,
+    args: { id?: string; projectId?: string; projectNumber?: string },
+  ): Promise<Prisma.ProjectWhereInput | null> {
+    const rawId = args.id ?? args.projectId;
+    if (rawId) {
+      const id = await this.resolveProjectId(tx, user, rawId);
+      if (!id) return null;
+      return { ...buildVisibilityFilter(user), id };
+    }
+    return { ...buildVisibilityFilter(user), projectNumber: args.projectNumber! };
+  }
+
+  /**
+   * Resolve a prefix without a surrounding tool tx (delegated time/wave2 tools).
+   * Non-prefix values pass through so existing mocks (`p1`, `t1`) stay exact-id.
+   */
+  private async resolveDelegatedId(
+    user: User,
+    value: string | undefined,
+    resolveInTx: (tx: WorkspaceTxClient, user: User, v: string) => Promise<string | null>,
+    notFound: string,
+  ): Promise<string | undefined> {
+    if (value == null) return undefined;
+    const trimmed = String(value).trim();
+    if (!trimmed) return value;
+    if (classifyMcpId(trimmed).kind !== 'prefix') return trimmed;
+    const resolved = await this.runScoped(user, (tx) => resolveInTx(tx, user, trimmed));
+    if (!resolved) throw new Error(notFound);
+    return resolved;
   }
 
   private async loadOpenBlockers(
@@ -469,7 +797,23 @@ export class ProjectOpsTools {
     args: { projectId?: string; taskId?: string; description?: string },
   ) {
     const tt = this.requireTt();
-    const res = await tt.timer.startTimer(await this.workspaceFor(user), user, args);
+    const projectId = await this.resolveDelegatedId(
+      user,
+      args.projectId,
+      (tx, u, v) => this.resolveProjectId(tx, u, v),
+      'Project not found or no access',
+    );
+    const taskId = await this.resolveDelegatedId(
+      user,
+      args.taskId,
+      (tx, u, v) => this.resolveTaskId(tx, u, v),
+      "Task not found or you don't have access",
+    );
+    const res = await tt.timer.startTimer(await this.workspaceFor(user), user, {
+      ...args,
+      projectId,
+      taskId,
+    });
     this.logger.log(`MCP start_timer: user=${user.email}`);
     return res;
   }
@@ -494,7 +838,23 @@ export class ProjectOpsTools {
     },
   ) {
     const tt = this.requireTt();
-    const res = await tt.timeEntry.logTime(await this.workspaceFor(user), user, args as any);
+    const projectId = await this.resolveDelegatedId(
+      user,
+      args.projectId,
+      (tx, u, v) => this.resolveProjectId(tx, u, v),
+      'Project not found or no access',
+    );
+    const taskId = await this.resolveDelegatedId(
+      user,
+      args.taskId,
+      (tx, u, v) => this.resolveTaskId(tx, u, v),
+      "Task not found or you don't have access",
+    );
+    const res = await tt.timeEntry.logTime(await this.workspaceFor(user), user, {
+      ...args,
+      projectId,
+      taskId,
+    } as any);
     this.logger.log(`MCP log_time: user=${user.email}`);
     return res;
   }
@@ -503,21 +863,58 @@ export class ProjectOpsTools {
     const { id, ...rest } = args;
     if (!id) throw new Error('id is required');
     const tt = this.requireTt();
-    return tt.timeEntry.update(await this.workspaceFor(user), user, id, rest as any);
+    const resolvedId = await this.resolveDelegatedId(
+      user,
+      id,
+      (tx, u, v) => this.resolveTimeEntryId(tx, u, v),
+      'Time entry not found or no access',
+    );
+    if (rest.taskId) {
+      rest.taskId = await this.resolveDelegatedId(
+        user,
+        rest.taskId,
+        (tx, u, v) => this.resolveTaskId(tx, u, v),
+        "Task not found or you don't have access",
+      );
+    }
+    return tt.timeEntry.update(await this.workspaceFor(user), user, resolvedId!, rest as any);
   }
 
   /** Delete a DRAFT, unlocked, unbilled time entry. Mirrors REST DELETE /time-entries/:id. */
   async deleteTimeEntry(user: User, args: { id: string }) {
     if (!args?.id) throw new Error('id is required');
     const tt = this.requireTt();
-    const res = await tt.timeEntry.remove(await this.workspaceFor(user), user, args.id);
-    this.logger.log(`MCP delete_time_entry: user=${user.email} entry=${args.id}`);
+    const id = await this.resolveDelegatedId(
+      user,
+      args.id,
+      (tx, u, v) => this.resolveTimeEntryId(tx, u, v),
+      'Time entry not found or no access',
+    );
+    const res = await tt.timeEntry.remove(await this.workspaceFor(user), user, id!);
+    this.logger.log(`MCP delete_time_entry: user=${user.email} entry=${id}`);
     return res;
   }
 
   async listTimeEntries(user: User, args: Record<string, any>) {
     const tt = this.requireTt();
-    return tt.timeEntry.list(await this.workspaceFor(user), user, (args ?? {}) as any);
+    const filters = { ...(args ?? {}) };
+    if (filters.projectId) {
+      filters.projectId = await this.resolveDelegatedId(
+        user,
+        filters.projectId,
+        (tx, u, v) => this.resolveProjectId(tx, u, v),
+        'Project not found or no access',
+      );
+    }
+    if (filters.taskId) {
+      filters.taskId = await this.resolveDelegatedId(
+        user,
+        filters.taskId,
+        (tx, u, v) => this.resolveTaskId(tx, u, v),
+        "Task not found or you don't have access",
+      );
+    }
+    return tt.timeEntry.list(await this.workspaceFor(user), user, filters as any);
   }
 
   async submitTimesheet(user: User, args: { periodStart?: string }) {
@@ -529,7 +926,22 @@ export class ProjectOpsTools {
 
   async approveTime(user: User, args: { timesheetPeriodId?: string; timeEntryIds?: string[] }) {
     const tt = this.requireTt();
-    const res = await tt.timesheet.approve(await this.workspaceFor(user), user, args ?? {});
+    const timeEntryIds = args.timeEntryIds
+      ? await Promise.all(
+          args.timeEntryIds.map((id) =>
+            this.resolveDelegatedId(
+              user,
+              id,
+              (tx, u, v) => this.resolveTimeEntryId(tx, u, v),
+              'Time entry not found or no access',
+            ),
+          ),
+        )
+      : undefined;
+    const res = await tt.timesheet.approve(await this.workspaceFor(user), user, {
+      ...args,
+      timeEntryIds: timeEntryIds as string[] | undefined,
+    });
     this.logger.log(`MCP approve_time: user=${user.email}`);
     return res;
   }
@@ -552,10 +964,16 @@ export class ProjectOpsTools {
     },
   ) {
     const tt = this.requireTt();
+    const projectId = await this.resolveDelegatedId(
+      user,
+      args.projectId,
+      (tx, u, v) => this.resolveProjectId(tx, u, v),
+      'Project not found or no access',
+    );
     const res = await tt.rollup.createBillableDraft(
       await this.workspaceFor(user),
       user,
-      args as any,
+      { ...args, projectId } as any,
       {
         bearerToken: this.bearerToken,
         actingUser: { id: user.id, email: user.email },
@@ -623,11 +1041,22 @@ export class ProjectOpsTools {
     // tool forgiving without changing what it can reach. UUIDs and project
     // numbers never collide, so there's no ambiguity. AND-nest so this composes
     // with the visibility filter, which is itself an OR for STAFF/CLIENT.
+    // An 8–31 hex prefix on either field resolves to the unique visible UUID
+    // first; project numbers (non-hex) keep the dual-key path.
     const key = (args.id ?? args.projectNumber)!;
     const project = await this.runScoped(user, async (tx) => {
+      const classified = classifyMcpId(key);
+      let idOrNumberWhere: Prisma.ProjectWhereInput;
+      if (classified.kind === 'prefix') {
+        const resolved = await this.resolveProjectId(tx, user, key);
+        if (!resolved) return null;
+        idOrNumberWhere = { id: resolved };
+      } else {
+        idOrNumberWhere = { OR: [{ id: key }, { projectNumber: key }] };
+      }
       const result = await tx.project.findFirst({
         where: {
-          AND: [buildVisibilityFilter(user), { OR: [{ id: key }, { projectNumber: key }] }],
+          AND: [buildVisibilityFilter(user), idOrNumberWhere],
         },
         include: {
           organization: { select: { id: true, name: true, type: true } },
@@ -750,9 +1179,11 @@ export class ProjectOpsTools {
     const taskId = String(args.taskId).trim();
 
     const result = await this.runScoped(user, async (tx) => {
+      const resolvedId = await this.resolveTaskId(tx, user, taskId);
+      if (!resolvedId) return null;
       const task = await tx.task.findFirst({
         where: {
-          id: taskId,
+          id: resolvedId,
           project: buildVisibilityFilter(user),
         },
         select: {
@@ -917,9 +1348,18 @@ export class ProjectOpsTools {
     const key = (args.projectId ?? args.projectNumber)!;
 
     const result = await this.runScoped(user, async (tx) => {
+      const classified = classifyMcpId(key);
+      let idOrNumberWhere: Prisma.ProjectWhereInput;
+      if (classified.kind === 'prefix') {
+        const resolved = await this.resolveProjectId(tx, user, key);
+        if (!resolved) return null;
+        idOrNumberWhere = { id: resolved };
+      } else {
+        idOrNumberWhere = { OR: [{ id: key }, { projectNumber: key }] };
+      }
       const project = await tx.project.findFirst({
         where: {
-          AND: [buildVisibilityFilter(user), { OR: [{ id: key }, { projectNumber: key }] }],
+          AND: [buildVisibilityFilter(user), idOrNumberWhere],
         },
         select: { id: true, projectNumber: true, title: true, status: true },
       });
@@ -1104,10 +1544,14 @@ export class ProjectOpsTools {
   async addTaskComment(user: User, args: { taskId: string; content: string }) {
     // Capture the resolved workspace + created comment so we can emit the
     // domain event AFTER the tx commits (mirrors TasksService.addComment).
-    const { comment, workspaceId } = await this.runScoped(user, async (tx, workspaceId) => {
+    const { comment, workspaceId, taskId } = await this.runScoped(user, async (tx, workspaceId) => {
+      const resolvedId = await this.resolveTaskId(tx, user, args.taskId);
+      if (!resolvedId) {
+        throw new Error("Task not found or you don't have access");
+      }
       const task = await tx.task.findFirst({
         where: {
-          id: args.taskId,
+          id: resolvedId,
           project: buildVisibilityFilter(user),
         },
         select: { id: true, projectId: true },
@@ -1133,7 +1577,7 @@ export class ProjectOpsTools {
         },
       });
       this.logger.log(`MCP add_task_comment: user=${user.email} task=${task.id}`);
-      return { comment: created, workspaceId };
+      return { comment: created, workspaceId, taskId: task.id };
     });
 
     // Domain event for downstream @mention fan-out (notifications module).
@@ -1144,7 +1588,7 @@ export class ProjectOpsTools {
     // skipped only in the pure RBAC unit tests that don't wire one.)
     this.events?.emit('task.comment.created', {
       workspaceId,
-      taskId: args.taskId,
+      taskId,
       commentId: comment.id,
       authorId: user.id,
       content: comment.content,
@@ -1168,9 +1612,13 @@ export class ProjectOpsTools {
     const skip = clampOffset(args.offset);
 
     return this.runScoped(user, async (tx) => {
+      const resolvedId = await this.resolveTaskId(tx, user, taskId);
+      if (!resolvedId) {
+        throw new Error("Task not found or you don't have access");
+      }
       const task = await tx.task.findFirst({
         where: {
-          id: taskId,
+          id: resolvedId,
           project: buildVisibilityFilter(user),
         },
         select: { id: true },
@@ -1236,9 +1684,13 @@ export class ProjectOpsTools {
     }
 
     const updated = await this.runScoped(user, async (tx) => {
+      const resolvedId = await this.resolveCommentId(tx, user, String(args.commentId).trim());
+      if (!resolvedId) {
+        throw new Error("Comment not found or you don't have access");
+      }
       const comment = await tx.taskComment.findFirst({
         where: {
-          id: String(args.commentId).trim(),
+          id: resolvedId,
           task: { project: buildVisibilityFilter(user) },
         },
         select: { id: true, authorId: true, taskId: true },
@@ -1282,9 +1734,13 @@ export class ProjectOpsTools {
     }
 
     return this.runScoped(user, async (tx) => {
+      const resolvedId = await this.resolveCommentId(tx, user, String(args.commentId).trim());
+      if (!resolvedId) {
+        throw new Error("Comment not found or you don't have access");
+      }
       const comment = await tx.taskComment.findFirst({
         where: {
-          id: String(args.commentId).trim(),
+          id: resolvedId,
           task: { project: buildVisibilityFilter(user) },
         },
         select: { id: true, authorId: true, taskId: true },
@@ -1364,15 +1820,17 @@ export class ProjectOpsTools {
   async getOrganization(user: User, args: { id: string }) {
     if (!args.id) throw new Error("'id' is required.");
     const organization = await this.runScoped(user, async (tx) => {
+      const orgId = await this.resolveOrganizationId(tx, user, args.id);
+      if (!orgId) throw new Error('Organization not found or no access.');
       if (user.role === UserRole.CLIENT) {
         const contact = await tx.contact.findFirst({
-          where: { userId: user.id, organizationId: args.id },
+          where: { userId: user.id, organizationId: orgId },
           select: { id: true },
         });
         if (!contact) throw new Error('Organization not found or no access.');
       }
       return tx.organization.findUnique({
-        where: { id: args.id },
+        where: { id: orgId },
         include: {
           parentOrg: { select: { id: true, name: true, type: true } },
           childOrgs: { select: { id: true, name: true, type: true, isActive: true } },
@@ -1429,11 +1887,6 @@ export class ProjectOpsTools {
     if (args.state !== undefined) data.state = args.state;
     if (args.zipCode !== undefined) data.zipCode = args.zipCode;
     if (args.country !== undefined) data.country = args.country;
-    if (args.parentOrgId !== undefined) {
-      data.parentOrg = args.parentOrgId
-        ? { connect: { id: args.parentOrgId } }
-        : { disconnect: true };
-    }
     if (args.portalAccessEnabled !== undefined) {
       data.portalAccessEnabled = args.portalAccessEnabled;
     }
@@ -1441,24 +1894,38 @@ export class ProjectOpsTools {
     if (args.notes !== undefined) data.notes = args.notes;
 
     const updated = await this.runScoped(user, async (tx) => {
+      const orgId = await this.resolveOrganizationId(tx, user, args.id);
+      if (!orgId) throw new Error(`Organization '${args.id}' not found.`);
       const existing = await tx.organization.findUnique({
-        where: { id: args.id },
+        where: { id: orgId },
         select: { id: true },
       });
       if (!existing) throw new Error(`Organization '${args.id}' not found.`);
 
-      if (args.parentOrgId) {
-        const parent = await tx.organization.findUnique({
-          where: { id: args.parentOrgId },
-          select: { id: true },
-        });
-        if (!parent) {
-          throw new Error(`Parent organization '${args.parentOrgId}' not found.`);
+      if (args.parentOrgId !== undefined) {
+        if (args.parentOrgId) {
+          const parentOrgId = await this.resolveOrganizationId(tx, user, args.parentOrgId);
+          if (!parentOrgId) {
+            throw new Error(`Parent organization '${args.parentOrgId}' not found.`);
+          }
+          if (parentOrgId === existing.id) {
+            throw new Error('Organization cannot be its own parent.');
+          }
+          const parent = await tx.organization.findUnique({
+            where: { id: parentOrgId },
+            select: { id: true },
+          });
+          if (!parent) {
+            throw new Error(`Parent organization '${args.parentOrgId}' not found.`);
+          }
+          data.parentOrg = { connect: { id: parentOrgId } };
+        } else {
+          data.parentOrg = { disconnect: true };
         }
       }
 
       return tx.organization.update({
-        where: { id: args.id },
+        where: { id: existing.id },
         data,
         select: {
           id: true,
@@ -1502,9 +1969,14 @@ export class ProjectOpsTools {
     }
 
     const organization = await this.runScoped(user, async (tx, workspaceId) => {
+      let parentOrgId = args.parentOrgId;
       if (args.parentOrgId) {
+        parentOrgId = (await this.resolveOrganizationId(tx, user, args.parentOrgId)) ?? undefined;
+        if (!parentOrgId) {
+          throw new Error(`Parent organization '${args.parentOrgId}' not found.`);
+        }
         const parent = await tx.organization.findUnique({
-          where: { id: args.parentOrgId },
+          where: { id: parentOrgId },
           select: { id: true },
         });
         if (!parent) {
@@ -1525,7 +1997,7 @@ export class ProjectOpsTools {
           state: args.state,
           zipCode: args.zipCode,
           country: args.country ?? 'USA',
-          parentOrgId: args.parentOrgId,
+          parentOrgId,
           portalAccessEnabled: args.portalAccessEnabled ?? false,
           notes: args.notes,
           createdById: user.id,
@@ -1626,11 +2098,12 @@ export class ProjectOpsTools {
       throw new Error('Either id or projectNumber must be provided');
     }
     const updated = await this.runScoped(user, async (tx) => {
+      const where = await this.exclusiveProjectWhere(tx, user, args);
+      if (!where) {
+        throw new Error('Project not found or no access');
+      }
       const found = await tx.project.findFirst({
-        where: {
-          ...buildVisibilityFilter(user),
-          ...(args.id ? { id: args.id } : { projectNumber: args.projectNumber! }),
-        },
+        where,
         select: { id: true, projectNumber: true },
       });
       if (!found) {
@@ -1700,11 +2173,12 @@ export class ProjectOpsTools {
     if (args.recurrenceRule !== undefined) data.recurrenceRule = args.recurrenceRule;
 
     const updated = await this.runScoped(user, async (tx, workspaceId) => {
+      const where = await this.exclusiveProjectWhere(tx, user, args);
+      if (!where) {
+        throw new Error('Project not found or no access');
+      }
       const found = await tx.project.findFirst({
-        where: {
-          ...buildVisibilityFilter(user),
-          ...(args.id ? { id: args.id } : { projectNumber: args.projectNumber! }),
-        },
+        where,
         select: { id: true, projectNumber: true, metadata: true },
       });
       if (!found) {
@@ -1712,8 +2186,13 @@ export class ProjectOpsTools {
       }
 
       if (args.organizationId) {
+        const orgId = await this.resolveOrganizationId(tx, user, args.organizationId);
+        if (!orgId) {
+          throw new Error(`Organization '${args.organizationId}' not found.`);
+        }
+        data.organization = { connect: { id: orgId } };
         const org = await tx.organization.findUnique({
-          where: { id: args.organizationId },
+          where: { id: orgId },
           select: { id: true },
         });
         if (!org) {
@@ -1799,9 +2278,13 @@ export class ProjectOpsTools {
     const { updated, dependencyOverrideBlockers, activeWorkspaceId } = await this.runScoped(
       user,
       async (tx, workspaceId) => {
+        const resolvedTaskId = await this.resolveTaskId(tx, user, args.taskId);
+        if (!resolvedTaskId) {
+          throw new Error('Task not found or no access');
+        }
         const found = await tx.task.findFirst({
           where: {
-            id: args.taskId,
+            id: resolvedTaskId,
             project: buildVisibilityFilter(user),
           },
           select: {
@@ -1840,11 +2323,12 @@ export class ProjectOpsTools {
         }
 
         if (args.projectId || args.projectNumber) {
+          const targetWhere = await this.exclusiveProjectWhere(tx, user, args);
+          if (!targetWhere) {
+            throw new Error('Target project not found or no access');
+          }
           const target = await tx.project.findFirst({
-            where: {
-              ...buildVisibilityFilter(user),
-              ...(args.projectId ? { id: args.projectId } : { projectNumber: args.projectNumber! }),
-            },
+            where: targetWhere,
             select: { id: true },
           });
           if (!target) {
@@ -1941,11 +2425,12 @@ export class ProjectOpsTools {
         ? String(args.parentTaskId).trim() || undefined
         : undefined;
     const { task, projectNumber } = await this.runScoped(user, async (tx, workspaceId) => {
+      const projectWhere = await this.exclusiveProjectWhere(tx, user, args);
+      if (!projectWhere) {
+        throw new Error('Project not found or no access');
+      }
       const project = await tx.project.findFirst({
-        where: {
-          ...buildVisibilityFilter(user),
-          ...(args.projectId ? { id: args.projectId } : { projectNumber: args.projectNumber! }),
-        },
+        where: projectWhere,
         select: { id: true, projectNumber: true },
       });
       if (!project) {
@@ -1954,9 +2439,14 @@ export class ProjectOpsTools {
 
       // Mirror TasksService.createInTx parent validation: workspace RLS makes
       // cross-workspace parents invisible (not-found); same-project is explicit.
+      let resolvedParentTaskId = parentTaskId;
       if (parentTaskId) {
+        resolvedParentTaskId = (await this.resolveTaskId(tx, user, parentTaskId)) ?? undefined;
+        if (!resolvedParentTaskId) {
+          throw new Error(`Parent task with ID ${parentTaskId} not found`);
+        }
         const parent = await tx.task.findUnique({
-          where: { id: parentTaskId },
+          where: { id: resolvedParentTaskId },
           select: { id: true, projectId: true },
         });
         if (!parent) {
@@ -1981,7 +2471,7 @@ export class ProjectOpsTools {
           type,
           priority,
           dueDate: args.dueDate ? coerceDateOnly(args.dueDate) : null,
-          ...(parentTaskId ? { parentTaskId } : {}),
+          ...(resolvedParentTaskId ? { parentTaskId: resolvedParentTaskId } : {}),
           ...(args.recurrenceRule !== undefined ? { recurrenceRule: args.recurrenceRule } : {}),
           ...(args.estimatedHours !== undefined ? { estimatedHours: args.estimatedHours } : {}),
           ...(args.fixedAmount !== undefined ? { fixedAmount: args.fixedAmount } : {}),
@@ -2024,9 +2514,11 @@ export class ProjectOpsTools {
     const taskId = String(args.taskId).trim();
 
     const result = await this.runScoped(user, async (tx) => {
+      const resolvedId = await this.resolveTaskId(tx, user, taskId);
+      if (!resolvedId) return null;
       const parent = await tx.task.findFirst({
         where: {
-          id: taskId,
+          id: resolvedId,
           project: buildVisibilityFilter(user),
         },
         select: {
@@ -2175,7 +2667,39 @@ export class ProjectOpsTools {
       user,
       this.requestWorkspaceId,
     );
-    return this.triage.applyDecisions(workspaceId, user, args.decisions);
+    const decisions: TriageDecision[] = [];
+    for (const decision of args.decisions) {
+      const next = { ...decision };
+      if (next.proposalId) {
+        next.proposalId =
+          (await this.resolveDelegatedId(
+            user,
+            next.proposalId,
+            (tx, u, v) => this.resolveTriageProposalId(tx, u, v),
+            'Proposal not found or no access',
+          )) ?? next.proposalId;
+      }
+      if (next.targetProjectId) {
+        next.targetProjectId =
+          (await this.resolveDelegatedId(
+            user,
+            next.targetProjectId,
+            (tx, u, v) => this.resolveProjectId(tx, u, v),
+            'Project not found or no access',
+          )) ?? next.targetProjectId;
+      }
+      if (next.duplicateOfTaskId) {
+        next.duplicateOfTaskId =
+          (await this.resolveDelegatedId(
+            user,
+            next.duplicateOfTaskId,
+            (tx, u, v) => this.resolveTaskId(tx, u, v),
+            "Task not found or you don't have access",
+          )) ?? next.duplicateOfTaskId;
+      }
+      decisions.push(next);
+    }
+    return this.triage.applyDecisions(workspaceId, user, decisions);
   }
 
   async updateTaskStatus(
@@ -2196,9 +2720,13 @@ export class ProjectOpsTools {
     const { updated, dependencyOverrideBlockers, activeWorkspaceId } = await this.runScoped(
       user,
       async (tx, workspaceId) => {
+        const resolvedTaskId = await this.resolveTaskId(tx, user, args.taskId);
+        if (!resolvedTaskId) {
+          throw new Error('Task not found or no access');
+        }
         const found = await tx.task.findFirst({
           where: {
-            id: args.taskId,
+            id: resolvedTaskId,
             project: buildVisibilityFilter(user),
           },
           select: { id: true, projectId: true, status: true },
@@ -2257,13 +2785,20 @@ export class ProjectOpsTools {
     const type = normalizeTaskDependencyType(args.type);
 
     return this.runScoped(user, async (tx, workspaceId) => {
+      const [successorId, predecessorId] = await Promise.all([
+        this.resolveTaskId(tx, user, args.taskId),
+        this.resolveTaskId(tx, user, args.dependsOnTaskId),
+      ]);
+      if (!successorId || !predecessorId) {
+        throw new Error('Task not found or no access');
+      }
       const [successor, predecessor] = await Promise.all([
         tx.task.findFirst({
-          where: { id: args.taskId, project: buildVisibilityFilter(user) },
+          where: { id: successorId, project: buildVisibilityFilter(user) },
           select: { id: true, workspaceId: true },
         }),
         tx.task.findFirst({
-          where: { id: args.dependsOnTaskId, project: buildVisibilityFilter(user) },
+          where: { id: predecessorId, project: buildVisibilityFilter(user) },
           select: { id: true, workspaceId: true },
         }),
       ]);
@@ -2273,7 +2808,7 @@ export class ProjectOpsTools {
       if (!predecessor || (predecessor.workspaceId && predecessor.workspaceId !== workspaceId)) {
         throw new Error('Task not found or no access');
       }
-      if (args.taskId === args.dependsOnTaskId) {
+      if (successor.id === predecessor.id) {
         throw new BadRequestException('A task cannot depend on itself');
       }
       if (await this.wouldCreateDependencyCycle(tx, predecessor.id, successor.id)) {
@@ -2311,8 +2846,12 @@ export class ProjectOpsTools {
     }
 
     return this.runScoped(user, async (tx, workspaceId) => {
+      const resolvedDepId = await this.resolveDependencyId(tx, user, args.dependencyId);
+      if (!resolvedDepId) {
+        throw new Error('Dependency not found or no access');
+      }
       const dependency = await tx.taskDependency.findUnique({
-        where: { id: args.dependencyId },
+        where: { id: resolvedDepId },
         select: { id: true, workspaceId: true, predecessorId: true, successorId: true },
       });
       if (!dependency || dependency.workspaceId !== workspaceId) {
@@ -2356,9 +2895,13 @@ export class ProjectOpsTools {
       throw new Error("'taskId' is required.");
     }
     const result = await this.runScoped(user, async (tx) => {
+      const resolvedTaskId = await this.resolveTaskId(tx, user, args.taskId);
+      if (!resolvedTaskId) {
+        throw new Error('Task not found or no access');
+      }
       const found = await tx.task.findFirst({
         where: {
-          id: args.taskId,
+          id: resolvedTaskId,
           project: buildVisibilityFilter(user),
         },
         select: { id: true },
@@ -2379,11 +2922,12 @@ export class ProjectOpsTools {
       throw new Error('Either projectId or projectNumber must be provided');
     }
     const { project, documents } = await this.runScoped(user, async (tx) => {
+      const projectWhere = await this.exclusiveProjectWhere(tx, user, args);
+      if (!projectWhere) {
+        throw new Error('Project not found or no access');
+      }
       const proj = await tx.project.findFirst({
-        where: {
-          ...buildVisibilityFilter(user),
-          ...(args.projectId ? { id: args.projectId } : { projectNumber: args.projectNumber! }),
-        },
+        where: projectWhere,
         select: { id: true, projectNumber: true },
       });
       if (!proj) {
@@ -2436,18 +2980,14 @@ export class ProjectOpsTools {
     // storage round-trips).
     // Keep the relation branch non-empty: Prisma prunes project:{} inside
     // OR for ADMIN/MANAGER, otherwise leaving only the orphan-document branch.
-    const document = await this.runScoped(user, (tx) => {
+    const document = await this.runScoped(user, async (tx) => {
       if (args.documentId) {
+        const documentId = await this.resolveDocumentId(tx, user, args.documentId);
+        if (!documentId) return null;
         return tx.document.findFirst({
           where: {
-            id: args.documentId,
-            OR: [
-              { project: { is: buildVisibilityFilter(user) }, projectId: { not: null } },
-              // orphan docs (no project) only visible to admins / managers
-              ...(user.role === UserRole.ADMIN || user.role === UserRole.MANAGER
-                ? [{ projectId: null }]
-                : []),
-            ],
+            id: documentId,
+            ...this.documentVisibilityWhere(user),
           },
         });
       }
@@ -2594,15 +3134,14 @@ export class ProjectOpsTools {
     }
 
     // Access check (read) inside the workspace tx, before we touch bytes.
-    const project = await this.runScoped(user, (tx) =>
-      tx.project.findFirst({
-        where: {
-          ...buildVisibilityFilter(user),
-          ...(args.projectId ? { id: args.projectId } : { projectNumber: args.projectNumber! }),
-        },
+    const project = await this.runScoped(user, async (tx) => {
+      const projectWhere = await this.exclusiveProjectWhere(tx, user, args);
+      if (!projectWhere) return null;
+      return tx.project.findFirst({
+        where: projectWhere,
         select: { id: true, projectNumber: true },
-      }),
-    );
+      });
+    });
     if (!project) {
       throw new Error('Project not found or no access');
     }
@@ -2728,15 +3267,14 @@ export class ProjectOpsTools {
     }
 
     const updated = await this.runScoped(user, async (tx) => {
+      const resolvedId = await this.resolveDocumentId(tx, user, documentId);
+      if (!resolvedId) {
+        throw new Error("Document not found or you don't have access");
+      }
       const existing = await tx.document.findFirst({
         where: {
-          id: documentId,
-          OR: [
-            { project: { is: buildVisibilityFilter(user) }, projectId: { not: null } },
-            ...(user.role === UserRole.ADMIN || user.role === UserRole.MANAGER
-              ? [{ projectId: null }]
-              : []),
-          ],
+          id: resolvedId,
+          ...this.documentVisibilityWhere(user),
         },
         select: { id: true },
       });
@@ -2784,16 +3322,13 @@ export class ProjectOpsTools {
     const documentId = String(args.documentId).trim();
 
     // Fetch metadata inside the workspace tx (RLS + project visibility).
-    const document = await this.runScoped(user, (tx) =>
-      tx.document.findFirst({
+    const document = await this.runScoped(user, async (tx) => {
+      const resolvedId = await this.resolveDocumentId(tx, user, documentId);
+      if (!resolvedId) return null;
+      return tx.document.findFirst({
         where: {
-          id: documentId,
-          OR: [
-            { project: { is: buildVisibilityFilter(user) }, projectId: { not: null } },
-            ...(user.role === UserRole.ADMIN || user.role === UserRole.MANAGER
-              ? [{ projectId: null }]
-              : []),
-          ],
+          id: resolvedId,
+          ...this.documentVisibilityWhere(user),
         },
         select: {
           id: true,
@@ -2803,8 +3338,8 @@ export class ProjectOpsTools {
           fileSize: true,
           projectId: true,
         },
-      }),
-    );
+      });
+    });
 
     if (!document) {
       throw new Error("Document not found or you don't have access");
@@ -2879,11 +3414,12 @@ export class ProjectOpsTools {
     if (args.contactOpsContactId !== undefined) data.contactOpsContactId = args.contactOpsContactId;
 
     const updated = await this.runScoped(user, async (tx) => {
+      const where = await this.exclusiveProjectWhere(tx, user, args);
+      if (!where) {
+        throw new Error('Project not found or no access');
+      }
       const found = await tx.project.findFirst({
-        where: {
-          ...buildVisibilityFilter(user),
-          ...(args.id ? { id: args.id } : { projectNumber: args.projectNumber! }),
-        },
+        where,
         select: {
           id: true,
           projectNumber: true,
@@ -3145,11 +3681,17 @@ export class ProjectOpsTools {
     if (!args?.id) throw new Error("'id' is required.");
     if (typeof args?.enabled !== 'boolean') throw new Error("'enabled' (boolean) is required.");
     const w2 = this.requireWave2();
-    const res = await w2.automations.update(await this.resolveWorkspace(user), user, args.id, {
+    const ruleId = await this.resolveDelegatedId(
+      user,
+      args.id,
+      (tx, u, v) => this.resolveAutomationId(tx, u, v),
+      'Automation not found or no access',
+    );
+    const res = await w2.automations.update(await this.resolveWorkspace(user), user, ruleId!, {
       enabled: args.enabled,
     } as any);
     this.logger.log(
-      `MCP set_automation_enabled: user=${user.email} rule=${args.id} → ${args.enabled}`,
+      `MCP set_automation_enabled: user=${user.email} rule=${ruleId} → ${args.enabled}`,
     );
     return res;
   }
@@ -3159,8 +3701,14 @@ export class ProjectOpsTools {
     this.assertManagerOrAdmin(user, 'delete automations');
     if (!args?.id) throw new Error("'id' is required.");
     const w2 = this.requireWave2();
-    const res = await w2.automations.remove(await this.resolveWorkspace(user), user, args.id);
-    this.logger.log(`MCP delete_automation: user=${user.email} rule=${args.id}`);
+    const ruleId = await this.resolveDelegatedId(
+      user,
+      args.id,
+      (tx, u, v) => this.resolveAutomationId(tx, u, v),
+      'Automation not found or no access',
+    );
+    const res = await w2.automations.remove(await this.resolveWorkspace(user), user, ruleId!);
+    this.logger.log(`MCP delete_automation: user=${user.email} rule=${ruleId}`);
     return res;
   }
 
@@ -3201,12 +3749,18 @@ export class ProjectOpsTools {
     this.assertCanWrite(user);
     if (!args?.projectId) throw new Error("'projectId' is required.");
     const w2 = this.requireWave2();
+    const projectId = await this.resolveDelegatedId(
+      user,
+      args.projectId,
+      (tx, u, v) => this.resolveProjectId(tx, u, v),
+      'Project not found or no access',
+    );
     const res = await w2.approvals.listForProject(
       await this.resolveWorkspace(user),
       user,
-      args.projectId,
+      projectId!,
     );
-    this.logger.log(`MCP list_project_approvals: user=${user.email} project=${args.projectId}`);
+    this.logger.log(`MCP list_project_approvals: user=${user.email} project=${projectId}`);
     return res;
   }
 
@@ -3235,10 +3789,37 @@ export class ProjectOpsTools {
     }
     if (!args?.entityId) throw new Error("'entityId' is required.");
     const w2 = this.requireWave2();
+    const projectId = await this.resolveDelegatedId(
+      user,
+      args.projectId,
+      (tx, u, v) => this.resolveProjectId(tx, u, v),
+      'Project not found or no access',
+    );
+    let entityId = args.entityId;
+    if (
+      entityType === ApprovalEntityType.DOCUMENT ||
+      entityType === ApprovalEntityType.DELIVERABLE
+    ) {
+      entityId =
+        (await this.resolveDelegatedId(
+          user,
+          args.entityId,
+          (tx, u, v) => this.resolveDocumentId(tx, u, v),
+          "Document not found or you don't have access",
+        )) ?? args.entityId;
+    } else if (entityType === ApprovalEntityType.PROJECT) {
+      entityId =
+        (await this.resolveDelegatedId(
+          user,
+          args.entityId,
+          (tx, u, v) => this.resolveProjectId(tx, u, v),
+          'Project not found or no access',
+        )) ?? args.entityId;
+    }
     const res = await w2.approvals.request(await this.resolveWorkspace(user), user, {
       entityType,
-      entityId: args.entityId,
-      projectId: args.projectId,
+      entityId,
+      projectId,
       approverContactId: args.approverContactId,
       note: args.note,
     } as any);
