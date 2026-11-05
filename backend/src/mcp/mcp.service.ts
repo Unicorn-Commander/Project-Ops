@@ -46,6 +46,7 @@ import { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import { ApprovalsService } from '../client-portal/approvals/approvals.service';
 import { WorkspacesService } from '../workspaces/workspaces.service';
 import { AuditService } from '../audit/audit.service';
+import { ProjectsService } from '../projects/projects.service';
 // Agent activity capture (v1.11) — OPTIONAL: when AgentsModule is imported into
 // McpModule the recorder is injected and every successful tool call is logged
 // as an AgentEvent; if not wired, capture is silently skipped (app still boots).
@@ -60,6 +61,14 @@ const TASK_DEPENDENCY_TYPE_VALUES = Object.values(TaskDependencyType) as [
   TaskDependencyType,
   ...TaskDependencyType[],
 ];
+const CLONE_DUE_DATE_MODE_VALUES = ['keep', 'shift', 'clear'] as const;
+
+// Keep the newly registered clone mutation PAT-gated inside the MCP fence.
+// The shared PAT constants are maintained by the auth lane; this local
+// fallback keeps this branch fail-closed and usable for write:projects PATs.
+const MCP_TOOL_SCOPE_OVERRIDES: Record<string, string> = {
+  clone_project: 'write:projects',
+};
 
 const federatedUuid = (field: string) => z.string().uuid({ message: `${field} must be a UUID` });
 
@@ -113,6 +122,9 @@ export class McpService {
     @Optional() private readonly agentEvents?: AgentEventsService,
     // Optional so minimal MCP test harnesses can omit AuditModule.
     @Optional() private readonly audit?: AuditService,
+    // Optional for minimal MCP test harnesses; the application imports
+    // ProjectsModule so clone_project delegates to the REST service.
+    @Optional() private readonly projects?: ProjectsService,
   ) {}
 
   /**
@@ -227,13 +239,13 @@ export class McpService {
             return workspaceDenied(name, boundWorkspaceId, effective);
           }
         }
-        const operationScope = MCP_TOOL_SCOPE_MAP[name];
+        const operationScope = MCP_TOOL_SCOPE_MAP[name] ?? MCP_TOOL_SCOPE_OVERRIDES[name];
         if (!operationScope) {
           recordMcpToolCall(name, 'denied', 0);
           return scopeDenied(name, undefined, [...(grantedSet ?? [])]);
         }
         if (grantedSet) {
-          const required = MCP_TOOL_SCOPE_MAP[name];
+          const required = MCP_TOOL_SCOPE_MAP[name] ?? MCP_TOOL_SCOPE_OVERRIDES[name];
           if (!required) {
             this.logger.warn(
               `MCP tool "${name}" has no scope mapping; refusing PAT-auth invocation`,
@@ -370,6 +382,7 @@ export class McpService {
       this.workspaceAdmin,
       addressedWorkspaceId,
       this.audit,
+      this.projects,
     );
 
     server.registerTool(
@@ -759,6 +772,25 @@ export class McpService {
         },
       },
       async (args: any) => wrap(await tools.createProject(user, args)),
+    );
+
+    server.registerTool(
+      'clone_project',
+      {
+        title: 'Clone a project',
+        description:
+          'Clone a visible project into the source or target workspace. Copies the project descriptive/classification/billing-policy fields, the full task/subtask tree, task custom-field values that exist in the target, and dependencies whose two ends are cloned. By default task statuses reset to PENDING and dates shift from the source task schedule to startDate. Comments, task comments, time entries, approvals, notifications, audit history, document bytes, and recurrence instances are not copied; recurrence rules remain on copied templates.',
+        inputSchema: {
+          projectId: z.string().min(1),
+          targetWorkspaceId: z.string().min(1).optional(),
+          title: z.string().min(1).max(200).optional(),
+          includeTasks: z.boolean().optional(),
+          resetStatus: z.boolean().optional(),
+          dueDateMode: z.enum(CLONE_DUE_DATE_MODE_VALUES).optional(),
+          startDate: z.string().optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.cloneProject(user, args)),
     );
 
     server.registerTool(

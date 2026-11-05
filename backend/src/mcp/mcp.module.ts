@@ -21,6 +21,7 @@ import { AgentsModule } from '../agents/agents.module';
 // member tools (invite / role / remove / list) delegate to.
 import { WorkspacesModule } from '../workspaces/workspaces.module';
 import { AuditModule } from '../audit/audit.module';
+import { ProjectsModule } from '../projects/projects.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { AuditModule } from '../audit/audit.module';
     AgentsModule,
     WorkspacesModule,
     AuditModule,
+    ProjectsModule,
   ],
   controllers: [McpController],
   providers: [McpService],

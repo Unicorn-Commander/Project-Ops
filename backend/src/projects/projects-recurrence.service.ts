@@ -3,7 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma, Project } from '@prisma/client';
 import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
-import { ProjectsService } from './projects.service';
+import { projectTemplateFields, ProjectsService } from './projects.service';
 import { nextOccurrenceAfter, parseRecurrenceRule } from './recurrence.util';
 import { BUSINESS_TIME_ZONE } from '../common/time/business-time';
 
@@ -160,31 +160,14 @@ export class ProjectsRecurrenceService {
         projectNumber,
         // Copy the descriptive + classification + billing-policy fields; the
         // instance is a concrete, NON-template project.
-        title: template.title,
-        description: template.description,
+        ...projectTemplateFields(template),
         // status defaults to NEW; the instance is a fresh, open project.
-        priority: template.priority,
-        category: template.category,
-        tags: template.tags === null ? Prisma.JsonNull : template.tags,
-        clientName: template.clientName,
-        clientEmail: template.clientEmail,
-        clientPhone: template.clientPhone,
-        contactId: template.contactId,
-        organizationId: template.organizationId,
-        assignedToId: template.assignedToId,
         createdById: template.createdById,
-        billByDefault: template.billByDefault,
-        defaultBillRate: template.defaultBillRate,
-        budgetHours: template.budgetHours,
-        budgetAmount: template.budgetAmount,
-        roundingIncrementMinutes: template.roundingIncrementMinutes,
-        roundingMode: template.roundingMode,
-        metadata: template.metadata === null ? Prisma.JsonNull : template.metadata,
         // Instance-specific:
         recurrenceParentId: template.id,
         recurrenceRule: null,
         dueDate: nextDue,
-      },
+      } as Prisma.ProjectUncheckedCreateInput,
     });
 
     this.logger.log(

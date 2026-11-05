@@ -45,6 +45,7 @@ Ops metrics (this branch): process-local counters + latency buckets + structured
 | List projects (filters, search, stats) | `GET /projects`, stats routes — `projects.controller.ts:40–154` | `list_my_projects`, `search_projects` | PARTIAL | `runScoped` `mcp.tools.ts:352–369`, `452–457` |
 | Get project detail | `GET /projects/:id` | `get_project` (id **or** projectNumber; embeds ≤25 tasks, ≤10 comments) | FULL | `runScoped` `mcp.tools.ts:383–419` |
 | Create project | `POST /projects` | `create_project` | FULL | stamps `workspaceId` inside `runScoped` `mcp.tools.ts:836–850` |
+| Clone project (tasks, subtasks, in-tree dependencies) | `POST /projects/:projectId/clone` | `clone_project` | FULL | source visibility + source/target RLS transactions in `projects.service.ts`; comments, time, approvals, notifications, audit history, document bytes, and recurrence instances intentionally omitted |
 | Update project fields | `PATCH /projects/:id` | `update_project` (+ customFields, recurrence) | FULL | `runScoped` + metadata validate `mcp.tools.ts:953–1000` |
 | Update status | `PATCH /projects/:id/status` | `update_project_status` | FULL | `runScoped` `mcp.tools.ts:887–906` |
 | Assign owner | `PATCH /projects/:id/assign` | via `update_project.assignedToId` | PARTIAL | same as update_project |
@@ -157,10 +158,10 @@ Ops metrics (this branch): process-local counters + latency buckets + structured
 | PATs | pat controller | auth for MCP, not managed via MCP | INTENTIONAL |
 | AI Assistant chat | assistant controller | uses MCP tools under the hood | N/A |
 
-## 11. MCP tool inventory (50 registrations)
+## 11. MCP tool inventory (65 registrations when time tracking is enabled)
 
 Core reads: `list_my_projects`, `get_project`, `list_my_tasks`, `search_projects`, `get_recent_activity`  
-Core writes: `add_task_comment`, `create_project`, `update_project`, `update_project_status`, `archive_project`, `create_task`, `update_task`, `update_task_status`, `submit_candidate_action_items`  
+Core writes: `add_task_comment`, `create_project`, `clone_project`, `update_project`, `update_project_status`, `archive_project`, `create_task`, `update_task`, `update_task_status`, `submit_candidate_action_items`
 Orgs: `list_organizations`, `get_organization`, `create_organization`, `update_organization`  
 Documents: `list_project_documents`, `get_document_content`, `upload_document`  
 Billing fields: `update_billing_fields`  

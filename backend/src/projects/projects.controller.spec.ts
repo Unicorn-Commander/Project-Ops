@@ -38,10 +38,20 @@ describe('ProjectsController gating', () => {
     expect(c.create('ws', user, dto)).toBe('created');
     expect(projects.create).toHaveBeenCalledWith('ws', user, dto);
   });
+
+  it('delegates clone with the addressed source workspace', () => {
+    const projects = { clone: jest.fn(() => 'cloned') } as any;
+    const c = new ProjectsController(projects);
+    const user = { id: 'u1', role: UserRole.STAFF } as any;
+    const dto = { targetWorkspaceId: 'workspace-b', dueDateMode: 'shift' } as any;
+
+    expect(c.clone('workspace-a', user, 'project-template', dto)).toBe('cloned');
+    expect(projects.clone).toHaveBeenCalledWith(user, 'project-template', dto, 'workspace-a');
+  });
 });
 
 describe('ProjectsController item route role gates', () => {
-  const routes = ['findOne', 'getBudget', 'update', 'updateStatus'] as const;
+  const routes = ['findOne', 'getBudget', 'update', 'updateStatus', 'clone'] as const;
   const requiredRoles = [UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF];
 
   function canActivate(method: (typeof routes)[number], role: UserRole): boolean {
