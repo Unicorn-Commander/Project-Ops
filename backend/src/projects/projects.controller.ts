@@ -17,6 +17,7 @@ import { UpdateProjectDto } from './dto/update-project.dto';
 import { AssignProjectDto } from './dto/assign-project.dto';
 import { UpdateProjectStatusDto } from './dto/update-status.dto';
 import { ListProjectsDto } from './dto/list-projects.dto';
+import { CloneProjectDto } from './dto/clone-project.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -53,6 +54,23 @@ export class ProjectsController {
     @Body() createProjectDto: CreateProjectDto,
   ) {
     return this.projectsService.create(workspaceId, user, createProjectDto);
+  }
+
+  @Post(':projectId/clone')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
+  @ApiOperation({
+    summary: 'Clone a project with its task tree and dependencies',
+    description:
+      'Copies the project template fields, tasks, subtasks, custom-field values, and in-tree task dependencies. Comments, time entries, approvals, notifications, audit history, and document bytes are not copied.',
+  })
+  @ApiResponse({ status: 201, description: 'Project clone created successfully' })
+  clone(
+    @CurrentWorkspace() workspaceId: string,
+    @CurrentUser() user: User,
+    @Param('projectId') projectId: string,
+    @Body() cloneProjectDto: CloneProjectDto,
+  ) {
+    return this.projectsService.clone(user, projectId, cloneProjectDto, workspaceId);
   }
 
   @Get()

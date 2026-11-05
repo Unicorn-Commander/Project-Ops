@@ -4,7 +4,7 @@ import {
   PROJECT_STATUS_CHANGED_EVENT,
 } from './projects.service';
 import { ProjectStatus } from '@prisma/client';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 
 /**
  * Unit tests for the Wave 2 project features on ProjectsService: custom-field
@@ -397,5 +397,236 @@ describe('ProjectsService.update — invoiced flat-fee immutability', () => {
 
     await svc.update('ws1', user, 'p1', { flatFeeAmount: 1250 } as any);
     expect(update).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ProjectsService.clone', () => {
+  const cloneUser = {
+    id: 'operator-1',
+    email: 'operator@fictional.example.com',
+    role: 'ADMIN',
+    keycloakId: null,
+  } as any;
+
+  const sourceProject = {
+    id: 'roadmap-template',
+    workspaceId: 'workspace-a',
+    projectNumber: 'PROJ-2026-000001',
+    title: 'Fictional Accelerator Roadmap',
+    description: 'Three phases for a fictional cohort company.',
+    clientName: 'Example Ventures',
+    priority: 'HIGH',
+    category: 'ACCELERATOR',
+    tags: ['roadmap'],
+    metadata: { template: true },
+    status: 'IN_PROGRESS',
+    dueDate: new Date('2026-01-31T00:00:00.000Z'),
+    createdAt: new Date('2025-12-20T00:00:00.000Z'),
+    assignedToId: 'allowed-assignee',
+    contactId: null,
+    organizationId: null,
+    billByDefault: true,
+    defaultBillRate: null,
+    budgetHours: null,
+    budgetAmount: null,
+    roundingIncrementMinutes: null,
+    roundingMode: null,
+  } as any;
+
+  function makeCloneHarness(overrides: { sourceProject?: any; targetWorkspace?: string } = {}) {
+    const sourceTx = {
+      project: {
+        findFirst: jest.fn(async () =>
+          overrides.sourceProject !== undefined ? overrides.sourceProject : sourceProject,
+        ),
+      },
+      task: {
+        findMany: jest.fn(async () => [
+          {
+            id: 'task-child',
+            title: 'Phase child',
+            description: 'Child task',
+            type: 'TASK',
+            status: 'COMPLETED',
+            priority: 'MEDIUM',
+            dueDate: new Date('2026-01-08T00:00:00.000Z'),
+            createdAt: new Date('2026-01-02T00:00:00.000Z'),
+            parentTaskId: 'task-root',
+            assignedToId: 'foreign-assignee',
+            recurrenceRule: null,
+            recurrenceParentId: null,
+            estimatedHours: 2,
+            fixedAmount: null,
+            billable: null,
+            billRate: null,
+            metadata: { customFields: { phase: 'launch', removed_key: 'drop me' } },
+          },
+          {
+            id: 'task-root',
+            title: 'Phase root',
+            description: 'Root task',
+            type: 'MILESTONE',
+            status: 'IN_PROGRESS',
+            priority: 'HIGH',
+            dueDate: new Date('2026-01-01T00:00:00.000Z'),
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+            parentTaskId: null,
+            assignedToId: 'allowed-assignee',
+            recurrenceRule: 'FREQ=MONTHLY;INTERVAL=1',
+            recurrenceParentId: null,
+            estimatedHours: 4,
+            fixedAmount: 100,
+            billable: true,
+            billRate: 80,
+            metadata: { phase: 'discovery' },
+          },
+        ]),
+      },
+      taskDependency: {
+        findMany: jest.fn(async () => [
+          {
+            predecessorId: 'task-root',
+            successorId: 'task-child',
+            type: 'FINISH_TO_START',
+          },
+          {
+            predecessorId: 'external-task',
+            successorId: 'task-root',
+            type: 'START_TO_START',
+          },
+        ]),
+      },
+    };
+    const targetTaskCreates: any[] = [];
+    const targetTx = {
+      project: {
+        count: jest.fn(async () => 0),
+        create: jest.fn(async ({ data }: any) => ({
+          ...sourceProject,
+          ...data,
+          id: 'cloned-roadmap',
+          projectNumber: 'PROJ-2026-000002',
+        })),
+      },
+      task: {
+        create: jest.fn(async ({ data }: any) => {
+          const id = data.title === 'Phase root' ? 'cloned-root' : 'cloned-child';
+          const created = { id, ...data };
+          targetTaskCreates.push(created);
+          return created;
+        }),
+      },
+      taskDependency: {
+        create: jest.fn(async ({ data }: any) => ({ id: 'cloned-dependency', ...data })),
+      },
+      membership: {
+        findMany: jest.fn(async () => [{ userKey: 'allowed-assignee' }]),
+      },
+      user: {
+        findMany: jest.fn(async () => [
+          { id: 'allowed-assignee', keycloakId: null },
+          { id: 'foreign-assignee', keycloakId: null },
+        ]),
+      },
+      customFieldDefinition: {
+        findMany: jest.fn(async () => [{ entity: 'TASK', key: 'phase' }]),
+      },
+    };
+    const workspaceContext = {
+      resolveAuthorized: jest.fn(async () => 'workspace-a'),
+      assertCanWrite: jest.fn(async () => undefined),
+      runForUser: jest.fn(async (_u: any, fn: (tx: any) => any, workspaceId: string) =>
+        fn(workspaceId === (overrides.targetWorkspace ?? 'workspace-a') ? targetTx : sourceTx),
+      ),
+    };
+    const emit = jest.fn();
+    const auditService = { log: jest.fn(async () => undefined) };
+    const membership = { isTenancyEnabled: jest.fn(() => true) };
+    let runCount = 0;
+    const svc = new ProjectsService(
+      {} as any,
+      auditService as any,
+      workspaceContext as any,
+      { emit } as any,
+      undefined,
+      membership as any,
+    );
+    workspaceContext.runForUser.mockImplementation(async (_u: any, fn: (tx: any) => any) =>
+      fn(++runCount === 1 ? sourceTx : targetTx),
+    );
+    return { svc, sourceTx, targetTx, targetTaskCreates, workspaceContext, emit, auditService };
+  }
+
+  it('copies the tree, remaps parents/dependencies, shifts dates, and suppresses task events', async () => {
+    const h = makeCloneHarness({ targetWorkspace: 'workspace-b' });
+
+    const result = await h.svc.clone(
+      cloneUser,
+      'roadmap-template',
+      { targetWorkspaceId: 'workspace-b', startDate: '2026-02-01', dueDateMode: 'shift' },
+      'workspace-a',
+    );
+
+    expect(result).toMatchObject({
+      taskCount: 2,
+      dependencyCount: 1,
+      skipped: { dependencies: 1, assignees: 1, customFields: 1 },
+    });
+    expect(h.targetTaskCreates.map((task) => task.id)).toEqual(['cloned-root', 'cloned-child']);
+    expect(h.targetTaskCreates[0]).toMatchObject({
+      parentTaskId: null,
+      status: 'PENDING',
+      dueDate: new Date('2026-02-01T00:00:00.000Z'),
+      recurrenceRule: 'FREQ=MONTHLY;INTERVAL=1',
+    });
+    expect(h.targetTaskCreates[1]).toMatchObject({
+      parentTaskId: 'cloned-root',
+      assignedToId: null,
+      dueDate: new Date('2026-02-08T00:00:00.000Z'),
+      metadata: { customFields: { phase: 'launch' } },
+    });
+    expect(h.targetTx.taskDependency.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        predecessorId: 'cloned-root',
+        successorId: 'cloned-child',
+        workspaceId: 'workspace-b',
+      }),
+    });
+    expect(h.auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'CREATE', projectId: 'cloned-roadmap' }),
+      h.targetTx,
+    );
+    expect(h.emit).toHaveBeenCalledTimes(1);
+    expect(h.emit.mock.calls[0][0]).toBe(PROJECT_CREATED_EVENT);
+  });
+
+  it('clears task dates when dueDateMode is clear', async () => {
+    const h = makeCloneHarness();
+    await h.svc.clone(cloneUser, 'roadmap-template', { dueDateMode: 'clear' }, 'workspace-a');
+
+    expect(h.targetTaskCreates.every((task) => task.dueDate === null)).toBe(true);
+  });
+
+  it('returns not found when the source is outside the caller visibility filter', async () => {
+    const h = makeCloneHarness({ sourceProject: null });
+    await expect(
+      h.svc.clone(cloneUser, 'hidden-project', {}, 'workspace-a'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(h.targetTx.project.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a target workspace where the caller cannot create', async () => {
+    const h = makeCloneHarness({ targetWorkspace: 'workspace-b' });
+    h.workspaceContext.assertCanWrite.mockRejectedValue(new ForbiddenException('target denied'));
+
+    await expect(
+      h.svc.clone(
+        cloneUser,
+        'roadmap-template',
+        { targetWorkspaceId: 'workspace-b' },
+        'workspace-a',
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(h.targetTx.project.create).not.toHaveBeenCalled();
   });
 });

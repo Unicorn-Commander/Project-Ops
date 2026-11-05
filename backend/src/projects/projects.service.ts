@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   Logger,
   Optional,
   Inject,
@@ -13,7 +14,16 @@ import { MembershipService } from '../common/workspace/membership.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { AssignProjectDto } from './dto/assign-project.dto';
-import { Project, Prisma, ProjectStatus, TaskStatus, User, UserRole } from '@prisma/client';
+import {
+  CustomFieldEntity,
+  MembershipStatus,
+  Project,
+  Prisma,
+  ProjectStatus,
+  TaskStatus,
+  User,
+  UserRole,
+} from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { AuditService } from '../audit/audit.service';
 import { CUSTOM_FIELDS_SERVICE, CustomFieldsValidator } from './custom-fields.contract';
@@ -95,6 +105,139 @@ export interface ProjectBudget {
   pctAmount: number | null;
   overBudgetHours: boolean;
   overBudgetAmount: boolean;
+}
+
+export type CloneDueDateMode = 'keep' | 'shift' | 'clear';
+
+export interface CloneProjectOptions {
+  targetWorkspaceId?: string;
+  title?: string;
+  includeTasks?: boolean;
+  resetStatus?: boolean;
+  dueDateMode?: CloneDueDateMode;
+  startDate?: string;
+}
+
+export interface CloneProjectResult {
+  project: Project;
+  taskCount: number;
+  dependencyCount: number;
+  skipped: {
+    dependencies: number;
+    assignees: number;
+    customFields: number;
+  };
+}
+
+/**
+ * The descriptive, classification, and billing-policy fields shared by a
+ * recurring project instance and a project clone. Keep this list deliberately
+ * narrow: invoice state, completion state, recurrence links, and timestamps
+ * belong to the new row, not to the template copy.
+ */
+export function projectTemplateFields(project: Project): Record<string, any> {
+  return {
+    title: project.title,
+    description: project.description,
+    priority: project.priority,
+    category: project.category,
+    tags: project.tags === null ? Prisma.JsonNull : project.tags,
+    clientName: project.clientName,
+    clientEmail: project.clientEmail,
+    clientPhone: project.clientPhone,
+    contactId: project.contactId,
+    organizationId: project.organizationId,
+    assignedToId: project.assignedToId,
+    billByDefault: project.billByDefault,
+    defaultBillRate: project.defaultBillRate,
+    budgetHours: project.budgetHours,
+    budgetAmount: project.budgetAmount,
+    roundingIncrementMinutes: project.roundingIncrementMinutes,
+    roundingMode: project.roundingMode,
+    metadata: project.metadata === null ? Prisma.JsonNull : project.metadata,
+  };
+}
+
+function isJsonObject(value: unknown): value is Record<string, any> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function copyMetadataWithCustomFieldFilter(
+  metadata: Prisma.JsonValue | null | undefined,
+  allowedKeys: Set<string> | undefined,
+  skipped: { value: number },
+): any {
+  if (!isJsonObject(metadata)) {
+    return metadata === null || metadata === undefined ? Prisma.JsonNull : metadata;
+  }
+
+  const metadataObject = metadata as Record<string, any>;
+  if (!allowedKeys || !isJsonObject(metadataObject.customFields)) {
+    return { ...metadata };
+  }
+
+  const customFields: Record<string, any> = {};
+  for (const [key, value] of Object.entries(metadataObject.customFields)) {
+    if (allowedKeys.has(key)) {
+      customFields[key] = value;
+    } else {
+      skipped.value += 1;
+    }
+  }
+  return { ...metadata, customFields };
+}
+
+function asCloneDate(value: Date | string | null | undefined): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function dateForClone(
+  value: Date | string | null | undefined,
+  mode: CloneDueDateMode,
+  shiftMs: number,
+): Date | null {
+  const date = asCloneDate(value);
+  if (!date || mode === 'clear') return null;
+  return new Date(date.getTime() + (mode === 'shift' ? shiftMs : 0));
+}
+
+function taskCreatedOrder(
+  a: { createdAt?: Date | string | null; id: string },
+  b: { createdAt?: Date | string | null; id: string },
+) {
+  const aTime = asCloneDate(a.createdAt)?.getTime() ?? 0;
+  const bTime = asCloneDate(b.createdAt)?.getTime() ?? 0;
+  return aTime - bTime || a.id.localeCompare(b.id);
+}
+
+/** Return tasks in parent-before-child order, even when the DB order is flat. */
+function parentFirstTasks<
+  T extends { id: string; parentTaskId?: string | null; createdAt?: Date | string | null },
+>(tasks: T[]): T[] {
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  const children = new Map<string | null, T[]>();
+  for (const task of tasks) {
+    const parentId = task.parentTaskId && byId.has(task.parentTaskId) ? task.parentTaskId : null;
+    const siblings = children.get(parentId) ?? [];
+    siblings.push(task);
+    children.set(parentId, siblings);
+  }
+  for (const siblings of children.values()) siblings.sort(taskCreatedOrder);
+
+  const result: T[] = [];
+  const visited = new Set<string>();
+  const visit = (task: T) => {
+    if (visited.has(task.id)) return;
+    visited.add(task.id);
+    result.push(task);
+    for (const child of children.get(task.id) ?? []) visit(child);
+  };
+
+  for (const root of children.get(null) ?? []) visit(root);
+  for (const task of [...tasks].sort(taskCreatedOrder)) visit(task);
+  return result;
 }
 
 /**
@@ -325,6 +468,425 @@ export class ProjectsService {
       `Project created: ${projectData.projectNumber} by user ${user.id} ws=${workspaceId}`,
     );
     return projectData;
+  }
+
+  /**
+   * Clone a visible project into its source workspace or an explicitly
+   * authorized target workspace. Source reads and target writes intentionally
+   * use separate workspace transactions: a cross-workspace clone must never
+   * carry a source RLS GUC into the target write.
+   *
+   * `sourceWorkspaceId` is supplied by REST/MCP when the request explicitly
+   * addressed a workspace. Direct callers may omit it and let the workspace
+   * context resolve the user's active workspace.
+   */
+  async clone(
+    user: User,
+    sourceProjectId: string,
+    options: CloneProjectOptions = {},
+    sourceWorkspaceId?: string,
+  ): Promise<CloneProjectResult> {
+    if (!sourceProjectId?.trim()) {
+      throw new BadRequestException('sourceProjectId is required');
+    }
+    if (user.role === UserRole.CLIENT) {
+      throw new ForbiddenException('Read-only role — clients cannot clone projects.');
+    }
+
+    const sourceWorkspace = await this.resolveCloneSourceWorkspace(user, sourceWorkspaceId);
+    const targetWorkspace = options.targetWorkspaceId?.trim() || sourceWorkspace;
+    const visibility = await this.buildCloneVisibilityWhere(user, sourceWorkspace);
+    const includeTasks = options.includeTasks !== false;
+
+    const source = await this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const project = await tx.project.findFirst({
+          where: {
+            AND: [{ id: sourceProjectId, workspaceId: sourceWorkspace }, visibility],
+          },
+        });
+        if (!project) {
+          throw new NotFoundException(`Project with ID ${sourceProjectId} not found`);
+        }
+
+        if (!includeTasks) {
+          return { project, tasks: [], dependencies: [] };
+        }
+
+        const allTasks = await tx.task.findMany({
+          where: { projectId: project.id, workspaceId: sourceWorkspace },
+          orderBy: { createdAt: 'asc' },
+        });
+        // A recurrence instance is a materialized copy, not part of the
+        // template tree. Clone the template and ordinary tasks only; the
+        // copied recurrenceRule will materialize future instances normally.
+        const tasks = allTasks.filter((task: any) => task.recurrenceParentId == null);
+        const allTaskIds = allTasks.map((task: any) => task.id);
+        const dependencies =
+          allTaskIds.length > 0 && tx.taskDependency?.findMany
+            ? await tx.taskDependency.findMany({
+                where: {
+                  OR: [{ predecessorId: { in: allTaskIds } }, { successorId: { in: allTaskIds } }],
+                },
+              })
+            : [];
+        return { project, tasks: parentFirstTasks(tasks), dependencies };
+      },
+      sourceWorkspace,
+    );
+
+    if (targetWorkspace !== sourceWorkspace) {
+      const context = this.workspaceContext as WorkspaceContextService & {
+        assertCanWrite?: (actingUser: User, workspaceId: string) => Promise<void>;
+      };
+      if (typeof context.assertCanWrite === 'function') {
+        await context.assertCanWrite(user, targetWorkspace);
+      } else if (this.membership) {
+        await this.membership.assertCanWrite(user, targetWorkspace);
+      }
+    }
+
+    const clonedAt = new Date().toISOString();
+    const targetResult = await this.workspaceContext.runForUser(
+      user,
+      async (tx) => {
+        const skipped = { dependencies: 0, assignees: 0, customFields: 0 };
+        const allAssigneeIds = [
+          source.project.assignedToId,
+          ...source.tasks.map((task: any) => task.assignedToId),
+        ].filter((id): id is string => Boolean(id));
+        const allowedAssigneeIds = await this.loadTargetAssigneeIds(
+          tx,
+          targetWorkspace,
+          allAssigneeIds,
+        );
+        const customFieldKeys =
+          targetWorkspace !== sourceWorkspace
+            ? await this.loadTargetCustomFieldKeys(tx, targetWorkspace)
+            : undefined;
+
+        const projectAssignedToId = source.project.assignedToId;
+        if (projectAssignedToId && !allowedAssigneeIds.has(projectAssignedToId)) {
+          skipped.assignees += 1;
+        }
+
+        const projectFields = projectTemplateFields(source.project);
+        projectFields.title = options.title?.trim() || `${source.project.title} (copy)`;
+        projectFields.assignedToId = projectAssignedToId
+          ? allowedAssigneeIds.has(projectAssignedToId)
+            ? projectAssignedToId
+            : null
+          : null;
+        projectFields.contactId = await this.relationIdForTarget(
+          tx,
+          'contact',
+          source.project.contactId,
+          sourceWorkspace,
+          targetWorkspace,
+        );
+        projectFields.organizationId = await this.relationIdForTarget(
+          tx,
+          'organization',
+          source.project.organizationId,
+          sourceWorkspace,
+          targetWorkspace,
+        );
+
+        const projectMetadataSkipped = { value: 0 };
+        const projectMetadata = copyMetadataWithCustomFieldFilter(
+          source.project.metadata,
+          customFieldKeys?.PROJECT,
+          projectMetadataSkipped,
+        );
+        if (projectMetadataSkipped.value) skipped.customFields += projectMetadataSkipped.value;
+        const metadataBase = isJsonObject(projectMetadata) ? projectMetadata : {};
+        metadataBase.clonedFrom = {
+          projectId: source.project.id,
+          workspaceId: sourceWorkspace,
+          clonedAt,
+          byUserId: user.id,
+        };
+
+        const projectNumber = await this.generateProjectNumber(tx);
+        const dueDateMode = options.dueDateMode ?? 'shift';
+        const targetStart = this.parseCloneStartDate(options.startDate);
+        const sourceAnchor = this.cloneDateAnchor(source.project, source.tasks);
+        const shiftMs =
+          dueDateMode === 'shift' && targetStart && sourceAnchor
+            ? targetStart.getTime() - sourceAnchor.getTime()
+            : 0;
+
+        const project = await tx.project.create({
+          data: {
+            ...projectFields,
+            workspaceId: targetWorkspace,
+            projectNumber,
+            createdById: user.id,
+            status: ProjectStatus.NEW,
+            completedAt: null,
+            dueDate: dateForClone(source.project.dueDate, dueDateMode, shiftMs),
+            recurrenceRule: null,
+            recurrenceParentId: null,
+            metadata: metadataBase,
+          } as Prisma.ProjectUncheckedCreateInput,
+          include: {
+            contact: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                phone: true,
+                company: true,
+              },
+            },
+            createdBy: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+            assignedTo: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        });
+
+        await this.auditService.log(
+          {
+            workspaceId: targetWorkspace,
+            userId: user.id,
+            projectId: project.id,
+            action: 'CREATE',
+            resource: 'Project',
+            resourceId: project.id,
+            details: {
+              projectNumber: project.projectNumber,
+              clonedFrom: { projectId: source.project.id, workspaceId: sourceWorkspace },
+            },
+          },
+          tx,
+        );
+
+        const taskIdMap = new Map<string, string>();
+        let taskCount = 0;
+        for (const task of source.tasks as any[]) {
+          if (task.assignedToId && !allowedAssigneeIds.has(task.assignedToId)) {
+            skipped.assignees += 1;
+          }
+          const taskMetadataSkipped = { value: 0 };
+          const taskMetadata = copyMetadataWithCustomFieldFilter(
+            task.metadata,
+            customFieldKeys?.TASK,
+            taskMetadataSkipped,
+          );
+          skipped.customFields += taskMetadataSkipped.value;
+
+          const createdTask = await tx.task.create({
+            data: {
+              workspaceId: targetWorkspace,
+              projectId: project.id,
+              title: task.title,
+              description: task.description,
+              type: task.type,
+              status: options.resetStatus === false ? task.status : TaskStatus.PENDING,
+              priority: task.priority,
+              dueDate: dateForClone(task.dueDate, dueDateMode, shiftMs),
+              completedAt: null,
+              createdById: user.id,
+              assignedToId:
+                task.assignedToId && allowedAssigneeIds.has(task.assignedToId)
+                  ? task.assignedToId
+                  : null,
+              parentTaskId: task.parentTaskId ? (taskIdMap.get(task.parentTaskId) ?? null) : null,
+              recurrenceRule: task.recurrenceRule ?? null,
+              recurrenceParentId: null,
+              estimatedHours: task.estimatedHours,
+              metadata: taskMetadata,
+              billable: task.billable ?? null,
+              billRate: task.billRate,
+              fixedAmount: task.fixedAmount,
+              invoicedAt: null,
+              invoiceExternalRef: null,
+            },
+          });
+          taskIdMap.set(task.id, createdTask.id);
+          taskCount += 1;
+        }
+
+        let dependencyCount = 0;
+        for (const dependency of source.dependencies as any[]) {
+          const predecessorId = taskIdMap.get(dependency.predecessorId);
+          const successorId = taskIdMap.get(dependency.successorId);
+          if (!predecessorId || !successorId) {
+            skipped.dependencies += 1;
+            continue;
+          }
+          await tx.taskDependency.create({
+            data: {
+              workspaceId: targetWorkspace,
+              predecessorId,
+              successorId,
+              type: dependency.type,
+              createdById: user.id,
+            },
+          });
+          dependencyCount += 1;
+        }
+
+        return { project, taskCount, dependencyCount, skipped };
+      },
+      targetWorkspace,
+    );
+
+    // Project creation events are emitted only after the target transaction
+    // commits. Tasks are inserted directly above, intentionally bypassing the
+    // per-task `task.created` / `task.assigned` event path and its notification
+    // fan-out for a clone of a large roadmap.
+    this.eventEmitter.emit(PROJECT_CREATED_EVENT, {
+      workspaceId: targetWorkspace,
+      projectId: targetResult.project.id,
+      actorId: user.id,
+      project: targetResult.project,
+    } satisfies ProjectCreatedEvent);
+
+    return targetResult;
+  }
+
+  private async resolveCloneSourceWorkspace(user: User, requested?: string): Promise<string> {
+    if (requested?.trim()) return requested.trim();
+    const context = this.workspaceContext as WorkspaceContextService & {
+      resolveAuthorized?: (actingUser: User, workspaceId?: string) => Promise<string>;
+      resolve?: (actingUser: User) => string;
+    };
+    if (typeof context.resolveAuthorized === 'function') {
+      return context.resolveAuthorized(user);
+    }
+    if (typeof context.resolve === 'function') return context.resolve(user);
+    throw new BadRequestException('A source workspace is required to clone a project');
+  }
+
+  private async buildCloneVisibilityWhere(
+    user: User,
+    workspaceId: string,
+  ): Promise<Prisma.ProjectWhereInput> {
+    if (user.role === UserRole.ADMIN || user.role === UserRole.MANAGER) return {};
+    if (
+      user.role === UserRole.STAFF &&
+      !(await this.membership?.hasManagementRole(user, workspaceId))
+    ) {
+      return { OR: [{ assignedToId: user.id }, { createdById: user.id }] };
+    }
+    return {
+      OR: [{ createdById: user.id }, { contactId: user.id }, { contact: { userId: user.id } }],
+    };
+  }
+
+  private parseCloneStartDate(value?: string): Date | null {
+    if (!value) return null;
+    try {
+      return coerceDateOnly(value);
+    } catch {
+      throw new BadRequestException('startDate must be a valid ISO date');
+    }
+  }
+
+  private cloneDateAnchor(project: Project, tasks: any[]): Date | null {
+    const taskDates = tasks
+      .map((task) => asCloneDate(task.dueDate))
+      .filter((date): date is Date => date !== null)
+      .sort((a, b) => a.getTime() - b.getTime());
+    return taskDates[0] ?? asCloneDate(project.dueDate) ?? asCloneDate(project.createdAt);
+  }
+
+  private async loadTargetCustomFieldKeys(
+    tx: WorkspaceTxClient,
+    workspaceId: string,
+  ): Promise<{ TASK: Set<string>; PROJECT: Set<string> }> {
+    if (!tx.customFieldDefinition?.findMany) {
+      return { TASK: new Set(), PROJECT: new Set() };
+    }
+    const definitions = await tx.customFieldDefinition.findMany({
+      where: {
+        workspaceId,
+        entity: { in: [CustomFieldEntity.TASK, CustomFieldEntity.PROJECT] },
+      },
+      select: { entity: true, key: true },
+    });
+    return {
+      TASK: new Set(
+        definitions
+          .filter((definition: any) => definition.entity === CustomFieldEntity.TASK)
+          .map((definition: any) => definition.key),
+      ),
+      PROJECT: new Set(
+        definitions
+          .filter((definition: any) => definition.entity === CustomFieldEntity.PROJECT)
+          .map((definition: any) => definition.key),
+      ),
+    };
+  }
+
+  private async loadTargetAssigneeIds(
+    tx: WorkspaceTxClient,
+    workspaceId: string,
+    ids: string[],
+  ): Promise<Set<string>> {
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.length === 0) return new Set();
+
+    const memberships = tx.membership?.findMany
+      ? await tx.membership.findMany({
+          where: { workspaceId, status: MembershipStatus.ACTIVE },
+          select: { userKey: true },
+        })
+      : [];
+
+    // With tenancy disabled, memberships are not the authority and legacy
+    // single-workspace users remain valid assignees. In a live tenant, an
+    // empty result correctly means none of these users may be carried over.
+    if (memberships.length === 0 && !this.membership?.isTenancyEnabled?.()) {
+      return new Set(uniqueIds);
+    }
+
+    const users = tx.user?.findMany
+      ? await tx.user.findMany({
+          where: { id: { in: uniqueIds } },
+          select: { id: true, keycloakId: true },
+        })
+      : [];
+    const keysById = new Map(
+      users.map((candidate: any) => [candidate.id, candidate.keycloakId ?? candidate.id]),
+    );
+    const allowedKeys = new Set(memberships.map((membership: any) => membership.userKey));
+    return new Set(
+      uniqueIds.filter((id) => allowedKeys.has(keysById.get(id) ?? id) || allowedKeys.has(id)),
+    );
+  }
+
+  private async relationIdForTarget(
+    tx: WorkspaceTxClient,
+    relation: 'contact' | 'organization',
+    id: string | null | undefined,
+    sourceWorkspaceId: string,
+    targetWorkspaceId: string,
+  ): Promise<string | null> {
+    if (!id || sourceWorkspaceId === targetWorkspaceId) return id ?? null;
+    const delegate = (tx as any)[relation];
+    if (!delegate?.findUnique) return null;
+    const targetRow = await delegate.findUnique({
+      where: { id },
+      select: { id: true, workspaceId: true },
+    });
+    return targetRow?.workspaceId === targetWorkspaceId ? id : null;
   }
 
   /**

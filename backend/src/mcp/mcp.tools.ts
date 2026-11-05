@@ -40,6 +40,7 @@ import type { TimesheetService } from '../time-tracking/timesheet.service';
 import type { ReportsService } from '../time-tracking/reports.service';
 import type { BillableRollupService } from '../time-tracking/billing/billable-rollup.service';
 import type { WorkspaceContextService } from '../common/workspace/workspace-context.service';
+import type { CloneProjectOptions, ProjectsService } from '../projects/projects.service';
 // Wave 2 services (type-only imports — erased at compile time, so no runtime
 // cycle). The MCP tools delegate to these exact services so an agent inherits
 // their RBAC + workspace-RLS + validation, identical to the REST controllers.
@@ -303,6 +304,10 @@ export class ProjectOpsTools {
     // Optional for pure MCP tool unit tests; the application wires AuditModule
     // so dependency overrides are recorded in the workspace audit log.
     private readonly audit?: AuditService,
+    // Project cloning delegates to the REST service so source visibility,
+    // target-workspace authorization, audit, and cross-workspace RLS stay in
+    // one implementation.
+    private readonly projects?: ProjectsService,
   ) {}
 
   // ── Workspace (suite tenancy, Phase 2 G2) ────────────────
@@ -2087,6 +2092,39 @@ export class ProjectOpsTools {
     });
     this.logger.log(`MCP create_project: user=${user.email} project=${project.projectNumber}`);
     return project;
+  }
+
+  async cloneProject(
+    user: User,
+    args: {
+      projectId: string;
+      targetWorkspaceId?: string;
+      title?: string;
+      includeTasks?: boolean;
+      resetStatus?: boolean;
+      dueDateMode?: 'keep' | 'shift' | 'clear';
+      startDate?: string;
+    },
+  ) {
+    this.assertCanWrite(user);
+    if (!this.projects) {
+      throw new Error('Project cloning is not enabled on this server');
+    }
+    if (!args?.projectId?.trim()) {
+      throw new Error('projectId is required');
+    }
+    const sourceWorkspaceId =
+      this.requestWorkspaceId ??
+      (await this.requireWorkspace().resolveAuthorized(user, this.requestWorkspaceId));
+    const options: CloneProjectOptions = {
+      targetWorkspaceId: args.targetWorkspaceId,
+      title: args.title,
+      includeTasks: args.includeTasks,
+      resetStatus: args.resetStatus,
+      dueDateMode: args.dueDateMode,
+      startDate: args.startDate,
+    };
+    return this.projects.clone(user, args.projectId, options, sourceWorkspaceId);
   }
 
   async updateProjectStatus(

@@ -184,6 +184,44 @@ describe('ProjectOpsTools.assertCanWrite', () => {
   });
 });
 
+describe('ProjectOpsTools.cloneProject', () => {
+  it('delegates to ProjectsService with the request-addressed source workspace', async () => {
+    const clone = jest.fn(async () => ({ project: { id: 'clone-1' } }));
+    const projects = { clone } as any;
+    const workspace = { resolveAuthorized: jest.fn(async () => 'workspace-a') } as any;
+    const tools = new ProjectOpsTools(
+      {} as any,
+      {} as any,
+      { log: () => {}, warn: () => {} },
+      undefined,
+      undefined,
+      null,
+      workspace,
+      undefined,
+      undefined,
+      undefined,
+      'workspace-a',
+      undefined,
+      projects,
+    );
+    const user = baseUser({ role: UserRole.STAFF });
+
+    await tools.cloneProject(user, {
+      projectId: 'fictional-roadmap',
+      targetWorkspaceId: 'workspace-b',
+      dueDateMode: 'shift',
+      startDate: '2026-11-16',
+    });
+
+    expect(clone).toHaveBeenCalledWith(
+      user,
+      'fictional-roadmap',
+      expect.objectContaining({ targetWorkspaceId: 'workspace-b', dueDateMode: 'shift' }),
+      'workspace-a',
+    );
+  });
+});
+
 describe('ProjectOpsTools.listMyTasks — filters + pagination window', () => {
   const WS_ID = 'ws-1';
 

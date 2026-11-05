@@ -90,6 +90,29 @@ describe('McpService tool gating (RBAC + workspace)', () => {
     resetMcpMetricsForTests();
   });
 
+  it('registers the clone tool in the complete 65-tool surface', async () => {
+    const previous = process.env.TIME_TRACKING_ENABLED;
+    process.env.TIME_TRACKING_ENABLED = 'true';
+    try {
+      const svc = makeService('ws-1');
+      await svc.createServerForUser(adminUser(), null, null, null);
+      expect(registered.size).toBe(65);
+      expect(registered.has('clone_project')).toBe(true);
+      const schema = z.object(registeredSchemas.get('clone_project').inputSchema);
+      expect(
+        schema.safeParse({
+          projectId: 'fictional-roadmap',
+          targetWorkspaceId: 'workspace-b',
+          dueDateMode: 'shift',
+          startDate: '2026-11-16',
+        }).success,
+      ).toBe(true);
+    } finally {
+      if (previous === undefined) delete process.env.TIME_TRACKING_ENABLED;
+      else process.env.TIME_TRACKING_ENABLED = previous;
+    }
+  });
+
   it('records denied metrics when PAT scope gate refuses a tool', async () => {
     const svc = makeService('ws-1');
     await svc.createServerForUser(adminUser(), ['read:projects'], 'tok', null);
