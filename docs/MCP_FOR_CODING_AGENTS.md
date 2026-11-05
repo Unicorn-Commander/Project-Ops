@@ -98,3 +98,12 @@ Omitting `expiresAt` creates a non-expiring PAT in this API, so always set it.
 
 For an optional OIDC instance, the normal browser session can authenticate the
 same PAT route. No direct JWT signing or access to the database is required.
+
+## Short ids
+
+MCP tools that take a `taskId`, `projectId`/`id`, `documentId`, `commentId`, or
+`dependencyId` accept the full UUID **or** an unambiguous prefix of 8+ hex
+characters (dashes optional, case-insensitive). One visible match is enough;
+zero matches is the usual not-found error; two or more matches return
+`ambiguous id prefix` and ask for more characters. REST paths still require the
+full UUID.
