@@ -25,7 +25,9 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { EditProjectModal } from "@/components/modals/edit-project-modal";
+import { CloneProjectDialog } from "@/components/modals/clone-project-dialog";
 import { StatusUpdate } from "@/components/project/status-update";
+import { useWorkspace } from "@/components/workspace-provider";
 import { AssignProject } from "@/components/project/assign-project";
 import { CommentThread } from "@/components/comments/comment-thread";
 import { SITE_HOST } from "@/lib/site";
@@ -72,6 +74,7 @@ import {
   CheckSquare,
   Plus,
   Printer,
+  Copy,
   FolderX,
   GanttChartSquare,
   ChevronDown,
@@ -126,7 +129,12 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [budget, setBudget] = useState<ProjectBudget | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const { activeWorkspace, isLoading: workspaceLoading } = useWorkspace();
+  const workspaceCanWrite =
+    !workspaceLoading &&
+    ["OWNER", "ADMIN", "MANAGER", "MEMBER"].includes(activeWorkspace?.role ?? "");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [loadedTasksProjectId, setLoadedTasksProjectId] = useState<string | null>(null);
@@ -370,6 +378,15 @@ export default function ProjectDetailPage() {
     return userRole === "ADMIN" || userRole === "MANAGER";
   };
 
+  // Same gate as create: app role ADMIN/MANAGER/STAFF (CLIENT is read-only)
+  // and a write membership on the source workspace.
+  const canCloneProject = () => {
+    return (
+      workspaceCanWrite &&
+      (userRole === "ADMIN" || userRole === "MANAGER" || userRole === "STAFF")
+    );
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -474,7 +491,7 @@ export default function ProjectDetailPage() {
             })()}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
             variant="outline"
             onClick={() => window.print()}
@@ -483,6 +500,16 @@ export default function ProjectDetailPage() {
             <Printer className="mr-2 h-4 w-4" />
             Print
           </Button>
+          {canCloneProject() && (
+            <Button
+              variant="outline"
+              onClick={() => setCloneDialogOpen(true)}
+              title="Copy this project, with its tasks, into a workspace you can write"
+            >
+              <Copy className="mr-2 h-4 w-4" />
+              Clone project…
+            </Button>
+          )}
           {canEditProject() && (
             <Button
               variant="outline"
@@ -838,6 +865,17 @@ export default function ProjectDetailPage() {
                   />
                 </div>
 
+                {canCloneProject() && (
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start"
+                    onClick={() => setCloneDialogOpen(true)}
+                  >
+                    <Copy className="mr-2 h-4 w-4" />
+                    Clone project…
+                  </Button>
+                )}
+
                 {canAssignProject() && (
                   <div>
                     <label className="text-sm font-medium text-muted-foreground mb-2 block">
@@ -1087,6 +1125,15 @@ export default function ProjectDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {canCloneProject() && (
+        <CloneProjectDialog
+          open={cloneDialogOpen}
+          onOpenChange={setCloneDialogOpen}
+          projectId={projectData.id}
+          projectTitle={projectData.title}
+        />
+      )}
     </div>
   );
 }
