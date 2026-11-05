@@ -49,3 +49,88 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+/**
+ * Body for POST /projects/:projectId/clone (CloneProjectDto).
+ * The source workspace is the active workspace: api's request interceptor
+ * sets `X-Workspace-Id` the same way every other project call does. Do not
+ * put the target workspace in that header — it belongs in `targetWorkspaceId`.
+ */
+export type CloneDueDateMode = 'keep' | 'shift' | 'clear';
+
+export interface CloneProjectOptions {
+  targetWorkspaceId?: string;
+  title?: string;
+  includeTasks?: boolean;
+  resetStatus?: boolean;
+  dueDateMode?: CloneDueDateMode;
+  /** YYYY-MM-DD. Sent only when dueDateMode is `shift`. */
+  startDate?: string;
+}
+
+export interface CloneProjectResult {
+  project: {
+    id: string;
+    title: string;
+    projectNumber?: string;
+    workspaceId?: string;
+  };
+  taskCount: number;
+  dependencyCount: number;
+  skipped: {
+    dependencies: number;
+    assignees: number;
+    customFields: number;
+  };
+}
+
+const CLONE_DUE_DATE_MODES: readonly CloneDueDateMode[] = ['keep', 'shift', 'clear'];
+
+/** Request path + JSON body for a clone. Defaults match the API: copy tasks, reset status, shift dates. */
+export function buildCloneProjectRequest(
+  projectId: string,
+  options: CloneProjectOptions = {},
+): { url: string; body: Record<string, unknown> } {
+  const id = projectId.trim();
+  if (!id) {
+    throw new Error('projectId is required');
+  }
+
+  const dueDateMode = options.dueDateMode ?? 'shift';
+  if (!CLONE_DUE_DATE_MODES.includes(dueDateMode)) {
+    throw new Error('dueDateMode must be keep, shift, or clear');
+  }
+
+  const body: Record<string, unknown> = {
+    includeTasks: options.includeTasks !== false,
+    resetStatus: options.resetStatus !== false,
+    dueDateMode,
+  };
+
+  const title = options.title?.trim();
+  if (title) {
+    body.title = title;
+  }
+
+  const targetWorkspaceId = options.targetWorkspaceId?.trim();
+  if (targetWorkspaceId) {
+    body.targetWorkspaceId = targetWorkspaceId;
+  }
+
+  const startDate = options.startDate?.trim();
+  if (dueDateMode === 'shift' && startDate) {
+    body.startDate = startDate;
+  }
+
+  return { url: `/projects/${id}/clone`, body };
+}
+
+/** Clone a project. Throws the axios error on failure; callers show it. */
+export async function cloneProject(
+  projectId: string,
+  options: CloneProjectOptions = {},
+): Promise<CloneProjectResult> {
+  const request = buildCloneProjectRequest(projectId, options);
+  const response = await api.post<CloneProjectResult>(request.url, request.body);
+  return response.data;
+}
