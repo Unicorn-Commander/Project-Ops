@@ -1,23 +1,15 @@
 import { generateKeyPairSync } from 'crypto';
 import { ConfigService } from '@nestjs/config';
-import * as jwt from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';
 import { AuthService } from '../auth.service';
 import { JwtStrategy } from './jwt.strategy';
+import { setJwksPublicKey } from '../../test-compat/jwks-rsa';
 
 let jwksPublicKey = '';
 
-// The strategy receives a test JWKS client, never a live endpoint. The key is
-// generated below for this test process and is not a repository credential.
-jest.mock('jwks-rsa', () => ({
-  __esModule: true,
-  default: jest.fn(() => ({
-    getSigningKey: (_kid: string, callback: (error: Error | null, key?: any) => void) =>
-      callback(null, { getPublicKey: () => jwksPublicKey }),
-  })),
-}));
-
 const publicKeyPair = generateKeyPairSync('rsa', { modulusLength: 2048 });
 jwksPublicKey = publicKeyPair.publicKey.export({ format: 'pem', type: 'spki' }).toString();
+setJwksPublicKey(jwksPublicKey);
 
 const REALM_ISSUER = 'https://auth.example.com/realms/uchub';
 const LOCAL_SECRET = 'synthetic-local-secret-for-signature-tests';

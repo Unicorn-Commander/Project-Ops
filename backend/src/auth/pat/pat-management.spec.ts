@@ -6,7 +6,7 @@ import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
 import request from 'supertest';
-import * as jwt from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';
 import { JwtStrategy } from '../strategies/jwt.strategy';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PatManagementGuard } from '../guards/pat-management.guard';

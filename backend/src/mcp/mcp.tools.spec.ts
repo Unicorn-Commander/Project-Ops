@@ -14,6 +14,7 @@
 
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { TaskStatus, User, UserRole } from '@prisma/client';
+import { MCP_TOOL_SCOPE_MAP } from '../auth/pat/pat.constants';
 import {
   ProjectOpsTools,
   buildVisibilityFilter,
@@ -2237,9 +2238,6 @@ describe('ProjectOpsTools — document update/delete MCP parity', () => {
 describe('document mutate MCP PAT scopes', () => {
   // Fail-closed: unmapped tools refuse PAT calls. Keep write:documents parity
   // with upload_document.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { MCP_TOOL_SCOPE_MAP } = require('../auth/pat/pat.constants');
-
   it('maps update_document and delete_document to write:documents', () => {
     expect(MCP_TOOL_SCOPE_MAP['update_document']).toBe('write:documents');
     expect(MCP_TOOL_SCOPE_MAP['delete_document']).toBe('write:documents');

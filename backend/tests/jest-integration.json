@@ -4,11 +4,24 @@
   "roots": ["<rootDir>/tests"],
   "testRegex": ".*\\.integration\\.test\\.ts$",
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "useESM": true,
+        "tsconfig": {
+          "module": "ESNext",
+          "moduleResolution": "Node"
+        }
+      }
+    ]
   },
+  "extensionsToTreatAsEsm": [".ts"],
   "moduleNameMapper": {
-    "^@/(.*)$": "<rootDir>/src/$1"
+    "^@/(.*)$": "<rootDir>/src/$1",
+    "^@nestjs/throttler$": "<rootDir>/src/test-compat/throttler.ts",
+    "^(\\.{1,2}/.*)\\.js$": "$1"
   },
+  "setupFilesAfterEnv": ["<rootDir>/src/jest.setup.ts"],
   "testEnvironment": "node",
   "testTimeout": 30000
 }

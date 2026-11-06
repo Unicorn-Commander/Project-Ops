@@ -15,28 +15,21 @@
  * this test pins the GATE, which the rest of the suite did not cover.
  */
 
-// Replace the SDK server with a fake that records (name -> gated handler).
 const registered = new Map<string, (args: any) => Promise<any> | any>();
 const registeredSchemas = new Map<string, any>();
-jest.mock(
-  '@modelcontextprotocol/sdk/server/mcp.js',
-  () => ({
-    McpServer: class {
-      registerTool(name: string, schema: unknown, handler: (args: any) => any) {
-        registered.set(name, handler);
-        registeredSchemas.set(name, schema);
-      }
-    },
-  }),
-  { virtual: true },
-);
 
 import { Logger } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { z } from 'zod';
+import { setMcpToolRegistration } from '../test-compat/mcp';
 import { McpService } from './mcp.service';
 import { ProjectOpsTools } from './mcp.tools';
 import { getMcpMetricsSnapshot, resetMcpMetricsForTests } from './mcp.metrics';
+
+setMcpToolRegistration((name, schema, handler) => {
+  registered.set(name, handler);
+  registeredSchemas.set(name, schema);
+});
 
 /** Minimal user; the gate only reads identity for workspace resolution. */
 const adminUser = () =>

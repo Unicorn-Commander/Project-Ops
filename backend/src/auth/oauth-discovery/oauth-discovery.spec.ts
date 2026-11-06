@@ -13,10 +13,11 @@ import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { generateKeyPairSync } from 'crypto';
 import { UserRole } from '@prisma/client';
-import * as jwt from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { JwtStrategy } from '../strategies/jwt.strategy';
+import { setJwksPublicKey } from '../../test-compat/jwks-rsa';
 import { AuthService } from '../auth.service';
 import { NoWorkspaceAccessException } from '../no-workspace-access.exception';
 import { __resetAccessListCacheForTests } from '../access-list';
@@ -30,16 +31,9 @@ import { OAuthDiscoveryService } from './oauth-discovery.service';
 
 let jwksPublicKey = '';
 
-jest.mock('jwks-rsa', () => ({
-  __esModule: true,
-  default: jest.fn(() => ({
-    getSigningKey: (_kid: string, callback: (error: Error | null, key?: any) => void) =>
-      callback(null, { getPublicKey: () => jwksPublicKey }),
-  })),
-}));
-
 const keyPair = generateKeyPairSync('rsa', { modulusLength: 2048 });
 jwksPublicKey = keyPair.publicKey.export({ format: 'pem', type: 'spki' }).toString();
+setJwksPublicKey(jwksPublicKey);
 const localSecret = 'synthetic-local-secret-for-oauth-tests';
 const realmIssuer = 'https://auth.example.com/realms/uchub';
 

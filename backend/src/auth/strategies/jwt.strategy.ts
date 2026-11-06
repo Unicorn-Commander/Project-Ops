@@ -2,7 +2,7 @@ import { ForbiddenException, Injectable, UnauthorizedException, Logger } from '@
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
-import * as jsonwebtoken from 'jsonwebtoken';
+import jsonwebtoken from 'jsonwebtoken';
 import type { Algorithm, VerifyOptions } from 'jsonwebtoken';
 import jwksClient, { JwksClient } from 'jwks-rsa';
 import { AuthService, JwtPayload } from '../auth.service';

@@ -171,7 +171,7 @@ jobs:
         env:
           INVITATION_ADMIN_DATABASE_URL: postgresql://postgres:REMOVED@postgres:5432/project_ops?schema=public
           INVITATION_APP_DATABASE_URL: postgresql://project_ops_app:REMOVED@postgres:5432/project_ops?schema=public
-        run: npx jest --config tests/jest-integration.json --runInBand --runTestsByPath tests/integration/invitations/workspace-invitations.integration.test.ts tests/integration/users/public-user.integration.test.ts
+        run: node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config tests/jest-integration.json --runInBand --runTestsByPath tests/integration/invitations/workspace-invitations.integration.test.ts tests/integration/users/public-user.integration.test.ts
 
   # ---------------------------------------------------------------------------
   # FRONTEND — install, lint, typecheck, production build.

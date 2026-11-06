@@ -25,11 +25,7 @@ export interface QuoteSummaryRequest {
 }
 
 export type CustomerOpsFailureReason =
-  | 'UNCONFIGURED'
-  | 'UNREACHABLE'
-  | 'DENIED'
-  | 'NOT_FOUND'
-  | 'ERROR';
+  'UNCONFIGURED' | 'UNREACHABLE' | 'DENIED' | 'NOT_FOUND' | 'ERROR';
 
 export type QuoteSummaryResult =
   | { ok: true; summary: QuoteSummary }

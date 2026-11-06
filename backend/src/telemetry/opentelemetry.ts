@@ -2,8 +2,8 @@ import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { JaegerExporter } from '@opentelemetry/exporter-jaeger';
 import { PrometheusExporter } from '@opentelemetry/exporter-prometheus';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 
 export function initializeOpenTelemetry() {
   const otelEnabled = process.env.OTEL_ENABLED === 'true';
@@ -33,9 +33,9 @@ export function initializeOpenTelemetry() {
   );
 
   const sdk = new NodeSDK({
-    resource: new Resource({
-      [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
-      [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+    resource: resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: serviceName,
+      [ATTR_SERVICE_VERSION]: '1.0.0',
     }),
     traceExporter: jaegerExporter,
     instrumentations: [

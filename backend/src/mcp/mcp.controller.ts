@@ -1,4 +1,5 @@
 import { WorkspaceWriteException } from '../common/workspace/workspace-write-policy.decorator';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 /**
  * Streamable HTTP transport endpoint for the Project Ops MCP server.
  *
@@ -91,12 +92,6 @@ export class McpController {
     const authHeader = req.headers.authorization;
     const bearerToken =
       authHeader && /^Bearer\s+/i.test(authHeader) ? authHeader.replace(/^Bearer\s+/i, '') : null;
-
-    const {
-      StreamableHTTPServerTransport,
-      // Preserve lazy CommonJS SDK loading used by the existing runtime.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-    } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 
     const transport = new StreamableHTTPServerTransport({
       // Stateless — no session ID assignment, MCP clients send their own.

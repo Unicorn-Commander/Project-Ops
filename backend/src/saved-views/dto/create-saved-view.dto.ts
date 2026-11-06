@@ -27,7 +27,7 @@ export class CreateSavedViewDto {
   name: string;
 
   @ApiProperty({
-    type: 'object',
+    type: Object,
     additionalProperties: true,
     description:
       'Arbitrary list configuration (filters / sort / visible columns). Must be a JSON object; size-capped server-side.',

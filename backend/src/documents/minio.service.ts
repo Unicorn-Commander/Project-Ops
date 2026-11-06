@@ -119,7 +119,7 @@ export class MinioService implements OnModuleInit {
     stream: Buffer | ReadableStream,
     size?: number,
     metaData?: Minio.ItemBucketMetadata,
-  ): Promise<Minio.UploadedObjectInfo> {
+  ): Promise<Awaited<ReturnType<Minio.Client['putObject']>>> {
     try {
       // Convert ReadableStream to Buffer if needed
       const buffer = stream instanceof Buffer ? stream : await this.streamToBuffer(stream as any);

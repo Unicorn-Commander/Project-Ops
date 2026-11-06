@@ -65,7 +65,7 @@ export class CreateProjectDto {
   @IsOptional()
   assignedToId?: string;
 
-  @ApiProperty({ required: false, type: 'object' })
+  @ApiProperty({ required: false, type: Object })
   @IsObject()
   @IsOptional()
   metadata?: any;
@@ -75,7 +75,7 @@ export class CreateProjectDto {
   @IsOptional()
   category?: string;
 
-  @ApiProperty({ required: false, type: 'object', description: 'Tags or labels for the project' })
+  @ApiProperty({ required: false, type: Object, description: 'Tags or labels for the project' })
   @IsOptional()
   tags?: any;
 
@@ -179,7 +179,7 @@ export class CreateProjectDto {
   // custom-fields service and merged into metadata.customFields on write.
   @ApiProperty({
     required: false,
-    type: 'object',
+    type: Object,
     description: 'Custom-field values, validated against the workspace PROJECT field set.',
   })
   @IsObject()
