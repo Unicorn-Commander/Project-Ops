@@ -28,6 +28,7 @@ import {
   ActiveWorkspaceMembership,
 } from '../common/workspace/membership.service';
 import { NoWorkspaceAccessException } from './no-workspace-access.exception';
+import { assertClientInviteCurrent } from '../contacts/client-invite';
 import {
   isHumanSessionPayload,
   readActorClientId,
@@ -774,6 +775,10 @@ export class AuthService {
       if (contact.userId) {
         throw new BadRequestException('Contact already signed up');
       }
+
+      // Lifetime is invitationSentAt + CLIENT_INVITE_TTL_DAYS (default 14).
+      // Reject before creating a user so an expired link cannot be consumed.
+      assertClientInviteCurrent(contact.invitationSentAt);
 
       // Create user account (users is RLS-OFF; on tx for atomicity).
       const created = await tx.user.create({

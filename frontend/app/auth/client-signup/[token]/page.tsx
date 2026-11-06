@@ -25,6 +25,7 @@ type SignupFormData = z.infer<typeof signupSchema>;
 
 export default function ClientSignupPage() {
   const [isLoading, setIsLoading] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const router = useRouter();
   const params = useParams();
   const token = params?.token as string;
@@ -71,10 +72,16 @@ export default function ClientSignupPage() {
       // Redirect to client portal dashboard
       router.push("/client-portal/dashboard");
     } catch (error: any) {
-      const errorMessage = error.response?.data?.message || "Failed to create account. The invitation may have expired.";
+      const raw = error.response?.data?.message;
+      const errorMessage =
+        (Array.isArray(raw) ? raw.join(" ") : raw) ||
+        "Failed to create account. The invitation may have expired.";
+      if (error.response?.status === 410) {
+        setInviteError(errorMessage);
+      }
 
       toast({
-        title: "Error",
+        title: error.response?.status === 410 ? "Invitation expired" : "Error",
         description: errorMessage,
         variant: "destructive",
       });
@@ -92,10 +99,17 @@ export default function ClientSignupPage() {
           </Link>
           <CardTitle className="text-2xl">Create Your Account</CardTitle>
           <CardDescription>
-            Set up your password to complete your client account registration
+            {inviteError
+              ? "This invitation can no longer be used."
+              : "Set up your password to complete your client account registration"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {inviteError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {inviteError}
+            </p>
+          ) : (
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
@@ -137,6 +151,7 @@ export default function ClientSignupPage() {
               {isLoading ? "Creating Account..." : "Create Account"}
             </Button>
           </form>
+          )}
 
           <div className="text-center text-sm text-muted-foreground">
             Already have an account?{" "}

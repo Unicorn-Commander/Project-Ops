@@ -12,6 +12,7 @@ import { EmailService } from '../email/email.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
+import { buildClientInviteUrl } from './client-invite';
 import { Decimal } from '@prisma/client/runtime/library';
 
 /**
@@ -536,8 +537,11 @@ export class ContactsService {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const crypto = require('crypto');
         const token = crypto.randomBytes(16).toString('hex');
+        const previousToken = found.invitationToken;
 
-        // Update contact with invitation details
+        // Update contact with invitation details. invitationSentAt is the
+        // issue time the lifetime is derived from, so a re-invite starts a
+        // fresh clock along with the fresh token.
         await tx.contact.update({
           where: { id: contactId },
           data: {
@@ -547,13 +551,20 @@ export class ContactsService {
           },
         });
 
+        // Drop the previous provisional membership. Re-invite replaces the
+        // token; the old link must stop resolving.
+        if (previousToken && previousToken !== token) {
+          await tx.membership.deleteMany({
+            where: { userKey: `invite:${previousToken}`, workspaceId },
+          });
+        }
+
         // Provisional control-plane membership binding token → workspace. The
         // memberships table is RLS-OFF, so clientSignup can read this row with
         // no GUC and learn which workspace the (FORCE-RLS) Contact lives in —
         // resolving the chicken-and-egg. Reconciled to the real user key at
         // signup; consumed there so the token can't be replayed. CLIENT →
-        // VIEWER (suite role map). Keyed on (userKey, workspaceId) so re-invite
-        // is idempotent.
+        // VIEWER (suite role map).
         await tx.membership.upsert({
           where: {
             userKey_workspaceId: { userKey: `invite:${token}`, workspaceId },
@@ -573,9 +584,10 @@ export class ContactsService {
       workspaceId,
     );
 
-    // Generate invitation URL
+    // Generate invitation URL. The page is /auth/client-signup; the old
+    // /auth/contact-signup path only redirects, for mail already sent.
     const frontendUrl = process.env.FRONTEND_URL || 'https://projectops.unicorncommander.ai';
-    const invitationUrl = `${frontendUrl}/auth/contact-signup/${invitationToken}`;
+    const invitationUrl = buildClientInviteUrl(frontendUrl, invitationToken);
 
     // Try to send invitation email (external I/O, outside the workspace tx)
     let emailSent = false;
