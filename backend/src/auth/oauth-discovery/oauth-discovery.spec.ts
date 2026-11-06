@@ -2,7 +2,9 @@ import {
   All,
   Controller,
   ForbiddenException,
+  Get,
   INestApplication,
+  Logger,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -16,10 +18,8 @@ import request from 'supertest';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { JwtStrategy } from '../strategies/jwt.strategy';
 import { AuthService } from '../auth.service';
-import {
-  NO_WORKSPACE_ACCESS_RESPONSE,
-  NoWorkspaceAccessException,
-} from '../no-workspace-access.exception';
+import { NoWorkspaceAccessException } from '../no-workspace-access.exception';
+import { __resetAccessListCacheForTests } from '../access-list';
 import { PatService } from '../pat/pat.service';
 import { McpController } from '../../mcp/mcp.controller';
 import { WorkspaceMembershipGuard } from '../../common/workspace/workspace-membership.guard';
@@ -50,6 +50,51 @@ class McpProbeController {
   handle(@Req() request: any) {
     return { ok: Boolean(request.user) };
   }
+}
+
+/** A protected REST route. Same guards as MCP, no discovery challenge of its own. */
+@Controller('rest-probe')
+class RestProbeController {
+  @Get()
+  @UseGuards(JwtAuthGuard)
+  handle(@Req() request: any) {
+    return { ok: Boolean(request.user) };
+  }
+}
+
+const NO_PROJECT_OPS_ACCESS_MESSAGE =
+  'You are signed in but have no Project-Ops access. Contact your administrator.';
+const INSUFFICIENT_SCOPE_HEADER =
+  'Bearer realm="project-ops-mcp", error="insufficient_scope", ' +
+  `error_description="${NO_PROJECT_OPS_ACCESS_MESSAGE}"`;
+
+function signValidRealmToken(claims: Record<string, unknown>): string {
+  const now = Math.floor(Date.now() / 1000);
+  return jwt.sign(
+    {
+      iss: realmIssuer,
+      azp: 'project-ops',
+      aud: 'account',
+      sid: 'fictional-session',
+      email_verified: true,
+      iat: now - 10,
+      exp: now + 300,
+      ...claims,
+    },
+    keyPair.privateKey,
+    { algorithm: 'RS256', keyid: 'canary-jwks-key' },
+  );
+}
+
+function expectNoProjectOpsAccess(response: { status: number; headers: any; body: any }) {
+  expect(response.status).toBe(403);
+  expect(response.headers['www-authenticate']).toBe(INSUFFICIENT_SCOPE_HEADER);
+  expect(response.headers['www-authenticate']).not.toContain('invalid_token');
+  expect(response.headers['www-authenticate']).not.toContain('resource_metadata');
+  expect(response.body).toEqual({
+    error: 'no_workspace_access',
+    message: NO_PROJECT_OPS_ACCESS_MESSAGE,
+  });
 }
 
 describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
@@ -84,7 +129,7 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       imports: [],
-      controllers: [OAuthDiscoveryController, McpProbeController],
+      controllers: [OAuthDiscoveryController, McpProbeController, RestProbeController],
       providers: [
         OAuthDiscoveryService,
         JwtStrategy,
@@ -258,10 +303,7 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
       .send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })
       .expect(403);
 
-    expect(response.headers['www-authenticate']).toBe(
-      'Bearer error="insufficient_scope", error_description="no workspace access"',
-    );
-    expect(response.body).toEqual(NO_WORKSPACE_ACCESS_RESPONSE);
+    expectNoProjectOpsAccess(response);
     expect(resolveAndAuthorize).not.toHaveBeenCalled();
   });
 
@@ -281,10 +323,182 @@ describe('Project Ops MCP OAuth discovery and resource-server boundary', () => {
       .send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })
       .expect(403);
 
-    expect(response.headers['www-authenticate']).toBe(
-      'Bearer error="insufficient_scope", error_description="no workspace access"',
+    expectNoProjectOpsAccess(response);
+  });
+
+  function deniedAuthService() {
+    const users = {
+      findByKeycloakId: jest.fn().mockResolvedValue(null),
+      create: jest.fn(),
+    };
+    const prisma = {
+      user: { findMany: jest.fn().mockResolvedValue([]) },
+      workspaceInvitation: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    const membership = { ensureEntitledWorkspace: jest.fn() };
+    const auth = new AuthService(
+      users as any,
+      {} as any,
+      config,
+      prisma as any,
+      {} as any,
+      membership as any,
     );
-    expect(response.body).toEqual(NO_WORKSPACE_ACCESS_RESPONSE);
+    return { auth, users, membership };
+  }
+
+  async function bothSurfaces(token: string) {
+    const mcp = await request(app.getHttpServer())
+      .post('/api/v1/mcp')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} });
+    const rest = await request(app.getHttpServer())
+      .get('/api/v1/rest-probe')
+      .set('Authorization', `Bearer ${token}`);
+    return { mcp, rest };
+  }
+
+  it('keeps a missing bearer and a rejected token on 401 with the MCP resource_metadata link', async () => {
+    const missingMcp = await request(app.getHttpServer())
+      .post('/api/v1/mcp')
+      .send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} });
+    expect(missingMcp.status).toBe(401);
+    expect(missingMcp.headers['www-authenticate']).toMatch(
+      /^Bearer realm="project-ops-mcp", resource_metadata="http:\/\/[^"]+\/.well-known\/oauth-protected-resource\/api\/v1\/mcp"$/,
+    );
+    expect(missingMcp.headers['www-authenticate']).not.toContain('invalid_token');
+    expect(missingMcp.headers['www-authenticate']).not.toContain('insufficient_scope');
+
+    const expired = jwt.sign({ sub: 'synthetic-user' }, localSecret, { expiresIn: -1 });
+    const rejectedMcp = await request(app.getHttpServer())
+      .post('/api/v1/mcp')
+      .set('Authorization', `Bearer ${expired}`)
+      .send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} });
+    expect(rejectedMcp.status).toBe(401);
+    expect(rejectedMcp.headers['www-authenticate']).toContain('error="invalid_token"');
+    expect(rejectedMcp.headers['www-authenticate']).toContain('resource_metadata="http://');
+    expect(rejectedMcp.headers['www-authenticate']).toContain(
+      '/.well-known/oauth-protected-resource/api/v1/mcp"',
+    );
+    expect(rejectedMcp.headers['www-authenticate']).not.toContain('insufficient_scope');
+
+    // REST 401s do not carry the MCP discovery challenge. That link stays on /api/v1/mcp only.
+    const missingRest = await request(app.getHttpServer()).get('/api/v1/rest-probe');
+    expect(missingRest.status).toBe(401);
+    expect(missingRest.headers['www-authenticate']).toBeUndefined();
+
+    const rejectedRest = await request(app.getHttpServer())
+      .get('/api/v1/rest-probe')
+      .set('Authorization', `Bearer ${expired}`);
+    expect(rejectedRest.status).toBe(401);
+    expect(rejectedRest.headers['www-authenticate']).toBeUndefined();
+    expect(rejectedRest.body.statusCode).toBe(401);
+  });
+
+  it('returns 403 insufficient_scope on REST and MCP when a valid token is not on the access list', async () => {
+    const originalAccessList = process.env.PROJECT_OPS_ACCESS_LIST;
+    const previousEntitlements = configValues.PROJECT_OPS_ENTITLEMENTS_ENABLED;
+    const previousTenancy = configValues.PROJECT_OPS_TENANCY_ENABLED;
+    process.env.PROJECT_OPS_ACCESS_LIST = 'allowlisted@fictional.example:ADMIN';
+    configValues.PROJECT_OPS_ENTITLEMENTS_ENABLED = 'false';
+    configValues.PROJECT_OPS_TENANCY_ENABLED = 'false';
+    __resetAccessListCacheForTests();
+    const warnings: string[] = [];
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation((message: unknown) => {
+      warnings.push(String(message));
+    });
+    const { auth, users, membership } = deniedAuthService();
+    validateJwtPayload.mockImplementation((payload: any, accessToken?: string) =>
+      auth.validateJwtPayload(payload, accessToken),
+    );
+    const token = signValidRealmToken({
+      sub: 'fictional-unprovisioned-sub',
+      email: 'stranger@fictional.example',
+      preferred_username: 'fictional-stranger',
+    });
+
+    try {
+      const { mcp, rest } = await bothSurfaces(token);
+      expectNoProjectOpsAccess(mcp);
+      expectNoProjectOpsAccess(rest);
+      expect(users.create).not.toHaveBeenCalled();
+      expect(users.findByKeycloakId).toHaveBeenCalledWith('fictional-unprovisioned-sub');
+      expect(membership.ensureEntitledWorkspace).not.toHaveBeenCalled();
+      expect(
+        warnings.some((line) => line.includes('Rejected SSO JIT for stranger@fictional.example')),
+      ).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+      if (originalAccessList === undefined) delete process.env.PROJECT_OPS_ACCESS_LIST;
+      else process.env.PROJECT_OPS_ACCESS_LIST = originalAccessList;
+      if (previousEntitlements === undefined) delete configValues.PROJECT_OPS_ENTITLEMENTS_ENABLED;
+      else configValues.PROJECT_OPS_ENTITLEMENTS_ENABLED = previousEntitlements;
+      if (previousTenancy === undefined) delete configValues.PROJECT_OPS_TENANCY_ENABLED;
+      else configValues.PROJECT_OPS_TENANCY_ENABLED = previousTenancy;
+      __resetAccessListCacheForTests();
+    }
+  });
+
+  it('returns 403 insufficient_scope on REST and MCP when a valid token has no entitled org', async () => {
+    const entitlementKeys = [
+      'PROJECT_OPS_ENTITLEMENTS_ENABLED',
+      'UC_ENTITLEMENTS_URL',
+      'PROJECT_OPS_TENANCY_ENABLED',
+      'PROJECT_OPS_ENTITLEMENTS_FAIL_OPEN',
+      'PROJECT_OPS_ENTITLEMENTS_ALLOWLIST_FALLBACK',
+    ];
+    const previousConfig = entitlementKeys.map((key) => [key, configValues[key]] as const);
+    Object.assign(configValues, {
+      PROJECT_OPS_ENTITLEMENTS_ENABLED: 'true',
+      UC_ENTITLEMENTS_URL: 'https://ops.fictional.example/api/v1/entitlements',
+      PROJECT_OPS_TENANCY_ENABLED: 'false',
+      PROJECT_OPS_ENTITLEMENTS_FAIL_OPEN: 'false',
+      PROJECT_OPS_ENTITLEMENTS_ALLOWLIST_FALLBACK: 'false',
+    });
+    const warnings: string[] = [];
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation((message: unknown) => {
+      warnings.push(String(message));
+    });
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        org_id: '01924a3c-0000-7000-8000-000000000123',
+        org_name: 'Fictional Side Studio',
+        tier: 'free',
+        role: 'member',
+        entitlements: ['contact_ops_access'],
+      }),
+    } as Response);
+    const { auth, users, membership } = deniedAuthService();
+    validateJwtPayload.mockImplementation((payload: any, accessToken?: string) =>
+      auth.validateJwtPayload(payload, accessToken),
+    );
+    const token = signValidRealmToken({
+      sub: 'fictional-unentitled-sub',
+      email: 'member@fictional.example',
+      preferred_username: 'fictional-member',
+    });
+
+    try {
+      const { mcp, rest } = await bothSurfaces(token);
+      expectNoProjectOpsAccess(mcp);
+      expectNoProjectOpsAccess(rest);
+      expect(users.create).not.toHaveBeenCalled();
+      expect(users.findByKeycloakId).not.toHaveBeenCalled();
+      expect(membership.ensureEntitledWorkspace).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalled();
+      expect(
+        warnings.some((line) => line.includes('Rejected SSO for member@fictional.example')),
+      ).toBe(true);
+    } finally {
+      fetchMock.mockRestore();
+      warnSpy.mockRestore();
+      for (const [key, value] of previousConfig) {
+        if (value === undefined) delete configValues[key];
+        else configValues[key] = value;
+      }
+    }
   });
 
   it('returns 200 for a verified token with an active membership', async () => {

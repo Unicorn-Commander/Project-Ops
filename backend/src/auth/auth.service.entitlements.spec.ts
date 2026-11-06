@@ -164,6 +164,7 @@ describe('AuthService bearer entitlement path', () => {
     expect((error as NoWorkspaceAccessException).getStatus()).toBe(403);
     expect((error as NoWorkspaceAccessException).getResponse()).toMatchObject({
       error: 'no_workspace_access',
+      message: 'You are signed in but have no Project-Ops access. Contact your administrator.',
     });
     expect(users.findByKeycloakId).not.toHaveBeenCalled();
     expect(membership.ensureEntitledWorkspace).not.toHaveBeenCalled();

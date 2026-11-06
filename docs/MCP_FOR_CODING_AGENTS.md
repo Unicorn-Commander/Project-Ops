@@ -24,7 +24,7 @@ For a pasted PAT, use the existing header form:
 claude mcp add --transport http project-ops https://api.projectops.unicorncommander.ai/api/v1/mcp --header "Authorization: Bearer <po_pat_value>"
 ```
 
-If you see 'no workspace access', your sign-in worked; ask your admin for an invite.
+If you see 'no Project-Ops access', your sign-in worked and the token is valid. Contact your administrator.
 
 ## Create an expiring PAT on localhost
 
