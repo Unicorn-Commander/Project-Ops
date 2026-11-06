@@ -125,7 +125,7 @@ export PROJECT_OPS_APP_DATABASE_URL="postgresql://project_ops_app:REMOVED@localh
 
 # --- 7. Run the §9 acceptance test --------------------------------------------
 echo "[run.sh] Running §9 RLS workspace-isolation test..."
-npx jest --config ./tests/jest-integration.json \
+node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./tests/jest-integration.json \
   tests/integration/rls/workspace-isolation.integration.test.ts
 
 echo "[run.sh] §9 RLS test PASSED."
@@ -134,7 +134,7 @@ echo "[run.sh] §9 RLS test PASSED."
 # CI runs separately. Reuse ONLY this throwaway database, never live services.
 export INVITATION_ADMIN_DATABASE_URL="$DATABASE_URL"
 export INVITATION_APP_DATABASE_URL="$PROJECT_OPS_APP_DATABASE_URL"
-npx jest --config tests/jest-integration.json --runInBand --runTestsByPath \
+node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config tests/jest-integration.json --runInBand --runTestsByPath \
   tests/integration/invitations/workspace-invitations.integration.test.ts \
   tests/integration/users/public-user.integration.test.ts
 echo "[run.sh] Invitation/public-user auth tests PASSED."
