@@ -1,7 +1,7 @@
 # Multi-stage build for NestJS backend
 
 # Stage 1: Dependencies
-FROM node:20-alpine3.19 AS dependencies
+FROM node:20-alpine3.21 AS dependencies
 
 WORKDIR /app
 
@@ -14,7 +14,7 @@ RUN npm ci --only=production && \
     npm cache clean --force
 
 # Stage 2: Build
-FROM node:20-alpine3.19 AS build
+FROM node:20-alpine3.21 AS build
 
 WORKDIR /app
 
@@ -45,7 +45,7 @@ ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "dist/selfhost/start.js"]
 
 # Stage 3: Production
-FROM node:20-alpine3.19 AS production
+FROM node:20-alpine3.21 AS production
 
 WORKDIR /app
 
