@@ -87,7 +87,7 @@ export class ReportingService {
    * (tasks done / total), status, and an over-budget flag (hours OR amount).
    */
   async getPortfolio(workspaceId: string, user: User) {
-    const projectWhere = this.projectVisibilityWhere(user);
+    const projectWhere = await this.projectVisibilityWhere(user, workspaceId);
 
     return this.workspaceContext.runForUser(
       user,
@@ -325,7 +325,7 @@ export class ReportingService {
       completedAt: { gte: from, lte: to },
     };
     const projectWhere: Prisma.ProjectWhereInput = {
-      ...this.projectVisibilityWhere(user),
+      ...(await this.projectVisibilityWhere(user, workspaceId)),
       status: ProjectStatus.COMPLETED,
       completedAt: { gte: from, lte: to },
     };
@@ -439,11 +439,21 @@ export class ReportingService {
       .sort((a, b) => a.label.localeCompare(b.label));
   }
 
-  /** Project where-filter for the active user's role (RLS already scopes ws). */
-  private projectVisibilityWhere(user: User): Prisma.ProjectWhereInput {
+  /**
+   * Project where-filter for the active user's role inside the requested
+   * workspace. Workspace managers follow GET /projects and see every project
+   * in their active workspace, even when their app-wide role is STAFF.
+   */
+  private async projectVisibilityWhere(
+    user: User,
+    workspaceId: string,
+  ): Promise<Prisma.ProjectWhereInput> {
     if (user.role === UserRole.CLIENT) return { contactId: user.id };
-    if (user.role === UserRole.STAFF) {
-      return { OR: [{ assignedToId: user.id }, { createdById: user.id }] };
+    if (
+      user.role === UserRole.STAFF &&
+      !(await this.workspaceContext.hasManagementRole(user, workspaceId))
+    ) {
+      return { assignedToId: user.id };
     }
     return {};
   }

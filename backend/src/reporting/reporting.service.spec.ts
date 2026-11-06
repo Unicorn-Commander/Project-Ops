@@ -1,5 +1,5 @@
 import { ReportingService } from './reporting.service';
-import { ProjectStatus, TaskStatus } from '@prisma/client';
+import { ProjectStatus, TaskStatus, UserRole } from '@prisma/client';
 
 /**
  * Unit tests for the reporting rollups. workspaceContext.runForUser invokes the
@@ -87,6 +87,52 @@ describe('ReportingService.getPortfolio', () => {
     const out = await svc.getPortfolio('ws1', admin);
     expect(out.projects).toEqual([]);
     expect(out.totals.projects).toBe(0);
+  });
+
+  it('uses the active workspace membership scope for a staff workspace owner', async () => {
+    const projectsFor = (workspacePrefix: string, count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        id: `${workspacePrefix}-p${index + 1}`,
+        projectNumber: `${workspacePrefix.toUpperCase()}-${index + 1}`,
+        title: `${workspacePrefix} project ${index + 1}`,
+        status: ProjectStatus.IN_PROGRESS,
+        clientName: 'Example Firm',
+        budgetHours: null,
+        budgetAmount: null,
+      }));
+
+    const txFor = (projects: any[]) => ({
+      project: {
+        findMany: jest.fn(async ({ where }: any) => (where?.assignedToId ? [] : projects)),
+      },
+      timeEntry: { groupBy: jest.fn(async () => []) },
+      task: { groupBy: jest.fn(async () => []) },
+    });
+
+    const activeWorkspace = txFor(projectsFor('active', 4));
+    const otherWorkspace = txFor(projectsFor('other', 1));
+    const workspaceContext = {
+      hasManagementRole: jest.fn(async () => true),
+      runForUser: jest.fn(async (_u: any, fn: (t: any) => any, workspaceId: string) =>
+        fn(workspaceId === 'ws-active' ? activeWorkspace : otherWorkspace),
+      ),
+    };
+    const svc = new ReportingService({} as any, workspaceContext as any);
+    const workspaceOwner = { id: 'staff-owner', role: UserRole.STAFF } as any;
+
+    const activeReport = await svc.getPortfolio('ws-active', workspaceOwner);
+    const otherReport = await svc.getPortfolio('ws-other', workspaceOwner);
+
+    expect(activeReport.totals.projects).toBe(4);
+    expect(otherReport.totals.projects).toBe(1);
+    expect(workspaceContext.runForUser.mock.calls.map((call) => call[2])).toEqual([
+      'ws-active',
+      'ws-other',
+    ]);
+    expect(workspaceContext.hasManagementRole.mock.calls).toEqual([
+      [workspaceOwner, 'ws-active'],
+      [workspaceOwner, 'ws-other'],
+    ]);
   });
 });
 
