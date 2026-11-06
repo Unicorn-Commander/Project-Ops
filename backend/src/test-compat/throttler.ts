@@ -28,11 +28,15 @@ export function InjectThrottlerStorage(): ParameterDecorator {
   return Inject(THROTTLER_STORAGE);
 }
 
-export function SkipThrottle(metadata: Record<string, boolean> = {}): MethodDecorator & ClassDecorator {
+export function SkipThrottle(
+  metadata: Record<string, boolean> = {},
+): MethodDecorator & ClassDecorator {
   return SetMetadata('THROTTLER:SKIP', metadata);
 }
 
-export function Throttle(metadata: Record<string, { limit: number; ttl: number }>): MethodDecorator & ClassDecorator {
+export function Throttle(
+  metadata: Record<string, { limit: number; ttl: number }>,
+): MethodDecorator & ClassDecorator {
   return SetMetadata('THROTTLER:LIMIT', metadata);
 }
 

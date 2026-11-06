@@ -147,11 +147,9 @@ export class HttpEmailOpsClient extends EmailOpsPort {
     // MCP tools/call result: { result: { structuredContent: {...} } } or
     // { result: { content: [{ type: 'text', text: '<json>' }] } }.
     const result = (data as { result?: unknown })?.result as
-      | { structuredContent?: unknown; content?: { type?: string; text?: string }[] }
-      | undefined;
+      { structuredContent?: unknown; content?: { type?: string; text?: string }[] } | undefined;
     const structured = result?.structuredContent as
-      | { id?: string; thread_id?: string | null; status?: string }
-      | undefined;
+      { id?: string; thread_id?: string | null; status?: string } | undefined;
     const id = structured?.id ?? this.textResultId(result?.content);
     if (!id) {
       return {
