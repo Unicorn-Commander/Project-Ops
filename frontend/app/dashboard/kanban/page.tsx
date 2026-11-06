@@ -57,7 +57,8 @@ import { CreateTaskModal } from '@/components/modals/create-task-modal';
 import { EditTaskModal } from '@/components/modals/edit-task-modal';
 import { HelpHint } from '@/components/guidance';
 import api from '@/lib/api';
-import { dateOnlyDaysFromToday, isDateOnlyBeforeToday, formatDateOnly } from '@/lib/date-only';
+import { dateOnlyDaysFromToday, formatDateOnly } from '@/lib/date-only';
+import { isTaskOverdue } from '@/lib/kanban-overdue';
 
 // Interfaces — Organization comes from lib/organizations-api, Task from
 // lib/tasks-api. Kept the locally-declared UserItem shape since the kanban
@@ -125,11 +126,7 @@ function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
     opacity: isDragging || isDraggingState ? 0.5 : 1,
   };
 
-  const isOverdue =
-    !!task.dueDate &&
-    isDateOnlyBeforeToday(task.dueDate) &&
-    task.status !== TaskStatus.COMPLETED &&
-    task.status !== TaskStatus.CANCELLED;
+  const isOverdue = isTaskOverdue(task);
 
   const formatDueDate = (date: string) => {
     const diffDays = dateOnlyDaysFromToday(date);
@@ -140,7 +137,11 @@ function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
     return { text: `${formatDateOnly(date)} · ${diffDays}d left`, color: 'text-muted-foreground' };
   };
 
-  const dueInfo = task.dueDate ? formatDueDate(task.dueDate) : null;
+  const dueInfo = task.dueDate
+    ? task.status === TaskStatus.COMPLETED || task.status === TaskStatus.CANCELLED
+      ? { text: formatDateOnly(task.dueDate), color: 'text-muted-foreground' }
+      : formatDueDate(task.dueDate)
+    : null;
 
   const getInitials = (firstName: string | null, lastName: string | null, email: string) => {
     if (firstName && lastName) {
