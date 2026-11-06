@@ -72,6 +72,21 @@ interface RecentProject {
   dueDate: string | null;
 }
 
+const ACTIVE_PROJECT_STATUSES = new Set(["NEW", "IN_PROGRESS", "UNDER_REVIEW"]);
+
+function statsFromProjects(projects: RecentProject[]): DashboardStats {
+  return {
+    totalProjects: projects.length,
+    activeProjects: projects.filter((project) => ACTIVE_PROJECT_STATUSES.has(project.status)).length,
+    completedProjects: projects.filter((project) => project.status === "COMPLETED").length,
+    upcomingDeadlines: projects.filter((project) => {
+      if (!project.dueDate || project.status === "COMPLETED") return false;
+      const daysFromToday = dateOnlyDaysFromToday(project.dueDate);
+      return daysFromToday >= 0 && daysFromToday <= 7;
+    }).length,
+  };
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [stats, setStats] = useState<DashboardStats>({
@@ -105,24 +120,19 @@ export default function DashboardPage() {
     try {
       // Fetch real dashboard data from API. The full-list pull (`limit=1000`)
       // backs the Project Status + Priority charts — `recentProjects` is the
-      // first 5 of the same set, used for the Recent Projects panel.
+      // first 5 of the same set, used for the Recent Projects panel. Keep the
+      // KPI tiles on this same workspace-scoped response so they cannot disagree
+      // with the charts while the first-run onboarding surface is open.
       // Each call is independently caught so one failing widget can't blank the
       // whole dashboard. (sort is the backend's split sortBy/sortDir contract —
       // the legacy `sort=field:dir` param is rejected by the strict validator.)
-      const [statsResponse, projectsResponse, tasksResponse] = await Promise.all([
-        api.get("/dashboard/overview").catch(() => ({ data: {} })),
+      const [projectsResponse, tasksResponse] = await Promise.all([
         api.get("/projects?page=1&limit=1000&sortBy=createdAt&sortDir=desc").catch(() => ({ data: { data: [] } })),
         getMyTasks({ take: 5, status: TaskStatus.PENDING }).catch(() => ({ data: [], total: 0, skip: 0, take: 0 })),
       ]);
 
-      setStats({
-        totalProjects: statsResponse.data.totalProjects || 0,
-        activeProjects: statsResponse.data.activeProjects || 0,
-        completedProjects: statsResponse.data.completedProjects || 0,
-        upcomingDeadlines: statsResponse.data.upcomingDeadlines || 0,
-      });
-
       const allProjects = projectsResponse.data.data || [];
+      setStats(statsFromProjects(allProjects));
       setAllProjects(allProjects);
       setRecentProjects(allProjects.slice(0, 5));
 
