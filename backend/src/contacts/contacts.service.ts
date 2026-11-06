@@ -5,6 +5,7 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { User, WorkspaceRole, MembershipStatus } from '@prisma/client';
 import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
@@ -532,11 +533,8 @@ export class ContactsService {
           throw new BadRequestException('Contact already has portal access');
         }
 
-        // Generate random 32-character token
-        // Keep this optional path's existing lazy module loading.
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const crypto = require('crypto');
-        const token = crypto.randomBytes(16).toString('hex');
+        // Generate random 32-character token.
+        const token = randomBytes(16).toString('hex');
         const previousToken = found.invitationToken;
 
         // Update contact with invitation details. invitationSentAt is the

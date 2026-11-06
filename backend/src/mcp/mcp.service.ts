@@ -1,4 +1,5 @@
 import { publicMcpUserPayload } from '../common/serialization/public-user';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 /**
  * Builds a per-request MCP server scoped to one authenticated user.
  *
@@ -175,10 +176,6 @@ export class McpService {
     // the prior behavior (claim → default membership).
     requestWorkspaceId?: string | null,
   ) {
-    // Preserve the SDK's deliberate CommonJS interop at request setup.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
-
     const server = new McpServer(
       {
         name: 'project-ops',
@@ -218,7 +215,7 @@ export class McpService {
       boundWorkspaceId ?? addressedWorkspaceId ?? this.workspace.resolve(user);
 
     const rawRegister = server.registerTool.bind(server);
-    server.registerTool = (
+    (server as any).registerTool = (
       name: string,
       schema: unknown,
       handler: (args: any) => Promise<any> | any,

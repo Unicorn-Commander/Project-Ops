@@ -10,8 +10,7 @@ import {
   verifySignature,
 } from './webhook-signing';
 
-jest.mock('axios');
-const mockedPost = axios.post as jest.Mock;
+const mockedPost = axios.post as unknown as jest.Mock;
 
 const target = { id: 'wh1', url: 'https://hooks.example.com/in', secret: 'whsec_000000000000' };
 const envelope: WebhookEventEnvelope = {

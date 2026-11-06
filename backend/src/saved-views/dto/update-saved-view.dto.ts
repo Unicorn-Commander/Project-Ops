@@ -15,7 +15,7 @@ export class UpdateSavedViewDto {
   name?: string;
 
   @ApiProperty({
-    type: 'object',
+    type: Object,
     additionalProperties: true,
     required: false,
     description:

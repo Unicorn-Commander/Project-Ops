@@ -89,7 +89,7 @@ export class CreateTaskDto {
       checklistItems: ['Review layout', 'Check responsiveness'],
     },
     required: false,
-    type: 'object',
+    type: Object,
   })
   @IsObject()
   @IsOptional()
@@ -131,7 +131,7 @@ export class CreateTaskDto {
       'Custom-field VALUES for this task, keyed by the workspace TASK field key. Validated + normalized against the workspace custom-field definitions, then merged into metadata.customFields.',
     example: { priority_score: 8, client_tier: 'gold' },
     required: false,
-    type: 'object',
+    type: Object,
   })
   @IsObject()
   @IsOptional()

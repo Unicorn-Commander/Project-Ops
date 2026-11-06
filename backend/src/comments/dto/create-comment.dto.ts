@@ -17,7 +17,7 @@ export class CreateCommentDto {
   @IsOptional()
   isInternal?: boolean;
 
-  @ApiProperty({ required: false, type: 'object' })
+  @ApiProperty({ required: false, type: Object })
   @IsObject()
   @IsOptional()
   metadata?: any;

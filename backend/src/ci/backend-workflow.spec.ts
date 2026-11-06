@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from 'fs';
-import { join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
+import { fileURLToPath } from 'url';
 
-const repoRoot = resolve(__dirname, '../../..');
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const backendRoot = join(repoRoot, 'backend');
 const workflow = readFileSync(join(repoRoot, '.github/workflows/ci.yml'), 'utf8');
 const localRlsHarness = readFileSync(join(backendRoot, 'tests/integration/rls/run.sh'), 'utf8');
