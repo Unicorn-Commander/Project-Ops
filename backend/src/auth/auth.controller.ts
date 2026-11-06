@@ -105,6 +105,7 @@ export class AuthController {
     description: 'Invalid request (passwords mismatch, client already signed up)',
   })
   @ApiResponse({ status: 404, description: 'Invalid invitation token' })
+  @ApiResponse({ status: 410, description: 'Invitation has expired' })
   async clientSignup(@Param('token') token: string, @Body() dto: ClientSignupDto) {
     return this.authService.clientSignup(token, dto);
   }
