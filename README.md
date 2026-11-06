@@ -22,6 +22,13 @@
   <img src="docs/screenshots/dashboard.webp" width="1120" alt="Project-Ops portfolio dashboard with project status, priorities and upcoming work">
 </p>
 
+## Watch the demo
+
+<p align="center">
+  <a href="https://unicorncommander.com/products/project-ops"><img src="https://unicorncommander.com/media/products/project-ops/demo-poster.jpg" width="100%" alt="Project-Ops demo video: click to watch on the product page"></a>
+</p>
+<p align="center"><sub>68 seconds on a synthetic company's projects. Narrated in a machine voice rendered on our own hardware. <a href="https://unicorncommander.com/products/project-ops">Watch it on the product page</a>.</sub></p>
+
 ## What is Project-Ops?
 
 Project-Ops is a self-hosted workspace for teams managing projects, client work and the time that becomes an invoice. People review proposed actions and approve work; agents can read projects, update tasks, attach documents and log time through scoped MCP tools. Boards, schedules, client records and an agent activity ledger keep the work and its context together. It is part of Unicorn Commander, with optional shared identity, workspace records and integrations across the suite.
