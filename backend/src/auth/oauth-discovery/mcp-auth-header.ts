@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { NO_PROJECT_OPS_ACCESS_DESCRIPTION } from '../no-workspace-access.exception';
 import {
   ConfigReader,
   MCP_PATH,
@@ -7,8 +8,12 @@ import {
 } from './oauth-discovery.service';
 
 export const MCP_REALM = 'project-ops-mcp';
-export const MCP_INSUFFICIENT_SCOPE_HEADER =
-  'Bearer error="insufficient_scope", error_description="no workspace access"';
+/**
+ * RFC 6750 §3.1: a verified token that lacks Project-Ops access.
+ * Distinct from the invalid_token discovery challenge below — no resource_metadata link,
+ * so an AI client shows the description instead of starting sign-in again.
+ */
+export const MCP_INSUFFICIENT_SCOPE_HEADER = `Bearer realm="${MCP_REALM}", error="insufficient_scope", error_description="${NO_PROJECT_OPS_ACCESS_DESCRIPTION}"`;
 
 /** True when the request carries a non-empty Bearer credential. */
 export function hasBearerToken(request: Request): boolean {
@@ -47,7 +52,7 @@ export function setMcpUnauthorizedHeader(
   );
 }
 
-/** Add the RFC 6750 challenge for a verified identity without workspace access. */
+/** RFC 6750 insufficient_scope for a verified identity with no Project-Ops access. */
 export function setInsufficientScopeHeader(response: Response): void {
   response.setHeader('WWW-Authenticate', MCP_INSUFFICIENT_SCOPE_HEADER);
 }
