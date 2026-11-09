@@ -83,13 +83,13 @@ describe('McpService tool gating (RBAC + workspace)', () => {
     resetMcpMetricsForTests();
   });
 
-  it('registers the clone tool in the complete 65-tool surface', async () => {
+  it('registers the clone tool in the complete 68-tool surface', async () => {
     const previous = process.env.TIME_TRACKING_ENABLED;
     process.env.TIME_TRACKING_ENABLED = 'true';
     try {
       const svc = makeService('ws-1');
       await svc.createServerForUser(adminUser(), null, null, null);
-      expect(registered.size).toBe(65);
+      expect(registered.size).toBe(68);
       expect(registered.has('clone_project')).toBe(true);
       const schema = z.object(registeredSchemas.get('clone_project').inputSchema);
       expect(

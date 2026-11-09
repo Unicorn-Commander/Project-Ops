@@ -1,3 +1,4 @@
+import { InternalApprovalsService } from '../internal-approvals/internal-approvals.service';
 import { publicMcpUserPayload } from '../common/serialization/public-user';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 /**
@@ -64,11 +65,13 @@ const TASK_DEPENDENCY_TYPE_VALUES = Object.values(TaskDependencyType) as [
 ];
 const CLONE_DUE_DATE_MODE_VALUES = ['keep', 'shift', 'clear'] as const;
 
-// Keep the newly registered clone mutation PAT-gated inside the MCP fence.
-// The shared PAT constants are maintained by the auth lane; this local
-// fallback keeps this branch fail-closed and usable for write:projects PATs.
+// Keep new tool scope registrations inside the MCP fence; shared PAT
+// constants are maintained by the auth lane.
 const MCP_TOOL_SCOPE_OVERRIDES: Record<string, string> = {
   clone_project: 'write:projects',
+  record_internal_approval: 'write:approvals',
+  list_internal_approvals: 'read:approvals',
+  get_latest_internal_approval: 'read:approvals',
 };
 
 const federatedUuid = (field: string) => z.string().uuid({ message: `${field} must be a UUID` });
@@ -126,6 +129,7 @@ export class McpService {
     // Optional for minimal MCP test harnesses; the application imports
     // ProjectsModule so clone_project delegates to the REST service.
     @Optional() private readonly projects?: ProjectsService,
+    @Optional() private readonly internalApprovals?: InternalApprovalsService,
   ) {}
 
   /**
@@ -380,6 +384,7 @@ export class McpService {
       addressedWorkspaceId,
       this.audit,
       this.projects,
+      this.internalApprovals,
     );
 
     server.registerTool(
@@ -1359,6 +1364,58 @@ export class McpService {
         },
       },
       async (args: any) => wrap(await tools.listCustomFields(user, args)),
+    );
+
+    const internalBindingSchema = {
+      projectId: z.string().uuid(),
+      entity: z.enum(['task', 'document', 'pr']),
+      entityRef: z
+        .string()
+        .min(1)
+        .max(300)
+        .regex(/^\S(?:[\s\S]*\S)?$/),
+      versionHash: z.string().min(1).max(128).regex(/^\S+$/),
+    };
+    server.registerTool(
+      'record_internal_approval',
+      {
+        title: 'Record an internal approval decision',
+        description:
+          'Append an immutable APPROVE, REJECT, or DEFER decision for an exact project/entity/version binding. The authenticated caller is always the approver. Staff workspace members only. Use full IDs and full version hashes.',
+        inputSchema: {
+          ...internalBindingSchema,
+          decision: z.enum(['APPROVE', 'REJECT', 'DEFER']),
+          reason: z.string().min(1).max(5000).regex(/\S/),
+        },
+      },
+      async (args: any) => wrap(await tools.recordInternalApproval(user, args)),
+    );
+    server.registerTool(
+      'list_internal_approvals',
+      {
+        title: 'List internal approval history',
+        description:
+          'Read the immutable internal approval audit trail in append order, newest first. Filter by project and/or entity reference and version. Default limit 50, maximum 100; paginate with offset. Staff workspace members only.',
+        inputSchema: {
+          projectId: internalBindingSchema.projectId.optional(),
+          entity: internalBindingSchema.entity.optional(),
+          entityRef: internalBindingSchema.entityRef.optional(),
+          versionHash: internalBindingSchema.versionHash.optional(),
+          limit: z.number().int().min(1).max(100).optional(),
+          offset: z.number().int().min(0).optional(),
+        },
+      },
+      async (args: any) => wrap(await tools.listInternalApprovals(user, args)),
+    );
+    server.registerTool(
+      'get_latest_internal_approval',
+      {
+        title: 'Get the latest internal approval decision',
+        description:
+          'Return the most recently appended decision for the exact project/entity/reference/version binding, or null. Different hashes never supersede each other. Staff workspace members only.',
+        inputSchema: internalBindingSchema,
+      },
+      async (args: any) => wrap(await tools.getLatestInternalApproval(user, args)),
     );
 
     server.registerTool(

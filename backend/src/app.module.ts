@@ -1,3 +1,4 @@
+import { InternalApprovalsModule } from './internal-approvals/internal-approvals.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -73,6 +74,7 @@ import { QuotesModule } from './quotes/quotes.module';
 
     // Core modules
     PrismaModule,
+    InternalApprovalsModule,
     // uc-registry client (Phase E). @Global, inert while UC_REGISTRY_URL unset.
     RegistryModule,
     AuthModule,

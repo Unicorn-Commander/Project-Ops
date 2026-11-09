@@ -1,3 +1,9 @@
+import type { InternalApprovalsService } from '../internal-approvals/internal-approvals.service';
+import type {
+  InternalApprovalBindingDto,
+  ListInternalApprovalsDto,
+  RecordInternalApprovalDto,
+} from '../internal-approvals/dto/internal-approval.dto';
 /**
  * Tool implementations for the Project Ops MCP server.
  *
@@ -308,7 +314,33 @@ export class ProjectOpsTools {
     // target-workspace authorization, audit, and cross-workspace RLS stay in
     // one implementation.
     private readonly projects?: ProjectsService,
+    private readonly internalApprovals?: InternalApprovalsService,
   ) {}
+
+  private async internalApprovalContext(user: User) {
+    if (!this.internalApprovals)
+      throw new Error('Internal approvals are not enabled on this server');
+    const workspaceId = await this.requireWorkspace().resolveAuthorized(
+      user,
+      this.requestWorkspaceId,
+    );
+    return { service: this.internalApprovals, workspaceId };
+  }
+
+  async recordInternalApproval(user: User, input: RecordInternalApprovalDto) {
+    const { service, workspaceId } = await this.internalApprovalContext(user);
+    return service.record(workspaceId, user, input);
+  }
+
+  async listInternalApprovals(user: User, input: ListInternalApprovalsDto) {
+    const { service, workspaceId } = await this.internalApprovalContext(user);
+    return service.list(workspaceId, user, input);
+  }
+
+  async getLatestInternalApproval(user: User, input: InternalApprovalBindingDto) {
+    const { service, workspaceId } = await this.internalApprovalContext(user);
+    return service.latest(workspaceId, user, input);
+  }
 
   // ── Workspace (suite tenancy, Phase 2 G2) ────────────────
   // The direct-Prisma tools below (projects, tasks, comments, orgs,

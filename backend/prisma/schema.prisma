@@ -249,6 +249,8 @@ model User {
   orgContactsCreated OrganizationContact[] @relation("OrgContactCreator")
   orgContact         OrganizationContact?  @relation("OrgContactUser")
 
+  internalApprovals InternalApproval[]
+
   // Relations - Activity
   comments      Comment[]
   documents     Document[]
@@ -558,6 +560,7 @@ model Project {
   triageProposals TriageProposal[] @relation("TriageProposalProject")
   timeEntries     TimeEntry[]
   approvals       Approval[]
+  internalApprovals InternalApproval[]
   agentEvents     AgentEvent[]
   recurrenceParent    Project?  @relation("ProjectRecurrence", fields: [recurrenceParentId], references: [id], onDelete: SetNull)
   recurrenceInstances Project[] @relation("ProjectRecurrence")
@@ -1265,4 +1268,42 @@ model WorkspaceInvitation {
   @@index([email, status])
   @@index([workspaceId])
   @@map("workspace_invitations")
+}
+
+// Internal decisions are append-only and independent of portal/client approvals.
+enum InternalApprovalType {
+  INTERNAL
+}
+
+enum InternalApprovalEntity {
+  task
+  document
+  pr
+}
+
+enum InternalApprovalDecision {
+  APPROVE
+  REJECT
+  DEFER
+}
+
+model InternalApproval {
+  id          String                   @id @default(uuid())
+  sequence    Int                      @unique @default(autoincrement())
+  workspaceId String
+  projectId   String
+  type        InternalApprovalType     @default(INTERNAL)
+  entity      InternalApprovalEntity
+  entityRef   String                   @db.VarChar(300)
+  versionHash String                   @db.VarChar(128)
+  decision    InternalApprovalDecision
+  reason      String                   @db.VarChar(5000)
+  approverId  String
+  createdAt   DateTime                 @default(now())
+  project     Project                  @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  approver    User                     @relation(fields: [approverId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([workspaceId, projectId, sequence])
+  @@index([workspaceId, entity, entityRef, versionHash, sequence], map: "internal_approvals_binding_idx")
+  @@map("internal_approvals")
 }

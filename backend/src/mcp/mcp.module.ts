@@ -1,3 +1,4 @@
+import { InternalApprovalsModule } from '../internal-approvals/internal-approvals.module';
 import { Module } from '@nestjs/common';
 import { McpController } from './mcp.controller';
 import { McpService } from './mcp.service';
@@ -26,6 +27,7 @@ import { ProjectsModule } from '../projects/projects.module';
 @Module({
   imports: [
     PrismaModule,
+    InternalApprovalsModule,
     DocumentsModule,
     TriageModule,
     TimeTrackingModule,
