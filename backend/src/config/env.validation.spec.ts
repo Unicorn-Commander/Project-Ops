@@ -78,8 +78,27 @@ describe('validateEnv', () => {
         ...baseProd,
         KEYCLOAK_ENFORCE_AUDIENCE: 'false',
         PROJECT_OPS_TENANCY_ENABLED: 'true',
+        PROJECT_OPS_USE_ORG_ROUTE: 'false',
       }),
     ).not.toThrow();
+  });
+
+  it('accepts the optional org gateway settings', () => {
+    expect(() =>
+      validateEnv({
+        ...baseProd,
+        PROJECT_OPS_USE_ORG_ROUTE: true,
+        ORG_GATEWAY_BASE_URL: 'https://gateway.fictional.example/v1',
+        OPS_CENTER_INTERNAL_URL: 'https://ops-center.fictional.example',
+        OPS_CENTER_SERVICE_TOKEN: 'fictional-service-token',
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects a non-boolean PROJECT_OPS_USE_ORG_ROUTE', () => {
+    expect(() => validateEnv({ ...baseProd, PROJECT_OPS_USE_ORG_ROUTE: 'sometimes' })).toThrow(
+      /PROJECT_OPS_USE_ORG_ROUTE/,
+    );
   });
 
   // --- uc-registry (Phase E) — optional vars must not break boot. ---

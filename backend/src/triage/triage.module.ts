@@ -8,20 +8,23 @@ import { WorkspaceContextService } from '../common/workspace/workspace-context.s
 import { MembershipService } from '../common/workspace/membership.service';
 import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
 import { FederationActorGuard } from '../common/workspace/federation-actor.guard';
+import { ORG_GATEWAY_KEY_PROVIDER, OpsCenterOrgGatewayKeyProvider } from './org-gateway.client';
 
 /**
  * Project-Ops Triage Agent module (PO-owned).
  *
  * Depends on ProjectsModule + TasksModule for the apply step (create project /
  * create task on approval) and PrismaModule for the TriageProposal store.
- * ConfigService comes from the global ConfigModule. Inference endpoints
- * (Infinity + Qwen) are reached over the LAN via env (see triage.service).
+ * ConfigService comes from the global ConfigModule. With the org-route flag
+ * off, inference endpoints (Infinity + Qwen) are reached over the LAN via env;
+ * with it on, the key provider and gateway client are used.
  *
  * Suite tenancy (Phase 2, B9): WorkspaceContextService + MembershipService are
  * NOT @Global, so this module lists them (and the WorkspaceMembershipGuard) in
  * its own providers. They drive the per-request workspace RLS chokepoint the
  * service runs every query through. Inert while PROJECT_OPS_TENANCY_ENABLED is
- * off.
+ * off. The org gateway key provider is inert while PROJECT_OPS_USE_ORG_ROUTE
+ * is off.
  */
 @Module({
   imports: [PrismaModule, ProjectsModule, TasksModule],
@@ -32,6 +35,10 @@ import { FederationActorGuard } from '../common/workspace/federation-actor.guard
     MembershipService,
     WorkspaceMembershipGuard,
     FederationActorGuard,
+    {
+      provide: ORG_GATEWAY_KEY_PROVIDER,
+      useClass: OpsCenterOrgGatewayKeyProvider,
+    },
   ],
   exports: [TriageService],
 })

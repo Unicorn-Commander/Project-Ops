@@ -4,7 +4,7 @@ import { TriageAction, TriageReasonPreset } from './dto/triage-proposals.dto';
 describe('TriageService ingest resilience', () => {
   const user = { id: 'user-1' } as any;
 
-  function makeService() {
+  function makeService(options: { useOrgRoute?: boolean; provider?: any } = {}) {
     const tx = {
       project: {
         findMany: jest
@@ -33,11 +33,20 @@ describe('TriageService ingest resilience', () => {
             INFINITY_EMBEDDINGS_URL: 'http://embed.test:8080',
             INFINITY_RERANK_URL: 'http://rerank.test:8080',
             QWEN_URL: 'http://qwen.test:8080/v1/chat/completions',
+            PROJECT_OPS_USE_ORG_ROUTE: options.useOrgRoute ? 'true' : 'false',
+            ORG_GATEWAY_BASE_URL: 'https://gateway.fictional.example/v1',
           })[key] ?? fallback,
       ),
     } as any;
     const tasks = { createInTx: jest.fn() };
-    const service = new TriageService(config, {} as any, workspaceContext, {} as any, tasks as any);
+    const service = new TriageService(
+      config,
+      {} as any,
+      workspaceContext,
+      {} as any,
+      tasks as any,
+      options.provider,
+    );
     jest.spyOn(service as any, 'rerank').mockResolvedValue([]);
     jest.spyOn(service as any, 'qwenDecide').mockResolvedValue({
       keep: true,
@@ -75,6 +84,151 @@ describe('TriageService ingest resilience', () => {
     expect(result.created).toBe(1);
     expect(tx.triageProposal.create).toHaveBeenCalledTimes(1);
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('TriageService org gateway routing', () => {
+  const user = { id: 'user-1' } as any;
+
+  function response(body: unknown, status = 200) {
+    return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
+  }
+
+  function makeRouteService(provider: any) {
+    const tx = {
+      project: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: 'project-1', projectNumber: 'P-00001', title: 'Test project', description: null },
+          ]),
+      },
+      triageProposal: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'proposal-1' }),
+      },
+    } as any;
+    const workspaceContext = {
+      assertCanWrite: jest.fn(),
+      runForUser: jest.fn((_user: any, callback: any) => callback(tx)),
+    } as any;
+    const config = {
+      get: jest.fn(
+        (key: string, fallback?: unknown) =>
+          ({
+            PROJECT_OPS_USE_ORG_ROUTE: 'true',
+            ORG_GATEWAY_BASE_URL: 'https://gateway.fictional.example/v1',
+            INFINITY_EMBEDDINGS_URL: 'http://embed.test:8080',
+            INFINITY_RERANK_URL: 'http://rerank.test:8080',
+            QWEN_URL: 'http://qwen.test:8080/v1/chat/completions',
+          })[key] ?? fallback,
+      ),
+    } as any;
+    const service = new TriageService(
+      config,
+      {} as any,
+      workspaceContext,
+      {} as any,
+      {} as any,
+      provider,
+    );
+    return { service, tx };
+  }
+
+  it('sends all triage inference through bare org routes with the org key and headers', async () => {
+    const provider = {
+      getKey: jest.fn().mockResolvedValue({
+        key: 'fictional-org-key',
+        expiresAt: Date.now() + 60_000,
+      }),
+    };
+    const { service, tx } = makeRouteService(provider);
+    const fetchMock = jest
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith('/embeddings')) return response({ data: [{ embedding: [1, 0] }] });
+        if (url.endsWith('/rerank')) {
+          return response({ results: [{ index: 0, relevance_score: 0.91 }] });
+        }
+        if (url.endsWith('/chat/completions')) {
+          return response({
+            choices: [
+              { message: { content: '{"keep":true,"project":"NONE","title":"Do thing"}' } },
+            ],
+          });
+        }
+        return response({}, 404);
+      });
+
+    try {
+      const result = await service.ingestCandidates('ws-1', user, [{ text: 'Do thing' }]);
+
+      expect(result.created).toBe(1);
+      expect(tx.triageProposal.create).toHaveBeenCalledTimes(1);
+      expect(provider.getKey).toHaveBeenCalledWith('ws-1');
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+
+      const calls = fetchMock.mock.calls;
+      expect(
+        calls.every(([input]) => String(input).startsWith('https://gateway.fictional.example/v1/')),
+      ).toBe(true);
+      expect(calls.some(([input]) => String(input).includes('embed.test'))).toBe(false);
+      expect(calls.some(([input]) => String(input).includes('rerank.test'))).toBe(false);
+      expect(calls.some(([input]) => String(input).includes('qwen.test'))).toBe(false);
+
+      for (const [, init] of calls) {
+        expect(init?.headers).toMatchObject({
+          Authorization: 'Bearer fictional-org-key',
+          'X-UC-Org-Id': 'ws-1',
+          'X-UC-App': 'project-ops',
+          'X-UC-Feature': 'triage',
+          'X-UC-User-Id': 'user-1',
+        });
+      }
+
+      const bodies = calls.map(([, init]) => JSON.parse(String(init?.body)));
+      expect(bodies.filter((body) => body.model === 'embed')).toHaveLength(3);
+      expect(bodies.find((body) => body.messages)?.model).toBe('batch');
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it('returns a visible failed run and creates no proposals when the gateway fails', async () => {
+    const provider = {
+      getKey: jest.fn().mockResolvedValue({
+        key: 'fictional-org-key',
+        expiresAt: Date.now() + 60_000,
+      }),
+    };
+    const { service, tx } = makeRouteService(provider);
+    const fetchMock = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(response({ error: 'gateway unavailable' }, 503));
+
+    try {
+      const result = await service.ingestCandidates('ws-1', user, [{ text: 'Do thing' }]);
+
+      expect(result).toMatchObject({
+        created: 0,
+        proposals: [],
+        status: 'FAILED',
+        error: expect.stringContaining('gateway'),
+        run: { status: 'FAILED', error: expect.stringContaining('gateway') },
+      });
+      expect(tx.triageProposal.create).not.toHaveBeenCalled();
+      expect(
+        fetchMock.mock.calls.every(([input]) =>
+          String(input).startsWith('https://gateway.fictional.example/v1/'),
+        ),
+      ).toBe(true);
+      expect(fetchMock.mock.calls.some(([input]) => String(input).includes('192.168.'))).toBe(
+        false,
+      );
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 });
 
