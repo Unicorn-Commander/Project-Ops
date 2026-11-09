@@ -32,6 +32,7 @@ import {
 } from '@prisma/client';
 import { withTaskMetadataForRole } from '../common/serializers/client-metadata';
 import { Decimal } from '@prisma/client/runtime/library';
+import { acceptancePin, withAcceptancePin } from './acceptance-pin';
 import {
   coerceDateOnly,
   dateOnlyToUtcDate,
@@ -297,12 +298,13 @@ export class TasksService {
     // `customFields` is a derived value (merged into metadata), not a Prisma
     // column — pull it out of the spread and fold it into metadata.customFields.
     const { customFields, ...taskData } = createTaskDto;
-    const metadata = await this.resolveMetadataWithCustomFields(
+    const suppliedMetadata = await this.resolveMetadataWithCustomFields(
       tx,
       workspaceId,
       createTaskDto.metadata,
       customFields,
     );
+    const metadata = withAcceptancePin(suppliedMetadata, acceptancePin(createTaskDto.description));
 
     const task = await tx.task.create({
       data: {
@@ -667,12 +669,34 @@ export class TasksService {
             }
           }
 
-          const metadata = await this.resolveMetadataWithCustomFields(
+          const suppliedMetadata = await this.resolveMetadataWithCustomFields(
             tx,
             workspaceId,
             updateTaskDto.metadata,
             customFields,
           );
+          const previousMetadata =
+            task.metadata && typeof task.metadata === 'object'
+              ? (task.metadata as Record<string, unknown>)
+              : {};
+          const previousPin =
+            typeof previousMetadata.acceptancePin === 'string'
+              ? previousMetadata.acceptancePin
+              : undefined;
+          const nextPin = acceptancePin(
+            updateData.description !== undefined ? updateData.description : task.description,
+          );
+          const pinChanged = nextPin !== previousPin;
+          const metadata =
+            suppliedMetadata !== undefined || pinChanged
+              ? withAcceptancePin(
+                  suppliedMetadata !== undefined ? suppliedMetadata : task.metadata,
+                  nextPin,
+                  pinChanged
+                    ? undefined
+                    : (previousMetadata.acceptancePinnedAt as string | undefined),
+                )
+              : undefined;
 
           // When status transitions INTO COMPLETED, stamp completedAt; when it
           // transitions OUT of COMPLETED, clear it. Mirrors updateStatus.
@@ -699,6 +723,10 @@ export class TasksService {
             data: {
               ...updateData,
               ...(metadata !== undefined && { metadata }),
+              ...((pinChanged || suppliedMetadata !== undefined) &&
+                metadata === undefined && {
+                  metadata: Prisma.DbNull,
+                }),
               ...(completedAt !== undefined && { completedAt }),
               dueDate: updateTaskDto.dueDate ? coerceDateOnly(updateTaskDto.dueDate) : undefined,
             },
@@ -732,6 +760,27 @@ export class TasksService {
               },
             },
           });
+
+          if (previousPin && pinChanged && this.auditService) {
+            await this.auditService.log(
+              {
+                workspaceId,
+                userId: user.id,
+                projectId: task.projectId,
+                action: AuditAction.UPDATE,
+                resource: 'Task',
+                resourceId: id,
+                details: {
+                  event: 'acceptance_changed_after_creation',
+                  message: 'acceptance changed after creation',
+                  oldPin: previousPin,
+                  newPin: nextPin ?? null,
+                  editor: user.id,
+                },
+              },
+              tx,
+            );
+          }
 
           this.logger.log(`Task ${id} updated by user ${user.id}`);
           return {

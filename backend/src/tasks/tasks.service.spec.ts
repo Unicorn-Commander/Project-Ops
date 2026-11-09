@@ -9,6 +9,7 @@ import { TaskDependencyType, TaskStatus, UserRole } from '@prisma/client';
 import { DependencyDirection } from './dto/create-task-dependency.dto';
 import { TaskSortBy, TaskSortDir } from './dto/query-tasks.dto';
 import { resolveField } from '../automations/automation-conditions';
+import { createHash } from 'crypto';
 
 /**
  * Unit tests for the Push B task features: subtasks, dependency cycle
@@ -149,6 +150,185 @@ describe('TasksService.createInTx — subtask parent validation', () => {
       } as any),
     ).resolves.toBeDefined();
     expect(tx.task.create).toHaveBeenCalled();
+  });
+});
+
+describe('TasksService acceptance pin', () => {
+  const digest = (block: string) => createHash('sha256').update(block).digest('hex');
+  const firstPin = digest('ACCEPTANCE: ship the report\nReview it with the team.');
+
+  it('pins the normalized ACCEPTANCE paragraph on create and returns it on GET', async () => {
+    let saved: any;
+    const { svc } = makeService({
+      taskCreate: async ({ data }) => (saved = { id: 't1', ...data }),
+      taskFindUnique: async () => saved,
+      depFindMany: async () => [],
+    });
+    const created = await svc.create('ws1', user, {
+      projectId: 'p1',
+      title: 'Review',
+      description:
+        'Context\n\nACCEPTANCE: ship the report\r\n  Review it with the team.  \r\n\r\nOther text',
+      metadata: { acceptancePin: 'caller supplied', other: true },
+    } as any);
+
+    expect((created.metadata as any).acceptancePin).toBe(firstPin);
+    expect((created.metadata as any).acceptancePinnedAt).toEqual(expect.any(String));
+    expect((created.metadata as any).other).toBe(true);
+    const fetched = await svc.findOne('ws1', user, 't1');
+    expect((fetched.metadata as any).acceptancePin).toBe(firstPin);
+  });
+
+  it('leaves a task without an ACCEPTANCE paragraph unpinned', async () => {
+    const { svc, tx } = makeService({});
+    await svc.create('ws1', user, {
+      projectId: 'p1',
+      title: 'Review',
+      description: 'No criteria yet',
+      metadata: { acceptancePin: 'caller supplied' },
+    } as any);
+    expect((tx.task.create as jest.Mock).mock.calls[0][0].data.metadata).toBeUndefined();
+  });
+
+  it('keeps the pin and its timestamp when only other text changes', async () => {
+    const metadata = { acceptancePin: firstPin, acceptancePinnedAt: '2026-01-01T00:00:00.000Z' };
+    const { svc, tx, audit } = makeService({
+      taskFindUnique: async () => ({
+        id: 't1',
+        projectId: 'p1',
+        createdById: user.id,
+        status: TaskStatus.PENDING,
+        description: 'ACCEPTANCE: ship the report\nReview it with the team.',
+        metadata,
+      }),
+      taskUpdate: async ({ data }) => ({
+        id: 't1',
+        projectId: 'p1',
+        status: TaskStatus.PENDING,
+        metadata,
+        ...data,
+      }),
+    });
+    const result = await svc.update(
+      'ws1',
+      user,
+      't1',
+      {
+        description: 'New context\n\nACCEPTANCE: ship the report\nReview it with the team.',
+        metadata: { other: true, acceptancePin: 'forged' },
+      } as any,
+      UserRole.ADMIN,
+    );
+    expect(result.metadata as any).toEqual({ other: true, ...metadata });
+    expect(audit.log).not.toHaveBeenCalled();
+    expect((tx.task.update as jest.Mock).mock.calls[0][0].data.metadata.acceptancePin).toBe(
+      firstPin,
+    );
+  });
+
+  it('updates the pin and writes a same-transaction audit row when acceptance changes', async () => {
+    const metadata = { acceptancePin: firstPin, acceptancePinnedAt: '2026-01-01T00:00:00.000Z' };
+    const { svc, tx, audit } = makeService({
+      taskFindUnique: async () => ({
+        id: 't1',
+        projectId: 'p1',
+        createdById: user.id,
+        status: TaskStatus.PENDING,
+        description: 'ACCEPTANCE: ship the report\nReview it with the team.',
+        metadata,
+      }),
+      taskUpdate: async ({ data }) => ({
+        id: 't1',
+        projectId: 'p1',
+        status: TaskStatus.PENDING,
+        ...data,
+      }),
+    });
+    const result = await svc.update(
+      'ws1',
+      user,
+      't1',
+      {
+        description: 'ACCEPTANCE: ship the revised report',
+      } as any,
+      UserRole.ADMIN,
+    );
+    const nextPin = digest('ACCEPTANCE: ship the revised report');
+    expect((result.metadata as any).acceptancePin).toBe(nextPin);
+    expect((result.metadata as any).acceptancePinnedAt).not.toBe(metadata.acceptancePinnedAt);
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: 'ws1',
+        userId: user.id,
+        resource: 'Task',
+        resourceId: 't1',
+        details: {
+          event: 'acceptance_changed_after_creation',
+          message: 'acceptance changed after creation',
+          oldPin: firstPin,
+          newPin: nextPin,
+          editor: user.id,
+        },
+      }),
+      tx,
+    );
+  });
+
+  it('pins the block the first time it is given without calling it a change', async () => {
+    const { svc, audit } = makeService({
+      taskFindUnique: async () => ({
+        id: 't1',
+        projectId: 'p1',
+        createdById: user.id,
+        status: TaskStatus.PENDING,
+        description: 'Draft only',
+        metadata: null,
+      }),
+      taskUpdate: async ({ data }) => ({
+        id: 't1',
+        projectId: 'p1',
+        status: TaskStatus.PENDING,
+        ...data,
+      }),
+    });
+    const result = await svc.update(
+      'ws1',
+      user,
+      't1',
+      {
+        description: 'ACCEPTANCE: ship the report\nReview it with the team.',
+      } as any,
+      UserRole.ADMIN,
+    );
+    expect((result.metadata as any).acceptancePin).toBe(firstPin);
+    expect(audit.log).not.toHaveBeenCalled();
+  });
+
+  it('clears the pin and audits removal of an ACCEPTANCE paragraph', async () => {
+    const { svc, tx, audit } = makeService({
+      taskFindUnique: async () => ({
+        id: 't1',
+        projectId: 'p1',
+        createdById: user.id,
+        status: TaskStatus.PENDING,
+        description: 'ACCEPTANCE: ship the report\nReview it with the team.',
+        metadata: { acceptancePin: firstPin, acceptancePinnedAt: '2026-01-01T00:00:00.000Z' },
+      }),
+      taskUpdate: async ({ data }) => ({
+        id: 't1',
+        projectId: 'p1',
+        status: TaskStatus.PENDING,
+        ...data,
+      }),
+    });
+    await svc.update('ws1', user, 't1', { description: 'Criteria removed' } as any, UserRole.ADMIN);
+    expect((tx.task.update as jest.Mock).mock.calls[0][0].data.metadata).toBeDefined();
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        details: expect.objectContaining({ oldPin: firstPin, newPin: null }),
+      }),
+      tx,
+    );
   });
 });
 
