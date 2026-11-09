@@ -146,6 +146,25 @@ export class EnvironmentVariables {
   @IsBoolean()
   PROJECT_OPS_TENANCY_ENABLED?: boolean;
 
+  // --- Triage org gateway route (default OFF; old LAN inference stays active
+  // until the deployment explicitly supplies the gateway settings). ---
+  @IsOptional()
+  @Transform(toBool)
+  @IsBoolean()
+  PROJECT_OPS_USE_ORG_ROUTE?: boolean;
+
+  @IsOptional()
+  @IsString()
+  ORG_GATEWAY_BASE_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  OPS_CENTER_INTERNAL_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  OPS_CENTER_SERVICE_TOKEN?: string;
+
   // --- uc-registry (Phase E) — OPTIONAL. When unset the registry client is a
   // pure no-op (workspace creation behaves exactly as today). When set, PO
   // registers each workspace it creates with uc-registry (the suite SoR). Just

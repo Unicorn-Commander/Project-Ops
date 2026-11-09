@@ -8,6 +8,7 @@ import { WorkspaceContextService } from '../common/workspace/workspace-context.s
 import { MembershipService } from '../common/workspace/membership.service';
 import { WorkspaceMembershipGuard } from '../common/workspace/workspace-membership.guard';
 import { FederationActorGuard } from '../common/workspace/federation-actor.guard';
+import { ORG_GATEWAY_KEY_PROVIDER, OpsCenterOrgGatewayKeyProvider } from './org-gateway.client';
 
 /**
  * Project-Ops Triage Agent module (PO-owned).
@@ -32,6 +33,10 @@ import { FederationActorGuard } from '../common/workspace/federation-actor.guard
     MembershipService,
     WorkspaceMembershipGuard,
     FederationActorGuard,
+    {
+      provide: ORG_GATEWAY_KEY_PROVIDER,
+      useClass: OpsCenterOrgGatewayKeyProvider,
+    },
   ],
   exports: [TriageService],
 })

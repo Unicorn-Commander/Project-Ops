@@ -25,11 +25,19 @@
  * inert while PROJECT_OPS_TENANCY_ENABLED is off (membership resolution is a
  * no-op and withWorkspace runs under the BYPASSRLS owner connection).
  */
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TaskPriority, User } from '@prisma/client';
 import { PrismaService, WorkspaceTxClient } from '../prisma/prisma.service';
 import { WorkspaceContextService } from '../common/workspace/workspace-context.service';
+import { ucUidOf } from '../common/workspace/workspace.util';
 import { ProjectsService } from '../projects/projects.service';
 import { TasksService } from '../tasks/tasks.service';
 import {
@@ -38,6 +46,11 @@ import {
   TriageReasonPreset,
   type TriageListStatus,
 } from './dto/triage-proposals.dto';
+import {
+  ORG_GATEWAY_KEY_PROVIDER,
+  OrgGatewayError,
+  type OrgGatewayKeyProvider,
+} from './org-gateway.client';
 
 export type CandidateItem = {
   text: string;
@@ -85,6 +98,11 @@ type ProjIndexCacheEntry = {
   at: number;
 };
 
+type OrgRouteContext = {
+  orgId: string;
+  userId?: string;
+};
+
 @Injectable()
 export class TriageService {
   private readonly logger = new Logger(TriageService.name);
@@ -104,9 +122,28 @@ export class TriageService {
     private readonly workspaceContext: WorkspaceContextService,
     private readonly projects: ProjectsService,
     private readonly tasks: TasksService,
+    @Optional()
+    @Inject(ORG_GATEWAY_KEY_PROVIDER)
+    private readonly orgGatewayKeyProvider?: OrgGatewayKeyProvider,
   ) {}
 
   // ---------- config (env with LAN defaults) ----------
+  private get useOrgRoute(): boolean {
+    const value = this.config.get<boolean | string>('PROJECT_OPS_USE_ORG_ROUTE', false);
+    if (typeof value === 'boolean') return value;
+    return ['true', '1', 'yes', 'on'].includes(String(value).trim().toLowerCase());
+  }
+
+  private get orgGatewayBaseUrl(): string {
+    const value = this.config.get<string>('ORG_GATEWAY_BASE_URL')?.trim();
+    if (!value) {
+      throw new OrgGatewayError(
+        'Project-Ops gateway unavailable: ORG_GATEWAY_BASE_URL is not configured',
+      );
+    }
+    return value.replace(/\/+$/, '');
+  }
+
   private get embedUrl() {
     return this.config.get<string>('INFINITY_EMBEDDINGS_URL', 'http://192.168.10.14:8082');
   }
@@ -127,7 +164,21 @@ export class TriageService {
   }
 
   // ---------- inference helpers ----------
-  private async embed(texts: string[]): Promise<number[][]> {
+  private async embed(texts: string[], route?: OrgRouteContext): Promise<number[][]> {
+    if (this.useOrgRoute) {
+      if (!route)
+        throw new OrgGatewayError('Project-Ops gateway unavailable: workspace is missing');
+      const data = await this.callOrgRoute('/embeddings', { model: 'embed', input: texts }, route);
+      if (!Array.isArray(data?.data)) {
+        throw new OrgGatewayError('Project-Ops gateway unavailable: invalid embeddings response');
+      }
+      const embeddings = data.data.map((entry: any) => entry?.embedding as number[]);
+      if (embeddings.some((embedding: unknown) => !Array.isArray(embedding))) {
+        throw new OrgGatewayError('Project-Ops gateway unavailable: invalid embeddings response');
+      }
+      return embeddings;
+    }
+
     const res = await fetch(`${this.embedUrl}/embeddings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -142,7 +193,36 @@ export class TriageService {
     query: string,
     docs: string[],
     topN: number,
+    route?: OrgRouteContext,
   ): Promise<{ index: number; score: number }[]> {
+    if (this.useOrgRoute) {
+      if (!route)
+        throw new OrgGatewayError('Project-Ops gateway unavailable: workspace is missing');
+      const data = await this.callOrgRoute(
+        '/rerank',
+        { model: 'embed', query, documents: docs, top_n: topN },
+        route,
+      );
+      if (!Array.isArray(data?.results)) {
+        throw new OrgGatewayError('Project-Ops gateway unavailable: invalid rerank response');
+      }
+      const results = data.results.map((entry: any) => ({
+        index: entry?.index,
+        score: entry?.relevance_score ?? 0,
+      }));
+      if (
+        results.some(
+          (result: { index: unknown }) =>
+            !Number.isInteger(result.index) ||
+            (result.index as number) < 0 ||
+            (result.index as number) >= docs.length,
+        )
+      ) {
+        throw new OrgGatewayError('Project-Ops gateway unavailable: invalid rerank response');
+      }
+      return results;
+    }
+
     const res = await fetch(`${this.rerankUrl}/rerank`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -161,7 +241,31 @@ export class TriageService {
     }));
   }
 
-  private async qwenDecide(userMsg: string): Promise<any | null> {
+  private async qwenDecide(userMsg: string, route?: OrgRouteContext): Promise<any | null> {
+    if (this.useOrgRoute) {
+      if (!route)
+        throw new OrgGatewayError('Project-Ops gateway unavailable: workspace is missing');
+      const data = await this.callOrgRoute(
+        '/chat/completions',
+        {
+          model: 'batch',
+          messages: [
+            { role: 'system', content: TriageService.SYSTEM },
+            { role: 'user', content: userMsg },
+          ],
+          temperature: 0.1,
+          max_tokens: 1800,
+        },
+        route,
+      );
+      if (!Array.isArray(data?.choices) || !data.choices[0]?.message) {
+        throw new OrgGatewayError('Project-Ops gateway unavailable: invalid decision response');
+      }
+      const msg = data?.choices?.[0]?.message ?? {};
+      const text: string = msg.content || msg.reasoning_content || '';
+      return this.firstJsonObject(text);
+    }
+
     const res = await fetch(this.qwenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -181,6 +285,90 @@ export class TriageService {
     // content holds the answer; reasoning_content is the (discarded) thinking trace
     const text: string = msg.content || msg.reasoning_content || '';
     return this.firstJsonObject(text);
+  }
+
+  /**
+   * Workspace.id is the suite's uc-registry workspace_id. The existing
+   * entitlement onboarding path receives Ops-Center org_id and uses that UUID
+   * directly as Workspace.id (membership.service.ts:304-309), so the workspace
+   * id is the existing org-id mapping for this route. No slug is sent.
+   */
+  private orgRouteContext(workspaceId: string, user: User): OrgRouteContext {
+    const orgId = workspaceId.trim();
+    if (!orgId) {
+      throw new OrgGatewayError(
+        'Project-Ops gateway unavailable: workspace is not mapped to an org',
+      );
+    }
+    const actor = user as User & { __isFederationActor?: boolean };
+    const userId = actor.__isFederationActor ? undefined : ucUidOf(user) || undefined;
+    return { orgId, userId };
+  }
+
+  private async callOrgRoute(
+    path: string,
+    body: Record<string, unknown>,
+    route: OrgRouteContext,
+  ): Promise<any> {
+    if (!this.orgGatewayKeyProvider) {
+      throw new OrgGatewayError('Project-Ops gateway unavailable: key provider is not configured');
+    }
+
+    let key: string;
+    try {
+      const provided = await this.orgGatewayKeyProvider.getKey(route.orgId);
+      key = typeof provided?.key === 'string' ? provided.key : '';
+    } catch (error) {
+      if (error instanceof OrgGatewayError) throw error;
+      throw new OrgGatewayError('Project-Ops gateway unavailable: org key lookup failed');
+    }
+    if (!key) {
+      throw new OrgGatewayError('Project-Ops gateway unavailable: org key lookup returned no key');
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${this.orgGatewayBaseUrl}${path}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${key}`,
+          'Content-Type': 'application/json',
+          'X-UC-Org-Id': route.orgId,
+          'X-UC-App': 'project-ops',
+          'X-UC-Feature': 'triage',
+          ...(route.userId ? { 'X-UC-User-Id': route.userId } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      throw new OrgGatewayError('Project-Ops gateway unavailable: request failed');
+    }
+    if (!response.ok) {
+      throw new OrgGatewayError(
+        `Project-Ops gateway unavailable: returned status ${response.status}`,
+      );
+    }
+    try {
+      return await response.json();
+    } catch {
+      throw new OrgGatewayError('Project-Ops gateway unavailable: invalid response');
+    }
+  }
+
+  private failedOrgRouteRun(error: unknown) {
+    const message =
+      error instanceof OrgGatewayError
+        ? error.message
+        : 'Project-Ops gateway unavailable: triage run failed';
+    this.logger.error(`triage: org route run failed error=${message}`);
+    return {
+      created: 0,
+      skipped: 0,
+      proposals: [] as any[],
+      status: 'FAILED' as const,
+      error: message,
+      run: { status: 'FAILED' as const, error: message },
+    };
   }
 
   /** Extract the first balanced {...} that has a "keep" key (tolerates prose/think text around it). */
@@ -296,12 +484,22 @@ export class TriageService {
       return { created: 0, skipped: 0, proposals: [] as any[] };
     }
 
+    let route: OrgRouteContext | undefined;
+    if (this.useOrgRoute) {
+      try {
+        route = this.orgRouteContext(workspaceId, user);
+      } catch (error) {
+        return this.failedOrgRouteRun(error);
+      }
+    }
+
     const ingest = async (tx: WorkspaceTxClient) => {
       let embeddingDegraded = false;
       const safeEmbed = async (texts: string[]) => {
         try {
-          return await this.embed(texts);
+          return await this.embed(texts, route);
         } catch (e) {
+          if (this.useOrgRoute) throw e;
           if (!embeddingDegraded) {
             embeddingDegraded = true;
             this.logger.warn(
@@ -315,6 +513,7 @@ export class TriageService {
       const index = await this.getProjectIndex(tx, workspaceId, safeEmbed);
       const itemVecs = await safeEmbed(items.map((it) => it.text));
       const created: any[] = [];
+      const stagedProposalData: any[] = [];
       let skipped = 0;
       let deduped = 0;
 
@@ -345,9 +544,11 @@ export class TriageService {
             it.text,
             scored.map((s) => `${s.p.number}: ${s.p.title}`),
             Math.min(4, scored.length),
+            route,
           );
           order = rr.map((r) => scored[r.index].p);
-        } catch {
+        } catch (error) {
+          if (this.useOrgRoute) throw error;
           this.logger.warn(`triage: rerank degraded host=${this.rerankUrl} item=${i}`);
           order = scored.slice(0, 4).map((s) => s.p);
         }
@@ -360,8 +561,9 @@ export class TriageService {
 
         let decision: any = null;
         try {
-          decision = await this.qwenDecide(userMsg);
+          decision = await this.qwenDecide(userMsg, route);
         } catch (e) {
+          if (this.useOrgRoute) throw e;
           this.logger.warn(
             `triage: qwen degraded host=${this.qwenUrl} item=${i} error=${(e as Error).message}`,
           );
@@ -375,30 +577,43 @@ export class TriageService {
         const proj = projNumber ? index.find((p) => p.number === projNumber) : null;
         const top = order[0];
 
-        const proposal = await tx.triageProposal.create({
-          data: {
-            workspaceId,
-            rawText: it.text,
-            owner: it.owner ?? null,
-            sourceType: it.sourceType ?? 'MANUAL',
-            sourceActionItemId: it.sourceActionItemId ?? null,
-            sourceRef: (it.sourceRef ?? null) as any,
-            agentKeep: keep,
-            proposedProjectId: proj?.id ?? null,
-            proposedTitle: decision?.title ?? it.text.slice(0, 120),
-            proposedPriority: this.toPriority(decision?.pri),
-            dedupeNote: decision?.dup_of_existing ?? null,
-            matchScore: top ? Number(this.cosine(vec, top.vec).toFixed(4)) : null,
-            alternatives: order.map((p) => ({
-              number: p.number,
-              title: p.title,
-            })) as any,
-            reasoning: decision?.reason ?? null,
-            status: 'PENDING_REVIEW',
-            createdById: user.id,
-          },
-        });
-        created.push(proposal);
+        const data = {
+          workspaceId,
+          rawText: it.text,
+          owner: it.owner ?? null,
+          sourceType: it.sourceType ?? 'MANUAL',
+          sourceActionItemId: it.sourceActionItemId ?? null,
+          sourceRef: (it.sourceRef ?? null) as any,
+          agentKeep: keep,
+          proposedProjectId: proj?.id ?? null,
+          proposedTitle: decision?.title ?? it.text.slice(0, 120),
+          proposedPriority: this.toPriority(decision?.pri),
+          dedupeNote: decision?.dup_of_existing ?? null,
+          matchScore: top ? Number(this.cosine(vec, top.vec).toFixed(4)) : null,
+          alternatives: order.map((p) => ({
+            number: p.number,
+            title: p.title,
+          })) as any,
+          reasoning: decision?.reason ?? null,
+          status: 'PENDING_REVIEW' as const,
+          createdById: user.id,
+        };
+        if (this.useOrgRoute) {
+          // Stage every proposal until all gateway calls succeed. The real
+          // transaction also rolls back, but staging makes the failure rule
+          // explicit for callers that exercise this service with a fake tx.
+          stagedProposalData.push(data);
+        } else {
+          const proposal = await tx.triageProposal.create({ data });
+          created.push(proposal);
+        }
+      }
+
+      if (this.useOrgRoute) {
+        for (const data of stagedProposalData) {
+          const proposal = await tx.triageProposal.create({ data });
+          created.push(proposal);
+        }
       }
 
       this.logger.log(
@@ -420,9 +635,16 @@ export class TriageService {
     // the TriageProposal rows commit instead of hitting "transaction already
     // closed". All other workspace transactions keep the tight 5s default.
     const txOpts = { maxWait: 20000, timeout: 300000 };
-    return opts?.federationActor
-      ? this.workspaceContext.runInWorkspace(workspaceId, user.id, ingest, txOpts)
-      : this.workspaceContext.runForUser(user, ingest, workspaceId, txOpts);
+    try {
+      return await (opts?.federationActor
+        ? this.workspaceContext.runInWorkspace(workspaceId, user.id, ingest, txOpts)
+        : this.workspaceContext.runForUser(user, ingest, workspaceId, txOpts));
+    } catch (error) {
+      if (this.useOrgRoute && error instanceof OrgGatewayError) {
+        return this.failedOrgRouteRun(error);
+      }
+      throw error;
+    }
   }
 
   /** The "Unassigned / needs a project" inbox: kept, no project, not a dup, still pending. */
