@@ -213,7 +213,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <TimerProvider>
-    <div className="min-h-screen bg-background">
+    {/* MU shared surface tokens (public/surfaces.css): solid canvas. */}
+    <div className="mu-canvas min-h-screen">
       {/* Skip link — first focusable element; visually hidden until focused,
           then it jumps keyboard users straight past the sidebar/top bar to
           the page content. */}
@@ -233,11 +234,13 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar — MU chrome surface: 96% translucent, 8px blur, 1px border
+          (public/surfaces.css). The class supplies the border, so no
+          Tailwind border-r here. */}
       <aside
         id="dashboard-sidebar"
         aria-label="Primary"
-        className={`fixed inset-y-0 left-0 z-50 w-64 transform border-r border-border bg-card transition-transform duration-300 lg:translate-x-0 ${
+        className={`mu-chrome fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -339,7 +342,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       {/* Main content */}
       <div className="lg:pl-64">
         {/* Top bar */}
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border/60 bg-card/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-card/60 lg:px-6">
+        {/* Top bar — MU chrome surface (public/surfaces.css); the class
+            supplies the 1px border, so no Tailwind border-b here. */}
+        <header className="mu-chrome sticky top-0 z-30 flex h-16 items-center gap-3 px-4 lg:px-6">
           <Button
             ref={hamburgerRef}
             variant="ghost"

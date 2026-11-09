@@ -1,6 +1,26 @@
 @import "tailwindcss";
 @import "../public/surfaces.css";
 
+/* MU shared surface tokens (public/surfaces.css) — Project-Ops wiring.
+ * The shared file defaults to the dark surface set; the light theme opts
+ * into the light values (mirroring .mu-surface-light in that file). The
+ * vibrant theme is dark-toned and keeps the dark defaults.
+ *
+ * This MUST stay unlayered (not inside @layer base): the shared file's
+ * :root dark values are unlayered too, and unlayered rules beat ANY
+ * layered rule in the cascade regardless of specificity. Unlayered here,
+ * the higher-specificity html:not(...) selector wins over :root. Keep
+ * these values in step with .mu-surface-light when syncing with
+ * Ops-Center. */
+html:not(.dark):not(.vibrant) {
+  --mu-canvas: #f6f6f8;
+  --mu-panel: rgb(255 255 255 / 0.94);
+  --mu-chrome: rgb(255 255 255 / 0.96);
+  --mu-border: rgb(20 20 35 / 0.12);
+  --mu-panel-solid: rgb(255 255 255 / 0.98);
+  --mu-chrome-solid: rgb(255 255 255 / 0.99);
+}
+
 /* Tailwind 4: extend the `dark:` variant to ALSO match `.vibrant`. The
  * Vibrant theme is a dark-tone variant — it wants every `dark:foo` utility
  * sprinkled through the codebase to fire. Default Tailwind dark variant
@@ -119,20 +139,6 @@
 @layer base {
   * {
     @apply border-border;
-  }
-
-  /* MU shared surface tokens (public/surfaces.css) — Project-Ops wiring.
-   * The shared file defaults to the dark surface set; the light theme opts
-   * into the light values (mirroring .mu-surface-light in that file). The
-   * vibrant theme is dark-toned and keeps the dark defaults. Keep these
-   * values in step with .mu-surface-light when syncing with Ops-Center. */
-  html:not(.dark):not(.vibrant) {
-    --mu-canvas: #f6f6f8;
-    --mu-panel: rgb(255 255 255 / 0.94);
-    --mu-chrome: rgb(255 255 255 / 0.96);
-    --mu-border: rgb(20 20 35 / 0.12);
-    --mu-panel-solid: rgb(255 255 255 / 0.98);
-    --mu-chrome-solid: rgb(255 255 255 / 0.99);
   }
 
   html {

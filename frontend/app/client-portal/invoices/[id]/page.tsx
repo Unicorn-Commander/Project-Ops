@@ -121,7 +121,7 @@ export default function InvoiceDetailPage() {
 
       {/* Invoice header */}
       <Card className="overflow-hidden bg-card">
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border bg-gradient-to-br from-primary/[0.06] to-transparent p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border p-6">
           <div className="flex items-center gap-3.5">
             <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/15 text-primary">
               <Receipt className="h-6 w-6" strokeWidth={1.9} />

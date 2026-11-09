@@ -108,8 +108,9 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+    // MU shared surface tokens (public/surfaces.css): solid canvas.
+    <div className="mu-canvas min-h-screen text-foreground">
+      <header className="mu-chrome sticky top-0 z-40">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5 sm:px-6">
           <Link href="/" className="flex items-center gap-3">
             <span className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-white ring-1 ring-border dark:bg-zinc-100">
@@ -133,15 +134,9 @@ export default function Home() {
 
       <main>
         <section className="relative overflow-hidden">
-          <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[650px] overflow-hidden">
-            <div className="absolute -top-32 left-1/4 h-[480px] w-[480px] -translate-x-1/2 rounded-full bg-violet-500/20 blur-[140px]" />
-            <div className="absolute -top-20 right-1/4 h-[420px] w-[420px] translate-x-1/2 rounded-full bg-amber-400/15 blur-[140px]" />
-            <div className="absolute top-36 left-1/2 h-[360px] w-[360px] -translate-x-1/2 rounded-full bg-cyan-400/10 blur-[120px]" />
-          </div>
           <div className="mx-auto max-w-5xl px-6 pb-10 pt-16 text-center md:pt-20">
             <div className="mb-6 flex justify-center">
               <div className="relative">
-                <div aria-hidden className="absolute inset-0 -z-10 scale-110 rounded-full bg-violet-500/25 blur-2xl" />
                 <Image
                   src="/projectops-mascot.png"
                   alt="Project-Ops"
@@ -390,7 +385,7 @@ export default function Home() {
 
         <section id="faq" className="border-b border-border bg-foreground/[0.015]"><div className="mx-auto max-w-4xl px-6 py-20"><Eyebrow>FAQ</Eyebrow><h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">The honest answers.</h2><div className="mt-10 divide-y divide-border rounded-xl border border-border bg-card">{faq.map(([q,a]) => <details key={q} className="group px-5 py-4 [&[open]>summary>svg]:rotate-180"><summary className="flex cursor-pointer list-none items-start justify-between gap-4"><span className="font-semibold">{q}</span><ArrowRight className="mt-1 h-4 w-4 shrink-0 rotate-90 text-foreground/55 transition-transform" /></summary><p className="mt-3 max-w-3xl text-base leading-relaxed text-foreground/70">{a}</p></details>)}</div></div></section>
 
-        <section className="relative overflow-hidden border-b border-border"><div aria-hidden className="absolute inset-0 -z-10"><div className="absolute left-1/2 top-1/2 h-[380px] w-[680px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-500/15 blur-[140px]" /></div><div className="mx-auto max-w-3xl px-6 py-24 text-center"><Sparkles className="mx-auto h-6 w-6 text-violet-500" /><h2 className="mt-5 text-balance text-4xl font-semibold tracking-tight sm:text-5xl">Move work from conversation to completion.</h2><p className="mx-auto mt-5 max-w-xl text-lg text-foreground/70">Set up in an afternoon. Built to remain yours for the long haul.</p><div className="mt-8"><Link href="/auth/login"><Button size="lg" className="bg-foreground px-6 text-background hover:bg-foreground/90">Open Project-Ops <ArrowRight className="ml-1.5 h-4 w-4" /></Button></Link></div></div></section>
+        <section className="relative overflow-hidden border-b border-border"><div className="mx-auto max-w-3xl px-6 py-24 text-center"><Sparkles className="mx-auto h-6 w-6 text-violet-500" /><h2 className="mt-5 text-balance text-4xl font-semibold tracking-tight sm:text-5xl">Move work from conversation to completion.</h2><p className="mx-auto mt-5 max-w-xl text-lg text-foreground/70">Set up in an afternoon. Built to remain yours for the long haul.</p><div className="mt-8"><Link href="/auth/login"><Button size="lg" className="bg-foreground px-6 text-background hover:bg-foreground/90">Open Project-Ops <ArrowRight className="ml-1.5 h-4 w-4" /></Button></Link></div></div></section>
       </main>
 
       <footer><div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 text-sm text-foreground/60 sm:flex-row"><div className="flex items-center gap-2.5"><Image src="/projectops-mascot.png" alt="" width={22} height={22} className="rounded bg-white" /><span>Project-Ops · © {new Date().getFullYear()} Magic Unicorn</span></div><nav className="flex gap-5"><a href="https://git.unicorncommander.ai/MagicUnicorn/Project-Ops" target="_blank" rel="noreferrer" className="hover:text-foreground">Source</a><a href="https://magicunicorn.dev" target="_blank" rel="noreferrer" className="hover:text-foreground">Magic Unicorn</a></nav></div></footer>

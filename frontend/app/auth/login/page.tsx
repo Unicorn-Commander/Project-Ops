@@ -85,21 +85,14 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-background p-4">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 opacity-70 dark:opacity-40"
-        style={{
-          background:
-            "radial-gradient(60% 50% at 50% 0%, color-mix(in oklab, var(--color-primary) 22%, transparent) 0%, transparent 70%)",
-        }}
-      />
-
+    // MU shared surface tokens (public/surfaces.css): solid canvas. The old
+    // decorative radial-gradient wash is gone — panels carry the depth now.
+    <div className="mu-canvas relative min-h-screen flex items-center justify-center p-4">
       <div className="absolute right-4 top-4">
         <ThemeToggle />
       </div>
 
-      <Card className="w-full max-w-md border-border/70 shadow-xl shadow-primary/5">
+      <Card className="mu-panel w-full max-w-md shadow-xl shadow-primary/5">
         <CardHeader className="space-y-1 text-center">
           <Link
             href="/"
