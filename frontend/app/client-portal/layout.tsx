@@ -71,7 +71,8 @@ export default function ClientPortalLayout({ children }: ClientPortalLayoutProps
     pathname === href || pathname?.startsWith(`${href}/`);
 
   return (
-    <div className="min-h-screen bg-background">
+    // MU shared surface tokens (public/surfaces.css): solid canvas.
+    <div className="mu-canvas min-h-screen">
       {/* Skip link — first focusable element, visually hidden until focused. */}
       <a
         href="#main-content"
@@ -80,9 +81,9 @@ export default function ClientPortalLayout({ children }: ClientPortalLayoutProps
         Skip to content
       </a>
 
-      {/* Sticky chrome: brand bar + nav, with a subtle backdrop blur so content
-          scrolls gracefully beneath it. */}
-      <header className="sticky top-0 z-40 border-b border-border bg-card/85 backdrop-blur supports-[backdrop-filter]:bg-card/75">
+      {/* Sticky chrome: brand bar + nav — MU chrome surface
+          (public/surfaces.css); the class supplies the 1px border. */}
+      <header className="mu-chrome sticky top-0 z-40">
         {/* Brand row */}
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between gap-4">

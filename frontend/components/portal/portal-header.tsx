@@ -60,21 +60,15 @@ export function PortalHeader({
   return (
     <section
       className={cn(
-        // A soft branded band: the indigo primary at low opacity, fading to
-        // the page background. Reads as a calm welcome mat, not a loud banner.
-        "po-card relative overflow-hidden rounded-2xl border border-border/70",
-        "bg-gradient-to-br from-primary/[0.08] via-card to-card",
+        // MU panel surface (public/surfaces.css): 94% translucent, 8px blur,
+        // clean 1px border. The old gradient band + corner glow are gone —
+        // the shared tokens carry the depth now.
+        "po-card mu-panel relative overflow-hidden rounded-2xl",
         "px-6 py-7 sm:px-8 sm:py-9",
         className,
       )}
       aria-label="Welcome"
     >
-      {/* Decorative accent — a faint glow in the corner, purely cosmetic. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-primary/10 blur-3xl"
-      />
-
       <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           {orgName && (

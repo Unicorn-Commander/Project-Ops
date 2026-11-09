@@ -1,0 +1,55 @@
+/* Copied verbatim from UnicornCommander/Ops-Center public/surfaces.css at 070f541a (2026-11-09). Keep in step: change it there first. */
+/* Magic Unicorn shared surfaces. Portable CSS for Ops-Center and Project-Ops.
+ * Import once; use mu-surface-light on light scopes, mu-canvas for backdrops,
+ * mu-panel for cards and mu-chrome for bars. No texture or gradient layers.
+ * 94% panels keep text contrast stable even when backdrop blur is unavailable.
+ * Home retains its per-family text/accent palette and uses the same opacity.
+ */
+:root,
+.mu-surface-dark {
+  --mu-canvas-dark: #0d1020;
+  --mu-panel-dark: rgb(27 30 49 / 94%);
+  --mu-chrome-dark: rgb(19 22 39 / 96%);
+  --mu-border-dark: rgb(167 139 250 / 28%);
+  --mu-canvas-light: #f5f4fb;
+  --mu-panel-light: rgb(255 255 255 / 94%);
+  --mu-chrome-light: rgb(249 248 254 / 96%);
+  --mu-border-light: rgb(91 63 170 / 24%);
+  --mu-app-purple: rgb(49 34 82 / 94%);
+  --mu-app-cyan: rgb(18 55 70 / 94%);
+  --mu-purple: #c4b5fd;
+  --mu-muted: #aab3cf;
+  --mu-cyan: #67e8f9;
+  --mu-panel-opacity: 94%;
+  --mu-backdrop: blur(8px);
+  --mu-canvas: var(--mu-canvas-dark);
+  --mu-panel: var(--mu-panel-dark);
+  --mu-chrome: var(--mu-chrome-dark);
+  --mu-border: var(--mu-border-dark);
+}
+
+.mu-surface-light {
+  --mu-purple: #6d28d9;
+  --mu-muted: #4b5563;
+  --mu-canvas: var(--mu-canvas-light);
+  --mu-panel: var(--mu-panel-light);
+  --mu-chrome: var(--mu-chrome-light);
+  --mu-border: var(--mu-border-light);
+}
+
+.mu-canvas { background: var(--mu-canvas); }
+.mu-panel {
+  background: var(--mu-panel);
+  border: 1px solid var(--mu-border);
+  -webkit-backdrop-filter: var(--mu-backdrop);
+  backdrop-filter: var(--mu-backdrop);
+}
+.mu-chrome {
+  background: var(--mu-chrome);
+  border-color: var(--mu-border);
+  -webkit-backdrop-filter: var(--mu-backdrop);
+  backdrop-filter: var(--mu-backdrop);
+}
+
+.mu-app-purple { --mu-panel: var(--mu-app-purple); }
+.mu-app-cyan { --mu-panel: var(--mu-app-cyan); }

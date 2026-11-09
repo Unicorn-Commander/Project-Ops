@@ -183,9 +183,10 @@ export default function ProjectDetailsPage() {
         </Button>
       </Link>
 
-      {/* Project header */}
+      {/* Project header — plain card surface (MU shared tokens carry the
+          depth now; no gradient wash). */}
       <Card className="overflow-hidden bg-card">
-        <div className="bg-gradient-to-br from-primary/[0.06] to-transparent p-6">
+        <div className="p-6">
           <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-sm text-muted-foreground">

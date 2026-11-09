@@ -324,11 +324,6 @@ export default function DashboardPage() {
                   <Icon className="h-5 w-5" strokeWidth={1.75} />
                 </div>
               </div>
-              {/* Subtle bottom-right gradient for depth */}
-              <div
-                aria-hidden
-                className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-border to-transparent"
-              />
             </Card>
           ))}
         </div>
