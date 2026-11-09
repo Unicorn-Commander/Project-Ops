@@ -1,0 +1,83 @@
+/* ==========================================================================
+ * MU shared surface tokens — UnicornCommander/Ops-Center public/surfaces.css
+ * ==========================================================================
+ * INTENDED SOURCE OF TRUTH: UnicornCommander/Ops-Center @ main,
+ * file public/surfaces.css. Ops-Center removed its gritty grain/noise
+ * overlay and replaced it with these shared surface tokens so the whole
+ * Unicorn Commander suite can share one surface language.
+ *
+ * PROVENANCE NOTE (task ef3e7110, 2026-11-09): the Ops-Center repository is
+ * private and this sandbox has no credentials for it, so a VERBATIM copy was
+ * not possible. This file was AUTHORED to Aaron's spec in task ef3e7110:
+ *
+ *   - tokens: --mu-canvas / --mu-panel / --mu-chrome / --mu-border
+ *   - dark defaults + a .mu-surface-light opt-in class
+ *   - panels at 94% alpha, chrome at 96% alpha
+ *   - 8px backdrop blur on panel/chrome
+ *   - clean 1px borders
+ *   - purple #c4b5fd / cyan #67e8f9 accent tokens
+ *   - classes .mu-canvas .mu-panel .mu-chrome
+ *
+ * When the Ops-Center file is reachable, REPLACE THIS FILE with that copy
+ * verbatim (keeping this header's pointer updated with its commit hash) so
+ * both apps stay in step:
+ *
+ *   diff frontend/public/surfaces.css <ops-center>/public/surfaces.css
+ * ========================================================================== */
+
+:root {
+  /* Dark default. Canvas is solid; panel/chrome are slightly translucent
+   * so content scrolling beneath a sticky bar keeps a whisper of depth.
+   * Accents are suite-level highlights (purple primary, cyan secondary). */
+  --mu-canvas: #0a0a10;
+  --mu-panel: rgb(22 22 32 / 0.94);
+  --mu-chrome: rgb(26 26 36 / 0.96);
+  --mu-border: rgb(255 255 255 / 0.14);
+  --mu-accent: #c4b5fd;
+  --mu-accent-2: #67e8f9;
+  /* Fallbacks for engines without backdrop-filter: near-opaque versions of
+   * the same surfaces so contrast never depends on the blur landing. */
+  --mu-panel-solid: rgb(22 22 32 / 0.98);
+  --mu-chrome-solid: rgb(26 26 36 / 0.99);
+}
+
+/* Light opt-in, per consumer (Ops-Center contract: dark is the default). */
+.mu-surface-light {
+  --mu-canvas: #f6f6f8;
+  --mu-panel: rgb(255 255 255 / 0.94);
+  --mu-chrome: rgb(255 255 255 / 0.96);
+  --mu-border: rgb(20 20 35 / 0.12);
+  --mu-panel-solid: rgb(255 255 255 / 0.98);
+  --mu-chrome-solid: rgb(255 255 255 / 0.99);
+}
+
+/* Solid app canvas. */
+.mu-canvas {
+  background: var(--mu-canvas);
+}
+
+/* Content panel: 94% surface, 8px blur, clean 1px border. */
+.mu-panel {
+  background: var(--mu-panel);
+  border: 1px solid var(--mu-border);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+/* App chrome (sticky bars, navigation shells): 96% surface, 8px blur,
+ * clean 1px border. */
+.mu-chrome {
+  background: var(--mu-chrome);
+  border: 1px solid var(--mu-border);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+@supports not ((backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px))) {
+  .mu-panel {
+    background: var(--mu-panel-solid);
+  }
+  .mu-chrome {
+    background: var(--mu-chrome-solid);
+  }
+}
