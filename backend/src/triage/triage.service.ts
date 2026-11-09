@@ -7,10 +7,12 @@
  * "Unassigned / needs a project" inbox, from which a user assigns them to an
  * existing project or creates a new one (createProjectFromUnassigned).
  *
- * Inference runs ENTIRELY on local hardware, reached from the PO backend on
- * bigboy over the LAN:
+ * With PROJECT_OPS_USE_ORG_ROUTE OFF, inference runs on local hardware reached
+ * from the PO backend on bigboy over the LAN:
  *   - embeddings + rerank: Infinity (bge-m3 / bge-reranker-v2-m3) on midboy2
  *   - reasoning: Qwen3.6-35B-A3B-Vision on midboy1
+ * With the flag ON, all three calls use the org gateway routes `embed` and
+ * `batch`; the gateway chooses the target for the org.
  * Thinking stays ON (it materially improves the keep/route judgment); per-item
  * calls keep the token budget bounded so the answer is never starved.
  *

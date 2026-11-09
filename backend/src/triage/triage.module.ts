@@ -15,14 +15,16 @@ import { ORG_GATEWAY_KEY_PROVIDER, OpsCenterOrgGatewayKeyProvider } from './org-
  *
  * Depends on ProjectsModule + TasksModule for the apply step (create project /
  * create task on approval) and PrismaModule for the TriageProposal store.
- * ConfigService comes from the global ConfigModule. Inference endpoints
- * (Infinity + Qwen) are reached over the LAN via env (see triage.service).
+ * ConfigService comes from the global ConfigModule. With the org-route flag
+ * off, inference endpoints (Infinity + Qwen) are reached over the LAN via env;
+ * with it on, the key provider and gateway client are used.
  *
  * Suite tenancy (Phase 2, B9): WorkspaceContextService + MembershipService are
  * NOT @Global, so this module lists them (and the WorkspaceMembershipGuard) in
  * its own providers. They drive the per-request workspace RLS chokepoint the
  * service runs every query through. Inert while PROJECT_OPS_TENANCY_ENABLED is
- * off.
+ * off. The org gateway key provider is inert while PROJECT_OPS_USE_ORG_ROUTE
+ * is off.
  */
 @Module({
   imports: [PrismaModule, ProjectsModule, TasksModule],
